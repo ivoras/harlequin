@@ -1,0 +1,57 @@
+# Harlequin server configuration.
+# Secrets come from .env (see .env.example); env vars override these values.
+
+server:
+  addr: ":8080"
+
+# Directory for the SQLite DB, deployed skills, and session logs.
+data_dir: "./data"
+
+# Ordered list of chat LLM providers. The router tries them according to `routing`
+# rules and falls back to the next on error/timeout.
+providers:
+  - name: local
+    base_url: "http://127.0.0.1:8081/v1"   # llama.cpp --server in OpenAI mode
+    model: "local-model"
+    api_key_env: ""                          # local server usually needs no key
+  - name: openrouter
+    base_url: "https://openrouter.ai/api/v1"
+    model: "openai/gpt-4o-mini"
+    api_key_env: "OPENROUTER_API_KEY"
+
+routing:
+  default_provider: "local"
+  fallback_order: ["local", "openrouter"]
+  # Optional explicit per-model rules: model name -> provider name.
+  model_rules: {}
+
+# Estimated cost per 1K tokens, keyed by model. Used for usage accounting.
+prices:
+  "openai/gpt-4o-mini":
+    prompt_per_1k: 0.00015
+    completion_per_1k: 0.0006
+
+# Dedicated embeddings provider (independent of the chat LLM).
+embeddings:
+  base_url: "http://127.0.0.1:8082/v1"
+  model: "text-embedding-3-small"
+  dim: 1536
+  api_key_env: "EMBED_API_KEY"
+
+agent:
+  max_steps: 8
+  skill_render_timeout: "2s"
+  js_tool_timeout: "3s"
+  js_output_cap: 65536
+  js_fetch_allowlist: []   # e.g. ["intranet.example.com"]
+
+memory:
+  auto_extract: true
+  default_ttl: ""          # e.g. "720h"; empty means no expiry
+
+sessions:
+  enabled: true
+  dir: ""                  # empty -> <data_dir>/sessions
+  log_tokens: false
+  retention_days: 0        # 0 -> keep forever
+  redact: []

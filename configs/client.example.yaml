@@ -1,0 +1,16 @@
+# Harlequin client configuration (default location: ~/.config/harlequin/client.yaml).
+
+server_url: "http://127.0.0.1:8080"
+
+# Local working directory where skills are downloaded for editing.
+skills_dir: "~/.agents/skills"
+
+# Color theme. Currently: dark-purple-green.
+theme: "dark-purple-green"
+
+# Show model reasoning/thinking stream when the server sends it (reasoning models).
+show_thinking: false
+
+# Issued API token. Populated automatically on first login; can also be set here
+# or via the HARLEQUIN_TOKEN environment variable.
+token: ""
