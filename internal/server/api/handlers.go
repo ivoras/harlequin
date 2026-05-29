@@ -139,6 +139,33 @@ func (s *Server) handleListMemory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, mems)
 }
 
+func (s *Server) handleListMemoryConflicts(w http.ResponseWriter, r *http.Request) {
+	u, _ := auth.UserFromContext(r.Context())
+	conflicts, err := s.Memory.ListConflicts(r.Context(), u.ID, 200)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if conflicts == nil {
+		conflicts = []types.MemoryConflict{}
+	}
+	writeJSON(w, http.StatusOK, conflicts)
+}
+
+func (s *Server) handleResolveMemoryConflict(w http.ResponseWriter, r *http.Request) {
+	u, _ := auth.UserFromContext(r.Context())
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err := s.Memory.ResolveConflict(r.Context(), id, u.ID); err != nil {
+		if errors.Is(err, memory.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "not found")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (s *Server) handleSearchMemory(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	res, err := s.Memory.Search(r.Context(), r.URL.Query().Get("q"), u.ID, r.URL.Query().Get("scope"), 10)

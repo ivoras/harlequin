@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/ivoras/harlequin/internal/shared/types"
@@ -23,6 +24,8 @@ const helpText = `Commands:
   /memory [scope]       list memories with ids (scope: user|shared)
   /memory show <id>     show one memory
   /memory delete <id>   delete one of your user-scoped memories
+  /memory conflicts     list flagged duplicate/conflicting memory pairs
+  /memory resolve <id>  mark a conflict flag as resolved
   /docs <query>         search organisation documents
   /resume               list recent conversations
   /usage                show your token/cost usage
@@ -147,10 +150,32 @@ func (m *Model) handleMemorySub(args []string) tea.Cmd {
 			}
 			return infoMsg{renderMemoryDetail(*mem)}
 		}
+	case "conflicts", "conflict":
+		return func() tea.Msg {
+			conflicts, err := m.client.ListMemoryConflicts(context.Background())
+			if err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{renderMemoryConflicts(conflicts)}
+		}
+	case "resolve":
+		if len(args) < 2 {
+			return infoCmd("usage: /memory resolve <conflict-id>")
+		}
+		id, err := strconv.ParseInt(args[1], 10, 64)
+		if err != nil || id <= 0 {
+			return infoCmd("usage: /memory resolve <conflict-id>")
+		}
+		return func() tea.Msg {
+			if err := m.client.ResolveMemoryConflict(context.Background(), id); err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{fmt.Sprintf("resolved conflict #%d", id)}
+		}
 	default:
 		scope := args[0]
 		if scope != "user" && scope != "shared" {
-			return infoCmd("usage: /memory [user|shared|show <id>|delete <id>]")
+			return infoCmd("usage: /memory [user|shared|show|delete|conflicts|resolve]")
 		}
 		return func() tea.Msg {
 			mems, err := m.client.ListMemory(context.Background(), scope)
@@ -184,7 +209,16 @@ func renderMemoryLine(mem types.Memory) string {
 	if mem.Scope == "user" {
 		deletable = " (deletable)"
 	}
-	return fmt.Sprintf(" %s#%-4d [%s/%s]%s %s", pin, mem.ID, mem.Scope, mem.Source, deletable, mem.Content)
+	return fmt.Sprintf(" %s#%-4d %s [%s/%s]%s %s",
+		pin, mem.ID, formatMemoryTime(mem.CreatedAt), mem.Scope, mem.Source, deletable, mem.Content)
+}
+
+// formatMemoryTime formats a memory timestamp as ISO 8601 UTC to minute precision.
+func formatMemoryTime(t time.Time) string {
+	if t.IsZero() {
+		return "????-??-??T??:??Z"
+	}
+	return t.UTC().Format("2006-01-02T15:04") + "Z"
 }
 
 func renderMemoryDetail(mem types.Memory) string {
@@ -194,14 +228,31 @@ func renderMemoryDetail(mem types.Memory) string {
 	fmt.Fprintf(&sb, "  source:  %s\n", mem.Source)
 	fmt.Fprintf(&sb, "  pinned:  %t\n", mem.Pinned)
 	if mem.ExpiresAt != nil {
-		fmt.Fprintf(&sb, "  expires: %s\n", mem.ExpiresAt.Format("2006-01-02 15:04"))
+		fmt.Fprintf(&sb, "  expires: %s\n", formatMemoryTime(*mem.ExpiresAt))
 	}
-	fmt.Fprintf(&sb, "  created: %s\n", mem.CreatedAt.Format("2006-01-02 15:04"))
+	fmt.Fprintf(&sb, "  created: %s\n", formatMemoryTime(mem.CreatedAt))
 	fmt.Fprintf(&sb, "  content: %s", mem.Content)
 	if mem.Scope == "user" {
 		sb.WriteString("\n  (delete with /memory delete " + strconv.FormatInt(mem.ID, 10) + ")")
 	}
 	return sb.String()
+}
+
+func renderMemoryConflicts(conflicts []types.MemoryConflict) string {
+	if len(conflicts) == 0 {
+		return "No flagged memory conflicts."
+	}
+	var sb strings.Builder
+	sb.WriteString("Memory conflicts (use /memory resolve <id> after fixing):\n")
+	for _, c := range conflicts {
+		fmt.Fprintf(&sb, " !#%-3d [%s conf=%d] #%d vs #%d\n", c.ID, c.Relationship, c.Confidence, c.MemoryA, c.MemoryB)
+		fmt.Fprintf(&sb, "      A: %s\n", truncate(c.ContentA, 120))
+		fmt.Fprintf(&sb, "      B: %s\n", truncate(c.ContentB, 120))
+		if c.Reason != "" {
+			fmt.Fprintf(&sb, "      → %s\n", c.Reason)
+		}
+	}
+	return strings.TrimRight(sb.String(), "\n")
 }
 
 func (m *Model) handleSkillSub(args []string) tea.Cmd {

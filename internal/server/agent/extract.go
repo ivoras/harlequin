@@ -22,6 +22,7 @@ func (a *Agent) extractMemories(ctx context.Context, userID int64, userContent, 
 			{Role: llm.RoleSystem, Content: memextract.Prompt},
 			{Role: llm.RoleUser, Content: convo},
 		},
+		Temperature: llm.Ptr(0.0),
 	})
 	if err != nil {
 		return

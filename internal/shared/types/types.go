@@ -130,6 +130,20 @@ type UpdateMemoryRequest struct {
 	Pinned *bool `json:"pinned,omitempty"`
 }
 
+// MemoryConflict is a flagged contradictory or duplicate memory pair.
+type MemoryConflict struct {
+	ID           int64      `json:"id"`
+	MemoryA      int64      `json:"memory_a"`
+	MemoryB      int64      `json:"memory_b"`
+	ContentA     string     `json:"content_a"`
+	ContentB     string     `json:"content_b"`
+	Relationship string     `json:"relationship"` // "conflicts" | "duplicate"
+	Reason       string     `json:"reason"`
+	Confidence   int        `json:"confidence"`
+	DetectedAt   time.Time  `json:"detected_at"`
+	ResolvedAt   *time.Time `json:"resolved_at,omitempty"`
+}
+
 // Document is an org RAG document.
 type Document struct {
 	ID        int64     `json:"id"`

@@ -94,16 +94,35 @@ type EmbeddingsConfig struct {
 // AgentConfig controls the agent loop and JS sandbox.
 type AgentConfig struct {
 	MaxSteps           int      `yaml:"max_steps"`
+	Temperature        *float64 `yaml:"temperature"` // chat LLM sampling; default 0.2
 	SkillRenderTimeout Duration `yaml:"skill_render_timeout"`
 	JSToolTimeout      Duration `yaml:"js_tool_timeout"`
 	JSOutputCap        int      `yaml:"js_output_cap"`
 	JSFetchAllowlist   []string `yaml:"js_fetch_allowlist"`
 }
 
+// TemperatureValue returns the configured chat temperature (default 0.2).
+func (a AgentConfig) TemperatureValue() float64 {
+	if a.Temperature != nil {
+		return *a.Temperature
+	}
+	return 0.2
+}
+
 // MemoryConfig controls memory behaviour.
 type MemoryConfig struct {
-	AutoExtract bool     `yaml:"auto_extract"`
-	DefaultTTL  Duration `yaml:"default_ttl"`
+	AutoExtract        bool     `yaml:"auto_extract"`
+	DefaultTTL         Duration `yaml:"default_ttl"`
+	ConflictCheck      *bool    `yaml:"conflict_check"` // default true when unset
+	ConflictCandidates int      `yaml:"conflict_candidates"`
+}
+
+// ConflictCheckEnabled reports whether post-write conflict detection runs.
+func (m MemoryConfig) ConflictCheckEnabled() bool {
+	if m.ConflictCheck != nil {
+		return *m.ConflictCheck
+	}
+	return true
 }
 
 // SessionsConfig controls JSONL session logging.
@@ -165,6 +184,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Sessions.Dir == "" {
 		c.Sessions.Dir = filepath.Join(c.DataDir, "sessions")
+	}
+	if c.Memory.ConflictCandidates == 0 {
+		c.Memory.ConflictCandidates = 8
 	}
 }
 

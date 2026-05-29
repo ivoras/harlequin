@@ -211,8 +211,9 @@ func renderResults(res []types.SearchResult) string {
 		return "(no results)"
 	}
 	var sb strings.Builder
-	for _, r := range res {
-		fmt.Fprintf(&sb, "- %s\n", strings.TrimSpace(r.Content))
+	sb.WriteString("Ranked memory results (prefer #1 when it directly answers the question; do not invent facts not listed here):\n")
+	for i, r := range res {
+		fmt.Fprintf(&sb, "%d. %s\n", i+1, strings.TrimSpace(r.Content))
 	}
 	return sb.String()
 }
