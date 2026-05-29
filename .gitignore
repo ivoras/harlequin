@@ -1,0 +1,8 @@
+/bin/
+/data/
+.env
+*.db
+*.db-wal
+*.db-shm
+server.yaml
+client.yaml
