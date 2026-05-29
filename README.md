@@ -2,7 +2,7 @@
 
 A client-server AI agent system written in Go. A REST/SSE **server** communicates with LLMs,
 stores data in SQLite (FTS5 + vector search), runs an agentic tool-calling loop, and manages
-skills. A beautiful Bubble Tea **TUI client** talks to it. Multi-user, per-organisation.
+skills. A beautiful Bubble Tea **TUI client** talks to it. Multi-user, organisation-aware.
 
 See [AGENTS.md](AGENTS.md) for a thousand-mile architecture overview.
 
@@ -12,7 +12,7 @@ Harlequin uses CGO (for `mattn/go-sqlite3` + `sqlite-vec`) and the SQLite FTS5 b
 You need:
 
 - Go 1.25+
-- A C toolchain (`gcc`/`clang`)
+- A C toolchain (`gcc`/`clang`) (e.g. `apt install build-essential`)
 
 **No system `libsqlite3-dev` is required.** Compile-time SQLite headers are vendored
 under `third_party/sqlite/` (aligned with the `go-sqlite3` embedded engine). The
