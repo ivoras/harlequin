@@ -62,6 +62,11 @@ type Model struct {
 	user           *types.User
 	statusMsg      string
 
+	// Submitted input lines for up/down recall (messages and slash commands).
+	inputHistory []string
+	historyIndex int    // len(inputHistory) when editing a fresh line
+	historyDraft string // draft saved when browsing history
+
 	// cancel for the in-flight stream (Esc).
 	cancelStream context.CancelFunc
 }
@@ -159,7 +164,7 @@ func (m *Model) refreshViewport() {
 		sb.WriteString("\n")
 	}
 	if m.streaming.Len() > 0 {
-		sb.WriteString(m.styles.Assistant.Render(renderMarkdownish(m.streaming.String())))
+		sb.WriteString(m.wrapStyled(m.styles.Assistant, renderMarkdownish(m.streaming.String())))
 		sb.WriteString("\n")
 	}
 	m.vp.SetContent(sb.String())
@@ -169,17 +174,17 @@ func (m *Model) refreshViewport() {
 func (m *Model) renderBlock(b roleBlock) string {
 	switch b.role {
 	case "user":
-		return m.styles.User.Render("› "+b.text)
+		return m.wrapStyled(m.styles.User, "› "+b.text)
 	case "assistant":
-		return m.styles.Assistant.Render(renderMarkdownish(b.text))
+		return m.wrapStyled(m.styles.Assistant, renderMarkdownish(b.text))
 	case "thinking":
 		return m.renderThinking(b.text, false)
 	case "tool":
-		return m.styles.Tool.Render(b.text)
+		return m.wrapStyled(m.styles.Tool, b.text)
 	case "error":
-		return m.styles.Error.Render("error: " + b.text)
+		return m.wrapStyled(m.styles.Error, "error: "+b.text)
 	default:
-		return m.styles.Help.Render(b.text)
+		return m.wrapStyled(m.styles.Help, b.text)
 	}
 }
 
@@ -189,7 +194,7 @@ func (m *Model) renderThinking(text string, streaming bool) string {
 		label = "💭 thinking…"
 	}
 	header := m.styles.Thinking.Render(label)
-	body := m.styles.Thinking.Render(text)
+	body := wrapWidth(m.contentWidth(), m.styles.Thinking.Render(text))
 	return header + "\n" + body
 }
 

@@ -156,11 +156,22 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, m.doLogin(user, pass)
 		}
 	case phaseChat:
+		if key == "up" {
+			if m.tryRecallHistory(-1) {
+				return m, nil
+			}
+		}
+		if key == "down" {
+			if m.tryRecallHistory(1) {
+				return m, nil
+			}
+		}
 		if key == "enter" && !msg.Key().Mod.Contains(tea.ModShift) {
 			text := strings.TrimSpace(m.input.Value())
 			if text == "" {
 				return m, nil
 			}
+			m.pushInputHistory(text)
 			m.input.Reset()
 			if strings.HasPrefix(text, "/") {
 				return m, m.handleSlash(text)

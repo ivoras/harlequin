@@ -23,7 +23,12 @@ func (m *Model) layout() {
 	}
 	m.vp.SetWidth(m.width)
 	m.vp.SetHeight(vpHeight)
-	m.input.SetWidth(m.width - 4)
+	inputFrame := m.styles.InputBox.GetHorizontalFrameSize()
+	inputW := m.width - inputFrame
+	if inputW < 1 {
+		inputW = 1
+	}
+	m.input.SetWidth(inputW)
 }
 
 // View implements tea.Model.
@@ -68,7 +73,7 @@ func (m *Model) chatView() string {
 	}
 	statusLine := m.styles.Status.Render(status)
 
-	help := m.styles.Help.Render("enter: send · shift+enter: newline · /help · ctrl+c: quit")
+	help := m.styles.Help.Render("enter: send · shift+enter: newline · ↑/↓: history · /help · ctrl+c: quit")
 
 	var sb strings.Builder
 	sb.WriteString(header + "  " + statusLine + "\n")
