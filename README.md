@@ -128,3 +128,14 @@ third_party/sqlite     vendored sqlite3.h (compile-time; see third_party/sqlite/
   allow-listed `fetch`), a hard execution timeout, and an output-size cap.
 - Session logs under `<data_dir>/sessions/` are plaintext and may contain sensitive conversation
   content. Configure retention/redaction in the `sessions:` config block.
+
+
+# Running with llama.cpp local models
+
+```sh
+llama-server -m Qwen3.6-35B-A3B-IQ4_XS-3.53bpw.gguf --port 2234 --host 0.0.0.0 --metrics -c 120000 --timeout 3600 -ctk q8_0 -ctv q8_0 --kv-unified --batch-size 4096 -np 2 --presence-penalty 0.5 --repeat-penalty 1.05 --temperature 0.6 --min_p 0.05 --top_p 0.95 --reasoning-budget 3000 --chat-template-kwargs '{"preserve_thinking": true}' --spec-type ngram-mod --spec-ngram-mod-n-match 24 --spec-ngram-mod-n-min 48 --spec-ngram-mod-n-max 64
+```
+
+```sh
+llama-server -m granite-embedding-311M-multilingual-r2-Q8_0.gguf --embeddings -c 768 --port 2235
+```
