@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"charm.land/bubbles/v2/spinner"
@@ -114,10 +115,28 @@ func (m *Model) handleStreamEvent(ev types.StreamEvent) (tea.Model, tea.Cmd) {
 		m.appendBlock("tool", "  ↳ "+truncate(strings.TrimSpace(ev.Output), 200))
 	case types.SSEError:
 		m.appendBlock("error", ev.Error)
+	case types.SSEAskUser:
+		// Flush any partial assistant text first so the question renders after it.
+		if m.streaming.Len() > 0 {
+			m.appendBlock("assistant", m.streaming.String())
+			m.streaming.Reset()
+		}
+		m.appendBlock("assistant", renderAskUser(ev.Text, ev.Options))
 	case types.SSEDone:
 		// handled by streamEndMsg
 	}
 	return m, nil
+}
+
+// renderAskUser formats an ask_user prompt: the question followed by any
+// suggested options as a numbered list.
+func renderAskUser(question string, options []string) string {
+	var sb strings.Builder
+	sb.WriteString(strings.TrimSpace(question))
+	for i, opt := range options {
+		fmt.Fprintf(&sb, "\n  %d. %s", i+1, opt)
+	}
+	return sb.String()
 }
 
 func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {

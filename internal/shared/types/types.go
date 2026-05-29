@@ -73,6 +73,7 @@ const (
 	SSEToolCall   = "tool_call"
 	SSEToolResult = "tool_result"
 	SSEError      = "error"
+	SSEAskUser    = "ask_user"
 	SSEDone       = "done"
 )
 
@@ -90,6 +91,8 @@ type StreamEvent struct {
 	DurationMS int64 `json:"duration_ms,omitempty"`
 	// Error message (for SSEError).
 	Error string `json:"error,omitempty"`
+	// Options are suggested answers the user can choose from (for SSEAskUser).
+	Options []string `json:"options,omitempty"`
 }
 
 // SkillInfo describes a skill in a listing.

@@ -152,7 +152,7 @@ func (c *Client) GetMemory(ctx context.Context, id int64) (*types.Memory, error)
 	return &out, c.do(ctx, http.MethodGet, fmt.Sprintf("/memory/%d", id), nil, &out)
 }
 
-// DeleteMemory deletes one of the current user's own memories (not shared).
+// DeleteMemory deletes a user-scoped memory owned by the caller, or a shared memory if the caller is admin.
 func (c *Client) DeleteMemory(ctx context.Context, id int64) error {
 	return c.do(ctx, http.MethodDelete, fmt.Sprintf("/memory/%d", id), nil, nil)
 }

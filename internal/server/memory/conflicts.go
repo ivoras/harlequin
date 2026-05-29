@@ -23,6 +23,16 @@ func (s *Store) SetConflictJudge(p llm.Provider, candidateLimit int) {
 	s.conflictCandidates = candidateLimit
 }
 
+// ConflictHit describes one existing memory found to conflict with or duplicate
+// a newly stored memory.
+type ConflictHit struct {
+	OtherID      int64
+	OtherContent string
+	Relationship string // "conflicts" | "duplicate"
+	Reason       string
+	Confidence   int
+}
+
 func (s *Store) checkConflictsAsync(userID, newID int64, content string) {
 	if s.judge == nil {
 		return
@@ -30,27 +40,37 @@ func (s *Store) checkConflictsAsync(userID, newID int64, content string) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 		defer cancel()
-		_ = s.checkConflicts(ctx, userID, newID, content)
+		_, _ = s.detectConflicts(ctx, userID, newID, content)
 	}()
 }
 
-func (s *Store) checkConflicts(ctx context.Context, userID, newID int64, content string) error {
+// detectConflicts compares a newly stored memory against existing candidates,
+// records any duplicate/conflict pairs, and returns them. It is a no-op (nil,
+// nil) when no judge is configured.
+func (s *Store) detectConflicts(ctx context.Context, userID, newID int64, content string) ([]ConflictHit, error) {
+	if s.judge == nil {
+		return nil, nil
+	}
 	limit := s.conflictCandidates
 	if limit <= 0 {
 		limit = defaultConflictCandidates
 	}
 	candidates, err := s.Search(ctx, content, userID, "", limit+1)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
+	var hits []ConflictHit
+	contentByID := map[int64]string{}
 	var lines []string
 	for _, c := range candidates {
 		if c.ID == newID {
 			continue
 		}
+		contentByID[c.ID] = c.Content
 		if strings.EqualFold(strings.TrimSpace(c.Content), strings.TrimSpace(content)) {
 			_ = s.recordConflict(ctx, newID, c.ID, "duplicate", "Exact/near-exact duplicate text", 10)
+			hits = append(hits, ConflictHit{OtherID: c.ID, OtherContent: c.Content, Relationship: "duplicate", Reason: "Exact/near-exact duplicate text", Confidence: 10})
 			continue
 		}
 		lines = append(lines, fmt.Sprintf("- id %d: %s", c.ID, c.Content))
@@ -59,7 +79,7 @@ func (s *Store) checkConflicts(ctx context.Context, userID, newID int64, content
 		}
 	}
 	if len(lines) == 0 {
-		return nil
+		return hits, nil
 	}
 
 	userPrompt := fmt.Sprintf("New memory (id %d):\n%s\n\nExisting candidates:\n%s",
@@ -73,27 +93,28 @@ func (s *Store) checkConflicts(ctx context.Context, userID, newID int64, content
 		Temperature: llm.Ptr(0.0),
 	})
 	if err != nil {
-		return err
+		return hits, err
 	}
 	var text string
 	for chunk := range stream {
 		if chunk.Err != nil {
-			return chunk.Err
+			return hits, chunk.Err
 		}
 		text += chunk.TextDelta
 	}
 
 	judgments, ok := conflictparse.Flagged(text)
 	if !ok {
-		return nil
+		return hits, nil
 	}
 	for _, j := range judgments {
 		if j.OtherID == newID {
 			continue
 		}
 		_ = s.recordConflict(ctx, newID, j.OtherID, j.Relationship, j.Reason, j.Confidence)
+		hits = append(hits, ConflictHit{OtherID: j.OtherID, OtherContent: contentByID[j.OtherID], Relationship: j.Relationship, Reason: j.Reason, Confidence: j.Confidence})
 	}
-	return nil
+	return hits, nil
 }
 
 func pairIDs(a, b int64) (int64, int64) {

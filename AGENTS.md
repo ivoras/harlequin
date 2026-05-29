@@ -21,7 +21,7 @@ Client-server AI agent system in Go. A REST/SSE **server** talks to LLMs, stores
 
 ## Core flows
 - **Auth**: username/password login -> issued API bearer token (SHA-256 in DB); middleware injects user/role.
-- **Chat**: client POSTs a message -> agent loop composes prompt with resolved skills, calls the LLM provider (routing + fallback), dispatches tool calls (`memory_search`, `memory_write`, `list_skills`, `load_skill`, `run_js`, `search_docs`, skill-defined tools), loops to `max_steps`, streams SSE deltas.
+- **Chat**: client POSTs a message -> agent loop composes prompt with resolved skills, calls the LLM provider (routing + fallback), dispatches tool calls (`memory_search`, `memory_write`, `memory_delete`, `ask_user`, `list_skills`, `load_skill`, `run_js`, `search_docs`, skill-defined tools), loops to `max_steps`, streams SSE deltas. `memory_write` surfaces detected conflicts in its result so the model can warn the user; `ask_user` emits an `ask_user` SSE event and ends the turn so the user can reply.
 - **Memory**: per-user + shared; hybrid FTS5 + vector search fused with RRF; provenance/TTL/pinning; auto-extraction; post-write conflict detection (FTS/vector candidates + LLM judge, confidence ≥ 7) stored in `memory_conflicts`.
 - **Skills**: baked into the binary, deployed to `<data_dir>/skills/` with a hash manifest (unchanged files replaced on update). Resolution precedence: per-user override -> org-published -> deployed. Server is the single source of truth; clients pull/push via `/skill` slash-commands. Skills support inline `<?js ?>` and frontmatter-declared tools.
 - **Session logging**: full chat trajectory written as JSONL under `<data_dir>/sessions/<user>/<conv>.jsonl`.
