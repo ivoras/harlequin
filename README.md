@@ -1,5 +1,9 @@
 # Harlequin
 
+This repo is the answer to the questions I had: why all AI agent harnesses "local"? How would a "proper" client-server agentic system look like, from ththe aspects of scalability and common operation expectations?
+
+**You probably don't want to use it**, at least not yet. It's in very early development. 
+
 A client-server AI agent system written in Go. A REST/SSE **server** communicates with LLMs,
 stores data in SQLite (FTS5 + vector search), runs an agentic tool-calling loop, and manages
 skills. A beautiful Bubble Tea **TUI client** talks to it. Multi-user, organisation-aware.
