@@ -40,6 +40,7 @@ embeddings:
 
 agent:
   max_steps: 8
+  temperature: 0.2         # lower = less creative, fewer hallucinations (0–2)
   skill_render_timeout: "2s"
   js_tool_timeout: "3s"
   js_output_cap: 65536
@@ -48,6 +49,8 @@ agent:
 memory:
   auto_extract: true
   default_ttl: ""          # e.g. "720h"; empty means no expiry
+  conflict_check: true     # LLM-judge new memories against FTS/vector candidates
+  conflict_candidates: 8   # max similar memories to compare per write
 
 sessions:
   enabled: true

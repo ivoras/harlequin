@@ -68,11 +68,13 @@ func (s *Server) Router() http.Handler {
 			r.Post("/skills/{name}/publish", s.handlePublishSkill)
 
 			r.Get("/memory", s.handleListMemory)
+			r.Get("/memory/conflicts", s.handleListMemoryConflicts)
 			r.Get("/memory/search", s.handleSearchMemory)
 			r.Get("/memory/{id}", s.handleGetMemory)
 			r.Post("/memory", s.handleCreateMemory)
 			r.Patch("/memory/{id}", s.handlePatchMemory)
 			r.Delete("/memory/{id}", s.handleDeleteMemory)
+			r.Post("/memory/conflicts/{id}/resolve", s.handleResolveMemoryConflict)
 
 			r.Get("/documents", s.handleListDocuments)
 			r.Post("/documents", s.handleCreateDocument)

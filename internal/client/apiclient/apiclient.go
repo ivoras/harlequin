@@ -157,6 +157,17 @@ func (c *Client) DeleteMemory(ctx context.Context, id int64) error {
 	return c.do(ctx, http.MethodDelete, fmt.Sprintf("/memory/%d", id), nil, nil)
 }
 
+// ListMemoryConflicts returns unresolved duplicate/conflict flags for the user.
+func (c *Client) ListMemoryConflicts(ctx context.Context) ([]types.MemoryConflict, error) {
+	var out []types.MemoryConflict
+	return out, c.do(ctx, http.MethodGet, "/memory/conflicts", nil, &out)
+}
+
+// ResolveMemoryConflict marks a conflict as reviewed/resolved.
+func (c *Client) ResolveMemoryConflict(ctx context.Context, id int64) error {
+	return c.do(ctx, http.MethodPost, fmt.Sprintf("/memory/conflicts/%d/resolve", id), nil, nil)
+}
+
 // SearchDocuments searches the org RAG corpus.
 func (c *Client) SearchDocuments(ctx context.Context, q string) ([]types.SearchResult, error) {
 	var out []types.SearchResult

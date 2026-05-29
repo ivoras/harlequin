@@ -59,10 +59,14 @@ type FunctionDefinition struct {
 
 // ChatRequest is a chat completion request.
 type ChatRequest struct {
-	Model    string
-	Messages []Message
-	Tools    []Tool
+	Model       string
+	Messages    []Message
+	Tools       []Tool
+	Temperature *float64 // omitted when nil (provider default)
 }
+
+// Ptr returns a pointer to v (for optional request fields).
+func Ptr(v float64) *float64 { return &v }
 
 // Usage holds token accounting from a completion.
 type Usage struct {
@@ -130,6 +134,7 @@ type streamRequest struct {
 	Tools       []Tool    `json:"tools,omitempty"`
 	Stream      bool      `json:"stream"`
 	StreamOpts  streamOpt `json:"stream_options"`
+	Temperature *float64  `json:"temperature,omitempty"`
 }
 
 type streamOpt struct {
@@ -143,11 +148,12 @@ func (p *OpenAICompatible) Chat(ctx context.Context, req ChatRequest) (<-chan Ch
 		model = p.model
 	}
 	body, err := json.Marshal(streamRequest{
-		Model:      model,
-		Messages:   req.Messages,
-		Tools:      req.Tools,
-		Stream:     true,
-		StreamOpts: streamOpt{IncludeUsage: true},
+		Model:       model,
+		Messages:    req.Messages,
+		Tools:       req.Tools,
+		Stream:      true,
+		StreamOpts:  streamOpt{IncludeUsage: true},
+		Temperature: req.Temperature,
 	})
 	if err != nil {
 		return nil, err

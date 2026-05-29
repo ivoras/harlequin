@@ -31,6 +31,7 @@ type Agent struct {
 	Session       *sessionlog.Logger
 
 	MaxSteps      int
+	Temperature   float64
 	AutoExtract   bool
 	MemDefaultTTL time.Duration
 
@@ -54,7 +55,14 @@ const systemPreamble = `You are Harlequin, a helpful AI assistant for an organis
 You have access to tools: use them when helpful. You can search and write memory,
 list and load skills (which contain instructions and resources), run JavaScript via
 run_js, and search organisation documents. Prefer loading a relevant skill before
-answering a specialised request. Be concise and accurate.`
+answering a specialised request. Be concise and accurate.
+
+Grounding rules (reduce hallucinations):
+- Base factual answers on tool outputs (memory_search, search_docs, load_skill), not general knowledge or guesses.
+- When a tool result directly answers the question, state it plainly and exactly. Do not hedge with "possibly", "maybe", "or perhaps", or invent alternative names/values that do not appear in the sources.
+- Ignore unrelated facts in the same tool output; do not mix wording from one fact into another.
+- If tool results conflict, say so and cite both; if they agree, do not add variants or synonyms unless they appear in the sources.
+- If tools do not contain enough information, say you do not know rather than guessing.`
 
 // Run executes a full turn for the given user message, streaming events via emit.
 func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username, userContent string, emit EmitFunc) error {
@@ -113,9 +121,14 @@ func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username,
 
 		a.logEvent(ctx, rc, sessionlog.TypeLLMRequest, map[string]any{
 			"messages": len(msgs), "tools": len(toolDefs), "tool_names": toolNames,
+			"temperature": a.Temperature,
 		})
 
-		stream, err := a.Provider.Chat(ctx, llm.ChatRequest{Messages: msgs, Tools: toolDefs})
+		stream, err := a.Provider.Chat(ctx, llm.ChatRequest{
+			Messages:    msgs,
+			Tools:       toolDefs,
+			Temperature: llm.Ptr(a.Temperature),
+		})
 		if err != nil {
 			emit(types.StreamEvent{Type: types.SSEError, Error: err.Error()})
 			a.logEvent(ctx, rc, sessionlog.TypeError, map[string]any{"error": err.Error()})

@@ -80,6 +80,9 @@ func main() {
 	})
 
 	memStore := memory.NewStore(database, embedder)
+	if cfg.Memory.ConflictCheckEnabled() {
+		memStore.SetConflictJudge(router, cfg.Memory.ConflictCandidates)
+	}
 	docStore := documents.NewStore(database, embedder)
 	convStore := conversation.NewStore(database)
 	auditStore := audit.NewStore(database)
@@ -111,6 +114,7 @@ func main() {
 		Conversations: convStore,
 		Session:       session,
 		MaxSteps:      cfg.Agent.MaxSteps,
+		Temperature:   cfg.Agent.TemperatureValue(),
 		AutoExtract:   cfg.Memory.AutoExtract,
 		MemDefaultTTL: cfg.Memory.DefaultTTL.D(),
 		RecordUsage: func(ctx context.Context, userID int64, conversationID *int64, provider, model string, u llm.Usage) {

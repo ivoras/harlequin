@@ -11,6 +11,7 @@ import (
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	"github.com/ivoras/harlequin/internal/server/embed"
+	"github.com/ivoras/harlequin/internal/server/llm"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
@@ -23,6 +24,8 @@ var ErrNotFound = errors.New("memory not found")
 type Store struct {
 	db       *sql.DB
 	embedder embed.Embedder
+	judge    llm.Provider
+	conflictCandidates int
 }
 
 // NewStore constructs a memory Store.
@@ -83,10 +86,16 @@ func (s *Store) Add(ctx context.Context, m types.CreateMemoryRequest, userID int
 		return nil, err
 	}
 
-	return &types.Memory{
-		ID: id, Scope: scope, Content: m.Content, Source: source,
-		ExpiresAt: m.ExpiresAt, CreatedAt: time.Now(),
-	}, nil
+	s.checkConflictsAsync(userID, id, m.Content)
+
+	mem, err := s.Get(ctx, id, userID)
+	if err != nil {
+		return &types.Memory{
+			ID: id, Scope: scope, Content: m.Content, Source: source,
+			ExpiresAt: m.ExpiresAt, CreatedAt: time.Now().UTC(),
+		}, nil
+	}
+	return mem, nil
 }
 
 // Search returns memories matching the query for the given user/scope, using
