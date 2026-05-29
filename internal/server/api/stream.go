@@ -52,7 +52,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 
-	if err := s.Agent.Run(r.Context(), id, u.ID, u.Username, req.Content, emit); err != nil {
+	if err := s.Agent.Run(r.Context(), id, u.ID, u.Username, u.Role, req.Content, emit); err != nil {
 		// Best-effort error event (may already be sent by the loop).
 		emit(types.StreamEvent{Type: types.SSEError, Error: err.Error()})
 	}

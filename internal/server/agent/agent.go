@@ -47,15 +47,27 @@ type runContext struct {
 	conversationID int64
 	userID         int64
 	username       string
+	isAdmin        bool
 	turn           int
 	step           int
+	emit           EmitFunc
 }
 
 const systemPreamble = `You are Harlequin, a helpful AI assistant for an organisation.
-You have access to tools: use them when helpful. You can search and write memory,
+You have access to tools: use them when helpful. You can search, write and delete memory,
 list and load skills (which contain instructions and resources), run JavaScript via
-run_js, and search organisation documents. Prefer loading a relevant skill before
-answering a specialised request. Be concise and accurate.
+run_js, search organisation documents, and ask the user a question with ask_user.
+Prefer loading a relevant skill before answering a specialised request. Be concise and accurate.
+
+Memory conflicts:
+- When memory_write reports that a new memory conflicts with or duplicates an existing one,
+  do not silently keep both. Tell the user about the conflict, naming both facts, then call
+  ask_user to ask how to resolve it. Offer concrete options such as keeping the new fact and
+  deleting the old one, keeping the old one, or keeping both.
+- Carry out the user's choice with memory_delete (to remove the memory they discard). Deleting
+  a shared memory requires admin rights; if the deletion is refused, tell the user an admin must do it.
+- Use ask_user whenever you genuinely need the user to decide how to proceed; the turn ends after
+  it so the user can reply. Do not invent the user's answer.
 
 Grounding rules (reduce hallucinations):
 - Base factual answers on tool outputs (memory_search, search_docs, load_skill), not general knowledge or guesses.
@@ -65,8 +77,8 @@ Grounding rules (reduce hallucinations):
 - If tools do not contain enough information, say you do not know rather than guessing.`
 
 // Run executes a full turn for the given user message, streaming events via emit.
-func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username, userContent string, emit EmitFunc) error {
-	rc := &runContext{conversationID: conversationID, userID: userID, username: username, turn: 1}
+func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username, role, userContent string, emit EmitFunc) error {
+	rc := &runContext{conversationID: conversationID, userID: userID, username: username, isAdmin: role == "admin", turn: 1, emit: emit}
 
 	a.logEvent(ctx, rc, sessionlog.TypeSessionStart, map[string]any{
 		"max_steps": a.MaxSteps,
@@ -200,6 +212,7 @@ func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username,
 		_, _ = a.Conversations.AddMessage(ctx, conversationID, llm.RoleAssistant, assistantText, fromLLMToolCalls(toolCalls))
 
 		// Dispatch each tool call.
+		askedUser := false
 		for _, tc := range toolCalls {
 			result := a.dispatch(ctx, rc, tools, tc, emit)
 			msgs = append(msgs, llm.Message{
@@ -209,6 +222,16 @@ func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username,
 				Name:       tc.Function.Name,
 			})
 			_, _ = a.Conversations.AddMessage(ctx, conversationID, llm.RoleTool, result, nil)
+			if tc.Function.Name == "ask_user" {
+				askedUser = true
+			}
+		}
+
+		// ask_user yields control to the user: end the turn so they can reply
+		// rather than letting the model answer its own question.
+		if askedUser {
+			finalText = assistantText
+			break
 		}
 	}
 

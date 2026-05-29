@@ -33,8 +33,35 @@ func NewStore(db *sql.DB, embedder embed.Embedder) *Store {
 	return &Store{db: db, embedder: embedder}
 }
 
-// Add inserts a memory and indexes it for FTS and vector search.
+// Add inserts a memory and indexes it for FTS and vector search. Conflict
+// detection (if a judge is configured) runs asynchronously in the background.
 func (s *Store) Add(ctx context.Context, m types.CreateMemoryRequest, userID int64) (*types.Memory, error) {
+	mem, err := s.add(ctx, m, userID)
+	if err != nil {
+		return nil, err
+	}
+	s.checkConflictsAsync(userID, mem.ID, m.Content)
+	return mem, nil
+}
+
+// AddWithConflicts inserts a memory and synchronously detects conflicts with
+// existing memories, returning any flagged hits so the caller can surface them
+// to the user in-flow. If no judge is configured, hits is nil.
+func (s *Store) AddWithConflicts(ctx context.Context, m types.CreateMemoryRequest, userID int64) (*types.Memory, []ConflictHit, error) {
+	mem, err := s.add(ctx, m, userID)
+	if err != nil {
+		return nil, nil, err
+	}
+	hits, err := s.detectConflicts(ctx, userID, mem.ID, m.Content)
+	if err != nil {
+		// Detection failure must not fail the write; the memory is already stored.
+		return mem, nil, nil
+	}
+	return mem, hits, nil
+}
+
+// add inserts a memory and indexes it, without triggering conflict detection.
+func (s *Store) add(ctx context.Context, m types.CreateMemoryRequest, userID int64) (*types.Memory, error) {
 	scope := m.Scope
 	if scope == "" {
 		scope = "user"
@@ -85,8 +112,6 @@ func (s *Store) Add(ctx context.Context, m types.CreateMemoryRequest, userID int
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-
-	s.checkConflictsAsync(userID, id, m.Content)
 
 	mem, err := s.Get(ctx, id, userID)
 	if err != nil {
@@ -273,16 +298,24 @@ func (s *Store) Get(ctx context.Context, id, userID int64) (*types.Memory, error
 	return m, nil
 }
 
-// Delete removes a user-owned memory and its index rows. Shared and other users'
-// memories cannot be deleted through this path.
-func (s *Store) Delete(ctx context.Context, id, userID int64) error {
+// Delete removes a memory and its index rows. Users may delete their own
+// user-scoped memories; admins may also delete shared memories.
+func (s *Store) Delete(ctx context.Context, id, userID int64, asAdmin bool) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	res, err := tx.ExecContext(ctx,
-		`DELETE FROM memories WHERE id = ? AND scope = 'user' AND user_id = ?`, id, userID)
+	var res sql.Result
+	if asAdmin {
+		res, err = tx.ExecContext(ctx, `
+			DELETE FROM memories WHERE id = ? AND (
+				(scope = 'user' AND user_id = ?) OR scope = 'shared'
+			)`, id, userID)
+	} else {
+		res, err = tx.ExecContext(ctx,
+			`DELETE FROM memories WHERE id = ? AND scope = 'user' AND user_id = ?`, id, userID)
+	}
 	if err != nil {
 		return err
 	}

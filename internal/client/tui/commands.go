@@ -23,7 +23,7 @@ const helpText = `Commands:
   /skill new <name>     scaffold a new skill locally
   /memory [scope]       list memories with ids (scope: user|shared)
   /memory show <id>     show one memory
-  /memory delete <id>   delete one of your user-scoped memories
+  /memory delete <id>   delete your user memory (shared too if admin)
   /memory conflicts     list flagged duplicate/conflicting memory pairs
   /memory resolve <id>  mark a conflict flag as resolved
   /docs <query>         search organisation documents
@@ -117,7 +117,7 @@ func (m *Model) handleMemorySub(args []string) tea.Cmd {
 			if err != nil {
 				return errMsg{err}
 			}
-			return infoMsg{renderMemoryList(mems)}
+			return infoMsg{renderMemoryList(mems, m.isAdmin())}
 		}
 	}
 	switch strings.ToLower(args[0]) {
@@ -148,7 +148,7 @@ func (m *Model) handleMemorySub(args []string) tea.Cmd {
 			if err != nil {
 				return errMsg{err}
 			}
-			return infoMsg{renderMemoryDetail(*mem)}
+			return infoMsg{renderMemoryDetail(*mem, m.isAdmin())}
 		}
 	case "conflicts", "conflict":
 		return func() tea.Msg {
@@ -182,31 +182,42 @@ func (m *Model) handleMemorySub(args []string) tea.Cmd {
 			if err != nil {
 				return errMsg{err}
 			}
-			return infoMsg{renderMemoryList(mems)}
+			return infoMsg{renderMemoryList(mems, m.isAdmin())}
 		}
 	}
 }
 
-func renderMemoryList(mems []types.Memory) string {
+func (m *Model) isAdmin() bool {
+	return m.user != nil && m.user.Role == "admin"
+}
+
+func renderMemoryList(mems []types.Memory, isAdmin bool) string {
 	if len(mems) == 0 {
 		return "No memories."
 	}
 	var sb strings.Builder
-	sb.WriteString("Memories (use /memory show <id> or /memory delete <id> for yours):\n")
+	sb.WriteString("Memories (use /memory show <id> or /memory delete <id> when deletable):\n")
 	for _, mem := range mems {
-		sb.WriteString(renderMemoryLine(mem))
+		sb.WriteString(renderMemoryLine(mem, isAdmin))
 		sb.WriteByte('\n')
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-func renderMemoryLine(mem types.Memory) string {
+func memoryDeletable(mem types.Memory, isAdmin bool) bool {
+	if mem.Scope == "user" {
+		return true
+	}
+	return isAdmin && mem.Scope == "shared"
+}
+
+func renderMemoryLine(mem types.Memory, isAdmin bool) string {
 	pin := " "
 	if mem.Pinned {
 		pin = "*"
 	}
 	deletable := ""
-	if mem.Scope == "user" {
+	if memoryDeletable(mem, isAdmin) {
 		deletable = " (deletable)"
 	}
 	return fmt.Sprintf(" %s#%-4d %s [%s/%s]%s %s",
@@ -221,7 +232,7 @@ func formatMemoryTime(t time.Time) string {
 	return t.UTC().Format("2006-01-02T15:04") + "Z"
 }
 
-func renderMemoryDetail(mem types.Memory) string {
+func renderMemoryDetail(mem types.Memory, isAdmin bool) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "Memory #%d\n", mem.ID)
 	fmt.Fprintf(&sb, "  scope:   %s\n", mem.Scope)
@@ -232,7 +243,7 @@ func renderMemoryDetail(mem types.Memory) string {
 	}
 	fmt.Fprintf(&sb, "  created: %s\n", formatMemoryTime(mem.CreatedAt))
 	fmt.Fprintf(&sb, "  content: %s", mem.Content)
-	if mem.Scope == "user" {
+	if memoryDeletable(mem, isAdmin) {
 		sb.WriteString("\n  (delete with /memory delete " + strconv.FormatInt(mem.ID, 10) + ")")
 	}
 	return sb.String()

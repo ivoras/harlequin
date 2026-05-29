@@ -3,11 +3,13 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/ivoras/harlequin/internal/server/jsrun"
 	"github.com/ivoras/harlequin/internal/server/llm"
+	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/skills"
 	"github.com/ivoras/harlequin/internal/shared/types"
@@ -60,11 +62,71 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 			if scope == "" {
 				scope = "user"
 			}
-			_, err := a.Memory.Add(ctx, types.CreateMemoryRequest{Scope: scope, Content: content, Source: "tool"}, rc.userID)
+			mem, hits, err := a.Memory.AddWithConflicts(ctx, types.CreateMemoryRequest{Scope: scope, Content: content, Source: "tool"}, rc.userID)
 			if err != nil {
 				return "", err
 			}
-			return "stored", nil
+			if len(hits) == 0 {
+				return fmt.Sprintf("Stored as memory #%d.", mem.ID), nil
+			}
+			var sb strings.Builder
+			fmt.Fprintf(&sb, "Stored as memory #%d, but it conflicts with existing memories:\n", mem.ID)
+			for _, h := range hits {
+				fmt.Fprintf(&sb, "- #%d [%s] %q (%s)\n", h.OtherID, h.Relationship, strings.TrimSpace(h.OtherContent), h.Reason)
+			}
+			sb.WriteString("Tell the user about this conflict and use ask_user to ask how to resolve it (e.g. delete the old memory, discard this new one, or keep both). Then carry out their choice with memory_delete.")
+			return sb.String(), nil
+		},
+	}
+
+	reg["memory_delete"] = toolEntry{
+		def: fnTool("memory_delete", "Delete a memory by id, e.g. to resolve a conflict after the user decides which fact to drop. Deleting a shared memory requires admin rights.", map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"id": map[string]any{"type": "integer"},
+			},
+			"required": []string{"id"},
+		}),
+		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+			idf, ok := args["id"].(float64)
+			if !ok {
+				return "error: id is required", nil
+			}
+			id := int64(idf)
+			if err := a.Memory.Delete(ctx, id, rc.userID, rc.isAdmin); err != nil {
+				if errors.Is(err, memory.ErrNotFound) {
+					return fmt.Sprintf("error: memory #%d not found or not deletable (shared memories require admin rights)", id), nil
+				}
+				return "", err
+			}
+			return fmt.Sprintf("Deleted memory #%d.", id), nil
+		},
+	}
+
+	reg["ask_user"] = toolEntry{
+		def: fnTool("ask_user", "Ask the user a question and pause for their reply. Use when you need the user to decide how to proceed. The turn ends after this call; the user's next message is their answer, so do not assume or invent it.", map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"question": map[string]any{"type": "string"},
+				"options": map[string]any{
+					"type":        "array",
+					"items":       map[string]any{"type": "string"},
+					"description": "Optional list of suggested answers to present to the user.",
+				},
+			},
+			"required": []string{"question"},
+		}),
+		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+			question, _ := args["question"].(string)
+			question = strings.TrimSpace(question)
+			if question == "" {
+				return "error: question is required", nil
+			}
+			opts := toStringSlice(args["options"])
+			if rc.emit != nil {
+				rc.emit(types.StreamEvent{Type: types.SSEAskUser, Text: question, Options: opts})
+			}
+			return "Question presented to the user; the turn now ends. Wait for the user's next message — do not answer on their behalf.", nil
 		},
 	}
 
@@ -197,6 +259,24 @@ func (a *Agent) registerSkillTool(reg map[string]toolEntry, skillName string, td
 			return out, nil
 		},
 	}
+}
+
+// toStringSlice coerces a decoded JSON value (typically []any of strings) into
+// a []string, dropping non-string and empty entries.
+func toStringSlice(v any) []string {
+	raw, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	var out []string
+	for _, item := range raw {
+		if s, ok := item.(string); ok {
+			if s = strings.TrimSpace(s); s != "" {
+				out = append(out, s)
+			}
+		}
+	}
+	return out
 }
 
 func fnTool(name, desc string, params map[string]any) llm.Tool {

@@ -227,7 +227,7 @@ func (s *Server) handlePatchMemory(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteMemory(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err := s.Memory.Delete(r.Context(), id, u.ID); err != nil {
+	if err := s.Memory.Delete(r.Context(), id, u.ID, u.Role == "admin"); err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
 			writeErr(w, http.StatusNotFound, "not found")
 			return
