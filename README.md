@@ -1,6 +1,6 @@
 # Harlequin
 
-This repo is the answer to the questions I had: why all AI agent harnesses "local"? How would a "proper" client-server agentic system look like, from ththe aspects of scalability and common operation expectations?
+This repo is the answer to the questions I had: why all AI agent harnesses seem to be "local"? How would a "proper" client-server agentic system look like, from the aspects of scalability and common operation expectations?
 
 **You probably don't want to use it**, at least not yet. It's in very early development. 
 
