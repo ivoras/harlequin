@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"time"
 
@@ -46,18 +47,22 @@ func (a *Agent) extractMemories(ctx context.Context, userID int64, userContent, 
 		ttl = &t
 	}
 
-	for _, c := range candidates {
-		if !memextract.ShouldStore(c) {
-			continue
-		}
-		fact := c.Content
-		if existing, err := a.Memory.Search(ctx, fact, userID, "user", 1); err == nil && len(existing) > 0 {
-			if strings.EqualFold(strings.TrimSpace(existing[0].Content), fact) {
+	// Auto-extraction runs after the request, so open the user's database here.
+	_ = a.Storage.WithUser(ctx, userID, func(userDB *sql.DB) error {
+		for _, c := range candidates {
+			if !memextract.ShouldStore(c) {
 				continue
 			}
+			fact := c.Content
+			if existing, err := a.Memory.Search(ctx, userDB, fact, userID, "user", 1); err == nil && len(existing) > 0 {
+				if strings.EqualFold(strings.TrimSpace(existing[0].Content), fact) {
+					continue
+				}
+			}
+			_, _ = a.Memory.Add(ctx, userDB, types.CreateMemoryRequest{
+				Scope: "user", Content: fact, Source: "auto", ExpiresAt: ttl,
+			}, userID)
 		}
-		_, _ = a.Memory.Add(ctx, types.CreateMemoryRequest{
-			Scope: "user", Content: fact, Source: "auto", ExpiresAt: ttl,
-		}, userID)
-	}
+		return nil
+	})
 }

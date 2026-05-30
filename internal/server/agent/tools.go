@@ -39,7 +39,7 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 		}),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 			q, _ := args["query"].(string)
-			res, err := a.Memory.Search(ctx, q, rc.userID, "", 6)
+			res, err := a.Memory.Search(ctx, rc.userDB, q, rc.userID, "", 6)
 			if err != nil {
 				return "", err
 			}
@@ -62,17 +62,17 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 			if scope == "" {
 				scope = "user"
 			}
-			mem, hits, err := a.Memory.AddWithConflicts(ctx, types.CreateMemoryRequest{Scope: scope, Content: content, Source: "tool"}, rc.userID)
+			mem, hits, err := a.Memory.AddWithConflicts(ctx, rc.userDB, types.CreateMemoryRequest{Scope: scope, Content: content, Source: "tool"}, rc.userID)
 			if err != nil {
 				return "", err
 			}
 			if len(hits) == 0 {
-				return fmt.Sprintf("Stored as memory #%d.", mem.ID), nil
+				return fmt.Sprintf("Stored as memory %s.", mem.ID), nil
 			}
 			var sb strings.Builder
-			fmt.Fprintf(&sb, "Stored as memory #%d, but it conflicts with existing memories:\n", mem.ID)
+			fmt.Fprintf(&sb, "Stored as memory %s, but it conflicts with existing memories:\n", mem.ID)
 			for _, h := range hits {
-				fmt.Fprintf(&sb, "- #%d [%s] %q (%s)\n", h.OtherID, h.Relationship, strings.TrimSpace(h.OtherContent), h.Reason)
+				fmt.Fprintf(&sb, "- %s [%s] %q (%s)\n", h.OtherID, h.Relationship, strings.TrimSpace(h.OtherContent), h.Reason)
 			}
 			sb.WriteString("Tell the user about this conflict and use ask_user to ask how to resolve it (e.g. delete the old memory, discard this new one, or keep both). Then carry out their choice with memory_delete.")
 			return sb.String(), nil
@@ -80,26 +80,25 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 	}
 
 	reg["memory_delete"] = toolEntry{
-		def: fnTool("memory_delete", "Delete a memory by id, e.g. to resolve a conflict after the user decides which fact to drop. Deleting a shared memory requires admin rights.", map[string]any{
+		def: fnTool("memory_delete", `Delete a memory by its composite id (e.g. "u.7" for a personal memory, "s.3" for a shared one), e.g. to resolve a conflict after the user decides which fact to drop. Deleting a shared memory requires admin rights.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"id": map[string]any{"type": "integer"},
+				"id": map[string]any{"type": "string"},
 			},
 			"required": []string{"id"},
 		}),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
-			idf, ok := args["id"].(float64)
-			if !ok {
+			id, _ := args["id"].(string)
+			if id == "" {
 				return "error: id is required", nil
 			}
-			id := int64(idf)
-			if err := a.Memory.Delete(ctx, id, rc.userID, rc.isAdmin); err != nil {
+			if err := a.Memory.Delete(ctx, rc.userDB, id, rc.userID, rc.isAdmin); err != nil {
 				if errors.Is(err, memory.ErrNotFound) {
-					return fmt.Sprintf("error: memory #%d not found or not deletable (shared memories require admin rights)", id), nil
+					return fmt.Sprintf("error: memory %s not found or not deletable (shared memories require admin rights)", id), nil
 				}
 				return "", err
 			}
-			return fmt.Sprintf("Deleted memory #%d.", id), nil
+			return fmt.Sprintf("Deleted memory %s.", id), nil
 		},
 	}
 
@@ -135,7 +134,7 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 			"type": "object", "properties": map[string]any{},
 		}),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
-			infos, err := a.Skills.List(ctx, rc.userID, rc.username)
+			infos, err := a.Skills.List(ctx, rc.userDB, rc.userID, rc.username)
 			if err != nil {
 				return "", err
 			}
@@ -160,7 +159,7 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 		}),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 			name, _ := args["name"].(string)
-			sk, err := a.Skills.Resolve(ctx, name, rc.userID, rc.username)
+			sk, err := a.Skills.Resolve(ctx, rc.userDB, name, rc.userID, rc.username)
 			if err != nil {
 				return "", err
 			}
@@ -220,10 +219,10 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 	}
 
 	// Skill-defined tools, namespaced <skill>.<tool>.
-	infos, err := a.Skills.List(ctx, rc.userID, rc.username)
+	infos, err := a.Skills.List(ctx, rc.userDB, rc.userID, rc.username)
 	if err == nil {
 		for _, info := range infos {
-			sk, err := a.Skills.Resolve(ctx, info.Name, rc.userID, rc.username)
+			sk, err := a.Skills.Resolve(ctx, rc.userDB, info.Name, rc.userID, rc.username)
 			if err != nil {
 				continue
 			}

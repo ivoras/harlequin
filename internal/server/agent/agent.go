@@ -5,6 +5,7 @@ package agent
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -17,12 +18,14 @@ import (
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/skills"
+	"github.com/ivoras/harlequin/internal/server/storage"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
 // Agent runs the tool-calling loop.
 type Agent struct {
 	Provider      llm.Provider
+	Storage       *storage.Manager
 	Memory        *memory.Store
 	Docs          *documents.Store
 	Skills        *skills.Manager
@@ -36,7 +39,8 @@ type Agent struct {
 	MemDefaultTTL time.Duration
 
 	// RecordUsage, if set, is called with attributed token usage per completion.
-	RecordUsage func(ctx context.Context, userID int64, conversationID *int64, provider, model string, u llm.Usage)
+	// userDB is the caller's open per-user database.
+	RecordUsage func(ctx context.Context, userDB *sql.DB, userID int64, conversationID *int64, provider, model string, u llm.Usage)
 }
 
 // EmitFunc receives streaming events for the client (SSE).
@@ -48,6 +52,7 @@ type runContext struct {
 	userID         int64
 	username       string
 	isAdmin        bool
+	userDB         *sql.DB // the caller's open per-user database for this request
 	turn           int
 	step           int
 	emit           EmitFunc
@@ -76,9 +81,35 @@ Grounding rules (reduce hallucinations):
 - If tool results conflict, say so and cite both; if they agree, do not add variants or synonyms unless they appear in the sources.
 - If tools do not contain enough information, say you do not know rather than guessing.`
 
-// Run executes a full turn for the given user message, streaming events via emit.
+// Run executes a full turn for the given user message, streaming events via
+// emit. It opens the caller's per-user database for the duration of the turn
+// and closes it before any background work.
 func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username, role, userContent string, emit EmitFunc) error {
 	rc := &runContext{conversationID: conversationID, userID: userID, username: username, isAdmin: role == "admin", turn: 1, emit: emit}
+
+	var finalText string
+	if err := a.Storage.WithUser(ctx, userID, func(userDB *sql.DB) error {
+		rc.userDB = userDB
+		ft, err := a.turn(ctx, rc, userContent)
+		finalText = ft
+		return err
+	}); err != nil {
+		return err
+	}
+
+	// Background auto memory extraction (opens its own per-user database).
+	if a.AutoExtract {
+		go a.extractMemories(context.Background(), userID, userContent, finalText)
+	}
+	return nil
+}
+
+// turn runs the tool-calling loop for one user message and returns the final
+// assistant text. rc.userDB must be an open per-user database.
+func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (string, error) {
+	conversationID := rc.conversationID
+	userID := rc.userID
+	emit := rc.emit
 
 	a.logEvent(ctx, rc, sessionlog.TypeSessionStart, map[string]any{
 		"max_steps": a.MaxSteps,
@@ -87,8 +118,8 @@ func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username,
 	a.logEvent(ctx, rc, sessionlog.TypeUserMessage, map[string]any{"content": userContent})
 
 	// Persist the user message.
-	if _, err := a.Conversations.AddMessage(ctx, conversationID, llm.RoleUser, userContent, nil); err != nil {
-		return err
+	if _, err := a.Conversations.AddMessage(ctx, rc.userDB, conversationID, llm.RoleUser, userContent, nil); err != nil {
+		return "", err
 	}
 
 	tools := a.buildTools(ctx, rc)
@@ -112,9 +143,9 @@ func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username,
 	})
 
 	// Compose messages: system + history.
-	history, err := a.Conversations.Messages(ctx, conversationID)
+	history, err := a.Conversations.Messages(ctx, rc.userDB, conversationID)
 	if err != nil {
-		return err
+		return "", err
 	}
 	systemPrompt := a.composeSystemPrompt(ctx, rc)
 	a.logEvent(ctx, rc, sessionlog.TypeSystemPrompt, map[string]any{"content": systemPrompt})
@@ -128,7 +159,7 @@ func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username,
 	for step := 1; step <= a.MaxSteps; step++ {
 		rc.step = step
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return "", ctx.Err()
 		}
 
 		a.logEvent(ctx, rc, sessionlog.TypeLLMRequest, map[string]any{
@@ -144,7 +175,7 @@ func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username,
 		if err != nil {
 			emit(types.StreamEvent{Type: types.SSEError, Error: err.Error()})
 			a.logEvent(ctx, rc, sessionlog.TypeError, map[string]any{"error": err.Error()})
-			return err
+			return "", err
 		}
 
 		var assistantText string
@@ -155,7 +186,7 @@ func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username,
 			if chunk.Err != nil {
 				emit(types.StreamEvent{Type: types.SSEError, Error: chunk.Err.Error()})
 				a.logEvent(ctx, rc, sessionlog.TypeError, map[string]any{"error": chunk.Err.Error()})
-				return chunk.Err
+				return "", chunk.Err
 			}
 			if chunk.ThinkingDelta != "" {
 				thinkingText += chunk.ThinkingDelta
@@ -185,7 +216,7 @@ func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username,
 					})
 					if a.RecordUsage != nil {
 						cid := conversationID
-						a.RecordUsage(ctx, userID, &cid, chunk.Provider, chunk.Model, *chunk.Usage)
+						a.RecordUsage(ctx, rc.userDB, userID, &cid, chunk.Provider, chunk.Model, *chunk.Usage)
 					}
 				}
 			}
@@ -201,15 +232,15 @@ func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username,
 
 		if len(toolCalls) == 0 {
 			finalText = assistantText
-			if _, err := a.Conversations.AddMessage(ctx, conversationID, llm.RoleAssistant, assistantText, nil); err != nil {
-				return err
+			if _, err := a.Conversations.AddMessage(ctx, rc.userDB, conversationID, llm.RoleAssistant, assistantText, nil); err != nil {
+				return "", err
 			}
 			break
 		}
 
 		// Record the assistant message that requested tools.
 		msgs = append(msgs, llm.Message{Role: llm.RoleAssistant, Content: assistantText, ToolCalls: toolCalls})
-		_, _ = a.Conversations.AddMessage(ctx, conversationID, llm.RoleAssistant, assistantText, fromLLMToolCalls(toolCalls))
+		_, _ = a.Conversations.AddMessage(ctx, rc.userDB, conversationID, llm.RoleAssistant, assistantText, fromLLMToolCalls(toolCalls))
 
 		// Dispatch each tool call.
 		askedUser := false
@@ -221,7 +252,7 @@ func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username,
 				ToolCallID: tc.ID,
 				Name:       tc.Function.Name,
 			})
-			_, _ = a.Conversations.AddMessage(ctx, conversationID, llm.RoleTool, result, nil)
+			_, _ = a.Conversations.AddMessage(ctx, rc.userDB, conversationID, llm.RoleTool, result, nil)
 			if tc.Function.Name == "ask_user" {
 				askedUser = true
 			}
@@ -238,11 +269,7 @@ func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username,
 	a.logEvent(ctx, rc, sessionlog.TypeSessionEnd, map[string]any{"status": "ok", "steps": rc.step})
 	emit(types.StreamEvent{Type: types.SSEDone})
 
-	// Background auto memory extraction.
-	if a.AutoExtract {
-		go a.extractMemories(context.Background(), userID, userContent, finalText)
-	}
-	return nil
+	return finalText, nil
 }
 
 // dispatch runs one tool call, emitting tool_call/tool_result events and logging.
@@ -325,7 +352,7 @@ func logToolCalls(calls []llm.ToolCall) []map[string]any {
 // composeSystemPrompt builds the system prompt including the skill catalogue.
 func (a *Agent) composeSystemPrompt(ctx context.Context, rc *runContext) string {
 	prompt := systemPreamble
-	infos, err := a.Skills.List(ctx, rc.userID, rc.username)
+	infos, err := a.Skills.List(ctx, rc.userDB, rc.userID, rc.username)
 	if err == nil && len(infos) > 0 {
 		prompt += "\n\nAvailable skills (use load_skill to read full instructions):\n"
 		for _, i := range infos {

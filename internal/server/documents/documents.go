@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
@@ -181,7 +182,7 @@ func fold(rows *sql.Rows, ranks map[int64]float64, contents map[int64]string) {
 func topN(ranks map[int64]float64, contents map[int64]string, limit int) []types.SearchResult {
 	out := make([]types.SearchResult, 0, len(ranks))
 	for id, score := range ranks {
-		out = append(out, types.SearchResult{ID: id, Content: contents[id], Score: score})
+		out = append(out, types.SearchResult{ID: "d." + strconv.FormatInt(id, 10), Content: contents[id], Score: score})
 	}
 	for i := 0; i < len(out); i++ {
 		max := i

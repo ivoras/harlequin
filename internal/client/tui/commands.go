@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -123,26 +122,20 @@ func (m *Model) handleMemorySub(args []string) tea.Cmd {
 	switch strings.ToLower(args[0]) {
 	case "delete", "rm", "del":
 		if len(args) < 2 {
-			return infoCmd("usage: /memory delete <id>")
+			return infoCmd("usage: /memory delete <id>  (id like u.7 or s.3 from /memory)")
 		}
-		id, err := strconv.ParseInt(args[1], 10, 64)
-		if err != nil || id <= 0 {
-			return infoCmd("usage: /memory delete <id>  (numeric id from /memory)")
-		}
+		id := args[1]
 		return func() tea.Msg {
 			if err := m.client.DeleteMemory(context.Background(), id); err != nil {
 				return errMsg{err}
 			}
-			return infoMsg{fmt.Sprintf("deleted memory #%d", id)}
+			return infoMsg{fmt.Sprintf("deleted memory %s", id)}
 		}
 	case "show", "get":
 		if len(args) < 2 {
 			return infoCmd("usage: /memory show <id>")
 		}
-		id, err := strconv.ParseInt(args[1], 10, 64)
-		if err != nil || id <= 0 {
-			return infoCmd("usage: /memory show <id>")
-		}
+		id := args[1]
 		return func() tea.Msg {
 			mem, err := m.client.GetMemory(context.Background(), id)
 			if err != nil {
@@ -162,15 +155,12 @@ func (m *Model) handleMemorySub(args []string) tea.Cmd {
 		if len(args) < 2 {
 			return infoCmd("usage: /memory resolve <conflict-id>")
 		}
-		id, err := strconv.ParseInt(args[1], 10, 64)
-		if err != nil || id <= 0 {
-			return infoCmd("usage: /memory resolve <conflict-id>")
-		}
+		id := args[1]
 		return func() tea.Msg {
 			if err := m.client.ResolveMemoryConflict(context.Background(), id); err != nil {
 				return errMsg{err}
 			}
-			return infoMsg{fmt.Sprintf("resolved conflict #%d", id)}
+			return infoMsg{fmt.Sprintf("resolved conflict %s", id)}
 		}
 	default:
 		scope := args[0]
@@ -220,7 +210,7 @@ func renderMemoryLine(mem types.Memory, isAdmin bool) string {
 	if memoryDeletable(mem, isAdmin) {
 		deletable = " (deletable)"
 	}
-	return fmt.Sprintf(" %s#%-4d %s [%s/%s]%s %s",
+	return fmt.Sprintf(" %s%-6s %s [%s/%s]%s %s",
 		pin, mem.ID, formatMemoryTime(mem.CreatedAt), mem.Scope, mem.Source, deletable, mem.Content)
 }
 
@@ -234,7 +224,7 @@ func formatMemoryTime(t time.Time) string {
 
 func renderMemoryDetail(mem types.Memory, isAdmin bool) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "Memory #%d\n", mem.ID)
+	fmt.Fprintf(&sb, "Memory %s\n", mem.ID)
 	fmt.Fprintf(&sb, "  scope:   %s\n", mem.Scope)
 	fmt.Fprintf(&sb, "  source:  %s\n", mem.Source)
 	fmt.Fprintf(&sb, "  pinned:  %t\n", mem.Pinned)
@@ -244,7 +234,7 @@ func renderMemoryDetail(mem types.Memory, isAdmin bool) string {
 	fmt.Fprintf(&sb, "  created: %s\n", formatMemoryTime(mem.CreatedAt))
 	fmt.Fprintf(&sb, "  content: %s", mem.Content)
 	if memoryDeletable(mem, isAdmin) {
-		sb.WriteString("\n  (delete with /memory delete " + strconv.FormatInt(mem.ID, 10) + ")")
+		sb.WriteString("\n  (delete with /memory delete " + mem.ID + ")")
 	}
 	return sb.String()
 }
@@ -256,7 +246,7 @@ func renderMemoryConflicts(conflicts []types.MemoryConflict) string {
 	var sb strings.Builder
 	sb.WriteString("Memory conflicts (use /memory resolve <id> after fixing):\n")
 	for _, c := range conflicts {
-		fmt.Fprintf(&sb, " !#%-3d [%s conf=%d] #%d vs #%d\n", c.ID, c.Relationship, c.Confidence, c.MemoryA, c.MemoryB)
+		fmt.Fprintf(&sb, " !%-6s [%s conf=%d] %s vs %s\n", c.ID, c.Relationship, c.Confidence, c.MemoryA, c.MemoryB)
 		fmt.Fprintf(&sb, "      A: %s\n", truncate(c.ContentA, 120))
 		fmt.Fprintf(&sb, "      B: %s\n", truncate(c.ContentB, 120))
 		if c.Reason != "" {

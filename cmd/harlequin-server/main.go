@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"flag"
 	"log"
@@ -17,7 +18,6 @@ import (
 	"github.com/ivoras/harlequin/internal/server/auth"
 	"github.com/ivoras/harlequin/internal/server/config"
 	"github.com/ivoras/harlequin/internal/server/conversation"
-	"github.com/ivoras/harlequin/internal/server/db"
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/embed"
 	"github.com/ivoras/harlequin/internal/server/jsrun"
@@ -26,6 +26,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/skills"
 	"github.com/ivoras/harlequin/internal/server/skills/jstmpl"
+	"github.com/ivoras/harlequin/internal/server/storage"
 	"github.com/ivoras/harlequin/internal/server/usage"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
@@ -43,13 +44,13 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
-	database, err := db.Open(cfg.DBPath, cfg.Embeddings.Dim)
+	store, err := storage.New(cfg.DataDir, cfg.DBPath, cfg.Embeddings.Dim)
 	if err != nil {
-		log.Fatalf("db: %v", err)
+		log.Fatalf("storage: %v", err)
 	}
-	defer database.Close()
+	defer store.Close()
 
-	authStore := auth.NewStore(database)
+	authStore := auth.NewStore(store.System)
 
 	// Deploy baked-in skills to the data dir.
 	if err := skills.Deploy(harlequin.BakedSkillsFS(), cfg.SkillsDir(), cfg.DataDir); err != nil {
@@ -57,7 +58,7 @@ func main() {
 	}
 
 	// Build providers and the routing provider.
-	usageStore := usage.NewStore(database, cfg.Prices)
+	usageStore := usage.NewStore(cfg.Prices)
 	providers := map[string]*llm.OpenAICompatible{}
 	for _, p := range cfg.Providers {
 		providers[p.Name] = llm.NewOpenAICompatible(p.Name, p.BaseURL, p.APIKey, p.Model)
@@ -79,13 +80,13 @@ func main() {
 		FetchAllowlist: cfg.Agent.JSFetchAllowlist,
 	})
 
-	memStore := memory.NewStore(database, embedder)
+	memStore := memory.NewStore(store.Shared, embedder)
 	if cfg.Memory.ConflictCheckEnabled() {
 		memStore.SetConflictJudge(router, cfg.Memory.ConflictCandidates)
 	}
-	docStore := documents.NewStore(database, embedder)
-	convStore := conversation.NewStore(database)
-	auditStore := audit.NewStore(database)
+	docStore := documents.NewStore(store.Shared, embedder)
+	convStore := conversation.NewStore()
+	auditStore := audit.NewStore()
 	session := sessionlog.New(cfg.SessionsDir(), cfg.Sessions.Enabled, cfg.Sessions.LogTokens, cfg.Sessions.Redact)
 
 	makeCtx := func(userID int64, username, skill string) jstmpl.Context {
@@ -94,7 +95,11 @@ func main() {
 			Skill: skill,
 			Now:   time.Now,
 			MemorySearch: func(q string) []string {
-				res, _ := memStore.Search(context.Background(), q, userID, "", 5)
+				var res []types.SearchResult
+				_ = store.WithUser(context.Background(), userID, func(udb *sql.DB) error {
+					res, _ = memStore.Search(context.Background(), udb, q, userID, "", 5)
+					return nil
+				})
 				return resultsToStrings(res)
 			},
 			SearchDocs: func(q string) []string {
@@ -103,10 +108,11 @@ func main() {
 			},
 		}
 	}
-	skillMgr := skills.NewManager(database, cfg.SkillsDir(), skillRunner, makeCtx)
+	skillMgr := skills.NewManager(store.Shared, cfg.SkillsDir(), skillRunner, makeCtx)
 
 	ag := &agent.Agent{
 		Provider:      router,
+		Storage:       store,
 		Memory:        memStore,
 		Docs:          docStore,
 		Skills:        skillMgr,
@@ -117,13 +123,14 @@ func main() {
 		Temperature:   cfg.Agent.TemperatureValue(),
 		AutoExtract:   cfg.Memory.AutoExtract,
 		MemDefaultTTL: cfg.Memory.DefaultTTL.D(),
-		RecordUsage: func(ctx context.Context, userID int64, conversationID *int64, provider, model string, u llm.Usage) {
-			_ = usageStore.Record(ctx, userID, conversationID, provider, model, u.PromptTokens, u.CompletionTokens)
+		RecordUsage: func(ctx context.Context, userDB *sql.DB, userID int64, conversationID *int64, provider, model string, u llm.Usage) {
+			_ = usageStore.Record(ctx, userDB, conversationID, provider, model, u.PromptTokens, u.CompletionTokens)
 		},
 	}
 
 	srv := &api.Server{
 		Cfg:           cfg,
+		Storage:       store,
 		Auth:          authStore,
 		Conversations: convStore,
 		Memory:        memStore,
@@ -136,7 +143,7 @@ func main() {
 	}
 
 	// Background maintenance: expire memories and sweep session logs.
-	go maintenance(memStore, session, cfg.Sessions.RetentionDays)
+	go maintenance(store, memStore, session, cfg.Sessions.RetentionDays)
 
 	httpServer := &http.Server{
 		Addr:    cfg.Server.Addr,
@@ -148,11 +155,17 @@ func main() {
 	}
 }
 
-func maintenance(mem *memory.Store, session *sessionlog.Logger, retentionDays int) {
+func maintenance(store *storage.Manager, mem *memory.Store, session *sessionlog.Logger, retentionDays int) {
 	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
 	for {
-		_, _ = mem.SweepExpired(context.Background())
+		ctx := context.Background()
+		// Sweep expired memories from the shared database and every user database.
+		_, _ = mem.SweepExpiredDB(ctx, store.Shared)
+		_ = store.EachUser(ctx, func(_ int64, udb *sql.DB) error {
+			_, _ = mem.SweepExpiredDB(ctx, udb)
+			return nil
+		})
 		session.SweepRetention(retentionDays)
 		<-ticker.C
 	}

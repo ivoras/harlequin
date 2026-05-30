@@ -187,7 +187,7 @@ func openAuthStore(configPath string) authDeps {
 	if err != nil {
 		log.Fatalf("config: %v", err)
 	}
-	database, err := db.Open(cfg.DBPath, cfg.Embeddings.Dim)
+	database, err := db.Open(cfg.DBPath, db.System, cfg.Embeddings.Dim)
 	if err != nil {
 		log.Fatalf("db: %v", err)
 	}

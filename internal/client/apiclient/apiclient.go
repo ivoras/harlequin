@@ -146,15 +146,15 @@ func (c *Client) ListMemory(ctx context.Context, scope string) ([]types.Memory, 
 	return out, c.do(ctx, http.MethodGet, path, nil, &out)
 }
 
-// GetMemory returns one memory by id if visible to the current user.
-func (c *Client) GetMemory(ctx context.Context, id int64) (*types.Memory, error) {
+// GetMemory returns one memory by its composite id if visible to the current user.
+func (c *Client) GetMemory(ctx context.Context, id string) (*types.Memory, error) {
 	var out types.Memory
-	return &out, c.do(ctx, http.MethodGet, fmt.Sprintf("/memory/%d", id), nil, &out)
+	return &out, c.do(ctx, http.MethodGet, "/memory/"+id, nil, &out)
 }
 
 // DeleteMemory deletes a user-scoped memory owned by the caller, or a shared memory if the caller is admin.
-func (c *Client) DeleteMemory(ctx context.Context, id int64) error {
-	return c.do(ctx, http.MethodDelete, fmt.Sprintf("/memory/%d", id), nil, nil)
+func (c *Client) DeleteMemory(ctx context.Context, id string) error {
+	return c.do(ctx, http.MethodDelete, "/memory/"+id, nil, nil)
 }
 
 // ListMemoryConflicts returns unresolved duplicate/conflict flags for the user.
@@ -164,8 +164,8 @@ func (c *Client) ListMemoryConflicts(ctx context.Context) ([]types.MemoryConflic
 }
 
 // ResolveMemoryConflict marks a conflict as reviewed/resolved.
-func (c *Client) ResolveMemoryConflict(ctx context.Context, id int64) error {
-	return c.do(ctx, http.MethodPost, fmt.Sprintf("/memory/conflicts/%d/resolve", id), nil, nil)
+func (c *Client) ResolveMemoryConflict(ctx context.Context, id string) error {
+	return c.do(ctx, http.MethodPost, "/memory/conflicts/"+id+"/resolve", nil, nil)
 }
 
 // SearchDocuments searches the org RAG corpus.

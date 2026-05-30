@@ -17,6 +17,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/skills"
+	"github.com/ivoras/harlequin/internal/server/storage"
 	"github.com/ivoras/harlequin/internal/server/usage"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
@@ -24,6 +25,7 @@ import (
 // Server holds the dependencies for the HTTP handlers.
 type Server struct {
 	Cfg           *config.Config
+	Storage       *storage.Manager
 	Auth          *auth.Store
 	Conversations *conversation.Store
 	Memory        *memory.Store

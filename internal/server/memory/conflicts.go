@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/ivoras/harlequin/internal/server/llm"
 	"github.com/ivoras/harlequin/internal/server/memory/conflictparse"
@@ -14,7 +13,19 @@ import (
 
 const defaultConflictCandidates = 8
 
-// SetConflictJudge enables background conflict detection after Add using the LLM.
+const dupReason = "Exact/near-exact duplicate text"
+
+// ConflictHit describes one existing memory found to conflict with or duplicate
+// a newly stored memory. OtherID is a composite id.
+type ConflictHit struct {
+	OtherID      string
+	OtherContent string
+	Relationship string // "conflicts" | "duplicate"
+	Reason       string
+	Confidence   int
+}
+
+// SetConflictJudge enables conflict detection on memory writes using the LLM.
 func (s *Store) SetConflictJudge(p llm.Provider, candidateLimit int) {
 	s.judge = p
 	if candidateLimit <= 0 {
@@ -23,31 +34,10 @@ func (s *Store) SetConflictJudge(p llm.Provider, candidateLimit int) {
 	s.conflictCandidates = candidateLimit
 }
 
-// ConflictHit describes one existing memory found to conflict with or duplicate
-// a newly stored memory.
-type ConflictHit struct {
-	OtherID      int64
-	OtherContent string
-	Relationship string // "conflicts" | "duplicate"
-	Reason       string
-	Confidence   int
-}
-
-func (s *Store) checkConflictsAsync(userID, newID int64, content string) {
-	if s.judge == nil {
-		return
-	}
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-		defer cancel()
-		_, _ = s.detectConflicts(ctx, userID, newID, content)
-	}()
-}
-
-// detectConflicts compares a newly stored memory against existing candidates,
-// records any duplicate/conflict pairs, and returns them. It is a no-op (nil,
-// nil) when no judge is configured.
-func (s *Store) detectConflicts(ctx context.Context, userID, newID int64, content string) ([]ConflictHit, error) {
+// detectConflicts compares a newly stored memory against existing candidates
+// from both the user and shared databases, records any duplicate/conflict
+// pairs, and returns them. It is a no-op (nil, nil) when no judge is configured.
+func (s *Store) detectConflicts(ctx context.Context, userDB *sql.DB, userID int64, newID, content string) ([]ConflictHit, error) {
 	if s.judge == nil {
 		return nil, nil
 	}
@@ -55,13 +45,13 @@ func (s *Store) detectConflicts(ctx context.Context, userID, newID int64, conten
 	if limit <= 0 {
 		limit = defaultConflictCandidates
 	}
-	candidates, err := s.Search(ctx, content, userID, "", limit+1)
+	candidates, err := s.Search(ctx, userDB, content, userID, "", limit+1)
 	if err != nil {
 		return nil, err
 	}
 
 	var hits []ConflictHit
-	contentByID := map[int64]string{}
+	contentByID := map[string]string{}
 	var lines []string
 	for _, c := range candidates {
 		if c.ID == newID {
@@ -69,11 +59,11 @@ func (s *Store) detectConflicts(ctx context.Context, userID, newID int64, conten
 		}
 		contentByID[c.ID] = c.Content
 		if strings.EqualFold(strings.TrimSpace(c.Content), strings.TrimSpace(content)) {
-			_ = s.recordConflict(ctx, newID, c.ID, "duplicate", "Exact/near-exact duplicate text", 10)
-			hits = append(hits, ConflictHit{OtherID: c.ID, OtherContent: c.Content, Relationship: "duplicate", Reason: "Exact/near-exact duplicate text", Confidence: 10})
+			_ = s.recordConflict(ctx, userDB, newID, c.ID, "duplicate", dupReason, 10)
+			hits = append(hits, ConflictHit{OtherID: c.ID, OtherContent: c.Content, Relationship: "duplicate", Reason: dupReason, Confidence: 10})
 			continue
 		}
-		lines = append(lines, fmt.Sprintf("- id %d: %s", c.ID, c.Content))
+		lines = append(lines, fmt.Sprintf("- id %s: %s", c.ID, c.Content))
 		if len(lines) >= limit {
 			break
 		}
@@ -82,27 +72,12 @@ func (s *Store) detectConflicts(ctx context.Context, userID, newID int64, conten
 		return hits, nil
 	}
 
-	userPrompt := fmt.Sprintf("New memory (id %d):\n%s\n\nExisting candidates:\n%s",
+	userPrompt := fmt.Sprintf("New memory (id %s):\n%s\n\nExisting candidates:\n%s",
 		newID, content, strings.Join(lines, "\n"))
-
-	stream, err := s.judge.Chat(ctx, llm.ChatRequest{
-		Messages: []llm.Message{
-			{Role: llm.RoleSystem, Content: conflictparse.Prompt},
-			{Role: llm.RoleUser, Content: userPrompt},
-		},
-		Temperature: llm.Ptr(0.0),
-	})
+	text, err := s.judgeChat(ctx, userPrompt)
 	if err != nil {
 		return hits, err
 	}
-	var text string
-	for chunk := range stream {
-		if chunk.Err != nil {
-			return hits, chunk.Err
-		}
-		text += chunk.TextDelta
-	}
-
 	judgments, ok := conflictparse.Flagged(text)
 	if !ok {
 		return hits, nil
@@ -111,22 +86,55 @@ func (s *Store) detectConflicts(ctx context.Context, userID, newID int64, conten
 		if j.OtherID == newID {
 			continue
 		}
-		_ = s.recordConflict(ctx, newID, j.OtherID, j.Relationship, j.Reason, j.Confidence)
+		_ = s.recordConflict(ctx, userDB, newID, j.OtherID, j.Relationship, j.Reason, j.Confidence)
 		hits = append(hits, ConflictHit{OtherID: j.OtherID, OtherContent: contentByID[j.OtherID], Relationship: j.Relationship, Reason: j.Reason, Confidence: j.Confidence})
 	}
 	return hits, nil
 }
 
-func pairIDs(a, b int64) (int64, int64) {
-	if a < b {
-		return a, b
+// judgeChat runs the conflict-judge prompt and returns the model's text.
+func (s *Store) judgeChat(ctx context.Context, userPrompt string) (string, error) {
+	stream, err := s.judge.Chat(ctx, llm.ChatRequest{
+		Messages: []llm.Message{
+			{Role: llm.RoleSystem, Content: conflictparse.Prompt},
+			{Role: llm.RoleUser, Content: userPrompt},
+		},
+		Temperature: llm.Ptr(0.0),
+	})
+	if err != nil {
+		return "", err
 	}
-	return b, a
+	var text string
+	for chunk := range stream {
+		if chunk.Err != nil {
+			return "", chunk.Err
+		}
+		text += chunk.TextDelta
+	}
+	return text, nil
 }
 
-func (s *Store) recordConflict(ctx context.Context, idA, idB int64, relationship, reason string, confidence int) error {
-	a, b := pairIDs(idA, idB)
-	_, err := s.db.ExecContext(ctx, `
+// conflictHome selects the database that stores a conflict pair: the user
+// database if either endpoint is a user memory, otherwise the shared database.
+func (s *Store) conflictHome(userDB *sql.DB, idA, idB string) memDB {
+	if sa, _, _ := decodeID(idA); sa == scopeUser {
+		return s.userMem(userDB)
+	}
+	if sb, _, _ := decodeID(idB); sb == scopeUser {
+		return s.userMem(userDB)
+	}
+	return s.sharedMem()
+}
+
+func (s *Store) recordConflict(ctx context.Context, userDB *sql.DB, idA, idB, relationship, reason string, confidence int) error {
+	if idA == idB {
+		return nil
+	}
+	a, b := idA, idB
+	if a > b { // canonical order satisfies CHECK (memory_a < memory_b)
+		a, b = b, a
+	}
+	_, err := s.conflictHome(userDB, a, b).db.ExecContext(ctx, `
 		INSERT INTO memory_conflicts(memory_a, memory_b, relationship, reason, confidence)
 		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT(memory_a, memory_b) DO UPDATE SET
@@ -139,74 +147,105 @@ func (s *Store) recordConflict(ctx context.Context, idA, idB int64, relationship
 	return err
 }
 
-// ListConflicts returns unresolved conflicts visible to the user.
-func (s *Store) ListConflicts(ctx context.Context, userID int64, limit int) ([]types.MemoryConflict, error) {
+// deleteConflictsFor removes conflict rows referencing a memory from both
+// reachable databases (replacing the FK cascade that cross-file refs preclude).
+func (s *Store) deleteConflictsFor(ctx context.Context, userDB *sql.DB, id string) {
+	for _, m := range []memDB{s.userMem(userDB), s.sharedMem()} {
+		if m.db == nil {
+			continue
+		}
+		_, _ = m.db.ExecContext(ctx, `DELETE FROM memory_conflicts WHERE memory_a = ? OR memory_b = ?`, id, id)
+	}
+}
+
+// ListConflicts returns unresolved conflicts visible to the user: shared–shared
+// pairs from the shared database plus any pair involving the user's memories
+// from their database.
+func (s *Store) ListConflicts(ctx context.Context, userDB *sql.DB, userID int64, limit int) ([]types.MemoryConflict, error) {
 	if limit <= 0 {
 		limit = 100
 	}
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT c.id, c.memory_a, c.memory_b, ma.content, mb.content,
-			c.relationship, c.reason, c.confidence, c.detected_at, c.resolved_at
-		FROM memory_conflicts c
-		JOIN memories ma ON ma.id = c.memory_a
-		JOIN memories mb ON mb.id = c.memory_b
-		WHERE c.resolved_at IS NULL
-		  AND (ma.scope = 'shared' OR (ma.scope = 'user' AND ma.user_id = ?))
-		  AND (mb.scope = 'shared' OR (mb.scope = 'user' AND mb.user_id = ?))
-		ORDER BY c.detected_at DESC
-		LIMIT ?`, userID, userID, limit)
+	var out []types.MemoryConflict
+	for _, home := range []memDB{s.sharedMem(), s.userMem(userDB)} {
+		cs, err := s.listConflicts(ctx, home, userDB, limit)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, cs...)
+	}
+	return out, nil
+}
+
+func (s *Store) listConflicts(ctx context.Context, home memDB, userDB *sql.DB, limit int) ([]types.MemoryConflict, error) {
+	if home.db == nil {
+		return nil, nil
+	}
+	rows, err := home.db.QueryContext(ctx, `
+		SELECT id, memory_a, memory_b, relationship, reason, confidence, detected_at, resolved_at
+		FROM memory_conflicts WHERE resolved_at IS NULL
+		ORDER BY detected_at DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var out []types.MemoryConflict
 	for rows.Next() {
+		var rowID int64
 		var c types.MemoryConflict
 		var resolved sql.NullTime
-		if err := rows.Scan(&c.ID, &c.MemoryA, &c.MemoryB, &c.ContentA, &c.ContentB,
-			&c.Relationship, &c.Reason, &c.Confidence, &c.DetectedAt, &resolved); err != nil {
+		if err := rows.Scan(&rowID, &c.MemoryA, &c.MemoryB, &c.Relationship,
+			&c.Reason, &c.Confidence, &c.DetectedAt, &resolved); err != nil {
+			rows.Close()
 			return nil, err
 		}
+		c.ID = home.encode(rowID)
 		if resolved.Valid {
 			c.ResolvedAt = &resolved.Time
 		}
 		out = append(out, c)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+	// Resolve endpoint contents only after the cursor is closed: each database
+	// handle allows a single connection, so a nested query during iteration
+	// would deadlock.
+	for i := range out {
+		out[i].ContentA = s.contentFor(ctx, userDB, out[i].MemoryA)
+		out[i].ContentB = s.contentFor(ctx, userDB, out[i].MemoryB)
+	}
+	return out, nil
 }
 
-// ResolveConflict marks a conflict resolved if both memories are visible to the user.
-func (s *Store) ResolveConflict(ctx context.Context, conflictID, userID int64) error {
-	res, err := s.db.ExecContext(ctx, `
-		UPDATE memory_conflicts SET resolved_at = CURRENT_TIMESTAMP
-		WHERE id = ? AND resolved_at IS NULL
-		  AND EXISTS (
-		    SELECT 1 FROM memories ma, memories mb
-		    WHERE ma.id = memory_conflicts.memory_a AND mb.id = memory_conflicts.memory_b
-		      AND (ma.scope = 'shared' OR (ma.scope = 'user' AND ma.user_id = ?))
-		      AND (mb.scope = 'shared' OR (mb.scope = 'user' AND mb.user_id = ?))
-		  )`, conflictID, userID, userID)
+// contentFor resolves a composite memory id to its content, or "(deleted)".
+func (s *Store) contentFor(ctx context.Context, userDB *sql.DB, id string) string {
+	scope, local, ok := decodeID(id)
+	if !ok {
+		return "(deleted)"
+	}
+	var content string
+	if err := s.memFor(scope, userDB).db.QueryRowContext(ctx,
+		`SELECT content FROM memories WHERE id = ?`, local).Scan(&content); err != nil {
+		return "(deleted)"
+	}
+	return content
+}
+
+// ResolveConflict marks a conflict resolved. The conflict id encodes which
+// database holds the row.
+func (s *Store) ResolveConflict(ctx context.Context, userDB *sql.DB, conflictID string) error {
+	scope, local, ok := decodeID(conflictID)
+	if !ok {
+		return ErrNotFound
+	}
+	res, err := s.memFor(scope, userDB).db.ExecContext(ctx,
+		`UPDATE memory_conflicts SET resolved_at = CURRENT_TIMESTAMP WHERE id = ? AND resolved_at IS NULL`, local)
 	if err != nil {
 		return err
 	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
+	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
 	}
 	return nil
-}
-
-// ConflictCountForMemory returns unresolved conflict count involving a memory id.
-func (s *Store) ConflictCountForMemory(ctx context.Context, memoryID, userID int64) (int, error) {
-	var n int
-	err := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM memory_conflicts c
-		JOIN memories ma ON ma.id = c.memory_a
-		JOIN memories mb ON mb.id = c.memory_b
-		WHERE c.resolved_at IS NULL
-		  AND (c.memory_a = ? OR c.memory_b = ?)
-		  AND (ma.scope = 'shared' OR (ma.scope = 'user' AND ma.user_id = ?))
-		  AND (mb.scope = 'shared' OR (mb.scope = 'user' AND mb.user_id = ?))`,
-		memoryID, memoryID, userID, userID).Scan(&n)
-	return n, err
 }
