@@ -16,18 +16,19 @@ import (
 )
 
 // Manager resolves skills from deployed files and DB overrides, rendering
-// <?js ?> templates on read.
+// <?js ?> templates on read. Org-published overrides live in the shared
+// database (held); per-user overrides live in the user's database (passed in).
 type Manager struct {
-	db       *sql.DB
+	shared   *sql.DB
 	skillDir string
 	runner   *jsrun.Runner
 	// renderCtx builds a template context for a user (injected by the server).
 	makeCtx func(userID int64, username, skill string) jstmpl.Context
 }
 
-// NewManager constructs a skills Manager.
-func NewManager(db *sql.DB, skillDir string, runner *jsrun.Runner, makeCtx func(userID int64, username, skill string) jstmpl.Context) *Manager {
-	return &Manager{db: db, skillDir: skillDir, runner: runner, makeCtx: makeCtx}
+// NewManager constructs a skills Manager bound to the shared database.
+func NewManager(shared *sql.DB, skillDir string, runner *jsrun.Runner, makeCtx func(userID int64, username, skill string) jstmpl.Context) *Manager {
+	return &Manager{shared: shared, skillDir: skillDir, runner: runner, makeCtx: makeCtx}
 }
 
 // deployedNames lists skill directories under skillDir.
@@ -77,24 +78,22 @@ func (m *Manager) readDeployed(name string) (map[string]string, error) {
 	return files, nil
 }
 
-// readOverride loads an override's files for a given scope/user. Returns nil if absent.
-func (m *Manager) readOverride(ctx context.Context, name string, userID *int64, scope string) (map[string]string, error) {
-	var overrideID int64
-	var err error
-	if scope == "org" {
-		err = m.db.QueryRowContext(ctx,
-			`SELECT id FROM skill_overrides WHERE skill_name = ? AND scope = 'org'`, name).Scan(&overrideID)
-	} else {
-		err = m.db.QueryRowContext(ctx,
-			`SELECT id FROM skill_overrides WHERE skill_name = ? AND scope = 'user' AND user_id = ?`, name, *userID).Scan(&overrideID)
+// readOverride loads a skill override's files from the given database (the
+// shared database for org overrides, a user database for user overrides).
+// Returns nil if absent.
+func (m *Manager) readOverride(ctx context.Context, db *sql.DB, name string) (map[string]string, error) {
+	if db == nil {
+		return nil, nil
 	}
+	var overrideID int64
+	err := db.QueryRowContext(ctx, `SELECT id FROM skill_overrides WHERE skill_name = ?`, name).Scan(&overrideID)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	rows, err := m.db.QueryContext(ctx, `SELECT relpath, content FROM skill_override_files WHERE override_id = ?`, overrideID)
+	rows, err := db.QueryContext(ctx, `SELECT relpath, content FROM skill_override_files WHERE override_id = ?`, overrideID)
 	if err != nil {
 		return nil, err
 	}
@@ -111,14 +110,15 @@ func (m *Manager) readOverride(ctx context.Context, name string, userID *int64, 
 	return files, rows.Err()
 }
 
-// resolveRaw returns a skill's files and source (without rendering templates).
-func (m *Manager) resolveRaw(ctx context.Context, name string, userID int64) (map[string]string, string, error) {
-	if files, err := m.readOverride(ctx, name, &userID, "user"); err != nil {
+// resolveRaw returns a skill's files and source: a user override wins over an
+// org override, which wins over the deployed copy.
+func (m *Manager) resolveRaw(ctx context.Context, userDB *sql.DB, name string) (map[string]string, string, error) {
+	if files, err := m.readOverride(ctx, userDB, name); err != nil {
 		return nil, "", err
 	} else if files != nil {
 		return files, "override", nil
 	}
-	if files, err := m.readOverride(ctx, name, nil, "org"); err != nil {
+	if files, err := m.readOverride(ctx, m.shared, name); err != nil {
 		return nil, "", err
 	} else if files != nil {
 		return files, "org", nil
@@ -131,8 +131,8 @@ func (m *Manager) resolveRaw(ctx context.Context, name string, userID int64) (ma
 }
 
 // Resolve returns the effective skill for a user, with templates rendered.
-func (m *Manager) Resolve(ctx context.Context, name string, userID int64, username string) (*Skill, error) {
-	files, source, err := m.resolveRaw(ctx, name, userID)
+func (m *Manager) Resolve(ctx context.Context, userDB *sql.DB, name string, userID int64, username string) (*Skill, error) {
+	files, source, err := m.resolveRaw(ctx, userDB, name)
 	if err != nil {
 		return nil, err
 	}
@@ -152,12 +152,12 @@ func (m *Manager) Resolve(ctx context.Context, name string, userID int64, userna
 }
 
 // ResolveRawFiles returns the effective skill files WITHOUT rendering (for download).
-func (m *Manager) ResolveRawFiles(ctx context.Context, name string, userID int64) (map[string]string, string, error) {
-	return m.resolveRaw(ctx, name, userID)
+func (m *Manager) ResolveRawFiles(ctx context.Context, userDB *sql.DB, name string, userID int64) (map[string]string, string, error) {
+	return m.resolveRaw(ctx, userDB, name)
 }
 
 // List returns skill info for all available skills for a user.
-func (m *Manager) List(ctx context.Context, userID int64, username string) ([]types.SkillInfo, error) {
+func (m *Manager) List(ctx context.Context, userDB *sql.DB, userID int64, username string) ([]types.SkillInfo, error) {
 	// Union of deployed names and any org/user override names.
 	nameSet := map[string]bool{}
 	deployed, err := m.deployedNames()
@@ -167,20 +167,24 @@ func (m *Manager) List(ctx context.Context, userID int64, username string) ([]ty
 	for _, n := range deployed {
 		nameSet[n] = true
 	}
-	rows, err := m.db.QueryContext(ctx,
-		`SELECT DISTINCT skill_name FROM skill_overrides WHERE scope = 'org' OR (scope = 'user' AND user_id = ?)`, userID)
-	if err != nil {
-		return nil, err
-	}
-	for rows.Next() {
-		var n string
-		if err := rows.Scan(&n); err != nil {
-			rows.Close()
+	for _, db := range []*sql.DB{m.shared, userDB} {
+		if db == nil {
+			continue
+		}
+		rows, err := db.QueryContext(ctx, `SELECT DISTINCT skill_name FROM skill_overrides`)
+		if err != nil {
 			return nil, err
 		}
-		nameSet[n] = true
+		for rows.Next() {
+			var n string
+			if err := rows.Scan(&n); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			nameSet[n] = true
+		}
+		rows.Close()
 	}
-	rows.Close()
 
 	names := make([]string, 0, len(nameSet))
 	for n := range nameSet {
@@ -190,7 +194,7 @@ func (m *Manager) List(ctx context.Context, userID int64, username string) ([]ty
 
 	var out []types.SkillInfo
 	for _, n := range names {
-		files, source, err := m.resolveRaw(ctx, n, userID)
+		files, source, err := m.resolveRaw(ctx, userDB, n)
 		if err != nil {
 			continue
 		}
@@ -203,49 +207,47 @@ func (m *Manager) List(ctx context.Context, userID int64, username string) ([]ty
 	return out, nil
 }
 
-// SaveOverride stores a user's override (replacing any existing one).
-func (m *Manager) SaveOverride(ctx context.Context, name string, userID int64, files map[string]string) error {
+// SaveOverride stores a user's override (replacing any existing one) in the
+// user's database.
+func (m *Manager) SaveOverride(ctx context.Context, userDB *sql.DB, name string, userID int64, files map[string]string) error {
 	if _, ok := files["SKILL.md"]; !ok {
 		return fmt.Errorf("override must include SKILL.md")
 	}
 	if _, _, err := parseFrontmatter(files["SKILL.md"]); err != nil {
 		return fmt.Errorf("invalid SKILL.md: %w", err)
 	}
-	return m.writeOverride(ctx, name, &userID, "user", nil, files)
+	return m.writeOverride(ctx, userDB, name, nil, files)
 }
 
-// Publish promotes a user's (or arbitrary) skill version to an org default.
+// Publish promotes a skill version to an org default in the shared database.
 func (m *Manager) Publish(ctx context.Context, name string, publishedBy int64, files map[string]string) error {
 	if _, ok := files["SKILL.md"]; !ok {
 		return fmt.Errorf("publish must include SKILL.md")
 	}
-	return m.writeOverride(ctx, name, nil, "org", &publishedBy, files)
+	return m.writeOverride(ctx, m.shared, name, &publishedBy, files)
 }
 
-func (m *Manager) writeOverride(ctx context.Context, name string, userID *int64, scope string, publishedBy *int64, files map[string]string) error {
-	tx, err := m.db.BeginTx(ctx, nil)
+// writeOverride replaces the override for name in db. publishedBy is set for org
+// (shared) overrides and nil for user overrides (whose table has no such column).
+func (m *Manager) writeOverride(ctx context.Context, db *sql.DB, name string, publishedBy *int64, files map[string]string) error {
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	// Delete existing override of this scope.
-	if scope == "org" {
-		_, _ = tx.ExecContext(ctx, `DELETE FROM skill_overrides WHERE skill_name = ? AND scope = 'org'`, name)
-	} else {
-		_, _ = tx.ExecContext(ctx, `DELETE FROM skill_overrides WHERE skill_name = ? AND scope = 'user' AND user_id = ?`, name, *userID)
-	}
+	_, _ = tx.ExecContext(ctx, `DELETE FROM skill_overrides WHERE skill_name = ?`, name)
 
-	var uid, pby any
-	if userID != nil {
-		uid = *userID
-	}
+	var res sql.Result
 	if publishedBy != nil {
-		pby = *publishedBy
+		res, err = tx.ExecContext(ctx,
+			`INSERT INTO skill_overrides(skill_name, published_by, updated_at) VALUES (?, ?, ?)`,
+			name, *publishedBy, time.Now())
+	} else {
+		res, err = tx.ExecContext(ctx,
+			`INSERT INTO skill_overrides(skill_name, updated_at) VALUES (?, ?)`,
+			name, time.Now())
 	}
-	res, err := tx.ExecContext(ctx,
-		`INSERT INTO skill_overrides(user_id, skill_name, scope, published_by, updated_at) VALUES (?, ?, ?, ?, ?)`,
-		uid, name, scope, pby, time.Now())
 	if err != nil {
 		return err
 	}
@@ -261,8 +263,7 @@ func (m *Manager) writeOverride(ctx context.Context, name string, userID *int64,
 }
 
 // DeleteOverride removes a user's override, reverting to org/deployed.
-func (m *Manager) DeleteOverride(ctx context.Context, name string, userID int64) error {
-	_, err := m.db.ExecContext(ctx,
-		`DELETE FROM skill_overrides WHERE skill_name = ? AND scope = 'user' AND user_id = ?`, name, userID)
+func (m *Manager) DeleteOverride(ctx context.Context, userDB *sql.DB, name string, userID int64) error {
+	_, err := userDB.ExecContext(ctx, `DELETE FROM skill_overrides WHERE skill_name = ?`, name)
 	return err
 }

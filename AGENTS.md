@@ -17,14 +17,18 @@ Client-server AI agent system in Go. A REST/SSE **server** talks to LLMs, stores
 - `internal/server/{config,db,auth,api,llm,embed,jsrun,agent,memory,documents,audit,sessionlog,usage,conversation,skills}`
 - `internal/server/skills/jstmpl` — PHP-style `<?js ?>` templating (on `jsrun`).
 - `internal/client/{config,apiclient,tui,skills}`
-- `internal/shared/types` — REST DTOs. `migrations/*.sql` and `skills/` embedded via `embed.FS`.
+- `internal/shared/types` — REST DTOs. `migrations/{system,shared,user}/*.sql` and `skills/` embedded via `embed.FS`.
+
+## Storage (three-tier SQLite, all WAL)
+- `internal/server/storage.Manager` owns the handles. `data/harlequin.db` (system: users, api_tokens) and `data/shared.db` (org: shared memories, documents, org skill overrides) are **kept open**. Each user has `data/users/<id>/user.db` (their memories, conversations, messages, usage, audit, user skill overrides), **opened and closed per request** via `WithUser`; `EachUser` fans out for admin aggregation and maintenance sweeps. Uploaded files go to `data/shared_files/` and `data/users/<id>/files/`.
+- No cross-file foreign keys: memory ids are composite strings `u.<localid>`/`s.<localid>`, and `memory_conflicts` endpoints/ids are composite (conflicts involving a user memory live in that user's db; shared–shared in `shared.db`).
 
 ## Core flows
 - **Auth**: username/password login -> issued API bearer token (SHA-256 in DB); middleware injects user/role.
 - **Chat**: client POSTs a message -> agent loop composes prompt with resolved skills, calls the LLM provider (routing + fallback), dispatches tool calls (`memory_search`, `memory_write`, `memory_delete`, `ask_user`, `list_skills`, `load_skill`, `run_js`, `search_docs`, skill-defined tools), loops to `max_steps`, streams SSE deltas. `memory_write` surfaces detected conflicts in its result so the model can warn the user; `ask_user` emits an `ask_user` SSE event and ends the turn so the user can reply.
-- **Memory**: per-user + shared; hybrid FTS5 + vector search fused with RRF; provenance/TTL/pinning; auto-extraction; post-write conflict detection (FTS/vector candidates + LLM judge, confidence ≥ 7) stored in `memory_conflicts`.
+- **Memory**: per-user (`user.db`) + shared (`shared.db`), fused into one view via composite ids; hybrid FTS5 + vector search fused with RRF; provenance/TTL/pinning; auto-extraction; conflict detection on write (FTS/vector candidates across both files + LLM judge, confidence ≥ 7) recorded in `memory_conflicts`.
 - **Skills**: baked into the binary, deployed to `<data_dir>/skills/` with a hash manifest (unchanged files replaced on update). Resolution precedence: per-user override -> org-published -> deployed. Server is the single source of truth; clients pull/push via `/skill` slash-commands. Skills support inline `<?js ?>` and frontmatter-declared tools.
-- **Session logging**: full chat trajectory written as JSONL under `<data_dir>/sessions/<user>/<conv>.jsonl`.
+- **Session logging**: full chat trajectory written as JSONL at `<data_dir>/sessions/<user_id>.<conv_id>.jsonl`.
 
 ## Conventions
 - Secrets only in `.env`, never in YAML or code.

@@ -10,10 +10,10 @@ import (
 var Prompt = `You compare a newly stored memory against existing candidate memories for the same user/org context.
 
 Respond with JSON only (no markdown, no commentary):
-{"judgments":[{"other_id":N,"relationship":"none|duplicate|supersedes|conflicts","confidence":N,"reason":"..."}]}
+{"judgments":[{"other_id":"ID","relationship":"none|duplicate|supersedes|conflicts","confidence":N,"reason":"..."}]}
 
 Rules:
-- "other_id" is the candidate memory id from the prompt.
+- "other_id" is the candidate memory id string from the prompt (e.g. "u.7" or "s.3").
 - "relationship":
   - "none" — compatible or unrelated; no action.
   - "duplicate" — same fact phrased differently.
@@ -24,7 +24,7 @@ Rules:
 ` + judge.PromptRules()
 
 type Judgment struct {
-	OtherID      int64  `json:"other_id"`
+	OtherID      string `json:"other_id"`
 	Relationship string `json:"relationship"`
 	Confidence   int    `json:"confidence"`
 	Reason       string `json:"reason"`
@@ -46,7 +46,7 @@ func Flagged(text string) ([]Judgment, bool) {
 	}
 	var out []Judgment
 	for _, j := range resp.Judgments {
-		if j.OtherID <= 0 {
+		if j.OtherID == "" {
 			continue
 		}
 		rel := j.Relationship

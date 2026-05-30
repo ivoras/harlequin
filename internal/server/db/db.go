@@ -1,6 +1,6 @@
-// Package db opens the Harlequin SQLite database (CGO, WAL, foreign keys),
-// registers the sqlite-vec extension, runs embedded migrations, and creates the
-// dimension-dependent FTS5 and vec0 virtual tables.
+// Package db opens Harlequin SQLite databases (CGO, WAL, foreign keys),
+// registers the sqlite-vec extension, runs embedded migrations for the database
+// role, and creates the dimension-dependent FTS5 and vec0 virtual tables.
 package db
 
 import (
@@ -17,14 +17,26 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-//go:embed migrations/*.sql
+//go:embed migrations/system/*.sql migrations/shared/*.sql migrations/user/*.sql
 var migrationsFS embed.FS
 
 var registerOnce sync.Once
 
-// Open opens (and initializes) the database at path with vector dimension dim
-// for the embedding columns. It runs migrations and creates virtual tables.
-func Open(path string, dim int) (*sql.DB, error) {
+// Role selects which schema a database file carries.
+type Role string
+
+const (
+	// System is the main harlequin.db: users, auth, API tokens.
+	System Role = "system"
+	// Shared is the org-level shared.db: shared memories, documents, org skills.
+	Shared Role = "shared"
+	// User is a per-user user.db: that user's memories, conversations, etc.
+	User Role = "user"
+)
+
+// openConn opens a WAL connection to the database file (registering sqlite-vec
+// and creating the parent directory) without touching the schema.
+func openConn(path string) (*sql.DB, error) {
 	// Register sqlite-vec so vec0 is available on every connection.
 	registerOnce.Do(func() {
 		sqlite_vec.Auto()
@@ -48,13 +60,24 @@ func Open(path string, dim int) (*sql.DB, error) {
 		sqlDB.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)
 	}
+	return sqlDB, nil
+}
 
-	if err := runMigrations(sqlDB); err != nil {
+// Open opens (and initializes) the database at path for the given role, with
+// vector dimension dim for embedding columns. It runs the role's migrations and
+// creates the role's virtual tables.
+func Open(path string, role Role, dim int) (*sql.DB, error) {
+	sqlDB, err := openConn(path)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := runMigrations(sqlDB, role); err != nil {
 		sqlDB.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 
-	if err := createVirtualTables(sqlDB, dim); err != nil {
+	if err := createVirtualTables(sqlDB, role, dim); err != nil {
 		sqlDB.Close()
 		return nil, fmt.Errorf("create virtual tables: %w", err)
 	}
@@ -62,7 +85,14 @@ func Open(path string, dim int) (*sql.DB, error) {
 	return sqlDB, nil
 }
 
-func runMigrations(sqlDB *sql.DB) error {
+// OpenInitialized opens a database whose schema is already present — its
+// migrations and virtual tables were created by a prior Open in this process.
+// It skips all schema work, making repeated per-request opens cheap.
+func OpenInitialized(path string) (*sql.DB, error) {
+	return openConn(path)
+}
+
+func runMigrations(sqlDB *sql.DB, role Role) error {
 	if _, err := sqlDB.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
 		name TEXT PRIMARY KEY,
 		applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -70,7 +100,8 @@ func runMigrations(sqlDB *sql.DB) error {
 		return err
 	}
 
-	entries, err := migrationsFS.ReadDir("migrations")
+	dir := "migrations/" + string(role)
+	entries, err := migrationsFS.ReadDir(dir)
 	if err != nil {
 		return err
 	}
@@ -90,7 +121,7 @@ func runMigrations(sqlDB *sql.DB) error {
 		if exists > 0 {
 			continue
 		}
-		raw, err := migrationsFS.ReadFile("migrations/" + name)
+		raw, err := migrationsFS.ReadFile(dir + "/" + name)
 		if err != nil {
 			return err
 		}
@@ -104,14 +135,26 @@ func runMigrations(sqlDB *sql.DB) error {
 	return nil
 }
 
-// createVirtualTables creates the FTS5 and vec0 tables for memories and doc_chunks.
-// These depend on the embedding dimension, so they are created in Go rather than SQL.
-func createVirtualTables(sqlDB *sql.DB, dim int) error {
-	stmts := []string{
-		`CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(content)`,
-		fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS memories_vec USING vec0(embedding float[%d])`, dim),
-		`CREATE VIRTUAL TABLE IF NOT EXISTS doc_chunks_fts USING fts5(content)`,
-		fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS doc_chunks_vec USING vec0(embedding float[%d])`, dim),
+// createVirtualTables creates the FTS5 and vec0 tables a role needs. These
+// depend on the embedding dimension, so they are created in Go rather than SQL.
+// The system database has no searchable corpus and gets none.
+func createVirtualTables(sqlDB *sql.DB, role Role, dim int) error {
+	var stmts []string
+	switch role {
+	case Shared:
+		stmts = []string{
+			`CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(content)`,
+			fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS memories_vec USING vec0(embedding float[%d])`, dim),
+			`CREATE VIRTUAL TABLE IF NOT EXISTS doc_chunks_fts USING fts5(content)`,
+			fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS doc_chunks_vec USING vec0(embedding float[%d])`, dim),
+		}
+	case User:
+		stmts = []string{
+			`CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(content)`,
+			fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS memories_vec USING vec0(embedding float[%d])`, dim),
+		}
+	case System:
+		return nil
 	}
 	for _, s := range stmts {
 		if _, err := sqlDB.Exec(s); err != nil {

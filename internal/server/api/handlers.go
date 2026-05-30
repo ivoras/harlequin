@@ -1,8 +1,10 @@
 package api
 
 import (
+	"database/sql"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -27,7 +29,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.Audit.Log(r.Context(), &user.ID, "login", user.Username, nil)
+	_ = s.Storage.WithUser(r.Context(), user.ID, func(udb *sql.DB) error {
+		s.Audit.Log(r.Context(), udb, "login", user.Username, nil)
+		return nil
+	})
 	writeJSON(w, http.StatusOK, types.LoginResponse{Token: token, User: *user})
 }
 
@@ -67,7 +72,12 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleListConversations(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
-	convos, err := s.Conversations.List(r.Context(), u.ID, r.URL.Query().Get("q"))
+	var convos []types.Conversation
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		var e error
+		convos, e = s.Conversations.List(r.Context(), udb, u.ID, r.URL.Query().Get("q"))
+		return e
+	})
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -79,7 +89,12 @@ func (s *Server) handleCreateConversation(w http.ResponseWriter, r *http.Request
 	u, _ := auth.UserFromContext(r.Context())
 	var req types.CreateConversationRequest
 	_ = decode(r, &req)
-	c, err := s.Conversations.Create(r.Context(), u.ID, req.Title)
+	var c *types.Conversation
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		var e error
+		c, e = s.Conversations.Create(r.Context(), udb, u.ID, req.Title)
+		return e
+	})
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -90,13 +105,17 @@ func (s *Server) handleCreateConversation(w http.ResponseWriter, r *http.Request
 func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if _, err := s.Conversations.Get(r.Context(), id, u.ID); err != nil {
-		writeErr(w, http.StatusNotFound, "not found")
-		return
-	}
-	msgs, err := s.Conversations.Messages(r.Context(), id)
+	var msgs []types.Message
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		if _, e := s.Conversations.Get(r.Context(), udb, id, u.ID); e != nil {
+			return e
+		}
+		var e error
+		msgs, e = s.Conversations.Messages(r.Context(), udb, id)
+		return e
+	})
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
+		writeErr(w, http.StatusNotFound, "not found")
 		return
 	}
 	writeJSON(w, http.StatusOK, msgs)
@@ -105,7 +124,10 @@ func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteConversation(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err := s.Conversations.Delete(r.Context(), id, u.ID); err != nil {
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		return s.Conversations.Delete(r.Context(), udb, id, u.ID)
+	})
+	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -116,7 +138,12 @@ func (s *Server) handleConversationLog(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	// Owners and admins may read the log.
-	if _, err := s.Conversations.Get(r.Context(), id, u.ID); err != nil && u.Role != "admin" {
+	var ownErr error
+	_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		_, ownErr = s.Conversations.Get(r.Context(), udb, id, u.ID)
+		return nil
+	})
+	if ownErr != nil && u.Role != "admin" {
 		writeErr(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -131,7 +158,12 @@ func (s *Server) handleConversationLog(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleListMemory(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
-	mems, err := s.Memory.List(r.Context(), u.ID, r.URL.Query().Get("scope"), 200)
+	var mems []types.Memory
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		var e error
+		mems, e = s.Memory.List(r.Context(), udb, u.ID, r.URL.Query().Get("scope"), 200)
+		return e
+	})
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -141,21 +173,28 @@ func (s *Server) handleListMemory(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleListMemoryConflicts(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
-	conflicts, err := s.Memory.ListConflicts(r.Context(), u.ID, 200)
+	conflicts := []types.MemoryConflict{}
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		cs, e := s.Memory.ListConflicts(r.Context(), udb, u.ID, 200)
+		if cs != nil {
+			conflicts = cs
+		}
+		return e
+	})
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
-	}
-	if conflicts == nil {
-		conflicts = []types.MemoryConflict{}
 	}
 	writeJSON(w, http.StatusOK, conflicts)
 }
 
 func (s *Server) handleResolveMemoryConflict(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
-	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err := s.Memory.ResolveConflict(r.Context(), id, u.ID); err != nil {
+	id := chi.URLParam(r, "id")
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		return s.Memory.ResolveConflict(r.Context(), udb, id)
+	})
+	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
 			writeErr(w, http.StatusNotFound, "not found")
 			return
@@ -168,7 +207,12 @@ func (s *Server) handleResolveMemoryConflict(w http.ResponseWriter, r *http.Requ
 
 func (s *Server) handleSearchMemory(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
-	res, err := s.Memory.Search(r.Context(), r.URL.Query().Get("q"), u.ID, r.URL.Query().Get("scope"), 10)
+	var res []types.SearchResult
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		var e error
+		res, e = s.Memory.Search(r.Context(), udb, r.URL.Query().Get("q"), u.ID, r.URL.Query().Get("scope"), 10)
+		return e
+	})
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -178,8 +222,13 @@ func (s *Server) handleSearchMemory(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleGetMemory(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
-	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	m, err := s.Memory.Get(r.Context(), id, u.ID)
+	id := chi.URLParam(r, "id")
+	var m *types.Memory
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		var e error
+		m, e = s.Memory.Get(r.Context(), udb, id, u.ID)
+		return e
+	})
 	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
 			writeErr(w, http.StatusNotFound, "not found")
@@ -198,25 +247,38 @@ func (s *Server) handleCreateMemory(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	m, err := s.Memory.Add(r.Context(), req, u.ID)
+	var m *types.Memory
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		// AddWithConflicts records any conflicts so they surface via
+		// /memory/conflicts; the flagged hits themselves are not returned here.
+		var e error
+		m, _, e = s.Memory.AddWithConflicts(r.Context(), udb, req, u.ID)
+		if e != nil {
+			return e
+		}
+		s.Audit.Log(r.Context(), udb, "memory_write", req.Scope, nil)
+		return nil
+	})
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.Audit.Log(r.Context(), &u.ID, "memory_write", req.Scope, nil)
 	writeJSON(w, http.StatusCreated, m)
 }
 
 func (s *Server) handlePatchMemory(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
-	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	id := chi.URLParam(r, "id")
 	var req types.UpdateMemoryRequest
 	if err := decode(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
 	if req.Pinned != nil {
-		if err := s.Memory.SetPinned(r.Context(), id, u.ID, *req.Pinned); err != nil {
+		err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+			return s.Memory.SetPinned(r.Context(), udb, id, u.ID, *req.Pinned)
+		})
+		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -226,8 +288,15 @@ func (s *Server) handlePatchMemory(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDeleteMemory(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
-	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err := s.Memory.Delete(r.Context(), id, u.ID, u.Role == "admin"); err != nil {
+	id := chi.URLParam(r, "id")
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		if e := s.Memory.Delete(r.Context(), udb, id, u.ID, u.Role == "admin"); e != nil {
+			return e
+		}
+		s.Audit.Log(r.Context(), udb, "memory_delete", id, nil)
+		return nil
+	})
+	if err != nil {
 		if errors.Is(err, memory.ErrNotFound) {
 			writeErr(w, http.StatusNotFound, "not found")
 			return
@@ -235,7 +304,6 @@ func (s *Server) handleDeleteMemory(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.Audit.Log(r.Context(), &u.ID, "memory_delete", strconv.FormatInt(id, 10), nil)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -260,7 +328,10 @@ func (s *Server) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.Audit.Log(r.Context(), &u.ID, "document_ingest", req.Title, nil)
+	_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		s.Audit.Log(r.Context(), udb, "document_ingest", req.Title, nil)
+		return nil
+	})
 	writeJSON(w, http.StatusCreated, d)
 }
 
@@ -300,7 +371,12 @@ func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request) {
 	if v := r.URL.Query().Get("to"); v != "" {
 		to, _ = time.Parse(time.RFC3339, v)
 	}
-	rows, err := s.Usage.Query(r.Context(), target, from, to)
+	var rows []types.UsageRecord
+	err := s.Storage.WithUser(r.Context(), target, func(udb *sql.DB) error {
+		var e error
+		rows, e = s.Usage.Query(r.Context(), udb, target, from, to)
+		return e
+	})
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -312,10 +388,22 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 	if _, ok := requireAdmin(w, r); !ok {
 		return
 	}
-	entries, err := s.Audit.List(r.Context(), 200)
+	// Audit entries live in each user's database; aggregate across users.
+	var entries []types.AuditEntry
+	err := s.Storage.EachUser(r.Context(), func(userID int64, udb *sql.DB) error {
+		es, e := s.Audit.List(r.Context(), udb, userID, 200)
+		entries = append(entries, es...)
+		return e
+	})
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		return entries[i].CreatedAt.After(entries[j].CreatedAt)
+	})
+	if len(entries) > 200 {
+		entries = entries[:200]
 	}
 	writeJSON(w, http.StatusOK, entries)
 }

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -10,7 +11,12 @@ import (
 
 func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
-	infos, err := s.Skills.List(r.Context(), u.ID, u.Username)
+	var infos []types.SkillInfo
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		var e error
+		infos, e = s.Skills.List(r.Context(), udb, u.ID, u.Username)
+		return e
+	})
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -24,7 +30,12 @@ func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetSkill(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	name := chi.URLParam(r, "name")
-	files, _, err := s.Skills.ResolveRawFiles(r.Context(), name, u.ID)
+	var files map[string]string
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		var e error
+		files, _, e = s.Skills.ResolveRawFiles(r.Context(), udb, name, u.ID)
+		return e
+	})
 	if err != nil {
 		writeErr(w, http.StatusNotFound, "skill not found")
 		return
@@ -40,22 +51,34 @@ func (s *Server) handlePutSkill(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if err := s.Skills.SaveOverride(r.Context(), name, u.ID, req.Files); err != nil {
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		if e := s.Skills.SaveOverride(r.Context(), udb, name, u.ID, req.Files); e != nil {
+			return e
+		}
+		s.Audit.Log(r.Context(), udb, "skill_override", name, nil)
+		return nil
+	})
+	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	s.Audit.Log(r.Context(), &u.ID, "skill_override", name, nil)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (s *Server) handleDeleteSkill(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	name := chi.URLParam(r, "name")
-	if err := s.Skills.DeleteOverride(r.Context(), name, u.ID); err != nil {
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		if e := s.Skills.DeleteOverride(r.Context(), udb, name, u.ID); e != nil {
+			return e
+		}
+		s.Audit.Log(r.Context(), udb, "skill_reset", name, nil)
+		return nil
+	})
+	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.Audit.Log(r.Context(), &u.ID, "skill_reset", name, nil)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -66,15 +89,20 @@ func (s *Server) handlePublishSkill(w http.ResponseWriter, r *http.Request) {
 	}
 	name := chi.URLParam(r, "name")
 	// Publish the admin's effective version of the skill org-wide.
-	files, _, err := s.Skills.ResolveRawFiles(r.Context(), name, u.ID)
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		files, _, e := s.Skills.ResolveRawFiles(r.Context(), udb, name, u.ID)
+		if e != nil {
+			return e
+		}
+		if e := s.Skills.Publish(r.Context(), name, u.ID, files); e != nil {
+			return e
+		}
+		s.Audit.Log(r.Context(), udb, "skill_publish", name, nil)
+		return nil
+	})
 	if err != nil {
-		writeErr(w, http.StatusNotFound, "skill not found")
-		return
-	}
-	if err := s.Skills.Publish(r.Context(), name, u.ID, files); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.Audit.Log(r.Context(), &u.ID, "skill_publish", name, nil)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

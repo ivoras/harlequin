@@ -110,7 +110,7 @@ type SkillFiles struct {
 
 // Memory is a stored memory entry.
 type Memory struct {
-	ID        int64      `json:"id"`
+	ID        string     `json:"id"` // composite: "u.<localid>" | "s.<localid>"
 	Scope     string     `json:"scope"` // "user" | "shared"
 	UserID    *int64     `json:"user_id,omitempty"`
 	Content   string     `json:"content"`
@@ -133,11 +133,12 @@ type UpdateMemoryRequest struct {
 	Pinned *bool `json:"pinned,omitempty"`
 }
 
-// MemoryConflict is a flagged contradictory or duplicate memory pair.
+// MemoryConflict is a flagged contradictory or duplicate memory pair. IDs are
+// composite: the conflict ID and both endpoints are "u.<n>"/"s.<n>" strings.
 type MemoryConflict struct {
-	ID           int64      `json:"id"`
-	MemoryA      int64      `json:"memory_a"`
-	MemoryB      int64      `json:"memory_b"`
+	ID           string     `json:"id"`
+	MemoryA      string     `json:"memory_a"`
+	MemoryB      string     `json:"memory_b"`
 	ContentA     string     `json:"content_a"`
 	ContentB     string     `json:"content_b"`
 	Relationship string     `json:"relationship"` // "conflicts" | "duplicate"
@@ -165,9 +166,10 @@ type CreateDocumentRequest struct {
 	Content string `json:"content"`
 }
 
-// SearchResult is a hybrid-search hit.
+// SearchResult is a hybrid-search hit. ID is a composite id: "u.<n>"/"s.<n>" for
+// memories, "d.<n>" for document chunks.
 type SearchResult struct {
-	ID      int64   `json:"id"`
+	ID      string  `json:"id"`
 	Content string  `json:"content"`
 	Score   float64 `json:"score"`
 }

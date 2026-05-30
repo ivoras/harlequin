@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -16,7 +17,12 @@ import (
 func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if _, err := s.Conversations.Get(r.Context(), id, u.ID); err != nil {
+	var ownErr error
+	_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		_, ownErr = s.Conversations.Get(r.Context(), udb, id, u.ID)
+		return nil
+	})
+	if ownErr != nil {
 		writeErr(w, http.StatusNotFound, "not found")
 		return
 	}
