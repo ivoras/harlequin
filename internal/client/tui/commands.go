@@ -55,6 +55,7 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 			}
 			m.conversationID = conv.ID
 			m.blocks = nil
+			m.appendConnectedStatus()
 			if m.currentHat != "" {
 				return infoMsg{"started a new conversation wearing the " + m.currentHat + " hat"}
 			}

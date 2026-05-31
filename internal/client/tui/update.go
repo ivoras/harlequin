@@ -47,7 +47,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.user = msg.user
 		m.conversationID = msg.conversationID
 		m.input.Placeholder = "Type a message, or /help for commands"
-		m.statusMsg = "connected as " + msg.user.Username
+		m.blocks = nil
+		m.appendConnectedStatus()
 		m.layout()
 		return m, m.input.Focus()
 
