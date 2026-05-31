@@ -73,11 +73,18 @@ func (m *Model) chatView() string {
 	}
 	statusLine := m.styles.Status.Render(status)
 
-	help := m.styles.Help.Render("enter: send · shift+enter: newline · ↑/↓: history · /help · ctrl+c: quit")
+	help := m.styles.Help.Render("enter: send · shift+enter: newline · tab: complete · ↑/↓: history · /help · ctrl+c: quit")
+
+	// Overlay the slash-command autocomplete menu over the bottom of the
+	// transcript so the input stays put and the layout height is unchanged.
+	vpView := m.vp.View()
+	if menu := m.renderSlashMenuLines(); len(menu) > 0 {
+		vpView = overlayBottomLines(vpView, menu)
+	}
 
 	var sb strings.Builder
 	sb.WriteString(header + "  " + statusLine + "\n")
-	sb.WriteString(m.vp.View() + "\n")
+	sb.WriteString(vpView + "\n")
 	sb.WriteString(m.styles.InputBox.Render(m.input.View()) + "\n")
 	sb.WriteString(help)
 	return sb.String()
