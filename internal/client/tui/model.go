@@ -30,7 +30,7 @@ const (
 
 // roleBlock is a rendered transcript entry.
 type roleBlock struct {
-	role string // user | assistant | thinking | tool | error | info
+	role string // user | assistant | thinking | tool | error | info | status
 	text string
 }
 
@@ -63,7 +63,6 @@ type Model struct {
 	currentHat     string // hat worn by new conversations / the active one
 	slashSel       int    // highlighted item in the slash-command autocomplete menu
 	user           *types.User
-	statusMsg      string
 	ctxMeter       contextMeterState
 
 	// Submitted input lines for up/down recall (messages and slash commands).
@@ -165,6 +164,13 @@ type loginDoneMsg struct {
 type streamEventMsg struct{ ev types.StreamEvent }
 type streamEndMsg struct{ err error }
 
+func (m *Model) appendConnectedStatus() {
+	if m.user == nil {
+		return
+	}
+	m.appendBlock("status", "connected as "+m.user.Username)
+}
+
 func (m *Model) appendBlock(role, text string) {
 	m.blocks = append(m.blocks, roleBlock{role: role, text: text})
 	m.refreshViewport()
@@ -200,6 +206,8 @@ func (m *Model) renderBlock(b roleBlock) string {
 		return m.wrapStyled(m.styles.Tool, b.text)
 	case "error":
 		return m.wrapStyled(m.styles.Error, "error: "+b.text)
+	case "status":
+		return m.wrapStyled(m.styles.Status, b.text)
 	default:
 		return m.wrapStyled(m.styles.Help, b.text)
 	}

@@ -15,8 +15,8 @@ func (m *Model) layout() {
 	if inputHeight < 1 {
 		inputHeight = 1
 	}
-	// header(1) + status(1) + input box(inputHeight+2 border) + help(1)
-	chrome := 1 + 1 + inputHeight + 2 + 1
+	// header(1) + input box(inputHeight+2 border) + help(1)
+	chrome := 1 + inputHeight + 2 + 1
 	vpHeight := m.height - chrome
 	if vpHeight < 3 {
 		vpHeight = 3
@@ -66,8 +66,6 @@ func (m *Model) loginView() string {
 }
 
 func (m *Model) chatView() string {
-	statusLine := m.styles.Status.Render(m.statusMsg)
-
 	help := m.styles.Help.Render("enter: send · shift+enter: newline · tab: complete · ↑/↓: history · /help · ctrl+c: quit")
 
 	// Overlay the slash-command autocomplete menu over the bottom of the
@@ -79,7 +77,6 @@ func (m *Model) chatView() string {
 
 	var sb strings.Builder
 	sb.WriteString(m.renderHeaderLine() + "\n")
-	sb.WriteString(statusLine + "\n")
 	sb.WriteString(vpView + "\n")
 	sb.WriteString(m.styles.InputBox.Render(m.input.View()) + "\n")
 	sb.WriteString(help)
