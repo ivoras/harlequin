@@ -116,7 +116,7 @@ func (m *Model) handleMemorySub(args []string) tea.Cmd {
 			if err != nil {
 				return errMsg{err}
 			}
-			return infoMsg{renderMemoryList(mems, m.isAdmin())}
+			return infoMsg{renderMemoryList(mems, m.canManageShared())}
 		}
 	}
 	switch strings.ToLower(args[0]) {
@@ -141,7 +141,7 @@ func (m *Model) handleMemorySub(args []string) tea.Cmd {
 			if err != nil {
 				return errMsg{err}
 			}
-			return infoMsg{renderMemoryDetail(*mem, m.isAdmin())}
+			return infoMsg{renderMemoryDetail(*mem, m.canManageShared())}
 		}
 	case "conflicts", "conflict":
 		return func() tea.Msg {
@@ -172,42 +172,42 @@ func (m *Model) handleMemorySub(args []string) tea.Cmd {
 			if err != nil {
 				return errMsg{err}
 			}
-			return infoMsg{renderMemoryList(mems, m.isAdmin())}
+			return infoMsg{renderMemoryList(mems, m.canManageShared())}
 		}
 	}
 }
 
-func (m *Model) isAdmin() bool {
-	return m.user != nil && m.user.Role == "admin"
+func (m *Model) canManageShared() bool {
+	return m.user != nil && types.IsElevated(m.user.Role)
 }
 
-func renderMemoryList(mems []types.Memory, isAdmin bool) string {
+func renderMemoryList(mems []types.Memory, canManageShared bool) string {
 	if len(mems) == 0 {
 		return "No memories."
 	}
 	var sb strings.Builder
 	sb.WriteString("Memories (use /memory show <id> or /memory delete <id> when deletable):\n")
 	for _, mem := range mems {
-		sb.WriteString(renderMemoryLine(mem, isAdmin))
+		sb.WriteString(renderMemoryLine(mem, canManageShared))
 		sb.WriteByte('\n')
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-func memoryDeletable(mem types.Memory, isAdmin bool) bool {
+func memoryDeletable(mem types.Memory, canManageShared bool) bool {
 	if mem.Scope == "user" {
 		return true
 	}
-	return isAdmin && mem.Scope == "shared"
+	return canManageShared && mem.Scope == "shared"
 }
 
-func renderMemoryLine(mem types.Memory, isAdmin bool) string {
+func renderMemoryLine(mem types.Memory, canManageShared bool) string {
 	pin := " "
 	if mem.Pinned {
 		pin = "*"
 	}
 	deletable := ""
-	if memoryDeletable(mem, isAdmin) {
+	if memoryDeletable(mem, canManageShared) {
 		deletable = " (deletable)"
 	}
 	return fmt.Sprintf(" %s%-6s %s [%s/%s]%s %s",
@@ -222,7 +222,7 @@ func formatMemoryTime(t time.Time) string {
 	return t.UTC().Format("2006-01-02T15:04") + "Z"
 }
 
-func renderMemoryDetail(mem types.Memory, isAdmin bool) string {
+func renderMemoryDetail(mem types.Memory, canManageShared bool) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "Memory %s\n", mem.ID)
 	fmt.Fprintf(&sb, "  scope:   %s\n", mem.Scope)
@@ -233,7 +233,7 @@ func renderMemoryDetail(mem types.Memory, isAdmin bool) string {
 	}
 	fmt.Fprintf(&sb, "  created: %s\n", formatMemoryTime(mem.CreatedAt))
 	fmt.Fprintf(&sb, "  content: %s", mem.Content)
-	if memoryDeletable(mem, isAdmin) {
+	if memoryDeletable(mem, canManageShared) {
 		sb.WriteString("\n  (delete with /memory delete " + mem.ID + ")")
 	}
 	return sb.String()

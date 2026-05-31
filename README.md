@@ -86,12 +86,28 @@ cp configs/server.example.yaml server.yaml    # adjust LLM/embeddings endpoints
 ./bin/harlequin-server --config server.yaml
 ```
 
-On first start the server creates its SQLite database and deploys the baked-in skills into
-`<data_dir>/skills/`. Create the first admin user:
+On first start the server creates its SQLite databases and deploys the baked-in skills into
+`<data_dir>/skills/`. Create the first user — make it an **owner**, the highest role:
 
 ```sh
-./bin/harlequin-server createuser --config server.yaml --admin --password secret admin
+./bin/harlequin-server createuser --config server.yaml --owner --password secret owner
 ```
+
+#### Roles
+
+There are three roles, highest privilege first:
+
+| Role | Can do |
+|------|--------|
+| `owner` | Everything; the **only** role that can create/edit users. |
+| `admin` | All org-wide actions: create/delete **shared** memories, delete documents, read the audit log, publish skills, view other users' usage. |
+| `user` | Ordinary account: their own conversations and personal (user-scoped) memories only. |
+
+Create further users with `createuser` (`--owner`, `--admin`, or neither for a
+plain user), or — once a server is running — via the API as an owner. Only owners
+and admins may create or delete shared memories; for ordinary users the
+`memory_write` tool refuses `shared` scope and stores the fact as a personal
+memory instead.
 
 Change a user's password (revokes their existing API tokens):
 

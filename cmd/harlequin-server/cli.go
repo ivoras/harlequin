@@ -11,6 +11,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/auth"
 	"github.com/ivoras/harlequin/internal/server/config"
 	"github.com/ivoras/harlequin/internal/server/db"
+	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
 func dispatchCLI(args []string) bool {
@@ -50,6 +51,7 @@ Server flags:
 createuser flags:
   --config path     server config YAML (default server.yaml)
   --password pwd    password (or set HARLEQUIN_NEW_PASSWORD)
+  --owner           create as owner (highest role; can manage users)
   --admin           create as admin (default: user)
 
 changepassword flags:
@@ -62,9 +64,10 @@ print-trajectory flags:
 
 Examples:
   harlequin-server --config server.yaml
-  harlequin-server createuser --admin --password secret admin
+  harlequin-server createuser --owner --password secret owner
+  harlequin-server createuser --admin --password secret alice
   harlequin-server changepassword alice --password newsecret
-  harlequin-server print-trajectory data/sessions/1/42.jsonl
+  harlequin-server print-trajectory data/sessions/1.42.jsonl
   harlequin-server print-trajectory -v --no-color trajectory.jsonl
 `)
 }
@@ -73,6 +76,7 @@ type cmdFlags struct {
 	config   string
 	password string
 	admin    bool
+	owner    bool
 	username string
 }
 
@@ -98,6 +102,11 @@ func parseCmdFlags(args []string, allowAdmin bool) (cmdFlags, error) {
 				return f, fmt.Errorf("unknown flag %s", a)
 			}
 			f.admin = true
+		case "--owner":
+			if !allowAdmin {
+				return f, fmt.Errorf("unknown flag %s", a)
+			}
+			f.owner = true
 		default:
 			if strings.HasPrefix(a, "-") {
 				return f, fmt.Errorf("unknown flag %s", a)
@@ -127,9 +136,12 @@ func runCreateUser(args []string) {
 	store := openAuthStore(f.config)
 	defer store.db.Close()
 
-	role := "user"
-	if f.admin {
-		role = "admin"
+	role := types.RoleUser
+	switch {
+	case f.owner:
+		role = types.RoleOwner
+	case f.admin:
+		role = types.RoleAdmin
 	}
 	u, err := store.auth.CreateUser(context.Background(), f.username, pw, role)
 	if err != nil {

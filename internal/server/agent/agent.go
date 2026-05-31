@@ -51,7 +51,7 @@ type runContext struct {
 	conversationID int64
 	userID         int64
 	username       string
-	isAdmin        bool
+	canShareMemory bool // owner or admin: may create/delete shared memories
 	userDB         *sql.DB // the caller's open per-user database for this request
 	turn           int
 	step           int
@@ -85,7 +85,7 @@ Grounding rules (reduce hallucinations):
 // emit. It opens the caller's per-user database for the duration of the turn
 // and closes it before any background work.
 func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username, role, userContent string, emit EmitFunc) error {
-	rc := &runContext{conversationID: conversationID, userID: userID, username: username, isAdmin: role == "admin", turn: 1, emit: emit}
+	rc := &runContext{conversationID: conversationID, userID: userID, username: username, canShareMemory: types.IsElevated(role), turn: 1, emit: emit}
 
 	var finalText string
 	if err := a.Storage.WithUser(ctx, userID, func(userDB *sql.DB) error {
