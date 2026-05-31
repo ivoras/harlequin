@@ -133,7 +133,9 @@ type SessionsConfig struct {
 	Enabled       *bool    `yaml:"enabled"`
 	Dir           string   `yaml:"dir"`
 	LogTokens     bool     `yaml:"log_tokens"`
-	RetentionDays int      `yaml:"retention_days"`
+	// RetentionDays deletes trajectory JSONL files older than this many days.
+	// Unset defaults to 7; explicit 0 keeps files forever.
+	RetentionDays *int     `yaml:"retention_days"`
 	Redact        []string `yaml:"redact"`
 }
 
@@ -143,6 +145,14 @@ func (s SessionsConfig) EnabledValue() bool {
 		return true
 	}
 	return *s.Enabled
+}
+
+// RetentionDaysValue returns how long to keep session logs (default 7; 0 = forever).
+func (s SessionsConfig) RetentionDaysValue() int {
+	if s.RetentionDays == nil {
+		return 7
+	}
+	return *s.RetentionDays
 }
 
 // Load reads the YAML config at path, loads .env (if present), resolves secrets,

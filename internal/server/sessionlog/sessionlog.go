@@ -130,7 +130,7 @@ func (l *Logger) ReadAll(userID, conversationID int64) ([]byte, error) {
 
 // SweepRetention deletes session files older than retentionDays (0 = keep all).
 func (l *Logger) SweepRetention(retentionDays int) {
-	if retentionDays <= 0 || !l.Enabled() {
+	if l == nil || retentionDays <= 0 {
 		return
 	}
 	cutoff := time.Now().AddDate(0, 0, -retentionDays)

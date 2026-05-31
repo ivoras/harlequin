@@ -155,8 +155,8 @@ func main() {
 		Agent:         ag,
 	}
 
-	// Background maintenance: expire memories and sweep session logs.
-	go maintenance(store, memStore, session, cfg.Sessions.RetentionDays)
+	// Background maintenance: expire memories and sweep old session logs (hourly).
+	go maintenance(store, memStore, session, cfg.Sessions.RetentionDaysValue())
 
 	httpServer := &http.Server{
 		Addr:    cfg.Server.Addr,
@@ -168,18 +168,21 @@ func main() {
 	}
 }
 
-func maintenance(store *storage.Manager, mem *memory.Store, session *sessionlog.Logger, retentionDays int) {
-	ticker := time.NewTicker(1 * time.Hour)
+func maintenance(store *storage.Manager, mem *memory.Store, session *sessionlog.Logger, sessionRetentionDays int) {
+	const sweepInterval = time.Hour
+	ticker := time.NewTicker(sweepInterval)
 	defer ticker.Stop()
-	for {
+	sweep := func() {
 		ctx := context.Background()
-		// Sweep expired memories from the shared database and every user database.
 		_, _ = mem.SweepExpiredDB(ctx, store.Shared)
 		_ = store.EachUser(ctx, func(_ int64, udb *sql.DB) error {
 			_, _ = mem.SweepExpiredDB(ctx, udb)
 			return nil
 		})
-		session.SweepRetention(retentionDays)
-		<-ticker.C
+		session.SweepRetention(sessionRetentionDays)
+	}
+	sweep() // run once at startup, then every hour
+	for range ticker.C {
+		sweep()
 	}
 }
