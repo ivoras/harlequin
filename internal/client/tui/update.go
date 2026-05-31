@@ -27,6 +27,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spin, cmd = m.spin.Update(msg)
 		return m, cmd
 
+	case thinkPulseMsg:
+		if m.modelThinking() {
+			return m, thinkPulseTick()
+		}
+		return m, nil
+
 	case tea.KeyPressMsg:
 		return m.handleKey(msg)
 
@@ -263,7 +269,7 @@ func (m *Model) sendMessage(text string) tea.Cmd {
 			m.prog.Send(streamEndMsg{err: err})
 		}
 	}()
-	return nil
+	return thinkPulseTick()
 }
 
 func truncate(s string, n int) string {
