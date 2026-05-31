@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	bkey "charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 
@@ -188,6 +189,11 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, m.doLogin(user, pass)
 		}
 	case phaseChat:
+		if bkey.Matches(msg, m.vp.KeyMap.PageUp) || bkey.Matches(msg, m.vp.KeyMap.PageDown) {
+			var cmd tea.Cmd
+			m.vp, cmd = m.vp.Update(msg)
+			return m, cmd
+		}
 		// Slash-command autocomplete menu (only when a "/" begins the line and
 		// the command word is still being typed): navigate with ↑/↓, complete
 		// with Tab, and Enter completes a partial or runs an exact command.

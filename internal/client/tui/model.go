@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
@@ -100,6 +101,12 @@ func New(cfg *clientcfg.Config) *Model {
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot
 
+	vp := viewport.New()
+	vpKeyMap := viewport.DefaultKeyMap()
+	vpKeyMap.PageUp = key.NewBinding(key.WithKeys("pgup"))
+	vpKeyMap.PageDown = key.NewBinding(key.WithKeys("pgdown"))
+	vp.KeyMap = vpKeyMap
+
 	m := &Model{
 		cfg:    cfg,
 		client: client,
@@ -107,7 +114,7 @@ func New(cfg *clientcfg.Config) *Model {
 		styles: newStyles(),
 		input:  ta,
 		spin:   sp,
-		vp:     viewport.New(),
+		vp:     vp,
 	}
 	if cfg.Token != "" {
 		m.phase = phaseChat
@@ -190,8 +197,11 @@ func (m *Model) refreshViewport() {
 		sb.WriteString(m.renderAssistant(m.streaming.String()))
 		sb.WriteString("\n")
 	}
+	atBottom := m.vp.AtBottom()
 	m.vp.SetContent(sb.String())
-	m.vp.GotoBottom()
+	if atBottom {
+		m.vp.GotoBottom()
+	}
 }
 
 func (m *Model) renderBlock(b roleBlock) string {
