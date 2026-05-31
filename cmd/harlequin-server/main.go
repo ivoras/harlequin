@@ -115,7 +115,7 @@ func main() {
 	docStore := documents.NewStore(store.Shared, embedder)
 	convStore := conversation.NewStore()
 	auditStore := audit.NewStore()
-	session := sessionlog.New(cfg.SessionsDir(), cfg.Sessions.Enabled, cfg.Sessions.LogTokens, cfg.Sessions.Redact)
+	session := sessionlog.New(cfg.SessionsDir(), cfg.Sessions.EnabledValue(), cfg.Sessions.LogTokens, cfg.Sessions.Redact)
 
 	// The single JS-template context provider, used for every .md the server
 	// renders (skills, the system prompt, and hat prompts).

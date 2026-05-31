@@ -17,7 +17,7 @@ func TestRenderContextMeter(t *testing.T) {
 	m := &Model{styles: newStyles(), width: 100, ctxMeter: contextMeterState{
 		model: "openai/gpt-4o-mini", used: 45000, max: 128000,
 	}}
-	out := m.renderContextMeter()
+	out := m.renderContextMeter(colorHeaderLine)
 	if out == "" || out == "ctx —" {
 		t.Fatalf("got %q", out)
 	}

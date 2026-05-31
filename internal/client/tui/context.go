@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"image/color"
 	"strings"
 	"time"
 
@@ -15,17 +16,18 @@ type contextMeterState struct {
 	max    int
 }
 
-func (m *Model) renderHeaderThinking() string {
-	if !m.loading {
-		return ""
+func (m *Model) headerZoneBG() color.Color {
+	if m.modelThinking() {
+		return lipgloss.Color(thinkingPulseColor(time.Now()))
 	}
-	return m.styles.Status.Render(m.spin.View() + " thinking…  (Esc to cancel)")
+	return colorHeaderLine
 }
 
 func (m *Model) renderHeaderLine() string {
 	left := m.styles.Header.Render(" Harlequin ")
-	thinking := m.renderHeaderThinking()
-	right := m.renderContextMeter()
+	bg := m.headerZoneBG()
+	thinking := m.renderHeaderThinking(bg)
+	right := m.renderContextMeter(bg)
 	leftW := lipgloss.Width(left)
 	zoneW := m.width - leftW
 	if zoneW < 1 {
@@ -37,18 +39,24 @@ func (m *Model) renderHeaderLine() string {
 	if gap < 1 {
 		gap = 1
 	}
-	rest := thinking + strings.Repeat(" ", gap) + right
-	restStyle := lipgloss.NewStyle().Width(zoneW).Background(colorHeaderLine)
-	if m.modelThinking() {
-		restStyle = restStyle.Background(lipgloss.Color(thinkingPulseColor(time.Now())))
+	gapFill := lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", gap))
+	rest := thinking + gapFill + right
+	if w := lipgloss.Width(rest); w < zoneW {
+		rest += lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", zoneW-w))
 	}
-	rest = restStyle.Render(rest)
 	return left + rest
 }
 
-func (m *Model) renderContextMeter() string {
+func (m *Model) renderHeaderThinking(bg color.Color) string {
+	if !m.loading {
+		return ""
+	}
+	return m.styles.Status.Background(bg).Render(m.spin.View() + " thinking…  (Esc to cancel)")
+}
+
+func (m *Model) renderContextMeter(bg color.Color) string {
 	if m.ctxMeter.max <= 0 {
-		return m.styles.ContextMuted.Render("ctx —")
+		return m.styles.ContextMuted.Background(bg).Render("ctx —")
 	}
 	used := formatTokenCount(m.ctxMeter.used)
 	max := formatTokenCount(m.ctxMeter.max)
@@ -59,31 +67,31 @@ func (m *Model) renderContextMeter() string {
 			pct = 100
 		}
 	}
-	bar := renderContextBar(pct)
+	bar := renderContextBar(pct, bg)
 	model := truncateModelName(m.ctxMeter.model)
 	label := fmt.Sprintf("%s  %s/%s", bar, used, max)
 	if model != "" {
 		label = model + " · " + label
 	}
-	style := m.styles.ContextOK
+	style := m.styles.ContextOK.Background(bg)
 	switch {
 	case pct >= 90:
-		style = m.styles.ContextCritical
+		style = m.styles.ContextCritical.Background(bg)
 	case pct >= 70:
-		style = m.styles.ContextWarn
+		style = m.styles.ContextWarn.Background(bg)
 	}
 	return style.Render(label)
 }
 
-func renderContextBar(pct int) string {
+func renderContextBar(pct int, bg color.Color) string {
 	const slots = 8
 	filled := pct * slots / 100
 	if filled > slots {
 		filled = slots
 	}
 	var sb strings.Builder
-	fg := lipgloss.NewStyle().Foreground(colorAccent)
-	dim := lipgloss.NewStyle().Foreground(colorBorder)
+	fg := lipgloss.NewStyle().Foreground(colorAccent).Background(bg)
+	dim := lipgloss.NewStyle().Foreground(colorBorder).Background(bg)
 	for i := 0; i < slots; i++ {
 		if i < filled {
 			sb.WriteString(fg.Render("▮"))

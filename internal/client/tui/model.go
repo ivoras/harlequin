@@ -97,6 +97,9 @@ func New(cfg *clientcfg.Config) *Model {
 	tastyles.Blurred.Text = lipgloss.NewStyle().Foreground(colorMuted)
 	tastyles.Cursor.Color = colorAccent
 	ta.SetStyles(tastyles)
+	taKeyMap := ta.KeyMap
+	taKeyMap.InsertNewline = key.NewBinding(key.WithKeys("shift+enter", "alt+enter", "ctrl+j"))
+	ta.KeyMap = taKeyMap
 
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot

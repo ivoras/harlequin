@@ -127,13 +127,22 @@ func (m MemoryConfig) ConflictCheckEnabled() bool {
 	return true
 }
 
-// SessionsConfig controls JSONL session logging.
+// SessionsConfig controls JSONL trajectory (session) logging.
 type SessionsConfig struct {
-	Enabled       bool     `yaml:"enabled"`
+	// Enabled turns trajectory JSONL logging on (default true when omitted).
+	Enabled       *bool    `yaml:"enabled"`
 	Dir           string   `yaml:"dir"`
 	LogTokens     bool     `yaml:"log_tokens"`
 	RetentionDays int      `yaml:"retention_days"`
 	Redact        []string `yaml:"redact"`
+}
+
+// EnabledValue reports whether trajectory logs are written (default true).
+func (s SessionsConfig) EnabledValue() bool {
+	if s.Enabled == nil {
+		return true
+	}
+	return *s.Enabled
 }
 
 // Load reads the YAML config at path, loads .env (if present), resolves secrets,
