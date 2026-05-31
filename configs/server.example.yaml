@@ -13,6 +13,8 @@ providers:
   - name: local
     base_url: "http://127.0.0.1:8081/v1"   # llama.cpp --server in OpenAI mode
     model: "local-model"
+    # Optional; llama.cpp/OpenAI-compatible servers can auto-discover via GET /v1/models (meta.n_ctx).
+    context_window: 32768
     api_key_env: ""                          # local server usually needs no key
   - name: openrouter
     base_url: "https://openrouter.ai/api/v1"
@@ -30,6 +32,11 @@ prices:
   "openai/gpt-4o-mini":
     prompt_per_1k: 0.00015
     completion_per_1k: 0.0006
+
+# Max input context per model (tokens). Also set context_window on a provider.
+context_windows:
+  "local-model": 32768
+  "openai/gpt-4o-mini": 128000
 
 # Dedicated embeddings provider (independent of the chat LLM).
 embeddings:

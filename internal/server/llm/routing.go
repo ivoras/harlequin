@@ -16,18 +16,31 @@ type RoutingProvider struct {
 	defaultProvider string
 	fallbackOrder   []string
 	modelRules      map[string]string
+	contextWindows  map[string]int
 	recordUsage     UsageRecorder
 }
 
 // NewRoutingProvider builds a routing provider.
-func NewRoutingProvider(providers map[string]*OpenAICompatible, defaultProvider string, fallbackOrder []string, modelRules map[string]string, rec UsageRecorder) *RoutingProvider {
+func NewRoutingProvider(providers map[string]*OpenAICompatible, defaultProvider string, fallbackOrder []string, modelRules map[string]string, contextWindows map[string]int, rec UsageRecorder) *RoutingProvider {
+	cw := make(map[string]int, len(contextWindows))
+	for k, v := range contextWindows {
+		if v > 0 {
+			cw[k] = v
+		}
+	}
 	return &RoutingProvider{
 		providers:       providers,
 		defaultProvider: defaultProvider,
 		fallbackOrder:   fallbackOrder,
 		modelRules:      modelRules,
+		contextWindows:  cw,
 		recordUsage:     rec,
 	}
+}
+
+// ContextMax resolves the context window for a model name.
+func (r *RoutingProvider) ContextMax(model string) int {
+	return ContextMax(model, r.contextWindows)
 }
 
 // Name identifies the router.

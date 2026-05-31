@@ -42,6 +42,8 @@ type Agent struct {
 	// RecordUsage, if set, is called with attributed token usage per completion.
 	// userDB is the caller's open per-user database.
 	RecordUsage func(ctx context.Context, userDB *sql.DB, userID int64, conversationID *int64, provider, model string, u llm.Usage)
+	// ContextMax, if set, returns the model's max context window in tokens.
+	ContextMax func(model string) int
 }
 
 // EmitFunc receives streaming events for the client (SSE).
@@ -149,15 +151,20 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	}
 
 	var finalText string
+	var turnModel string
+	var turnContextTokens int
+	var turnContextMax int
 	for step := 1; step <= a.MaxSteps; step++ {
 		rc.step = step
 		if ctx.Err() != nil {
 			return "", ctx.Err()
 		}
 
+		estimatedTokens := llm.EstimateMessagesTokens(msgs, toolDefs)
+
 		a.logEvent(ctx, rc, sessionlog.TypeLLMRequest, map[string]any{
 			"messages": len(msgs), "tools": len(toolDefs), "tool_names": toolNames,
-			"temperature": a.Temperature,
+			"temperature": a.Temperature, "estimated_prompt_tokens": estimatedTokens,
 		})
 
 		stream, err := a.Provider.Chat(ctx, llm.ChatRequest{
@@ -199,6 +206,15 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 				toolCalls = chunk.ToolCalls
 				lastProvider = chunk.Provider
 				lastModel = chunk.Model
+				turnModel = lastModel
+				if chunk.Usage != nil && chunk.Usage.PromptTokens > 0 {
+					turnContextTokens = chunk.Usage.PromptTokens
+				} else {
+					turnContextTokens = estimatedTokens
+				}
+				if a.ContextMax != nil {
+					turnContextMax = a.ContextMax(turnModel)
+				}
 				if chunk.Usage != nil {
 					a.logEvent(ctx, rc, sessionlog.TypeUsage, map[string]any{
 						"provider":            chunk.Provider,
@@ -259,8 +275,12 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 		}
 	}
 
-	a.logEvent(ctx, rc, sessionlog.TypeSessionEnd, map[string]any{"status": "ok", "steps": rc.step})
-	emit(types.StreamEvent{Type: types.SSEDone})
+	a.logEvent(ctx, rc, sessionlog.TypeSessionEnd, map[string]any{
+		"status": "ok", "steps": rc.step,
+		"model": turnModel, "context_tokens": turnContextTokens, "context_max": turnContextMax,
+	})
+	done := types.StreamEvent{Type: types.SSEDone, Model: turnModel, ContextTokens: turnContextTokens, ContextMax: turnContextMax}
+	emit(done)
 
 	return finalText, nil
 }

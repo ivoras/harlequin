@@ -22,17 +22,21 @@ var (
 
 // Styles holds the reusable lipgloss styles.
 type Styles struct {
-	Header     lipgloss.Style
-	Status     lipgloss.Style
-	User       lipgloss.Style
-	Assistant  lipgloss.Style
-	Tool       lipgloss.Style
-	ToolOutput lipgloss.Style
-	Thinking   lipgloss.Style
-	InputBox   lipgloss.Style
-	Help       lipgloss.Style
-	Error      lipgloss.Style
-	Accent     lipgloss.Style
+	Header           lipgloss.Style
+	Status           lipgloss.Style
+	User             lipgloss.Style
+	Assistant        lipgloss.Style
+	Tool             lipgloss.Style
+	ToolOutput       lipgloss.Style
+	Thinking         lipgloss.Style
+	InputBox         lipgloss.Style
+	Help             lipgloss.Style
+	Error            lipgloss.Style
+	Accent           lipgloss.Style
+	ContextOK        lipgloss.Style
+	ContextWarn      lipgloss.Style
+	ContextCritical  lipgloss.Style
+	ContextMuted     lipgloss.Style
 }
 
 func newStyles() Styles {
@@ -49,6 +53,10 @@ func newStyles() Styles {
 			Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).Padding(0, 1),
 		Help:   lipgloss.NewStyle().Foreground(colorMuted),
 		Error:  lipgloss.NewStyle().Foreground(colorError).Bold(true),
-		Accent: lipgloss.NewStyle().Foreground(colorAccent),
+		Accent:          lipgloss.NewStyle().Foreground(colorAccent),
+		ContextOK:       lipgloss.NewStyle().Foreground(colorAccentHi),
+		ContextWarn:     lipgloss.NewStyle().Foreground(colorWarm),
+		ContextCritical: lipgloss.NewStyle().Foreground(colorError),
+		ContextMuted:    lipgloss.NewStyle().Foreground(colorMuted),
 	}
 }

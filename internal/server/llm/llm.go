@@ -184,6 +184,7 @@ func (p *OpenAICompatible) Chat(ctx context.Context, req ChatRequest) (<-chan Ch
 }
 
 type sseChunk struct {
+	Model   string `json:"model"`
 	Choices []struct {
 		Delta jsonDelta `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
@@ -229,13 +230,14 @@ func (p *OpenAICompatible) readStream(resp *http.Response, model string, out cha
 	toolAcc := map[int]*ToolCall{}
 	var order []int
 	var usage *Usage
+	resolvedModel := model
 
 	flush := func(streamErr error) {
 		calls := make([]ToolCall, 0, len(order))
 		for _, idx := range order {
 			calls = append(calls, *toolAcc[idx])
 		}
-		out <- Chunk{ToolCalls: calls, Usage: usage, Provider: p.name, Model: model, Done: true, Err: streamErr}
+		out <- Chunk{ToolCalls: calls, Usage: usage, Provider: p.name, Model: resolvedModel, Done: true, Err: streamErr}
 	}
 
 	for scanner.Scan() {
@@ -251,6 +253,9 @@ func (p *OpenAICompatible) readStream(resp *http.Response, model string, out cha
 		var c sseChunk
 		if err := json.Unmarshal([]byte(data), &c); err != nil {
 			continue
+		}
+		if c.Model != "" {
+			resolvedModel = c.Model
 		}
 		if c.Usage != nil {
 			usage = c.Usage

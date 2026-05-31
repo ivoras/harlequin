@@ -129,6 +129,10 @@ type StreamEvent struct {
 	Error string `json:"error,omitempty"`
 	// Options are suggested answers the user can choose from (for SSEAskUser).
 	Options []string `json:"options,omitempty"`
+	// Context reporting (SSEDone): prompt/context size and model limit for the turn.
+	Model          string `json:"model,omitempty"`
+	ContextTokens  int    `json:"context_tokens,omitempty"`
+	ContextMax     int    `json:"context_max,omitempty"`
 }
 
 // SkillInfo describes a skill in a listing.
