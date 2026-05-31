@@ -175,6 +175,35 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, m.doLogin(user, pass)
 		}
 	case phaseChat:
+		// Slash-command autocomplete menu (only when a "/" begins the line and
+		// the command word is still being typed): navigate with ↑/↓, complete
+		// with Tab, and Enter completes a partial or runs an exact command.
+		if sugg := m.slashSuggestions(); len(sugg) > 0 {
+			m.slashSel = clampSlashSel(m.slashSel, len(sugg))
+			switch key {
+			case "up":
+				m.slashSel = (m.slashSel - 1 + len(sugg)) % len(sugg)
+				return m, nil
+			case "down":
+				m.slashSel = (m.slashSel + 1) % len(sugg)
+				return m, nil
+			case "tab":
+				m.completeSlash(sugg[m.slashSel])
+				return m, nil
+			case "enter":
+				if !msg.Key().Mod.Contains(tea.ModShift) {
+					v := strings.TrimSpace(m.input.Value())
+					if isExactSlashCommand(v) {
+						m.pushInputHistory(v)
+						m.input.Reset()
+						m.slashSel = 0
+						return m, m.handleSlash(v)
+					}
+					m.completeSlash(sugg[m.slashSel])
+					return m, nil
+				}
+			}
+		}
 		if key == "up" {
 			if m.tryRecallHistory(-1) {
 				return m, nil

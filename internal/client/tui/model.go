@@ -60,6 +60,7 @@ type Model struct {
 
 	conversationID int64
 	currentHat     string // hat worn by new conversations / the active one
+	slashSel       int    // highlighted item in the slash-command autocomplete menu
 	user           *types.User
 	statusMsg      string
 
