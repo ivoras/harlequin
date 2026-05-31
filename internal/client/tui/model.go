@@ -1,5 +1,5 @@
 // Package tui implements the Harlequin Bubble Tea client: a Claude Code-like
-// chat UI with a teal/apricot 256-color theme, live streaming, a tool-call
+// chat UI with a teal/apricot theme (truecolor with 256/16-color fallback), live streaming, a tool-call
 // timeline, and slash-commands.
 package tui
 
