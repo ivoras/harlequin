@@ -54,10 +54,11 @@ func (a *Agent) extractMemories(ctx context.Context, userID int64, userContent, 
 				continue
 			}
 			fact := c.Content
-			if existing, err := a.Memory.Search(ctx, userDB, fact, userID, "user", 1); err == nil && len(existing) > 0 {
-				if strings.EqualFold(strings.TrimSpace(existing[0].Content), fact) {
-					continue
-				}
+			// Skip facts already in memory — the user's own OR shared — so we do
+			// not store a user-scoped duplicate of, e.g., a shared memory the
+			// assistant just wrote this turn at the user's request.
+			if existing, err := a.Memory.Search(ctx, userDB, fact, userID, "", 5); err == nil && containsEqualFold(existing, fact) {
+				continue
 			}
 			_, _ = a.Memory.Add(ctx, userDB, types.CreateMemoryRequest{
 				Scope: "user", Content: fact, Source: "auto", ExpiresAt: ttl,
@@ -65,4 +66,16 @@ func (a *Agent) extractMemories(ctx context.Context, userID int64, userContent, 
 		}
 		return nil
 	})
+}
+
+// containsEqualFold reports whether any search result's content equals fact
+// (case-insensitive, trimmed).
+func containsEqualFold(results []types.SearchResult, fact string) bool {
+	fact = strings.TrimSpace(fact)
+	for _, r := range results {
+		if strings.EqualFold(strings.TrimSpace(r.Content), fact) {
+			return true
+		}
+	}
+	return false
 }
