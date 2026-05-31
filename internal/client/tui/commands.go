@@ -24,6 +24,7 @@ const helpText = `Commands:
   /hat show <name>      show a hat's details
   /hat wear <name>      wear a hat in this conversation
   /hat off              remove the hat (use the default)
+  /reload               (admin) re-read skill/prompt/hat files
   /memory [scope]       list memories with ids (scope: user|shared)
   /memory show <id>     show one memory
   /memory delete <id>   delete your user memory (shared too if admin)
@@ -59,6 +60,16 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 		}
 	case "/hat":
 		return m.handleHatSub(args)
+	case "/reload":
+		if !m.canManageShared() {
+			return infoCmd("/reload is owner/admin only")
+		}
+		return func() tea.Msg {
+			if err := m.client.Reload(context.Background()); err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{"reloaded: skill, system prompt, and hat files will be re-read from disk"}
+		}
 	case "/skills":
 		return func() tea.Msg {
 			infos, err := m.client.ListSkills(context.Background())

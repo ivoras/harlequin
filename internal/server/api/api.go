@@ -89,6 +89,7 @@ func (s *Server) Router() http.Handler {
 
 			r.Get("/usage", s.handleUsage)
 			r.Get("/audit", s.handleAudit)
+			r.Post("/reload", s.handleReload)
 		})
 	})
 
