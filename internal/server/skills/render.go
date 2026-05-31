@@ -27,6 +27,13 @@ func newFileCache() *fileCache {
 	return &fileCache{m: map[string]cachedFile{}}
 }
 
+// clear drops all cached entries so the next read of any file comes from disk.
+func (c *fileCache) clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.m = map[string]cachedFile{}
+}
+
 // read returns the file's bytes, serving the in-memory copy when the file's
 // mtime and size are unchanged since it was last read.
 func (c *fileCache) read(path string) ([]byte, error) {
@@ -62,4 +69,10 @@ func (m *Manager) RenderFile(name string, userID int64, username string) (string
 // prompt) with the same context as files.
 func (m *Manager) RenderText(text string, userID int64, username string) (string, error) {
 	return jstmpl.Render(m.runner, text, m.makeCtx(userID, username, ""))
+}
+
+// ReloadCache expires the in-memory source-file cache so the next read of any
+// skill, system prompt, or hat file is loaded fresh from disk.
+func (m *Manager) ReloadCache() {
+	m.cache.clear()
 }

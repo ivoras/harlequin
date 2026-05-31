@@ -12,6 +12,16 @@ import (
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
+// handleReload expires the server's in-memory .md source-file cache (skills,
+// system prompts, hat data) so the next read comes from disk. Owner/admin only.
+func (s *Server) handleReload(w http.ResponseWriter, r *http.Request) {
+	if _, ok := requireElevated(w, r); !ok {
+		return
+	}
+	s.Skills.ReloadCache()
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 // handleListHats returns the deployed hats (any authenticated user).
 func (s *Server) handleListHats(w http.ResponseWriter, r *http.Request) {
 	list, err := s.Skills.ListHats()

@@ -108,6 +108,12 @@ func (c *Client) CreateConversation(ctx context.Context, title, hat string) (*ty
 	return &conv, c.do(ctx, http.MethodPost, "/conversations", types.CreateConversationRequest{Title: title, Hat: hat}, &conv)
 }
 
+// Reload expires the server's .md source-file cache (skills, system prompts,
+// hat data). Owner/admin only.
+func (c *Client) Reload(ctx context.Context) error {
+	return c.do(ctx, http.MethodPost, "/reload", nil, nil)
+}
+
 // ListHats returns the deployed hats.
 func (c *Client) ListHats(ctx context.Context) ([]types.Hat, error) {
 	var out []types.Hat
