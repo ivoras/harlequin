@@ -2,13 +2,13 @@
   "document": {
     "block_prefix": "\n",
     "block_suffix": "\n",
-    "color": "253",
+    "color": "#dadada",
     "margin": 0
   },
   "block_quote": {
     "indent": 1,
     "indent_token": "│ ",
-    "color": "245"
+    "color": "#8a8a8a"
   },
   "paragraph": {},
   "list": {
@@ -16,23 +16,23 @@
   },
   "heading": {
     "block_suffix": "\n",
-    "color": "79",
+    "color": "#5fd7af",
     "bold": true
   },
   "h1": {
     "prefix": " ",
     "suffix": " ",
-    "color": "253",
-    "background_color": "236",
+    "color": "#dadada",
+    "background_color": "#303030",
     "bold": true
   },
   "h2": {
     "prefix": "## ",
-    "color": "79"
+    "color": "#5fd7af"
   },
   "h3": {
     "prefix": "### ",
-    "color": "79"
+    "color": "#5fd7af"
   },
   "h4": {
     "prefix": "#### "
@@ -42,7 +42,7 @@
   },
   "h6": {
     "prefix": "###### ",
-    "color": "245",
+    "color": "#8a8a8a",
     "bold": false
   },
   "text": {},
@@ -51,14 +51,14 @@
   },
   "emph": {
     "italic": true,
-    "color": "245"
+    "color": "#8a8a8a"
   },
   "strong": {
     "bold": true,
-    "color": "122"
+    "color": "#87ffd7"
   },
   "hr": {
-    "color": "238",
+    "color": "#444444",
     "format": "\n────────\n"
   },
   "item": {
@@ -72,31 +72,31 @@
     "unticked": "[ ] "
   },
   "link": {
-    "color": "79",
+    "color": "#5fd7af",
     "underline": true
   },
   "link_text": {
-    "color": "122",
+    "color": "#87ffd7",
     "bold": true
   },
   "image": {
-    "color": "216",
+    "color": "#ffaf87",
     "underline": true
   },
   "image_text": {
-    "color": "245",
+    "color": "#8a8a8a",
     "format": "Image: {{.text}} →"
   },
   "code": {
     "prefix": " ",
     "suffix": " ",
-    "color": "122",
-    "background_color": "236"
+    "color": "#87ffd7",
+    "background_color": "#303030"
   },
   "code_block": {
-    "color": "253",
+    "color": "#dadada",
     "margin": 2,
-    "background_color": "236",
+    "background_color": "#303030",
     "chroma": {
       "text": { "color": "#dadada" },
       "comment": { "color": "#8a8a8a" },

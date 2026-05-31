@@ -10,8 +10,8 @@ import (
 
 // Thinking-phase header pulse: bright yellow ↔ dark orange (xterm-friendly targets).
 const (
-	thinkYellowRGB = 0xFFFF00
-	thinkOrangeRGB = 0xD78700
+	thinkYellowRGB   = 0xFFFF00
+	thinkOrangeRGB   = 0xD78700
 	thinkPulsePeriod = 1600 * time.Millisecond
 	thinkPulseEvery  = 80 * time.Millisecond
 )
