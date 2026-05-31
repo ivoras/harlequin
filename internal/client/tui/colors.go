@@ -12,6 +12,7 @@ import (
 // the nearest xterm-256 / 16-color match via lipgloss.Complete (see palette).
 const (
 	hexBG       = "#1c1c1c"
+	hexBlack    = "#000000"
 	hexSurface  = "#303030"
 	hexBorder   = "#444444"
 	hexText     = "#dadada"
@@ -33,7 +34,8 @@ func palette(hex, ansi256, ansi string) color.Color {
 
 // Theme colors (used by lipgloss styles and the Bubble Tea alt-screen background).
 var (
-	colorBG       = palette(hexBG, "234", "0")
+	colorBG         = palette(hexBG, "234", "0")
+	colorHeaderLine = palette(hexBlack, "16", "0")
 	colorSurface  = palette(hexSurface, "236", "8")
 	colorBorder   = palette(hexBorder, "238", "8")
 	colorText     = palette(hexText, "253", "7")

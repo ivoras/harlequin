@@ -66,7 +66,7 @@ func (m *Model) loginView() string {
 }
 
 func (m *Model) chatView() string {
-	help := m.styles.Help.Render("enter: send · shift+enter: newline · tab: complete · ↑/↓: history · /help · ctrl+c: quit")
+	help := m.styles.Help.Render("enter: send · shift+enter: newline · tab: complete · ↑/↓: history · pgup/pgdn: scroll · /help · ctrl+c: quit")
 
 	// Overlay the slash-command autocomplete menu over the bottom of the
 	// transcript so the input stays put and the layout height is unchanged.

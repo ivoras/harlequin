@@ -38,11 +38,11 @@ func (m *Model) renderHeaderLine() string {
 		gap = 1
 	}
 	rest := thinking + strings.Repeat(" ", gap) + right
+	restStyle := lipgloss.NewStyle().Width(zoneW).Background(colorHeaderLine)
 	if m.modelThinking() {
-		bg := lipgloss.Color(thinkingPulseColor(time.Now()))
-		// Width fills the zone to the right edge of the window with background.
-		rest = lipgloss.NewStyle().Width(zoneW).Background(bg).Render(rest)
+		restStyle = restStyle.Background(lipgloss.Color(thinkingPulseColor(time.Now())))
 	}
+	rest = restStyle.Render(rest)
 	return left + rest
 }
 
