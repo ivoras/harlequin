@@ -38,6 +38,9 @@ func main() {
 
 	configPath := flag.String("config", "server.yaml", "path to server config YAML")
 	flag.Parse()
+	// Anything left over is invalid (e.g. a subcommand placed after the flags);
+	// fail loudly instead of silently starting the server.
+	rejectStrayArgs(flag.Args())
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
