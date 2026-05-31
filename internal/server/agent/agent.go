@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/ivoras/harlequin/internal/server/conversation"
@@ -52,34 +53,20 @@ type runContext struct {
 	userID         int64
 	username       string
 	canShareMemory bool // owner or admin: may create/delete shared memories
-	userDB         *sql.DB // the caller's open per-user database for this request
+	userDB         *sql.DB    // the caller's open per-user database for this request
+	hat            *types.Hat // the conversation's worn hat, or nil
 	turn           int
 	step           int
 	emit           EmitFunc
 }
 
-const systemPreamble = `You are Harlequin, a helpful AI assistant for an organisation.
-You have access to tools: use them when helpful. You can search, write and delete memory,
-list and load skills (which contain instructions and resources), run JavaScript via
-run_js, search organisation documents, and ask the user a question with ask_user.
-Prefer loading a relevant skill before answering a specialised request. Be concise and accurate.
+// systemPromptFile is the deployed, JS-templated default system prompt
+// (skills/system_prompt.md, synced into <data_dir>/skills/).
+const systemPromptFile = "system_prompt.md"
 
-Memory conflicts:
-- When memory_write reports that a new memory conflicts with or duplicates an existing one,
-  do not silently keep both. Tell the user about the conflict, naming both facts, then call
-  ask_user to ask how to resolve it. Offer concrete options such as keeping the new fact and
-  deleting the old one, keeping the old one, or keeping both.
-- Carry out the user's choice with memory_delete (to remove the memory they discard). Deleting
-  a shared memory requires admin rights; if the deletion is refused, tell the user an admin must do it.
-- Use ask_user whenever you genuinely need the user to decide how to proceed; the turn ends after
-  it so the user can reply. Do not invent the user's answer.
-
-Grounding rules (reduce hallucinations):
-- Base factual answers on tool outputs (memory_search, search_docs, load_skill), not general knowledge or guesses.
-- When a tool result directly answers the question, state it plainly and exactly. Do not hedge with "possibly", "maybe", "or perhaps", or invent alternative names/values that do not appear in the sources.
-- Ignore unrelated facts in the same tool output; do not mix wording from one fact into another.
-- If tool results conflict, say so and cite both; if they agree, do not add variants or synonyms unless they appear in the sources.
-- If tools do not contain enough information, say you do not know rather than guessing.`
+// fallbackSystemPrompt is used only if the deployed system_prompt.md is missing
+// or unreadable, so the server is never prompt-less.
+const fallbackSystemPrompt = `You are Harlequin, a helpful AI assistant for an organisation. Use the available tools when helpful; prefer loading a relevant skill before answering a specialised request. Be concise and accurate.`
 
 // Run executes a full turn for the given user message, streaming events via
 // emit. It opens the caller's per-user database for the duration of the turn
@@ -121,6 +108,10 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	if _, err := a.Conversations.AddMessage(ctx, rc.userDB, conversationID, llm.RoleUser, userContent, nil); err != nil {
 		return "", err
 	}
+
+	// Resolve the conversation's worn hat up front: it governs the system prompt
+	// and which skills are visible (so it must be set before tools are built).
+	a.loadHat(ctx, rc)
 
 	tools := a.buildTools(ctx, rc)
 	toolDefs := make([]llm.Tool, 0, len(tools))
@@ -351,8 +342,11 @@ func logToolCalls(calls []llm.ToolCall) []map[string]any {
 
 // composeSystemPrompt builds the system prompt including the skill catalogue.
 func (a *Agent) composeSystemPrompt(ctx context.Context, rc *runContext) string {
-	prompt := systemPreamble
-	infos, err := a.Skills.List(ctx, rc.userDB, rc.userID, rc.username)
+	prompt := a.basePrompt(rc)
+	if rc.hat != nil {
+		prompt += fmt.Sprintf("\n\nYou are wearing the %q hat.", rc.hat.Name)
+	}
+	infos, err := a.Skills.EffectiveSkillInfos(ctx, rc.userDB, rc.userID, rc.username, rc.hat)
 	if err == nil && len(infos) > 0 {
 		prompt += "\n\nAvailable skills (use load_skill to read full instructions):\n"
 		for _, i := range infos {
@@ -360,6 +354,33 @@ func (a *Agent) composeSystemPrompt(ctx context.Context, rc *runContext) string 
 		}
 	}
 	return prompt
+}
+
+// loadHat sets rc.hat from the conversation's worn hat (if any), reading the
+// hat definition from the deployed hats directory.
+func (a *Agent) loadHat(ctx context.Context, rc *runContext) {
+	conv, err := a.Conversations.Get(ctx, rc.userDB, rc.conversationID, rc.userID)
+	if err != nil || conv.Hat == nil || *conv.Hat == "" {
+		return
+	}
+	if hat, err := a.Skills.GetHat(*conv.Hat); err == nil {
+		rc.hat = hat
+	}
+}
+
+// basePrompt returns the rendered base system prompt: the worn hat's prompt when
+// it defines one, otherwise the deployed system_prompt.md (falling back to a
+// built-in default if that file is missing).
+func (a *Agent) basePrompt(rc *runContext) string {
+	if rc.hat != nil && strings.TrimSpace(rc.hat.SystemPrompt) != "" {
+		if out, err := a.Skills.RenderText(rc.hat.SystemPrompt, rc.userID, rc.username); err == nil && strings.TrimSpace(out) != "" {
+			return out
+		}
+	}
+	if out, err := a.Skills.RenderFile(systemPromptFile, rc.userID, rc.username); err == nil && strings.TrimSpace(out) != "" {
+		return out
+	}
+	return fallbackSystemPrompt
 }
 
 func (a *Agent) logEvent(ctx context.Context, rc *runContext, typ string, data map[string]any) {

@@ -52,8 +52,26 @@ type Conversation struct {
 	ID        int64     `json:"id"`
 	UserID    int64     `json:"user_id"`
 	Title     string    `json:"title"`
+	Hat       *string   `json:"hat,omitempty"` // the worn hat's name, or nil
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// Hat is an org-defined, file-based collection of resources for a type of work:
+// an optional system prompt (empty = use the default) plus a visible-skills list
+// (which skills are available while the hat is worn; empty = all). Hats live as
+// directories under data/hats/<name>/ (system_prompt.md + optional skills/
+// overrides).
+type Hat struct {
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	SystemPrompt string   `json:"system_prompt,omitempty"`
+	Skills       []string `json:"skills,omitempty"`
+}
+
+// SetConversationHatRequest is the body of POST /conversations/{id}/hat.
+type SetConversationHatRequest struct {
+	Hat string `json:"hat"` // empty clears the hat
 }
 
 // Message is a single message in a conversation.
@@ -76,6 +94,7 @@ type ToolCall struct {
 // CreateConversationRequest is the body of POST /conversations.
 type CreateConversationRequest struct {
 	Title string `json:"title"`
+	Hat   string `json:"hat,omitempty"` // optional: wear this hat from the start
 }
 
 // SendMessageRequest is the body of POST /conversations/{id}/messages.

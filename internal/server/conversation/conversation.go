@@ -21,23 +21,41 @@ func NewStore() *Store {
 	return &Store{}
 }
 
-// Create starts a new conversation in the user's database.
-func (s *Store) Create(ctx context.Context, db *sql.DB, userID int64, title string) (*types.Conversation, error) {
+// Create starts a new conversation in the user's database, optionally wearing a
+// hat (empty for none).
+func (s *Store) Create(ctx context.Context, db *sql.DB, userID int64, title, hat string) (*types.Conversation, error) {
 	if title == "" {
 		title = "New conversation"
 	}
-	res, err := db.ExecContext(ctx, `INSERT INTO conversations(title) VALUES (?)`, title)
+	res, err := db.ExecContext(ctx, `INSERT INTO conversations(title, hat) VALUES (?, ?)`, title, nullableStr(hat))
 	if err != nil {
 		return nil, err
 	}
 	id, _ := res.LastInsertId()
 	now := time.Now()
-	return &types.Conversation{ID: id, UserID: userID, Title: title, CreatedAt: now, UpdatedAt: now}, nil
+	c := &types.Conversation{ID: id, UserID: userID, Title: title, CreatedAt: now, UpdatedAt: now}
+	if hat != "" {
+		c.Hat = &hat
+	}
+	return c, nil
+}
+
+// SetHat sets (or clears, when hat is empty) the conversation's worn hat.
+func (s *Store) SetHat(ctx context.Context, db *sql.DB, id int64, hat string) error {
+	_, err := db.ExecContext(ctx, `UPDATE conversations SET hat = ? WHERE id = ?`, nullableStr(hat), id)
+	return err
+}
+
+func nullableStr(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 // List returns the user's conversations, optionally filtered by a title substring.
 func (s *Store) List(ctx context.Context, db *sql.DB, userID int64, q string) ([]types.Conversation, error) {
-	query := `SELECT id, title, created_at, updated_at FROM conversations`
+	query := `SELECT id, title, hat, created_at, updated_at FROM conversations`
 	var args []any
 	if q != "" {
 		query += ` WHERE title LIKE ?`
@@ -52,8 +70,12 @@ func (s *Store) List(ctx context.Context, db *sql.DB, userID int64, q string) ([
 	var out []types.Conversation
 	for rows.Next() {
 		c := types.Conversation{UserID: userID}
-		if err := rows.Scan(&c.ID, &c.Title, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		var hat sql.NullString
+		if err := rows.Scan(&c.ID, &c.Title, &hat, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, err
+		}
+		if hat.Valid {
+			c.Hat = &hat.String
 		}
 		out = append(out, c)
 	}
@@ -63,11 +85,15 @@ func (s *Store) List(ctx context.Context, db *sql.DB, userID int64, q string) ([
 // Get returns a conversation from the user's database.
 func (s *Store) Get(ctx context.Context, db *sql.DB, id, userID int64) (*types.Conversation, error) {
 	c := types.Conversation{UserID: userID}
+	var hat sql.NullString
 	err := db.QueryRowContext(ctx,
-		`SELECT id, title, created_at, updated_at FROM conversations WHERE id = ?`, id).
-		Scan(&c.ID, &c.Title, &c.CreatedAt, &c.UpdatedAt)
+		`SELECT id, title, hat, created_at, updated_at FROM conversations WHERE id = ?`, id).
+		Scan(&c.ID, &c.Title, &hat, &c.CreatedAt, &c.UpdatedAt)
 	if err != nil {
 		return nil, err
+	}
+	if hat.Valid {
+		c.Hat = &hat.String
 	}
 	return &c, nil
 }

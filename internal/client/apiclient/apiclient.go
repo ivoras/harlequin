@@ -103,9 +103,27 @@ func (c *Client) ListConversations(ctx context.Context, q string) ([]types.Conve
 }
 
 // CreateConversation starts a conversation.
-func (c *Client) CreateConversation(ctx context.Context, title string) (*types.Conversation, error) {
+func (c *Client) CreateConversation(ctx context.Context, title, hat string) (*types.Conversation, error) {
 	var conv types.Conversation
-	return &conv, c.do(ctx, http.MethodPost, "/conversations", types.CreateConversationRequest{Title: title}, &conv)
+	return &conv, c.do(ctx, http.MethodPost, "/conversations", types.CreateConversationRequest{Title: title, Hat: hat}, &conv)
+}
+
+// ListHats returns the deployed hats.
+func (c *Client) ListHats(ctx context.Context) ([]types.Hat, error) {
+	var out []types.Hat
+	return out, c.do(ctx, http.MethodGet, "/hats", nil, &out)
+}
+
+// GetHat returns one hat by name.
+func (c *Client) GetHat(ctx context.Context, name string) (*types.Hat, error) {
+	var out types.Hat
+	return &out, c.do(ctx, http.MethodGet, "/hats/"+name, nil, &out)
+}
+
+// SetConversationHat sets (or clears, when hat is empty) the conversation's hat.
+func (c *Client) SetConversationHat(ctx context.Context, conversationID int64, hat string) error {
+	return c.do(ctx, http.MethodPost, fmt.Sprintf("/conversations/%d/hat", conversationID),
+		types.SetConversationHatRequest{Hat: hat}, nil)
 }
 
 // Messages returns a conversation's messages.

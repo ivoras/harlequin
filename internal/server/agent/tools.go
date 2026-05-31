@@ -137,7 +137,7 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 			"type": "object", "properties": map[string]any{},
 		}),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
-			infos, err := a.Skills.List(ctx, rc.userDB, rc.userID, rc.username)
+			infos, err := a.Skills.EffectiveSkillInfos(ctx, rc.userDB, rc.userID, rc.username, rc.hat)
 			if err != nil {
 				return "", err
 			}
@@ -162,7 +162,7 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 		}),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 			name, _ := args["name"].(string)
-			sk, err := a.Skills.Resolve(ctx, rc.userDB, name, rc.userID, rc.username)
+			sk, err := a.Skills.ResolveEffective(ctx, rc.userDB, name, rc.userID, rc.username, rc.hat)
 			if err != nil {
 				return "", err
 			}
@@ -221,11 +221,11 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 		}
 	}
 
-	// Skill-defined tools, namespaced <skill>.<tool>.
-	infos, err := a.Skills.List(ctx, rc.userDB, rc.userID, rc.username)
+	// Skill-defined tools, namespaced <skill>.<tool>, for the visible (hat-aware) skills.
+	infos, err := a.Skills.EffectiveSkillInfos(ctx, rc.userDB, rc.userID, rc.username, rc.hat)
 	if err == nil {
 		for _, info := range infos {
-			sk, err := a.Skills.Resolve(ctx, rc.userDB, info.Name, rc.userID, rc.username)
+			sk, err := a.Skills.ResolveEffective(ctx, rc.userDB, info.Name, rc.userID, rc.username, rc.hat)
 			if err != nil {
 				continue
 			}

@@ -20,6 +20,10 @@ const helpText = `Commands:
   /skill reset <name>   remove your override (revert to server version)
   /skill diff <name>    show local edits vs the server version
   /skill new <name>     scaffold a new skill locally
+  /hat                  list hats (a hat = system prompt + visible skills)
+  /hat show <name>      show a hat's details
+  /hat wear <name>      wear a hat in this conversation
+  /hat off              remove the hat (use the default)
   /memory [scope]       list memories with ids (scope: user|shared)
   /memory show <id>     show one memory
   /memory delete <id>   delete your user memory (shared too if admin)
@@ -42,14 +46,19 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 		return tea.Quit
 	case "/new":
 		return func() tea.Msg {
-			conv, err := m.client.CreateConversation(context.Background(), "Session")
+			conv, err := m.client.CreateConversation(context.Background(), "Session", m.currentHat)
 			if err != nil {
 				return errMsg{err}
 			}
 			m.conversationID = conv.ID
 			m.blocks = nil
+			if m.currentHat != "" {
+				return infoMsg{"started a new conversation wearing the " + m.currentHat + " hat"}
+			}
 			return infoMsg{"started a new conversation"}
 		}
+	case "/hat":
+		return m.handleHatSub(args)
 	case "/skills":
 		return func() tea.Msg {
 			infos, err := m.client.ListSkills(context.Background())
@@ -107,6 +116,89 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 	default:
 		return infoCmd("unknown command: " + cmd + " (try /help)")
 	}
+}
+
+func (m *Model) handleHatSub(args []string) tea.Cmd {
+	if len(args) == 0 || strings.ToLower(args[0]) == "list" {
+		return func() tea.Msg {
+			hats, err := m.client.ListHats(context.Background())
+			if err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{renderHatList(hats, m.currentHat)}
+		}
+	}
+	switch strings.ToLower(args[0]) {
+	case "show":
+		if len(args) < 2 {
+			return infoCmd("usage: /hat show <name>")
+		}
+		name := args[1]
+		return func() tea.Msg {
+			h, err := m.client.GetHat(context.Background(), name)
+			if err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{renderHatDetail(*h)}
+		}
+	case "wear", "use":
+		if len(args) < 2 {
+			return infoCmd("usage: /hat wear <name>")
+		}
+		name := args[1]
+		return func() tea.Msg {
+			if err := m.client.SetConversationHat(context.Background(), m.conversationID, name); err != nil {
+				return errMsg{err}
+			}
+			m.currentHat = name
+			return infoMsg{"now wearing the " + name + " hat in this conversation"}
+		}
+	case "off", "none", "remove":
+		return func() tea.Msg {
+			if err := m.client.SetConversationHat(context.Background(), m.conversationID, ""); err != nil {
+				return errMsg{err}
+			}
+			m.currentHat = ""
+			return infoMsg{"hat removed; using the default prompt and skills"}
+		}
+	default:
+		return infoCmd("usage: /hat [list|show <name>|wear <name>|off]")
+	}
+}
+
+func renderHatList(hats []types.Hat, current string) string {
+	if len(hats) == 0 {
+		return "No hats defined."
+	}
+	var sb strings.Builder
+	sb.WriteString("Hats (use /hat wear <name>; * = current):\n")
+	for _, h := range hats {
+		mark := " "
+		if h.Name == current {
+			mark = "*"
+		}
+		fmt.Fprintf(&sb, " %s%-16s %s\n", mark, h.Name, h.Description)
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+func renderHatDetail(h types.Hat) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Hat %s\n", h.Name)
+	if h.Description != "" {
+		fmt.Fprintf(&sb, "  description: %s\n", h.Description)
+	}
+	if len(h.Skills) > 0 {
+		fmt.Fprintf(&sb, "  skills:      %s\n", strings.Join(h.Skills, ", "))
+	} else {
+		sb.WriteString("  skills:      (all)\n")
+	}
+	if h.SystemPrompt != "" {
+		sb.WriteString("  prompt:      custom (overrides the default)")
+	} else {
+		sb.WriteString("  prompt:      (default)")
+	}
+	return sb.String()
 }
 
 func (m *Model) handleMemorySub(args []string) tea.Cmd {
