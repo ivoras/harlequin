@@ -63,5 +63,5 @@ sessions:
   enabled: true            # trajectory JSONL logs (default true; set false to disable)
   dir: ""                  # empty -> <data_dir>/sessions; files: <user>.<conv>.jsonl (zero-padded ids)
   log_tokens: false
-  retention_days: 0        # 0 -> keep forever
+  retention_days: 7        # omit for default 7; 0 = keep forever
   redact: []
