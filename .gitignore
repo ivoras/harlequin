@@ -6,3 +6,4 @@
 *.db-shm
 server.yaml
 client.yaml
+session_*.md
