@@ -66,11 +66,7 @@ func (m *Model) loginView() string {
 }
 
 func (m *Model) chatView() string {
-	status := m.statusMsg
-	if m.loading {
-		status = m.spin.View() + " thinking…  (Esc to cancel)"
-	}
-	statusLine := m.styles.Status.Render(status)
+	statusLine := m.styles.Status.Render(m.statusMsg)
 
 	help := m.styles.Help.Render("enter: send · shift+enter: newline · tab: complete · ↑/↓: history · /help · ctrl+c: quit")
 

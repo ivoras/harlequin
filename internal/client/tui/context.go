@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/lipgloss/v2"
 )
@@ -14,16 +15,35 @@ type contextMeterState struct {
 	max    int
 }
 
+func (m *Model) renderHeaderThinking() string {
+	if !m.loading {
+		return ""
+	}
+	return m.styles.Status.Render(m.spin.View() + " thinking…  (Esc to cancel)")
+}
+
 func (m *Model) renderHeaderLine() string {
 	left := m.styles.Header.Render(" Harlequin ")
+	thinking := m.renderHeaderThinking()
 	right := m.renderContextMeter()
 	leftW := lipgloss.Width(left)
+	zoneW := m.width - leftW
+	if zoneW < 1 {
+		zoneW = 1
+	}
+	thinkingW := lipgloss.Width(thinking)
 	rightW := lipgloss.Width(right)
-	gap := m.width - leftW - rightW
+	gap := zoneW - thinkingW - rightW
 	if gap < 1 {
 		gap = 1
 	}
-	return left + strings.Repeat(" ", gap) + right
+	rest := thinking + strings.Repeat(" ", gap) + right
+	if m.modelThinking() {
+		bg := lipgloss.Color(thinkingPulseColor(time.Now()))
+		// Width fills the zone to the right edge of the window with background.
+		rest = lipgloss.NewStyle().Width(zoneW).Background(bg).Render(rest)
+	}
+	return left + rest
 }
 
 func (m *Model) renderContextMeter() string {
