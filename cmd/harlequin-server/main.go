@@ -70,7 +70,30 @@ func main() {
 	}
 	// Usage is recorded in the agent loop where the user/conversation are known,
 	// so the routing provider's recorder is left nil to avoid double-counting.
-	router := llm.NewRoutingProvider(providers, cfg.Routing.DefaultProvider, cfg.Routing.FallbackOrder, cfg.Routing.ModelRules, nil)
+	ctxWindows := make(map[string]int, len(cfg.ContextWindows))
+	for model, n := range cfg.ContextWindows {
+		ctxWindows[model] = n
+	}
+	for _, p := range cfg.Providers {
+		if p.ContextWindow > 0 {
+			ctxWindows[p.Model] = p.ContextWindow
+		}
+		if discovered, err := llm.DiscoverContextWindows(context.Background(), p.BaseURL, p.APIKey); err == nil {
+			for id, n := range discovered {
+				ctxWindows[id] = n
+			}
+			llm.ApplyConfigModelAlias(ctxWindows, p.Model)
+			if p.Model != "" && ctxWindows[p.Model] > 0 {
+				log.Printf("context window: provider %q config model %q -> %d tokens (from /v1/models)", p.Name, p.Model, ctxWindows[p.Model])
+			}
+			for id, n := range discovered {
+				log.Printf("context window: provider %q loaded model %q -> %d tokens", p.Name, id, n)
+			}
+		} else if p.ContextWindow == 0 {
+			log.Printf("context window: provider %q: /v1/models discovery failed (%v); set context_window in config", p.Name, err)
+		}
+	}
+	router := llm.NewRoutingProvider(providers, cfg.Routing.DefaultProvider, cfg.Routing.FallbackOrder, cfg.Routing.ModelRules, ctxWindows, nil)
 
 	embedder := embed.New(cfg.Embeddings.BaseURL, cfg.Embeddings.APIKey, cfg.Embeddings.Model, cfg.Embeddings.Dim)
 
@@ -115,6 +138,7 @@ func main() {
 		RecordUsage: func(ctx context.Context, userDB *sql.DB, userID int64, conversationID *int64, provider, model string, u llm.Usage) {
 			_ = usageStore.Record(ctx, userDB, conversationID, provider, model, u.PromptTokens, u.CompletionTokens)
 		},
+		ContextMax: router.ContextMax,
 	}
 
 	srv := &api.Server{

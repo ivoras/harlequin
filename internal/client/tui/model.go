@@ -64,6 +64,7 @@ type Model struct {
 	slashSel       int    // highlighted item in the slash-command autocomplete menu
 	user           *types.User
 	statusMsg      string
+	ctxMeter       contextMeterState
 
 	// Submitted input lines for up/down recall (messages and slash commands).
 	inputHistory []string

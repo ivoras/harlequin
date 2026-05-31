@@ -41,7 +41,8 @@ type Config struct {
 	DataDir    string           `yaml:"data_dir"`
 	Providers  []ProviderConfig `yaml:"providers"`
 	Routing    RoutingConfig    `yaml:"routing"`
-	Prices     map[string]Price `yaml:"prices"`
+	Prices          map[string]Price `yaml:"prices"`
+	ContextWindows  map[string]int   `yaml:"context_windows"` // model id -> max input tokens
 	Embeddings EmbeddingsConfig `yaml:"embeddings"`
 	Agent      AgentConfig      `yaml:"agent"`
 	Memory     MemoryConfig     `yaml:"memory"`
@@ -59,10 +60,11 @@ type ServerConfig struct {
 
 // ProviderConfig describes one chat LLM provider.
 type ProviderConfig struct {
-	Name      string `yaml:"name"`
-	BaseURL   string `yaml:"base_url"`
-	Model     string `yaml:"model"`
-	APIKeyEnv string `yaml:"api_key_env"`
+	Name          string `yaml:"name"`
+	BaseURL       string `yaml:"base_url"`
+	Model         string `yaml:"model"`
+	APIKeyEnv     string `yaml:"api_key_env"`
+	ContextWindow int    `yaml:"context_window"` // max input tokens for this provider's model
 
 	// APIKey is resolved from APIKeyEnv at load time.
 	APIKey string `yaml:"-"`

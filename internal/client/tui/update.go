@@ -123,7 +123,13 @@ func (m *Model) handleStreamEvent(ev types.StreamEvent) (tea.Model, tea.Cmd) {
 		}
 		m.appendBlock("assistant", renderAskUser(ev.Text, ev.Options))
 	case types.SSEDone:
-		// handled by streamEndMsg
+		if ev.ContextMax > 0 {
+			m.ctxMeter = contextMeterState{
+				model: ev.Model,
+				used:  ev.ContextTokens,
+				max:   ev.ContextMax,
+			}
+		}
 	}
 	return m, nil
 }

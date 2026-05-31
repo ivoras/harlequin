@@ -66,7 +66,6 @@ func (m *Model) loginView() string {
 }
 
 func (m *Model) chatView() string {
-	header := m.styles.Header.Render(" Harlequin ")
 	status := m.statusMsg
 	if m.loading {
 		status = m.spin.View() + " thinking…  (Esc to cancel)"
@@ -83,7 +82,8 @@ func (m *Model) chatView() string {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(header + "  " + statusLine + "\n")
+	sb.WriteString(m.renderHeaderLine() + "\n")
+	sb.WriteString(statusLine + "\n")
 	sb.WriteString(vpView + "\n")
 	sb.WriteString(m.styles.InputBox.Render(m.input.View()) + "\n")
 	sb.WriteString(help)
