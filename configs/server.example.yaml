@@ -42,7 +42,7 @@ agent:
   max_steps: 8
   temperature: 0.2         # lower = less creative, fewer hallucinations (0–2)
   skill_render_timeout: "2s"
-  js_tool_timeout: "3s"
+  js_tool_timeout: "10s"
   js_output_cap: 65536
   js_fetch_allowlist: []   # e.g. ["intranet.example.com"]
 
