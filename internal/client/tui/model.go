@@ -1,5 +1,5 @@
 // Package tui implements the Harlequin Bubble Tea client: a Claude Code-like
-// chat UI with a dark-purple/light-green theme, live streaming, a tool-call
+// chat UI with a teal/apricot 256-color theme, live streaming, a tool-call
 // timeline, and slash-commands.
 package tui
 
@@ -12,6 +12,7 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/ivoras/harlequin/internal/client/apiclient"
 	clientcfg "github.com/ivoras/harlequin/internal/client/config"
@@ -82,6 +83,19 @@ func New(cfg *clientcfg.Config) *Model {
 	ta.MinHeight = 1
 	ta.MaxHeight = 8
 	ta.CharLimit = 0
+	// The textarea defaults to a thick-bar prompt ("┃ ") and visible line
+	// numbers; drop both (the bordered box already frames the input) and use a
+	// clean themed chevron.
+	ta.ShowLineNumbers = false
+	ta.Prompt = "› "
+	tastyles := ta.Styles()
+	tastyles.Focused.Prompt = lipgloss.NewStyle().Foreground(colorAccent)
+	tastyles.Focused.Text = lipgloss.NewStyle().Foreground(colorText)
+	tastyles.Focused.Placeholder = lipgloss.NewStyle().Foreground(colorMuted)
+	tastyles.Blurred.Prompt = lipgloss.NewStyle().Foreground(colorMuted)
+	tastyles.Blurred.Text = lipgloss.NewStyle().Foreground(colorMuted)
+	tastyles.Cursor.Color = colorAccent
+	ta.SetStyles(tastyles)
 
 	sp := spinner.New()
 	sp.Spinner = spinner.Dot

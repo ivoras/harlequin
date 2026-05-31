@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -168,6 +169,13 @@ func (c *Client) ListMemory(ctx context.Context, scope string) ([]types.Memory, 
 		path += "?scope=" + scope
 	}
 	return out, c.do(ctx, http.MethodGet, path, nil, &out)
+}
+
+// FindMemory returns full memory records matching the query (ranked best-first,
+// across the user's own and shared memories), shaped like a memory listing.
+func (c *Client) FindMemory(ctx context.Context, query string) ([]types.Memory, error) {
+	var out []types.Memory
+	return out, c.do(ctx, http.MethodGet, "/memory/find?q="+url.QueryEscape(query), nil, &out)
 }
 
 // GetMemory returns one memory by its composite id if visible to the current user.

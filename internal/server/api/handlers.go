@@ -220,6 +220,23 @@ func (s *Server) handleSearchMemory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+// handleFindMemory returns full memory records matching a query (ranked
+// best-first, across the user's own and shared memories) for listing.
+func (s *Server) handleFindMemory(w http.ResponseWriter, r *http.Request) {
+	u, _ := auth.UserFromContext(r.Context())
+	var mems []types.Memory
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		var e error
+		mems, e = s.Memory.Find(r.Context(), udb, r.URL.Query().Get("q"), u.ID, 25)
+		return e
+	})
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, mems)
+}
+
 func (s *Server) handleGetMemory(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	id := chi.URLParam(r, "id")
