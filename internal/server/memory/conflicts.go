@@ -45,6 +45,9 @@ func (s *Store) detectConflicts(ctx context.Context, userDB *sql.DB, userID int6
 	if limit <= 0 {
 		limit = defaultConflictCandidates
 	}
+	// content's embedding is reused for slot-key retrieval (large key set regime).
+	contentBlob, _ := s.embed(ctx, content)
+
 	candidates, err := s.Search(ctx, userDB, content, userID, "", limit+1)
 	if err != nil {
 		return nil, err
@@ -68,6 +71,17 @@ func (s *Store) detectConflicts(ctx context.Context, userDB *sql.DB, userID int6
 			break
 		}
 	}
+
+	// Structured slot path: extract a normalized (key, value), index it, and
+	// flag existing memories sharing that key (same value = duplicate, different
+	// = conflict). When a slot is found this is the authoritative signal, so we
+	// skip the free-text judge; otherwise we fall back to it below.
+	if slot, ok := s.extractSlot(ctx, userDB, content, contentBlob); ok {
+		s.storeSlot(ctx, userDB, newID, slot)
+		hits = appendNewHits(hits, s.slotConflicts(ctx, userDB, newID, slot))
+		return hits, nil
+	}
+
 	if len(lines) == 0 {
 		return hits, nil
 	}
@@ -90,6 +104,22 @@ func (s *Store) detectConflicts(ctx context.Context, userDB *sql.DB, userID int6
 		hits = append(hits, ConflictHit{OtherID: j.OtherID, OtherContent: contentByID[j.OtherID], Relationship: j.Relationship, Reason: j.Reason, Confidence: j.Confidence})
 	}
 	return hits, nil
+}
+
+// appendNewHits appends hits whose OtherID is not already present in base
+// (e.g. a memory already flagged as an exact-text duplicate).
+func appendNewHits(base, extra []ConflictHit) []ConflictHit {
+	seen := make(map[string]bool, len(base))
+	for _, h := range base {
+		seen[h.OtherID] = true
+	}
+	for _, h := range extra {
+		if !seen[h.OtherID] {
+			seen[h.OtherID] = true
+			base = append(base, h)
+		}
+	}
+	return base
 }
 
 // judgeChat runs the conflict-judge prompt and returns the model's text.

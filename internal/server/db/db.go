@@ -145,6 +145,7 @@ func createVirtualTables(sqlDB *sql.DB, role Role, dim int) error {
 		stmts = []string{
 			`CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(content)`,
 			fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS memories_vec USING vec0(embedding float[%d])`, dim),
+			fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS memory_slots_vec USING vec0(embedding float[%d])`, dim),
 			`CREATE VIRTUAL TABLE IF NOT EXISTS doc_chunks_fts USING fts5(content)`,
 			fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS doc_chunks_vec USING vec0(embedding float[%d])`, dim),
 		}
@@ -152,6 +153,7 @@ func createVirtualTables(sqlDB *sql.DB, role Role, dim int) error {
 		stmts = []string{
 			`CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(content)`,
 			fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS memories_vec USING vec0(embedding float[%d])`, dim),
+			fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS memory_slots_vec USING vec0(embedding float[%d])`, dim),
 		}
 	case System:
 		return nil

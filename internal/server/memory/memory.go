@@ -408,6 +408,7 @@ func (m memDB) deleteMemory(ctx context.Context, local int64) (bool, error) {
 	}
 	_, _ = tx.ExecContext(ctx, `DELETE FROM memories_fts WHERE rowid = ?`, local)
 	_, _ = tx.ExecContext(ctx, `DELETE FROM memories_vec WHERE rowid = ?`, local)
+	_ = deleteSlots(ctx, tx, local)
 	return true, tx.Commit()
 }
 
@@ -431,6 +432,7 @@ func (s *Store) SweepExpiredDB(ctx context.Context, db *sql.DB) (int64, error) {
 	}
 	rows.Close()
 	for _, id := range ids {
+		_ = deleteSlots(ctx, db, id)
 		_, _ = db.ExecContext(ctx, `DELETE FROM memories WHERE id = ?`, id)
 		_, _ = db.ExecContext(ctx, `DELETE FROM memories_fts WHERE rowid = ?`, id)
 		_, _ = db.ExecContext(ctx, `DELETE FROM memories_vec WHERE rowid = ?`, id)
