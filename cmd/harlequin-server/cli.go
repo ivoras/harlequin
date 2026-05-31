@@ -113,7 +113,7 @@ Examples:
   harlequin-server changepassword alice --password newsecret
   harlequin-server listusers
   harlequin-server deleteuser alice
-  harlequin-server print-trajectory data/sessions/1.42.jsonl
+  harlequin-server print-trajectory data/sessions/00001.00042.jsonl
   harlequin-server print-trajectory -v --no-color trajectory.jsonl
 `)
 }

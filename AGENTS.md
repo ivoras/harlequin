@@ -29,7 +29,7 @@ Client-server AI agent system in Go. A REST/SSE **server** talks to LLMs, stores
 - **Chat**: client POSTs a message -> agent loop composes prompt with resolved skills, calls the LLM provider (routing + fallback), dispatches tool calls (`memory_search`, `memory_write`, `memory_change`, `memory_delete`, `ask_user`, `list_skills`, `load_skill`, `run_js`, `search_docs`, skill-defined tools), loops to `max_steps`, streams SSE deltas. `memory_write`/`memory_change` surface detected conflicts in their result so the model can warn the user; `ask_user` emits an `ask_user` SSE event and ends the turn so the user can reply.
 - **Memory**: per-user (`user.db`) + shared (`shared.db`), fused into one view via composite ids; hybrid FTS5 + vector search fused with RRF; provenance/TTL/pinning; auto-extraction; conflict detection on write (FTS/vector candidates across both files + LLM judge, confidence ≥ 7) recorded in `memory_conflicts`.
 - **Skills**: baked into the binary, deployed to `<data_dir>/skills/` with a hash manifest (unchanged files replaced on update). Resolution precedence: per-user override -> org-published -> deployed. Server is the single source of truth; clients pull/push via `/skill` slash-commands. Skills support inline `<?js ?>` and frontmatter-declared tools.
-- **Session logging**: full chat trajectory written as JSONL at `<data_dir>/sessions/<user_id>.<conv_id>.jsonl`.
+- **Session logging**: full chat trajectory written as JSONL at `<data_dir>/sessions/<user_id>.<conv_id>.jsonl` (ids zero-padded to ≥5 digits). Optional via `sessions.enabled` (default true).
 
 ## Conventions
 - Secrets only in `.env`, never in YAML or code.

@@ -233,7 +233,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
-		if key == "enter" && !msg.Key().Mod.Contains(tea.ModShift) {
+		if enterSends(msg) {
 			text := strings.TrimSpace(m.input.Value())
 			if text == "" {
 				return m, nil

@@ -6,7 +6,6 @@ package sessionlog
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -85,10 +84,8 @@ func (l *Logger) fileMutex(path string) *sync.Mutex {
 	return m
 }
 
-// path returns the trajectory log file for a conversation: a flat file in the
-// sessions directory named "<user_id>.<conversation_id>.jsonl".
 func (l *Logger) path(userID, conversationID int64) string {
-	return filepath.Join(l.dir, fmt.Sprintf("%d.%d.jsonl", userID, conversationID))
+	return TrajectoryPath(l.dir, userID, conversationID)
 }
 
 // Log appends an event. Errors are swallowed (logging must not break the loop).

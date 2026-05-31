@@ -60,8 +60,8 @@ memory:
   conflict_candidates: 8   # max similar memories to compare per write
 
 sessions:
-  enabled: true
-  dir: ""                  # empty -> <data_dir>/sessions
+  enabled: true            # trajectory JSONL logs (default true; set false to disable)
+  dir: ""                  # empty -> <data_dir>/sessions; files: <user>.<conv>.jsonl (zero-padded ids)
   log_tokens: false
   retention_days: 0        # 0 -> keep forever
   redact: []
