@@ -247,6 +247,11 @@ func (c *Config) SkillsDir() string {
 	return filepath.Join(c.DataDir, "skills")
 }
 
+// HatsDir returns the deployed hats directory.
+func (c *Config) HatsDir() string {
+	return filepath.Join(c.DataDir, "hats")
+}
+
 // ProviderByName returns the provider config with the given name, or nil.
 func (c *Config) ProviderByName(name string) *ProviderConfig {
 	for i := range c.Providers {
