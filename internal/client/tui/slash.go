@@ -7,12 +7,13 @@ import (
 
 // slashCommands are the top-level commands offered by the autocomplete menu.
 var slashCommands = []string{
-	"/docs", "/hat", "/help", "/memory", "/new",
+	"/docs", "/export", "/hat", "/help", "/memory", "/new",
 	"/quit", "/reload", "/resume", "/skill", "/skills", "/usage",
 }
 
 var slashHelp = map[string]string{
 	"/docs":   "search organisation documents",
+	"/export": "save transcript to session_YYYYMMDD_HHMM.md",
 	"/hat":    "list / show / wear hats",
 	"/help":   "show help",
 	"/memory": "list / show / manage memories",
