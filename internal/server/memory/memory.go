@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
@@ -88,6 +89,52 @@ func (s *Store) AddWithConflicts(ctx context.Context, userDB *sql.DB, m types.Cr
 	return mem, hits, nil
 }
 
+// ChangeWithConflicts replaces a memory's content in place (same composite id and
+// scope), re-indexes FTS/vector/slots, clears stale conflict rows for that id,
+// and runs conflict detection on the new text.
+func (s *Store) ChangeWithConflicts(ctx context.Context, userDB *sql.DB, id, content string, userID int64, canManageShared bool) (*types.Memory, []ConflictHit, error) {
+	scope, local, ok := decodeID(id)
+	if !ok {
+		return nil, nil, ErrNotFound
+	}
+	if scope == scopeShared && !canManageShared {
+		return nil, nil, ErrNotFound
+	}
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return nil, nil, fmt.Errorf("empty content")
+	}
+
+	mem, err := s.Get(ctx, userDB, id, userID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	blob, err := s.embed(ctx, content)
+	if err != nil {
+		return nil, nil, fmt.Errorf("embed memory: %w", err)
+	}
+	m := s.memFor(scope, userDB)
+	updated, err := m.updateContent(ctx, local, content, blob)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !updated {
+		return nil, nil, ErrNotFound
+	}
+
+	s.deleteConflictsFor(ctx, userDB, id)
+	hits, err := s.detectConflicts(ctx, userDB, userID, id, content)
+	if err != nil {
+		return mem, nil, nil
+	}
+	mem.Content = content
+	filled := []types.Memory{*mem}
+	s.attachSlots(ctx, userDB, filled)
+	*mem = filled[0]
+	return mem, hits, nil
+}
+
 func (s *Store) add(ctx context.Context, userDB *sql.DB, m types.CreateMemoryRequest, userID int64) (*types.Memory, error) {
 	scope := m.Scope
 	if scope == "" {
@@ -116,6 +163,7 @@ func (s *Store) add(ctx context.Context, userDB *sql.DB, m types.CreateMemoryReq
 		uid := userID
 		mem.UserID = &uid
 	}
+	_, _ = s.indexSlot(ctx, userDB, mem.ID, m.Content, blob)
 	return mem, nil
 }
 
@@ -147,6 +195,43 @@ func (m memDB) insert(ctx context.Context, content, source string, expires, blob
 	return id, nil
 }
 
+// updateContent replaces a memory row's text and rebuilds its FTS, vector, and
+// slot index rows atomically.
+func (m memDB) updateContent(ctx context.Context, local int64, content string, blob any) (bool, error) {
+	tx, err := m.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+
+	res, err := tx.ExecContext(ctx, `UPDATE memories SET content = ? WHERE id = ?`, content, local)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return false, nil
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM memories_fts WHERE rowid = ?`, local); err != nil {
+		return false, err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO memories_fts(rowid, content) VALUES (?, ?)`, local, content); err != nil {
+		return false, err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM memories_vec WHERE rowid = ?`, local); err != nil {
+		return false, err
+	}
+	if blob != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO memories_vec(rowid, embedding) VALUES (?, ?)`, local, blob); err != nil {
+			return false, err
+		}
+	}
+	if err := deleteSlots(ctx, tx, local); err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
+}
+
 // embed returns the serialized embedding for text, or nil if embedding fails.
 func (s *Store) embed(ctx context.Context, text string) (any, error) {
 	vecs, err := s.embedder.Embed(ctx, []string{text})
@@ -174,6 +259,7 @@ func (s *Store) Find(ctx context.Context, userDB *sql.DB, query string, userID i
 		}
 		out = append(out, *m)
 	}
+	s.attachSlots(ctx, userDB, out)
 	return out, nil
 }
 
@@ -194,7 +280,22 @@ func (s *Store) Search(ctx context.Context, userDB *sql.DB, query string, userID
 	for _, m := range s.scopes(scope, userDB) {
 		m.search(ctx, query, blob, limit, ranks, contents)
 	}
-	return topN(ranks, contents, limit), nil
+	out := topN(ranks, contents, limit)
+	s.attachSlotsToResults(ctx, userDB, out)
+	return out, nil
+}
+
+// attachSlotsToResults fills SlotKey on search hits when indexed.
+func (s *Store) attachSlotsToResults(ctx context.Context, userDB *sql.DB, results []types.SearchResult) {
+	for i, r := range results {
+		scope, local, ok := decodeID(r.ID)
+		if !ok {
+			continue
+		}
+		if slot, ok := s.memFor(scope, userDB).slotForMemory(ctx, local); ok {
+			results[i].SlotKey = slot.Key
+		}
+	}
 }
 
 // scopes returns the memDBs to consult for a scope filter.
@@ -297,6 +398,7 @@ func (s *Store) List(ctx context.Context, userDB *sql.DB, userID int64, scope st
 	if len(out) > limit {
 		out = out[:limit]
 	}
+	s.attachSlots(ctx, userDB, out)
 	return out, nil
 }
 
@@ -382,6 +484,9 @@ func (s *Store) Get(ctx context.Context, userDB *sql.DB, id string, userID int64
 		}
 		return nil, err
 	}
+	filled := []types.Memory{*mem}
+	s.attachSlots(ctx, userDB, filled)
+	*mem = filled[0]
 	return mem, nil
 }
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/ivoras/harlequin/internal/server/llm"
 	"github.com/ivoras/harlequin/internal/server/memory/conflictparse"
+	"github.com/ivoras/harlequin/internal/server/memory/slotextract"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
@@ -72,12 +73,17 @@ func (s *Store) detectConflicts(ctx context.Context, userDB *sql.DB, userID int6
 		}
 	}
 
-	// Structured slot path: extract a normalized (key, value), index it, and
-	// flag existing memories sharing that key (same value = duplicate, different
-	// = conflict). When a slot is found this is the authoritative signal, so we
-	// skip the free-text judge; otherwise we fall back to it below.
-	if slot, ok := s.extractSlot(ctx, userDB, content, contentBlob); ok {
-		s.storeSlot(ctx, userDB, newID, slot)
+	// Structured slot path: use an already-indexed slot (from add/indexSlot) or
+	// extract and index now, then flag peers sharing that key.
+	var slot slotextract.Slot
+	hasSlot := false
+	if scope, local, ok := decodeID(newID); ok {
+		slot, hasSlot = s.memFor(scope, userDB).slotForMemory(ctx, local)
+	}
+	if !hasSlot {
+		slot, hasSlot = s.indexSlot(ctx, userDB, newID, content, contentBlob)
+	}
+	if hasSlot {
 		hits = appendNewHits(hits, s.slotConflicts(ctx, userDB, newID, slot))
 		return hits, nil
 	}

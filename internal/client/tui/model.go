@@ -180,7 +180,7 @@ func (m *Model) refreshViewport() {
 		sb.WriteString("\n")
 	}
 	if m.streaming.Len() > 0 {
-		sb.WriteString(m.wrapStyled(m.styles.Assistant, renderMarkdownish(m.streaming.String())))
+		sb.WriteString(m.renderAssistant(m.streaming.String()))
 		sb.WriteString("\n")
 	}
 	m.vp.SetContent(sb.String())
@@ -192,7 +192,7 @@ func (m *Model) renderBlock(b roleBlock) string {
 	case "user":
 		return m.wrapStyled(m.styles.User, "› "+b.text)
 	case "assistant":
-		return m.wrapStyled(m.styles.Assistant, renderMarkdownish(b.text))
+		return m.renderAssistant(b.text)
 	case "thinking":
 		return m.renderThinking(b.text, false)
 	case "tool":
@@ -202,6 +202,10 @@ func (m *Model) renderBlock(b roleBlock) string {
 	default:
 		return m.wrapStyled(m.styles.Help, b.text)
 	}
+}
+
+func (m *Model) renderAssistant(text string) string {
+	return wrapWidth(m.contentWidth(), renderMarkdown(m.contentWidth(), text))
 }
 
 func (m *Model) renderThinking(text string, streaming bool) string {

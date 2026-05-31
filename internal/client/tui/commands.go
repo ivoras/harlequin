@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/ivoras/harlequin/internal/client/apiclient"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
@@ -28,7 +29,7 @@ const helpText = `Commands:
   /memory [scope]       list memories with ids (scope: user|shared)
   /memory find <phrase> search memories (own + shared) by relevance
   /memory show <id>     show one memory
-  /memory delete <id>   delete your user memory (shared too if admin)
+  /memory delete <id>…  delete one or more memories by id (shared if admin)
   /memory conflicts     list flagged duplicate/conflicting memory pairs
   /memory resolve <id>  mark a conflict flag as resolved
   /docs <query>         search organisation documents
@@ -238,14 +239,11 @@ func (m *Model) handleMemorySub(args []string) tea.Cmd {
 		}
 	case "delete", "rm", "del":
 		if len(args) < 2 {
-			return infoCmd("usage: /memory delete <id>  (id like u.7 or s.3 from /memory)")
+			return infoCmd("usage: /memory delete <id> [<id> ...]  (ids like u.7 or s.3 from /memory)")
 		}
-		id := args[1]
+		ids := args[1:]
 		return func() tea.Msg {
-			if err := m.client.DeleteMemory(context.Background(), id); err != nil {
-				return errMsg{err}
-			}
-			return infoMsg{fmt.Sprintf("deleted memory %s", id)}
+			return deleteMemoriesMsg(m.client, ids)
 		}
 	case "show", "get":
 		if len(args) < 2 {
@@ -297,12 +295,35 @@ func (m *Model) canManageShared() bool {
 	return m.user != nil && types.IsElevated(m.user.Role)
 }
 
+// deleteMemoriesMsg deletes each id via the API and reports successes and failures.
+func deleteMemoriesMsg(client *apiclient.Client, ids []string) tea.Msg {
+	ctx := context.Background()
+	var ok, failed []string
+	for _, id := range ids {
+		if err := client.DeleteMemory(ctx, id); err != nil {
+			failed = append(failed, fmt.Sprintf("%s: %v", id, err))
+			continue
+		}
+		ok = append(ok, id)
+	}
+	switch {
+	case len(failed) == 0 && len(ok) == 1:
+		return infoMsg{fmt.Sprintf("deleted memory %s", ok[0])}
+	case len(failed) == 0:
+		return infoMsg{fmt.Sprintf("deleted %d memories: %s", len(ok), strings.Join(ok, ", "))}
+	case len(ok) == 0:
+		return errMsg{fmt.Errorf("%s", strings.Join(failed, "; "))}
+	default:
+		return infoMsg{fmt.Sprintf("deleted %s; failed: %s", strings.Join(ok, ", "), strings.Join(failed, "; "))}
+	}
+}
+
 func renderMemoryList(mems []types.Memory, canManageShared bool) string {
 	if len(mems) == 0 {
 		return "No memories."
 	}
 	var sb strings.Builder
-	sb.WriteString("Memories (use /memory show <id> or /memory delete <id> when deletable):\n")
+	sb.WriteString("Memories (use /memory show <id> or /memory delete <id>… when deletable):\n")
 	for _, mem := range mems {
 		sb.WriteString(renderMemoryLine(mem, canManageShared))
 		sb.WriteByte('\n')
@@ -326,8 +347,17 @@ func renderMemoryLine(mem types.Memory, canManageShared bool) string {
 	if memoryDeletable(mem, canManageShared) {
 		deletable = " (deletable)"
 	}
-	return fmt.Sprintf(" %s%-6s %s [%s/%s]%s %s",
-		pin, mem.ID, formatMemoryTime(mem.CreatedAt), mem.Scope, mem.Source, deletable, mem.Content)
+	return fmt.Sprintf(" %s%-6s %s [%s/%s]%s %s %s",
+		pin, mem.ID, formatMemoryTime(mem.CreatedAt), mem.Scope, mem.Source, deletable,
+		formatMemorySlotKey(mem.SlotKey), mem.Content)
+}
+
+// formatMemorySlotKey renders the slot key column for list lines; "{-}" when none.
+func formatMemorySlotKey(key string) string {
+	if key == "" {
+		return "{-}"
+	}
+	return "{" + key + "}"
 }
 
 // formatMemoryTime formats a memory timestamp as ISO 8601 UTC to minute precision.
@@ -348,6 +378,11 @@ func renderMemoryDetail(mem types.Memory, canManageShared bool) string {
 		fmt.Fprintf(&sb, "  expires: %s\n", formatMemoryTime(*mem.ExpiresAt))
 	}
 	fmt.Fprintf(&sb, "  created: %s\n", formatMemoryTime(mem.CreatedAt))
+	fmt.Fprintf(&sb, "  slot:    %s", formatMemorySlotKey(mem.SlotKey))
+	if mem.SlotKey != "" {
+		fmt.Fprintf(&sb, " = %s", mem.SlotValue)
+	}
+	sb.WriteByte('\n')
 	fmt.Fprintf(&sb, "  content: %s", mem.Content)
 	if memoryDeletable(mem, canManageShared) {
 		sb.WriteString("\n  (delete with /memory delete " + mem.ID + ")")

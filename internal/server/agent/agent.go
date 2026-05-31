@@ -58,6 +58,7 @@ type runContext struct {
 	turn           int
 	step           int
 	emit           EmitFunc
+	memWritten     []string // content stored/changed via memory_write or memory_change (auto-extract dedup)
 }
 
 // systemPromptFile is the deployed, JS-templated default system prompt
@@ -86,7 +87,8 @@ func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username,
 
 	// Background auto memory extraction (opens its own per-user database).
 	if a.AutoExtract {
-		go a.extractMemories(context.Background(), userID, userContent, finalText)
+		written := append([]string(nil), rc.memWritten...)
+		go a.extractMemories(context.Background(), userID, userContent, finalText, written, rc.canShareMemory)
 	}
 	return nil
 }

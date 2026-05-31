@@ -22,6 +22,11 @@ func TestParseResponse(t *testing.T) {
 			want: 2, minCF: 8, ok: true,
 		},
 		{
+			name: "org fact shared scope",
+			in:   `{"memories":[{"content":"The company name is WoodChucks Inc.","confidence":9,"scope":"shared"}]}`,
+			want: 1, minCF: 9, ok: true,
+		},
+		{
 			name: "fence wrapped",
 			in:   "```json\n{\"memories\":[{\"content\":\"Uses vim\",\"confidence\":7}]}\n```",
 			want: 1, minCF: 7, ok: true,
@@ -61,6 +66,9 @@ func TestParseResponse(t *testing.T) {
 					}
 				}
 			}
+			if tc.name == "org fact shared scope" && len(got) == 1 && got[0].Scope != "shared" {
+				t.Fatalf("scope=%q want shared", got[0].Scope)
+			}
 		})
 	}
 }
@@ -80,6 +88,16 @@ func TestNormalizeFact(t *testing.T) {
 	}
 	if got := NormalizeFact("- User prefers PostgreSQL"); got != "User prefers PostgreSQL" {
 		t.Errorf("got %q", got)
+	}
+}
+
+func TestNormalizeScope(t *testing.T) {
+	t.Parallel()
+	if got := NormalizeScope("SHARED"); got != "shared" {
+		t.Fatalf("got %q", got)
+	}
+	if got := NormalizeScope(""); got != "user" {
+		t.Fatalf("got %q", got)
 	}
 }
 

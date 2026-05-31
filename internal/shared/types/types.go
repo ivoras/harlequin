@@ -150,6 +150,8 @@ type Memory struct {
 	Scope     string     `json:"scope"` // "user" | "shared"
 	UserID    *int64     `json:"user_id,omitempty"`
 	Content   string     `json:"content"`
+	SlotKey   string     `json:"slot_key,omitempty"`   // normalized attribute key, if extracted
+	SlotValue string     `json:"slot_value,omitempty"` // normalized value paired with SlotKey
 	Source    string     `json:"source,omitempty"`
 	Pinned    bool       `json:"pinned"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
@@ -207,6 +209,7 @@ type CreateDocumentRequest struct {
 type SearchResult struct {
 	ID      string  `json:"id"`
 	Content string  `json:"content"`
+	SlotKey string  `json:"slot_key,omitempty"`
 	Score   float64 `json:"score"`
 }
 
