@@ -48,7 +48,7 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 	}
 
 	reg["memory_write"] = toolEntry{
-		def: fnTool("memory_write", "Store a durable fact in memory.", map[string]any{
+		def: fnTool("memory_write", `Store a durable fact in memory. scope "user" (default) is the user's own memory; scope "shared" is the org-wide memory and is only allowed for owner/admin users.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"content": map[string]any{"type": "string"},
@@ -61,6 +61,9 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 			scope, _ := args["scope"].(string)
 			if scope == "" {
 				scope = "user"
+			}
+			if scope == "shared" && !rc.canShareMemory {
+				return "error: only owner or admin users can create shared memories; store this as a user-scoped memory instead, or ask an owner/admin.", nil
 			}
 			mem, hits, err := a.Memory.AddWithConflicts(ctx, rc.userDB, types.CreateMemoryRequest{Scope: scope, Content: content, Source: "tool"}, rc.userID)
 			if err != nil {
@@ -92,7 +95,7 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 			if id == "" {
 				return "error: id is required", nil
 			}
-			if err := a.Memory.Delete(ctx, rc.userDB, id, rc.userID, rc.isAdmin); err != nil {
+			if err := a.Memory.Delete(ctx, rc.userDB, id, rc.userID, rc.canShareMemory); err != nil {
 				if errors.Is(err, memory.ErrNotFound) {
 					return fmt.Sprintf("error: memory %s not found or not deletable (shared memories require admin rights)", id), nil
 				}

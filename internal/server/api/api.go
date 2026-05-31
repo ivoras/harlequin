@@ -108,14 +108,29 @@ func decode(r *http.Request, v any) error {
 	return json.NewDecoder(r.Body).Decode(v)
 }
 
-func requireAdmin(w http.ResponseWriter, r *http.Request) (*types.User, bool) {
+// requireElevated allows owners and admins (org-wide administrative actions).
+func requireElevated(w http.ResponseWriter, r *http.Request) (*types.User, bool) {
 	u, ok := auth.UserFromContext(r.Context())
 	if !ok {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return nil, false
 	}
-	if u.Role != "admin" {
-		writeErr(w, http.StatusForbidden, "admin required")
+	if !types.IsElevated(u.Role) {
+		writeErr(w, http.StatusForbidden, "owner or admin required")
+		return nil, false
+	}
+	return u, true
+}
+
+// requireOwner allows only the owner (user management).
+func requireOwner(w http.ResponseWriter, r *http.Request) (*types.User, bool) {
+	u, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return nil, false
+	}
+	if !types.IsOwner(u.Role) {
+		writeErr(w, http.StatusForbidden, "owner required")
 		return nil, false
 	}
 	return u, true

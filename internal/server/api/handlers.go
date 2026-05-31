@@ -50,7 +50,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
-	if _, ok := requireAdmin(w, r); !ok {
+	if _, ok := requireOwner(w, r); !ok {
 		return
 	}
 	var req types.CreateUserRequest
@@ -143,7 +143,7 @@ func (s *Server) handleConversationLog(w http.ResponseWriter, r *http.Request) {
 		_, ownErr = s.Conversations.Get(r.Context(), udb, id, u.ID)
 		return nil
 	})
-	if ownErr != nil && u.Role != "admin" {
+	if ownErr != nil && !types.IsElevated(u.Role) {
 		writeErr(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -247,6 +247,10 @@ func (s *Server) handleCreateMemory(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
+	if req.Scope == "shared" && !types.IsElevated(u.Role) {
+		writeErr(w, http.StatusForbidden, "only owner or admin can create shared memories")
+		return
+	}
 	var m *types.Memory
 	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
 		// AddWithConflicts records any conflicts so they surface via
@@ -290,7 +294,7 @@ func (s *Server) handleDeleteMemory(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	id := chi.URLParam(r, "id")
 	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
-		if e := s.Memory.Delete(r.Context(), udb, id, u.ID, u.Role == "admin"); e != nil {
+		if e := s.Memory.Delete(r.Context(), udb, id, u.ID, types.IsElevated(u.Role)); e != nil {
 			return e
 		}
 		s.Audit.Log(r.Context(), udb, "memory_delete", id, nil)
@@ -336,7 +340,7 @@ func (s *Server) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {
-	if _, ok := requireAdmin(w, r); !ok {
+	if _, ok := requireElevated(w, r); !ok {
 		return
 	}
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
@@ -359,7 +363,7 @@ func (s *Server) handleSearchDocuments(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	target := u.ID
-	if q := r.URL.Query().Get("user_id"); q != "" && u.Role == "admin" {
+	if q := r.URL.Query().Get("user_id"); q != "" && types.IsElevated(u.Role) {
 		if id, err := strconv.ParseInt(q, 10, 64); err == nil {
 			target = id
 		}
@@ -385,7 +389,7 @@ func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
-	if _, ok := requireAdmin(w, r); !ok {
+	if _, ok := requireElevated(w, r); !ok {
 		return
 	}
 	// Audit entries live in each user's database; aggregate across users.

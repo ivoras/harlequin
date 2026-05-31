@@ -368,14 +368,15 @@ func (s *Store) Get(ctx context.Context, userDB *sql.DB, id string, userID int64
 }
 
 // Delete removes a memory and its index rows. Users may delete their own
-// user-scoped memories; admins may also delete shared memories. Dangling
-// conflict rows referencing the memory are cleaned up (no cross-file FK).
-func (s *Store) Delete(ctx context.Context, userDB *sql.DB, id string, userID int64, asAdmin bool) error {
+// user-scoped memories; only callers with canManageShared (owner/admin) may
+// delete shared memories. Dangling conflict rows referencing the memory are
+// cleaned up (no cross-file FK).
+func (s *Store) Delete(ctx context.Context, userDB *sql.DB, id string, userID int64, canManageShared bool) error {
 	scope, local, ok := decodeID(id)
 	if !ok {
 		return ErrNotFound
 	}
-	if scope == scopeShared && !asAdmin {
+	if scope == scopeShared && !canManageShared {
 		return ErrNotFound
 	}
 	found, err := s.memFor(scope, userDB).deleteMemory(ctx, local)

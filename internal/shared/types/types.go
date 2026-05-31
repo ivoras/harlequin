@@ -3,11 +3,28 @@ package types
 
 import "time"
 
+// Role names, ordered from highest privilege to lowest. "owner" is the only
+// role that may create or edit users; "owner" and "admin" may create and delete
+// shared memories (and other org-wide actions); "user" is an ordinary account.
+const (
+	RoleOwner = "owner"
+	RoleAdmin = "admin"
+	RoleUser  = "user"
+)
+
+// IsOwner reports whether the role may manage users (owner only).
+func IsOwner(role string) bool { return role == RoleOwner }
+
+// IsElevated reports whether the role has org-wide administrative privileges
+// (owner or admin): creating/deleting shared memories, deleting documents,
+// reading the audit log, publishing skills, and viewing other users' data.
+func IsElevated(role string) bool { return role == RoleOwner || role == RoleAdmin }
+
 // User is a public representation of an account (no password hash).
 type User struct {
 	ID        int64     `json:"id"`
 	Username  string    `json:"username"`
-	Role      string    `json:"role"` // "admin" | "user"
+	Role      string    `json:"role"` // "owner" | "admin" | "user"
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -23,7 +40,7 @@ type LoginResponse struct {
 	User  User   `json:"user"`
 }
 
-// CreateUserRequest is the body of POST /users (admin only).
+// CreateUserRequest is the body of POST /users (owner only).
 type CreateUserRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`

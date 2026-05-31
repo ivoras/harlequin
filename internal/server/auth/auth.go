@@ -45,9 +45,9 @@ func NewStore(db *sql.DB) *Store {
 // CreateUser creates a user with a bcrypt-hashed password.
 func (s *Store) CreateUser(ctx context.Context, username, password, role string) (*types.User, error) {
 	if role == "" {
-		role = "user"
+		role = types.RoleUser
 	}
-	if role != "admin" && role != "user" {
+	if role != types.RoleOwner && role != types.RoleAdmin && role != types.RoleUser {
 		return nil, fmt.Errorf("invalid role %q", role)
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)

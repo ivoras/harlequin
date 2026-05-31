@@ -83,7 +83,7 @@ func (s *Server) handleDeleteSkill(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePublishSkill(w http.ResponseWriter, r *http.Request) {
-	u, ok := requireAdmin(w, r)
+	u, ok := requireElevated(w, r)
 	if !ok {
 		return
 	}
