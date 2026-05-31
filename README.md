@@ -124,6 +124,8 @@ Change a user's password (revokes their existing API tokens):
 On first run the TUI prompts for the server URL and your credentials, then stores the issued
 API token in the client config.
 
+The TUI client requires a 256-color terminal (e.g. `TERM=xterm-256color`).
+
 ## Layout
 
 ```

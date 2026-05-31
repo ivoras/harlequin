@@ -2,15 +2,22 @@ package tui
 
 import "charm.land/lipgloss/v2"
 
-// Palette centralizes the dark-purple / light-green theme. Tweak here.
+// Palette: a calm teal + warm apricot duotone on a charcoal canvas. Defined with
+// xterm-256 palette indices (the client requires a 256-color terminal), so the
+// scheme renders consistently without relying on truecolor. Approximate hex is
+// noted for reference. Tweak here.
 var (
-	colorBG       = lipgloss.Color("#1A1024") // deep dark purple
-	colorSurface  = lipgloss.Color("#251636") // panels
-	colorBorder   = lipgloss.Color("#3A2A52")
-	colorAccent   = lipgloss.Color("#A6E22E") // light green
-	colorAccentHi = lipgloss.Color("#C6F68D") // bright green
-	colorText     = lipgloss.Color("#E6E0F0") // light lavender
-	colorMuted    = lipgloss.Color("#8A7CA8") // muted purple
+	colorBG       = lipgloss.Color("234") // #1c1c1c  charcoal canvas
+	colorSurface  = lipgloss.Color("236") // #303030  panels / code background
+	colorBorder   = lipgloss.Color("238") // #444444  subtle borders
+	colorText     = lipgloss.Color("253") // #dadada  soft light grey (body text)
+	colorMuted    = lipgloss.Color("245") // #8a8a8a  secondary / chrome text
+	colorAccent   = lipgloss.Color("79")  // #5fd7af  soft teal (primary accent)
+	colorAccentHi = lipgloss.Color("122") // #87ffd7  mint (highlights, md bullets/code)
+	colorWarm     = lipgloss.Color("216") // #ffaf87  apricot (the user's own lines)
+	colorWarmHi   = lipgloss.Color("223") // #ffd7af  sand (warm highlight)
+	colorViolet   = lipgloss.Color("103") // #8787af  soft lavender (reasoning)
+	colorError    = lipgloss.Color("203") // #ff5f5f  soft red
 )
 
 // Styles holds the reusable lipgloss styles.
@@ -32,16 +39,16 @@ func newStyles() Styles {
 	return Styles{
 		Header: lipgloss.NewStyle().
 			Foreground(colorBG).Background(colorAccent).Bold(true).Padding(0, 1),
-		Status: lipgloss.NewStyle().Foreground(colorMuted),
-		User: lipgloss.NewStyle().Foreground(colorAccentHi).Bold(true),
-		Assistant: lipgloss.NewStyle().Foreground(colorText),
-		Tool: lipgloss.NewStyle().Foreground(colorMuted).Italic(true),
+		Status:     lipgloss.NewStyle().Foreground(colorMuted),
+		User:       lipgloss.NewStyle().Foreground(colorWarm).Bold(true),
+		Assistant:  lipgloss.NewStyle().Foreground(colorText),
+		Tool:       lipgloss.NewStyle().Foreground(colorMuted).Italic(true),
 		ToolOutput: lipgloss.NewStyle().Foreground(colorMuted),
-		Thinking: lipgloss.NewStyle().Foreground(colorMuted).Italic(true),
+		Thinking:   lipgloss.NewStyle().Foreground(colorViolet).Italic(true),
 		InputBox: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).Padding(0, 1),
 		Help:   lipgloss.NewStyle().Foreground(colorMuted),
-		Error:  lipgloss.NewStyle().Foreground(lipgloss.Color("#FF6B6B")).Bold(true),
+		Error:  lipgloss.NewStyle().Foreground(colorError).Bold(true),
 		Accent: lipgloss.NewStyle().Foreground(colorAccent),
 	}
 }

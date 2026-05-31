@@ -26,6 +26,7 @@ const helpText = `Commands:
   /hat off              remove the hat (use the default)
   /reload               (admin) re-read skill/prompt/hat files
   /memory [scope]       list memories with ids (scope: user|shared)
+  /memory find <phrase> search memories (own + shared) by relevance
   /memory show <id>     show one memory
   /memory delete <id>   delete your user memory (shared too if admin)
   /memory conflicts     list flagged duplicate/conflicting memory pairs
@@ -223,6 +224,18 @@ func (m *Model) handleMemorySub(args []string) tea.Cmd {
 		}
 	}
 	switch strings.ToLower(args[0]) {
+	case "find", "search":
+		if len(args) < 2 {
+			return infoCmd("usage: /memory find <phrase>")
+		}
+		q := strings.Join(args[1:], " ")
+		return func() tea.Msg {
+			mems, err := m.client.FindMemory(context.Background(), q)
+			if err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{renderMemoryList(mems, m.canManageShared())}
+		}
 	case "delete", "rm", "del":
 		if len(args) < 2 {
 			return infoCmd("usage: /memory delete <id>  (id like u.7 or s.3 from /memory)")
@@ -268,7 +281,7 @@ func (m *Model) handleMemorySub(args []string) tea.Cmd {
 	default:
 		scope := args[0]
 		if scope != "user" && scope != "shared" {
-			return infoCmd("usage: /memory [user|shared|show|delete|conflicts|resolve]")
+			return infoCmd("usage: /memory [user|shared|find|show|delete|conflicts|resolve]")
 		}
 		return func() tea.Msg {
 			mems, err := m.client.ListMemory(context.Background(), scope)

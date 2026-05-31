@@ -159,6 +159,24 @@ func (s *Store) embed(ctx context.Context, text string) (any, error) {
 	return sqlite_vec.SerializeFloat32(vecs[0])
 }
 
+// Find runs a hybrid search and returns the matching memories as full records,
+// ranked best-first, so callers can render them like a memory listing.
+func (s *Store) Find(ctx context.Context, userDB *sql.DB, query string, userID int64, limit int) ([]types.Memory, error) {
+	res, err := s.Search(ctx, userDB, query, userID, "", limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]types.Memory, 0, len(res))
+	for _, r := range res {
+		m, err := s.Get(ctx, userDB, r.ID, userID)
+		if err != nil {
+			continue
+		}
+		out = append(out, *m)
+	}
+	return out, nil
+}
+
 // Search returns memories matching the query, fusing the user and shared
 // databases with hybrid FTS + vector search and RRF. scope ("user"|"shared"|"")
 // narrows which databases are consulted.
