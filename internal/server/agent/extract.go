@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"database/sql"
-	"strings"
 	"time"
 
 	"github.com/ivoras/harlequin/internal/server/agent/memextract"
@@ -11,9 +10,10 @@ import (
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
-// extractMemories asks the LLM to distill durable facts and stores them as
-// source='auto' user memories when confidence >= 7, deduped against existing content.
-func (a *Agent) extractMemories(ctx context.Context, userID int64, userContent, assistantText string) {
+// extractMemories asks the LLM to distill durable facts and stores them when
+// confidence >= 7, deduped against existing content. canShareMemory allows
+// scope "shared" from extraction; otherwise shared candidates are stored as user.
+func (a *Agent) extractMemories(ctx context.Context, userID int64, userContent, assistantText string, turnWritten []string, canShareMemory bool) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
@@ -54,28 +54,19 @@ func (a *Agent) extractMemories(ctx context.Context, userID int64, userContent, 
 				continue
 			}
 			fact := c.Content
-			// Skip facts already in memory — the user's own OR shared — so we do
-			// not store a user-scoped duplicate of, e.g., a shared memory the
-			// assistant just wrote this turn at the user's request.
-			if existing, err := a.Memory.Search(ctx, userDB, fact, userID, "", 5); err == nil && containsEqualFold(existing, fact) {
+			// Skip facts already covered (exact text, same slot key as an existing
+			// memory, or verbatim content written via memory_write this turn).
+			if a.Memory.IsRedundant(ctx, userDB, userID, fact, turnWritten) {
 				continue
 			}
+			scope := c.Scope
+			if scope == "shared" && !canShareMemory {
+				scope = "user"
+			}
 			_, _ = a.Memory.Add(ctx, userDB, types.CreateMemoryRequest{
-				Scope: "user", Content: fact, Source: "auto", ExpiresAt: ttl,
+				Scope: scope, Content: fact, Source: "auto", ExpiresAt: ttl,
 			}, userID)
 		}
 		return nil
 	})
-}
-
-// containsEqualFold reports whether any search result's content equals fact
-// (case-insensitive, trimmed).
-func containsEqualFold(results []types.SearchResult, fact string) bool {
-	fact = strings.TrimSpace(fact)
-	for _, r := range results {
-		if strings.EqualFold(strings.TrimSpace(r.Content), fact) {
-			return true
-		}
-	}
-	return false
 }

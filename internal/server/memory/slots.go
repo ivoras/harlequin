@@ -7,6 +7,7 @@ import (
 
 	"github.com/ivoras/harlequin/internal/server/llm"
 	"github.com/ivoras/harlequin/internal/server/memory/slotextract"
+	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
 const (
@@ -84,6 +85,24 @@ func (s *Store) candidateKeys(ctx context.Context, userDB *sql.DB, contentBlob a
 		add(m.keysNear(ctx, contentBlob, slotKeyTopK))
 	}
 	return out
+}
+
+// indexSlot extracts a normalized slot for content and persists it. contentBlob
+// may be content's embedding (or nil to compute). Returns ok false when no judge
+// or no usable slot was produced.
+func (s *Store) indexSlot(ctx context.Context, userDB *sql.DB, memID, content string, contentBlob any) (slotextract.Slot, bool) {
+	if s.judge == nil {
+		return slotextract.Slot{}, false
+	}
+	if contentBlob == nil {
+		contentBlob, _ = s.embed(ctx, content)
+	}
+	slot, ok := s.extractSlot(ctx, userDB, content, contentBlob)
+	if !ok {
+		return slotextract.Slot{}, false
+	}
+	s.storeSlot(ctx, userDB, memID, slot)
+	return slot, true
 }
 
 // storeSlot persists a memory's slot and indexes its key embedding.
@@ -204,6 +223,21 @@ func (m memDB) keysNear(ctx context.Context, blob any, k int) []string {
 	return out
 }
 
+// slotForMemory returns the slot row for one memory, if any.
+func (m memDB) slotForMemory(ctx context.Context, memoryLocal int64) (slotextract.Slot, bool) {
+	if m.db == nil {
+		return slotextract.Slot{}, false
+	}
+	var slot slotextract.Slot
+	err := m.db.QueryRowContext(ctx,
+		`SELECT key, value FROM memory_slots WHERE memory_id = ? LIMIT 1`, memoryLocal).
+		Scan(&slot.Key, &slot.Value)
+	if err != nil {
+		return slotextract.Slot{}, false
+	}
+	return slot, slot.Key != ""
+}
+
 // slotsForKey returns all (memory_id, value) rows for a key in this database.
 func (m memDB) slotsForKey(ctx context.Context, key string) []slotRow {
 	if m.db == nil {
@@ -228,6 +262,115 @@ func (m memDB) slotsForKey(ctx context.Context, key string) []slotRow {
 type execQuerier interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+// slotKeyExists reports whether any memory in the user or shared database
+// already has a slot with the given normalized key.
+func (s *Store) slotKeyExists(ctx context.Context, userDB *sql.DB, key string) bool {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return false
+	}
+	for _, m := range []memDB{s.userMem(userDB), s.sharedMem()} {
+		if len(m.slotsForKey(ctx, key)) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// IsRedundant reports whether content is already represented in memory and
+// should not be auto-stored again. turnWritten is verbatim content the
+// assistant stored via memory_write this turn (checked before any LLM call).
+func (s *Store) IsRedundant(ctx context.Context, userDB *sql.DB, userID int64, content string, turnWritten []string) bool {
+	fact := strings.TrimSpace(content)
+	if fact == "" {
+		return true
+	}
+	for _, w := range turnWritten {
+		if strings.EqualFold(strings.TrimSpace(w), fact) {
+			return true
+		}
+	}
+	if existing, err := s.Search(ctx, userDB, fact, userID, "", 5); err == nil {
+		for _, r := range existing {
+			if strings.EqualFold(strings.TrimSpace(r.Content), fact) {
+				return true
+			}
+		}
+	}
+	if s.judge == nil {
+		return false
+	}
+	blob, _ := s.embed(ctx, content)
+	slot, ok := s.extractSlot(ctx, userDB, content, blob)
+	if !ok {
+		return false
+	}
+	return s.slotKeyExists(ctx, userDB, slot.Key)
+}
+
+type memorySlot struct {
+	key   string
+	value string
+}
+
+// slotsByMemoryLocals returns the slot (at most one per memory today) for each
+// local memory row id in this database file.
+func (m memDB) slotsByMemoryLocals(ctx context.Context, memoryLocals []int64) map[int64]memorySlot {
+	if m.db == nil || len(memoryLocals) == 0 {
+		return nil
+	}
+	placeholders := make([]string, len(memoryLocals))
+	args := make([]any, len(memoryLocals))
+	for i, id := range memoryLocals {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	q := `SELECT memory_id, key, value FROM memory_slots WHERE memory_id IN (` +
+		strings.Join(placeholders, ",") + `)`
+	rows, err := m.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	out := make(map[int64]memorySlot, len(memoryLocals))
+	for rows.Next() {
+		var local int64
+		var sl memorySlot
+		if rows.Scan(&local, &sl.key, &sl.value) == nil {
+			out[local] = sl
+		}
+	}
+	return out
+}
+
+// attachSlots fills SlotKey and SlotValue on each memory from memory_slots.
+func (s *Store) attachSlots(ctx context.Context, userDB *sql.DB, mems []types.Memory) {
+	if len(mems) == 0 {
+		return
+	}
+	byScope := map[string][]int{}
+	for i, mem := range mems {
+		byScope[mem.Scope] = append(byScope[mem.Scope], i)
+	}
+	for scope, indices := range byScope {
+		locals := make([]int64, 0, len(indices))
+		for _, i := range indices {
+			if _, local, ok := decodeID(mems[i].ID); ok {
+				locals = append(locals, local)
+			}
+		}
+		slots := s.memFor(scope, userDB).slotsByMemoryLocals(ctx, locals)
+		for _, i := range indices {
+			if _, local, ok := decodeID(mems[i].ID); ok {
+				if sl, ok := slots[local]; ok {
+					mems[i].SlotKey = sl.key
+					mems[i].SlotValue = sl.value
+				}
+			}
+		}
+	}
 }
 
 // deleteSlots removes a memory's slot rows and their index rows. The slot-id

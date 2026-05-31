@@ -8,26 +8,30 @@ import (
 )
 
 // Prompt is the system prompt for autonomous memory extraction (uses judge.PromptRules).
-var Prompt = `You decide whether a chat turn contains durable facts about the user worth remembering long-term
-(preferences, identity, ongoing projects, constraints, stable relationships).
+var Prompt = `You decide whether a chat turn contains durable facts worth remembering long-term
+(preferences, identity, organisation facts, ongoing projects, constraints).
 
 Respond with JSON only (no markdown, no commentary):
-{"memories":[{"content":"...","confidence":N}, ...]}
+{"memories":[{"content":"...","confidence":N,"scope":"user"|"shared"}, ...]}
 
-Rules:
-- "content" is one terse fact in third person or about the user (not a quote of the assistant refusing to help).
+` + ScopeRules + `
+
+Other rules:
+- "content" is one terse fact in third person (not a quote of the assistant refusing to help).
 ` + judge.PromptRules() + `
 - If nothing qualifies, respond exactly: {"memories":[]}
 - Do not explain your reasoning. Do not output placeholder or meta text like "no facts found".`
 
 type Candidate struct {
 	Content    string
+	Scope      string // "user" or "shared"
 	Confidence int
 }
 
 type response struct {
 	Memories []struct {
 		Content    string `json:"content"`
+		Scope      string `json:"scope"`
 		Confidence int    `json:"confidence"`
 	} `json:"memories"`
 }
@@ -47,6 +51,7 @@ func ParseResponse(text string) ([]Candidate, bool) {
 
 func filterCandidates(in []struct {
 	Content    string `json:"content"`
+	Scope      string `json:"scope"`
 	Confidence int    `json:"confidence"`
 }) []Candidate {
 	out := make([]Candidate, 0, len(in))
@@ -55,7 +60,11 @@ func filterCandidates(in []struct {
 		if content == "" {
 			continue
 		}
-		out = append(out, Candidate{Content: content, Confidence: judge.Clamp(c.Confidence)})
+		out = append(out, Candidate{
+			Content:    content,
+			Scope:      NormalizeScope(c.Scope),
+			Confidence: judge.Clamp(c.Confidence),
+		})
 	}
 	return out
 }

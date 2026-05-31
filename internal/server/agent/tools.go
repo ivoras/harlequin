@@ -30,7 +30,7 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 	reg := map[string]toolEntry{}
 
 	reg["memory_search"] = toolEntry{
-		def: fnTool("memory_search", "Search the user's and shared memory for relevant facts.", map[string]any{
+		def: fnTool("memory_search", "Search the user's and shared memory. Each hit includes composite id (u.N/s.N) and slot_key when present — use those with memory_change or memory_delete.", map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"query": map[string]any{"type": "string"},
@@ -48,7 +48,13 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 	}
 
 	reg["memory_write"] = toolEntry{
-		def: fnTool("memory_write", `Store a durable fact in memory. scope "user" (default) is the user's own memory; scope "shared" is the org-wide memory and is only allowed for owner/admin users.`, map[string]any{
+		def: fnTool("memory_write", `Store a durable fact in memory.
+
+scope "shared" (org-wide, owner/admin only): organisation identity and org-wide facts (company name, brand, domain, stack, policies, products); plus generic factual statements about the world outside the user's personal concerns (public definitions, standards, geography, science — objective facts not about this individual). Plain "The company name is …" → shared.
+
+scope "user" (default): personal preferences and habits, private or sensitive information, facts about this individual only ("User prefers …", "I like …"). If unsure and you are not owner/admin, use user.
+
+Only owner/admin may use shared. When you are owner/admin and the user states an org-wide fact, prefer shared over user.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"content": map[string]any{"type": "string"},
@@ -69,6 +75,7 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 			if err != nil {
 				return "", err
 			}
+			rc.memWritten = append(rc.memWritten, content)
 			if len(hits) == 0 {
 				return fmt.Sprintf("Stored as memory %s.", mem.ID), nil
 			}
@@ -77,23 +84,63 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 			for _, h := range hits {
 				fmt.Fprintf(&sb, "- %s [%s] %q (%s)\n", h.OtherID, h.Relationship, strings.TrimSpace(h.OtherContent), h.Reason)
 			}
-			sb.WriteString("Tell the user about this conflict and use ask_user to ask how to resolve it (e.g. delete the old memory, discard this new one, or keep both). Then carry out their choice with memory_delete.")
+			sb.WriteString("Tell the user about this conflict and use ask_user to ask how to resolve it (e.g. update the old memory with memory_change, keep the new and delete the old, discard the new, or keep both).")
+			return sb.String(), nil
+		},
+	}
+
+	reg["memory_change"] = toolEntry{
+		def: fnTool("memory_change", `Replace the content of an existing memory (same composite id; scope unchanged). Identify the memory by id (u.N or s.N) or slot_key (e.g. organisation.name) from memory_search or /memory — id is preferred if both are known. Use when the user corrects or updates a fact. Prefer this over memory_delete alone when a replacement is known.`, map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"id":       map[string]any{"type": "string", "description": "Composite memory id, e.g. s.4"},
+				"slot_key": map[string]any{"type": "string", "description": "Normalized slot key, e.g. organisation.name"},
+				"content":  map[string]any{"type": "string"},
+			},
+			"required": []string{"content"},
+		}),
+		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+			id, errMsg := a.resolveMemoryRef(ctx, rc, args)
+			if errMsg != "" {
+				return errMsg, nil
+			}
+			content, _ := args["content"].(string)
+			if strings.TrimSpace(content) == "" {
+				return "error: content is required", nil
+			}
+			mem, hits, err := a.Memory.ChangeWithConflicts(ctx, rc.userDB, id, content, rc.userID, rc.canShareMemory)
+			if err != nil {
+				if errors.Is(err, memory.ErrNotFound) {
+					return fmt.Sprintf("error: memory %s not found or not editable (shared memories require admin rights)", id), nil
+				}
+				return "", err
+			}
+			rc.memWritten = append(rc.memWritten, content)
+			if len(hits) == 0 {
+				return fmt.Sprintf("Updated memory %s.", mem.ID), nil
+			}
+			var sb strings.Builder
+			fmt.Fprintf(&sb, "Updated memory %s, but the new text conflicts with other memories:\n", mem.ID)
+			for _, h := range hits {
+				fmt.Fprintf(&sb, "- %s [%s] %q (%s)\n", h.OtherID, h.Relationship, strings.TrimSpace(h.OtherContent), h.Reason)
+			}
+			sb.WriteString("Tell the user and use ask_user if they need to resolve further.")
 			return sb.String(), nil
 		},
 	}
 
 	reg["memory_delete"] = toolEntry{
-		def: fnTool("memory_delete", `Delete a memory by its composite id (e.g. "u.7" for a personal memory, "s.3" for a shared one), e.g. to resolve a conflict after the user decides which fact to drop. Deleting a shared memory requires admin rights.`, map[string]any{
+		def: fnTool("memory_delete", `Delete a memory by id (u.N/s.N) or slot_key from memory_search or /memory. Use when discarding a fact with no replacement, or after memory_change/memory_write stored the replacement. Never delete alone when the user asked to update a value.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"id": map[string]any{"type": "string"},
+				"id":       map[string]any{"type": "string", "description": "Composite memory id"},
+				"slot_key": map[string]any{"type": "string", "description": "Normalized slot key"},
 			},
-			"required": []string{"id"},
 		}),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
-			id, _ := args["id"].(string)
-			if id == "" {
-				return "error: id is required", nil
+			id, errMsg := a.resolveMemoryRef(ctx, rc, args)
+			if errMsg != "" {
+				return errMsg, nil
 			}
 			if err := a.Memory.Delete(ctx, rc.userDB, id, rc.userID, rc.canShareMemory); err != nil {
 				if errors.Is(err, memory.ErrNotFound) {
@@ -293,9 +340,47 @@ func renderResults(res []types.SearchResult) string {
 		return "(no results)"
 	}
 	var sb strings.Builder
-	sb.WriteString("Ranked memory results (prefer #1 when it directly answers the question; do not invent facts not listed here):\n")
+	sb.WriteString("Ranked memory results (prefer #1 when it directly answers the question; use id or slot_key with memory_change/memory_delete; do not invent facts not listed here):\n")
 	for i, r := range res {
-		fmt.Fprintf(&sb, "%d. %s\n", i+1, strings.TrimSpace(r.Content))
+		fmt.Fprintf(&sb, "%d. [%s", i+1, r.ID)
+		if k := strings.TrimSpace(r.SlotKey); k != "" {
+			fmt.Fprintf(&sb, " {%s}", k)
+		}
+		fmt.Fprintf(&sb, "] %s\n", strings.TrimSpace(r.Content))
 	}
 	return sb.String()
+}
+
+// resolveMemoryRef returns the composite memory id from tool args (id or slot_key).
+// Non-empty second return value is a tool-facing error string.
+func (a *Agent) resolveMemoryRef(ctx context.Context, rc *runContext, args map[string]any) (string, string) {
+	id, _ := args["id"].(string)
+	slotKey, _ := args["slot_key"].(string)
+	id = strings.TrimSpace(id)
+	slotKey = strings.TrimSpace(slotKey)
+	if id != "" {
+		ref, err := a.Memory.ResolveRef(ctx, rc.userDB, id, rc.userID)
+		if err != nil {
+			return "", memoryRefError(err, "id", id)
+		}
+		return ref, ""
+	}
+	if slotKey != "" {
+		ref, err := a.Memory.ResolveRef(ctx, rc.userDB, slotKey, rc.userID)
+		if err != nil {
+			return "", memoryRefError(err, "slot_key", slotKey)
+		}
+		return ref, ""
+	}
+	return "", "error: id or slot_key is required (from memory_search or /memory)"
+}
+
+func memoryRefError(err error, kind, value string) string {
+	if errors.Is(err, memory.ErrNotFound) {
+		return fmt.Sprintf("error: no memory found for %s %q", kind, value)
+	}
+	if errors.Is(err, memory.ErrAmbiguousRef) {
+		return fmt.Sprintf("error: %s %q is ambiguous (%v); use id instead", kind, value, err)
+	}
+	return "error: " + err.Error()
 }
