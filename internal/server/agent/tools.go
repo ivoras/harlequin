@@ -225,7 +225,7 @@ Only owner/admin may use shared. When you are owner/admin and the user states an
 	}
 
 	reg["run_js"] = toolEntry{
-		def: fnTool("run_js", "Execute JavaScript in a sandbox and return its output; ES5 only (var, not let/const; no arrows, classes, or async). Use print() to emit output.", map[string]any{
+		def: fnTool("run_js", "Execute JavaScript in a sandbox and return its output; ES5 only (var, not let/const; no arrows, classes, or async). Use println() and print() to emit output.", map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"code": map[string]any{"type": "string"},
