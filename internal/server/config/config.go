@@ -174,7 +174,7 @@ func (c *Config) applyDefaults() {
 		c.Agent.SkillRenderTimeout = Duration(2 * time.Second)
 	}
 	if c.Agent.JSToolTimeout == 0 {
-		c.Agent.JSToolTimeout = Duration(3 * time.Second)
+		c.Agent.JSToolTimeout = Duration(10 * time.Second)
 	}
 	if c.Agent.JSOutputCap == 0 {
 		c.Agent.JSOutputCap = 64 * 1024
