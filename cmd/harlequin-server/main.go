@@ -22,13 +22,12 @@ import (
 	"github.com/ivoras/harlequin/internal/server/embed"
 	"github.com/ivoras/harlequin/internal/server/jsrun"
 	"github.com/ivoras/harlequin/internal/server/llm"
+	"github.com/ivoras/harlequin/internal/server/mdtmpl"
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/skills"
-	"github.com/ivoras/harlequin/internal/server/skills/jstmpl"
 	"github.com/ivoras/harlequin/internal/server/storage"
 	"github.com/ivoras/harlequin/internal/server/usage"
-	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
 func main() {
@@ -55,9 +54,12 @@ func main() {
 
 	authStore := auth.NewStore(store.System)
 
-	// Deploy baked-in skills to the data dir.
-	if err := skills.Deploy(harlequin.BakedSkillsFS(), cfg.SkillsDir(), cfg.DataDir); err != nil {
+	// Deploy baked-in skills and hats to the data dir.
+	if err := skills.Deploy(harlequin.BakedFS(), "skills", cfg.SkillsDir(), cfg.DataDir); err != nil {
 		log.Fatalf("deploy skills: %v", err)
+	}
+	if err := skills.Deploy(harlequin.BakedFS(), "hats", cfg.HatsDir(), cfg.DataDir); err != nil {
+		log.Fatalf("deploy hats: %v", err)
 	}
 
 	// Build providers and the routing provider.
@@ -92,26 +94,10 @@ func main() {
 	auditStore := audit.NewStore()
 	session := sessionlog.New(cfg.SessionsDir(), cfg.Sessions.Enabled, cfg.Sessions.LogTokens, cfg.Sessions.Redact)
 
-	makeCtx := func(userID int64, username, skill string) jstmpl.Context {
-		return jstmpl.Context{
-			User:  username,
-			Skill: skill,
-			Now:   time.Now,
-			MemorySearch: func(q string) []string {
-				var res []types.SearchResult
-				_ = store.WithUser(context.Background(), userID, func(udb *sql.DB) error {
-					res, _ = memStore.Search(context.Background(), udb, q, userID, "", 5)
-					return nil
-				})
-				return resultsToStrings(res)
-			},
-			SearchDocs: func(q string) []string {
-				res, _ := docStore.Search(context.Background(), q, 5)
-				return resultsToStrings(res)
-			},
-		}
-	}
-	skillMgr := skills.NewManager(store.Shared, cfg.SkillsDir(), skillRunner, makeCtx)
+	// The single JS-template context provider, used for every .md the server
+	// renders (skills, the system prompt, and hat prompts).
+	makeCtx := mdtmpl.New(memStore, docStore, store)
+	skillMgr := skills.NewManager(store.Shared, cfg.SkillsDir(), cfg.HatsDir(), skillRunner, makeCtx)
 
 	ag := &agent.Agent{
 		Provider:      router,
@@ -172,12 +158,4 @@ func maintenance(store *storage.Manager, mem *memory.Store, session *sessionlog.
 		session.SweepRetention(retentionDays)
 		<-ticker.C
 	}
-}
-
-func resultsToStrings(res []types.SearchResult) []string {
-	out := make([]string, len(res))
-	for i, r := range res {
-		out[i] = r.Content
-	}
-	return out
 }

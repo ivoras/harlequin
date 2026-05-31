@@ -11,25 +11,24 @@ import (
 	"strings"
 )
 
-// manifestName is the hash manifest stored in the data dir.
-const manifestName = "skills.hashes.json"
-
-// Deploy syncs baked-in skills (rooted under "skills/" in bakedFS) into destDir.
-// Files unchanged since the last deploy (per the manifest) are overwritten with
-// the new baked version; user-edited files are preserved.
-func Deploy(bakedFS fs.FS, destDir, dataDir string) error {
-	manifestPath := filepath.Join(dataDir, manifestName)
+// Deploy syncs a baked-in asset tree (rooted under srcRoot, e.g. "skills" or
+// "hats", in bakedFS) into destDir. Files unchanged since the last deploy (per
+// the per-root manifest "<srcRoot>.hashes.json" in dataDir) are overwritten with
+// the new baked version; user-edited files are preserved. Any file type is
+// handled (raw bytes), so binaries and scripts deploy verbatim.
+func Deploy(bakedFS fs.FS, srcRoot, destDir, dataDir string) error {
+	manifestPath := filepath.Join(dataDir, srcRoot+".hashes.json")
 	manifest := loadManifest(manifestPath)
 	newManifest := map[string]string{}
 
-	err := fs.WalkDir(bakedFS, "skills", func(p string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(bakedFS, srcRoot, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
 			return nil
 		}
-		rel := strings.TrimPrefix(p, "skills/")
+		rel := strings.TrimPrefix(p, srcRoot+"/")
 		baked, err := fs.ReadFile(bakedFS, p)
 		if err != nil {
 			return err

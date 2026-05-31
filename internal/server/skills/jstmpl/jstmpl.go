@@ -70,6 +70,7 @@ func renderBlock(runner *jsrun.Runner, code string, c Context, nowFn func() time
 	globals := map[string]any{
 		"__ctx_user":  c.User,
 		"__ctx_skill": c.Skill,
+		"__ctx_date":  nowFn().Format("2006-01-02"),
 	}
 	funcs := map[string]jsrun.HostFunc{}
 
@@ -101,6 +102,7 @@ func renderBlock(runner *jsrun.Runner, code string, c Context, nowFn func() time
 	shim := `var ctx = {
 		user: __ctx_user,
 		skill: __ctx_skill,
+		date: __ctx_date,
 		now: function(){ return __ctx_now(); },
 		memorySearch: function(q){ return __ctx_memory_search(q); },
 		searchDocs: function(q){ return __ctx_search_docs(q); }

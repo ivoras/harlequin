@@ -21,19 +21,26 @@ import (
 type Manager struct {
 	shared   *sql.DB
 	skillDir string
+	hatsDir  string
 	runner   *jsrun.Runner
+	cache    *fileCache
 	// renderCtx builds a template context for a user (injected by the server).
 	makeCtx func(userID int64, username, skill string) jstmpl.Context
 }
 
 // NewManager constructs a skills Manager bound to the shared database.
-func NewManager(shared *sql.DB, skillDir string, runner *jsrun.Runner, makeCtx func(userID int64, username, skill string) jstmpl.Context) *Manager {
-	return &Manager{shared: shared, skillDir: skillDir, runner: runner, makeCtx: makeCtx}
+func NewManager(shared *sql.DB, skillDir, hatsDir string, runner *jsrun.Runner, makeCtx func(userID int64, username, skill string) jstmpl.Context) *Manager {
+	return &Manager{shared: shared, skillDir: skillDir, hatsDir: hatsDir, runner: runner, cache: newFileCache(), makeCtx: makeCtx}
 }
 
 // deployedNames lists skill directories under skillDir.
 func (m *Manager) deployedNames() ([]string, error) {
-	entries, err := os.ReadDir(m.skillDir)
+	return dirNames(m.skillDir)
+}
+
+// dirNames lists the immediate subdirectory names of root (sorted).
+func dirNames(root string) ([]string, error) {
+	entries, err := os.ReadDir(root)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -50,9 +57,13 @@ func (m *Manager) deployedNames() ([]string, error) {
 	return names, nil
 }
 
-// readDeployed reads a deployed skill's files from disk.
+// readDeployed reads a deployed skill's files from skillDir.
 func (m *Manager) readDeployed(name string) (map[string]string, error) {
-	root := filepath.Join(m.skillDir, name)
+	return m.readDir(filepath.Join(m.skillDir, name))
+}
+
+// readDir reads all files under root into a relpath->contents map (cached by mtime).
+func (m *Manager) readDir(root string) (map[string]string, error) {
 	if _, err := os.Stat(root); err != nil {
 		return nil, err
 	}
@@ -65,7 +76,7 @@ func (m *Manager) readDeployed(name string) (map[string]string, error) {
 		if err != nil {
 			return err
 		}
-		raw, err := os.ReadFile(p)
+		raw, err := m.cache.read(p)
 		if err != nil {
 			return err
 		}
@@ -136,6 +147,16 @@ func (m *Manager) Resolve(ctx context.Context, userDB *sql.DB, name string, user
 	if err != nil {
 		return nil, err
 	}
+	rendered, err := m.renderFiles(files, name, userID, username)
+	if err != nil {
+		return nil, err
+	}
+	return buildSkill(name, rendered, source)
+}
+
+// renderFiles renders .md/.txt files through the template engine, copying others
+// verbatim.
+func (m *Manager) renderFiles(files map[string]string, name string, userID int64, username string) (map[string]string, error) {
 	rendered := make(map[string]string, len(files))
 	for rel, content := range files {
 		if strings.HasSuffix(rel, ".md") || strings.HasSuffix(rel, ".txt") {
@@ -148,17 +169,11 @@ func (m *Manager) Resolve(ctx context.Context, userDB *sql.DB, name string, user
 			rendered[rel] = content
 		}
 	}
-	return buildSkill(name, rendered, source)
+	return rendered, nil
 }
 
-// ResolveRawFiles returns the effective skill files WITHOUT rendering (for download).
-func (m *Manager) ResolveRawFiles(ctx context.Context, userDB *sql.DB, name string, userID int64) (map[string]string, string, error) {
-	return m.resolveRaw(ctx, userDB, name)
-}
-
-// List returns skill info for all available skills for a user.
-func (m *Manager) List(ctx context.Context, userDB *sql.DB, userID int64, username string) ([]types.SkillInfo, error) {
-	// Union of deployed names and any org/user override names.
+// globalNames returns the union of deployed skill names and override names.
+func (m *Manager) globalNames(ctx context.Context, userDB *sql.DB) ([]string, error) {
 	nameSet := map[string]bool{}
 	deployed, err := m.deployedNames()
 	if err != nil {
@@ -185,13 +200,25 @@ func (m *Manager) List(ctx context.Context, userDB *sql.DB, userID int64, userna
 		}
 		rows.Close()
 	}
-
 	names := make([]string, 0, len(nameSet))
 	for n := range nameSet {
 		names = append(names, n)
 	}
 	sort.Strings(names)
+	return names, nil
+}
 
+// ResolveRawFiles returns the effective skill files WITHOUT rendering (for download).
+func (m *Manager) ResolveRawFiles(ctx context.Context, userDB *sql.DB, name string, userID int64) (map[string]string, string, error) {
+	return m.resolveRaw(ctx, userDB, name)
+}
+
+// List returns skill info for all available skills for a user.
+func (m *Manager) List(ctx context.Context, userDB *sql.DB, userID int64, username string) ([]types.SkillInfo, error) {
+	names, err := m.globalNames(ctx, userDB)
+	if err != nil {
+		return nil, err
+	}
 	var out []types.SkillInfo
 	for _, n := range names {
 		files, source, err := m.resolveRaw(ctx, userDB, n)
