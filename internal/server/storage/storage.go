@@ -54,9 +54,14 @@ func (m *Manager) Close() error {
 	return first
 }
 
+// UserDir returns the directory holding a user's database and files under dataDir.
+func UserDir(dataDir string, userID int64) string {
+	return filepath.Join(dataDir, "users", strconv.FormatInt(userID, 10))
+}
+
 // UserDir returns the directory holding a user's database and files.
 func (m *Manager) UserDir(userID int64) string {
-	return filepath.Join(m.dataDir, "users", strconv.FormatInt(userID, 10))
+	return UserDir(m.dataDir, userID)
 }
 
 // UserDBPath returns the path of a user's database file.

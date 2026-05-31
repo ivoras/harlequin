@@ -87,6 +87,42 @@ func (s *Store) ChangePassword(ctx context.Context, username, password string) e
 	return nil
 }
 
+// ListUsers returns all accounts ordered by id.
+func (s *Store) ListUsers(ctx context.Context) ([]types.User, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, username, role, created_at FROM users ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []types.User
+	for rows.Next() {
+		var u types.User
+		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+// DeleteUser removes an account (cascading its API tokens) and returns its id so
+// the caller can clean up the user's per-user database and files.
+func (s *Store) DeleteUser(ctx context.Context, username string) (int64, error) {
+	var id int64
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM users WHERE username = ?`, username).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrUserNotFound
+	}
+	if err != nil {
+		return 0, err
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, id); err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
 // Login verifies credentials and issues a new API token (returning the plaintext).
 func (s *Store) Login(ctx context.Context, username, password string) (string, *types.User, error) {
 	var (
