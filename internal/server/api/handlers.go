@@ -92,7 +92,7 @@ func (s *Server) handleCreateConversation(w http.ResponseWriter, r *http.Request
 	var c *types.Conversation
 	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
 		var e error
-		c, e = s.Conversations.Create(r.Context(), udb, u.ID, req.Title)
+		c, e = s.Conversations.Create(r.Context(), udb, u.ID, req.Title, req.Hat)
 		return e
 	})
 	if err != nil {

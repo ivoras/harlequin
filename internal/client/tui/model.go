@@ -59,6 +59,7 @@ type Model struct {
 	streaming         strings.Builder // in-flight assistant response text
 
 	conversationID int64
+	currentHat     string // hat worn by new conversations / the active one
 	user           *types.User
 	statusMsg      string
 
@@ -124,7 +125,7 @@ func (m *Model) bootstrapChat() tea.Cmd {
 		if err != nil {
 			return loginNeededMsg{}
 		}
-		conv, err := m.client.CreateConversation(ctx, "Session")
+		conv, err := m.client.CreateConversation(ctx, "Session", "")
 		if err != nil {
 			return errMsg{err}
 		}

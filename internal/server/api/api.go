@@ -62,6 +62,10 @@ func (s *Server) Router() http.Handler {
 			r.Post("/conversations/{id}/messages", s.handleSendMessage)
 			r.Delete("/conversations/{id}", s.handleDeleteConversation)
 			r.Get("/conversations/{id}/log", s.handleConversationLog)
+			r.Post("/conversations/{id}/hat", s.handleSetConversationHat)
+
+			r.Get("/hats", s.handleListHats)
+			r.Get("/hats/{name}", s.handleGetHat)
 
 			r.Get("/skills", s.handleListSkills)
 			r.Get("/skills/{name}", s.handleGetSkill)
