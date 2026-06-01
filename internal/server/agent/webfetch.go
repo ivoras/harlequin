@@ -91,8 +91,12 @@ func (a *Agent) webFetch(ctx context.Context, rc *runContext, args map[string]an
 		"cached": res.Cached, "fetch_ms": fetchMS,
 		"bytes": len(res.Markdown), "title": res.Title,
 	})
-	log.Printf("webfetch: GET %s -> %s (cached=%v, %dms, %d bytes, depth=%d)",
-		rawURL, res.FinalURL, res.Cached, fetchMS, len(res.Markdown), depth)
+	target := rawURL
+	if res.FinalURL != "" && res.FinalURL != rawURL {
+		target = rawURL + " -> " + res.FinalURL // show redirect/upgrade only when it changed
+	}
+	log.Printf("webfetch: GET %s (cached=%v, %dms, %d bytes, depth=%d)",
+		target, res.Cached, fetchMS, len(res.Markdown), depth)
 
 	content := res.Markdown
 	if len(content) > webFetchMaxContent {
