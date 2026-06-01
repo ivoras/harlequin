@@ -62,6 +62,6 @@ memory:
 sessions:
   enabled: true            # trajectory JSONL logs (default true; set false to disable)
   dir: ""                  # empty -> <data_dir>/sessions; files: <user>.<conv>.jsonl (zero-padded ids)
-  log_tokens: false
+  log_tokens: false        # log per-token streaming deltas too (verbose); false logs only higher-level events
   retention_days: 7        # omit for default 7; 0 = keep forever
-  redact: []
+  redact: []               # event data field names whose values are replaced with "[redacted]" in the logs
