@@ -101,6 +101,27 @@ type AgentConfig struct {
 	JSToolTimeout      Duration `yaml:"js_tool_timeout"`
 	JSOutputCap        int      `yaml:"js_output_cap"`
 	JSFetchAllowlist   []string `yaml:"js_fetch_allowlist"`
+	// WebFetch enables/configures the WebFetch tool (fetch a URL, convert to
+	// Markdown, analyse with a small model).
+	WebFetch WebFetchConfig `yaml:"web_fetch"`
+}
+
+// WebFetchConfig controls the WebFetch tool.
+type WebFetchConfig struct {
+	// Enabled exposes the WebFetch tool to the model. Pointer so an omitted
+	// config key defaults to enabled (see EnabledValue); set false to disable.
+	Enabled *bool `yaml:"enabled"`
+	// Model is the small, fast model used to analyse fetched content. Empty uses
+	// the provider's default model.
+	Model string `yaml:"model"`
+	// AllowPrivate permits fetching loopback/private/link-local addresses. Off by
+	// default as an SSRF guard.
+	AllowPrivate bool `yaml:"allow_private"`
+}
+
+// EnabledValue reports whether the WebFetch tool is exposed (default true).
+func (w WebFetchConfig) EnabledValue() bool {
+	return w.Enabled == nil || *w.Enabled
 }
 
 // TemperatureValue returns the configured chat temperature (default 0.2).

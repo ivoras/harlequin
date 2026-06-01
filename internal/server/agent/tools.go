@@ -248,6 +248,10 @@ Only owner/admin may use shared. When you are owner/admin and the user states an
 		},
 	}
 
+	if a.WebFetcher != nil {
+		reg["WebFetch"] = a.webFetchEntry()
+	}
+
 	if a.Docs != nil {
 		reg["search_docs"] = toolEntry{
 			def: fnTool("search_docs", "Search the organisation document corpus (RAG).", map[string]any{

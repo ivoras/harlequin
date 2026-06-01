@@ -52,6 +52,10 @@ agent:
   js_tool_timeout: "10s"
   js_output_cap: 65536
   js_fetch_allowlist: []   # e.g. ["intranet.example.com"]
+  web_fetch:               # WebFetch tool: fetch a URL, convert to Markdown, analyse with a small model
+    enabled: true          # expose the WebFetch tool to the model (default true; set false to disable)
+    model: ""              # small/fast model for analysing fetched content; empty = provider default
+    allow_private: false   # allow fetching loopback/private/link-local addresses (SSRF guard; keep false)
 
 memory:
   auto_extract: true
