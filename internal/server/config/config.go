@@ -104,6 +104,8 @@ type AgentConfig struct {
 	// WebFetch enables/configures the WebFetch tool (fetch a URL, convert to
 	// Markdown, analyse with a small model).
 	WebFetch WebFetchConfig `yaml:"web_fetch"`
+	// ReportTiming shows per-turn model operation timing (PP/TG/clock) in chat.
+	ReportTiming bool `yaml:"report_timing"`
 }
 
 // WebFetchConfig controls the WebFetch tool.

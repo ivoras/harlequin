@@ -133,6 +133,20 @@ type StreamEvent struct {
 	Model          string `json:"model,omitempty"`
 	ContextTokens  int    `json:"context_tokens,omitempty"`
 	ContextMax     int    `json:"context_max,omitempty"`
+	// Timing (SSEDone), populated only when the server's timing report is enabled.
+	// Present indicates timing is available for this turn.
+	Timing *TurnTiming `json:"timing,omitempty"`
+}
+
+// TurnTiming reports model operation timing aggregated over a turn's LLM calls.
+type TurnTiming struct {
+	PromptTokens     int     `json:"prompt_tokens"`     // tokens processed during prefill (PP)
+	CompletionTokens int     `json:"completion_tokens"` // tokens generated (TG)
+	PrefillMS        int64   `json:"prefill_ms"`        // total prompt-processing time
+	DecodeMS         int64   `json:"decode_ms"`         // total token-generation time
+	TotalMS          int64   `json:"total_ms"`          // wall-clock time for the turn
+	PPRate           float64 `json:"pp_rate"`           // prompt-processing speed, tokens/sec
+	TGRate           float64 `json:"tg_rate"`           // token-generation speed, tokens/sec
 }
 
 // SkillInfo describes a skill in a listing.

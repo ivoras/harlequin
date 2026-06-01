@@ -139,6 +139,7 @@ func main() {
 		Session:       session,
 		WebFetcher:    webFetcher,
 		WebFetchModel: cfg.Agent.WebFetch.Model,
+		ReportTiming:  cfg.Agent.ReportTiming,
 		MaxSteps:      cfg.Agent.MaxSteps,
 		Temperature:   cfg.Agent.TemperatureValue(),
 		AutoExtract:   cfg.Memory.AutoExtract,

@@ -89,6 +89,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.appendBlock("assistant", m.streaming.String())
 			m.streaming.Reset()
 		}
+		if m.pendingTiming != nil {
+			m.appendBlock("status", formatTiming(m.pendingTiming))
+			m.pendingTiming = nil
+		}
 		if msg.err != nil && msg.err != context.Canceled {
 			m.appendBlock("error", msg.err.Error())
 		}
@@ -138,8 +142,24 @@ func (m *Model) handleStreamEvent(ev types.StreamEvent) (tea.Model, tea.Cmd) {
 				max:   ev.ContextMax,
 			}
 		}
+		m.pendingTiming = ev.Timing
 	}
 	return m, nil
+}
+
+// formatTiming renders a compact one-line model timing summary: prompt
+// processing (PP) and token generation (TG) rates plus wall-clock time.
+func formatTiming(t *types.TurnTiming) string {
+	secs := func(ms int64) float64 { return float64(ms) / 1000 }
+	pp := "—"
+	if t.PPRate > 0 {
+		pp = fmt.Sprintf("%.0f tok/s (%d tok / %.2fs)", t.PPRate, t.PromptTokens, secs(t.PrefillMS))
+	}
+	tg := "—"
+	if t.TGRate > 0 {
+		tg = fmt.Sprintf("%.1f tok/s (%d tok / %.2fs)", t.TGRate, t.CompletionTokens, secs(t.DecodeMS))
+	}
+	return fmt.Sprintf("⏱ PP %s · TG %s · %.2fs wall", pp, tg, secs(t.TotalMS))
 }
 
 // renderAskUser formats an ask_user prompt: the question followed by any

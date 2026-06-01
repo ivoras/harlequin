@@ -73,6 +73,31 @@ type Usage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
 	TotalTokens      int `json:"total_tokens"`
+	// PromptTokensDetails carries cache info when the provider reports it
+	// (OpenAI/OpenRouter style); used to discount cached prefill in timing.
+	PromptTokensDetails *struct {
+		CachedTokens int `json:"cached_tokens"`
+	} `json:"prompt_tokens_details,omitempty"`
+}
+
+// CachedPromptTokens returns the number of prompt tokens served from cache, or 0.
+func (u *Usage) CachedPromptTokens() int {
+	if u == nil || u.PromptTokensDetails == nil {
+		return 0
+	}
+	return u.PromptTokensDetails.CachedTokens
+}
+
+// Timings holds server-reported model operation timing (llama.cpp `timings`
+// object). prompt_n counts tokens actually evaluated, excluding KV-cache hits,
+// so PP derived from it is accurate even when the conversation is cached.
+type Timings struct {
+	PromptN            int     `json:"prompt_n"`
+	PromptMS           float64 `json:"prompt_ms"`
+	PromptPerSecond    float64 `json:"prompt_per_second"`
+	PredictedN         int     `json:"predicted_n"`
+	PredictedMS        float64 `json:"predicted_ms"`
+	PredictedPerSecond float64 `json:"predicted_per_second"`
 }
 
 // Chunk is a streamed piece of a completion.
@@ -86,6 +111,9 @@ type Chunk struct {
 	ToolCalls []ToolCall
 	// Usage is set on the final chunk when reported.
 	Usage *Usage
+	// Timings is set on the final chunk when the provider reports server-side
+	// model operation timing (llama.cpp).
+	Timings *Timings
 	// Provider/Model that served this response.
 	Provider string
 	Model    string
@@ -189,7 +217,8 @@ type sseChunk struct {
 		Delta jsonDelta `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
-	Usage *Usage `json:"usage"`
+	Usage   *Usage   `json:"usage"`
+	Timings *Timings `json:"timings"`
 }
 
 // jsonDelta captures content, tool_calls, and any provider-specific thinking
@@ -230,6 +259,7 @@ func (p *OpenAICompatible) readStream(resp *http.Response, model string, out cha
 	toolAcc := map[int]*ToolCall{}
 	var order []int
 	var usage *Usage
+	var timings *Timings
 	resolvedModel := model
 
 	flush := func(streamErr error) {
@@ -237,7 +267,7 @@ func (p *OpenAICompatible) readStream(resp *http.Response, model string, out cha
 		for _, idx := range order {
 			calls = append(calls, *toolAcc[idx])
 		}
-		out <- Chunk{ToolCalls: calls, Usage: usage, Provider: p.name, Model: resolvedModel, Done: true, Err: streamErr}
+		out <- Chunk{ToolCalls: calls, Usage: usage, Timings: timings, Provider: p.name, Model: resolvedModel, Done: true, Err: streamErr}
 	}
 
 	for scanner.Scan() {
@@ -259,6 +289,9 @@ func (p *OpenAICompatible) readStream(resp *http.Response, model string, out cha
 		}
 		if c.Usage != nil {
 			usage = c.Usage
+		}
+		if c.Timings != nil {
+			timings = c.Timings
 		}
 		for _, ch := range c.Choices {
 			if thinking := normalizeThinking(ch.Delta.extra); thinking != "" {
