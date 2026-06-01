@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // contextMeterState holds the latest context usage from the server (SSE done).
@@ -26,25 +27,32 @@ func (m *Model) headerZoneBG() color.Color {
 func (m *Model) renderHeaderLine() string {
 	left := m.styles.Header.Render(" Harlequin ")
 	bg := m.headerZoneBG()
-	thinking := m.renderHeaderThinking(bg)
-	right := m.renderContextMeter(bg)
 	leftW := lipgloss.Width(left)
 	zoneW := m.width - leftW
 	if zoneW < 1 {
 		zoneW = 1
 	}
-	thinkingW := lipgloss.Width(thinking)
+	// The meter is right-aligned and takes priority; the thinking indicator gets
+	// whatever space is left. Truncate (rather than clamp the gap) so the line
+	// never exceeds zoneW and wraps onto a second row.
+	right := m.renderContextMeter(bg)
+	if rightW := lipgloss.Width(right); rightW > zoneW {
+		right = ansi.Truncate(right, zoneW, "")
+	}
 	rightW := lipgloss.Width(right)
-	gap := zoneW - thinkingW - rightW
-	if gap < 1 {
-		gap = 1
+	thinking := m.renderHeaderThinking(bg)
+	if avail := zoneW - rightW - 1; lipgloss.Width(thinking) > avail {
+		if avail < 0 {
+			avail = 0
+		}
+		thinking = ansi.Truncate(thinking, avail, "")
+	}
+	gap := zoneW - lipgloss.Width(thinking) - rightW
+	if gap < 0 {
+		gap = 0
 	}
 	gapFill := lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", gap))
-	rest := thinking + gapFill + right
-	if w := lipgloss.Width(rest); w < zoneW {
-		rest += lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", zoneW-w))
-	}
-	return left + rest
+	return left + thinking + gapFill + right
 }
 
 func (m *Model) renderHeaderThinking(bg color.Color) string {
@@ -67,20 +75,24 @@ func (m *Model) renderContextMeter(bg color.Color) string {
 			pct = 100
 		}
 	}
-	bar := renderContextBar(pct, bg)
-	model := truncateModelName(m.ctxMeter.model)
-	label := fmt.Sprintf("%s  %s/%s", bar, used, max)
-	if model != "" {
-		label = model + " · " + label
-	}
-	style := m.styles.ContextOK.Background(bg)
+	style := m.styles.ContextOK
 	switch {
 	case pct >= 90:
-		style = m.styles.ContextCritical.Background(bg)
+		style = m.styles.ContextCritical
 	case pct >= 70:
-		style = m.styles.ContextWarn.Background(bg)
+		style = m.styles.ContextWarn
 	}
-	return style.Render(label)
+	// Style each segment independently so every cell carries the background.
+	// The bar self-styles each glyph; nesting it inside one outer Background
+	// style would let the bar's internal resets strip the bg from the text
+	// that follows (leaving the token count on the terminal's default bg).
+	seg := func(s string) string { return style.Background(bg).Render(s) }
+	bar := renderContextBar(pct, bg)
+	out := bar + seg(fmt.Sprintf("  %s/%s", used, max))
+	if model := truncateModelName(m.ctxMeter.model); model != "" {
+		out = seg(model+" · ") + out
+	}
+	return out
 }
 
 func renderContextBar(pct int, bg color.Color) string {
