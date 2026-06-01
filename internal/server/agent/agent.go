@@ -145,6 +145,21 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 		"count": len(toolCatalog), "tools": toolCatalog,
 	})
 
+	// Log the skill catalogue offered to the model this turn (the hat-aware
+	// visible set), so "which skills did the agent see" is greppable rather than
+	// buried in the system prompt text.
+	if infos, err := a.Skills.EffectiveSkillInfos(ctx, rc.userDB, rc.userID, rc.username, rc.hat); err == nil {
+		skillCatalog := make([]map[string]any, 0, len(infos))
+		for _, i := range infos {
+			skillCatalog = append(skillCatalog, map[string]any{
+				"name": i.Name, "description": i.Description, "source": i.Source,
+			})
+		}
+		a.logEvent(ctx, rc, sessionlog.TypeSkillsAvailable, map[string]any{
+			"count": len(skillCatalog), "skills": skillCatalog,
+		})
+	}
+
 	// Compose messages: system + history.
 	history, err := a.Conversations.Messages(ctx, rc.userDB, conversationID)
 	if err != nil {
