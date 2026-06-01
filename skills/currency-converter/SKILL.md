@@ -1,9 +1,7 @@
 ---
 name: currency-converter
-description: Convert amounts and look up exchange rates. Use on talk of prices, currency, FOREX, or currency exchange.
+description: Convert money between currencies and look up exchange rates. Use whenever a price, cost, or money amount appears, or the user asks what something costs in another or their own currency.
 ---
-# Currency Converter
-
-1. Determine the source and target currency. If the target is unknown, recall the user's preferred currency with memory_search; if none, ask with ask_user and save via memory_write (user scope).
-2. Fetch the rate with WebFetch `https://api.frankfurter.dev/v1/latest?base=<FROM>&symbols=<TO>`; on failure use `https://open.er-api.com/v6/latest/<FROM>`.
-3. Multiply the amount by the rate; report the result, the rate, and its date.
+1. Find source and target currency. If target is unknown, recall the user's preferred currency via memory_search; if none, ask with ask_user and store with memory_write (user scope).
+2. Look up the rate with WebFetch `https://api.frankfurter.dev/v1/latest?base=<FROM>&symbols=<TO>`. `base` takes one currency only; for several source currencies, fetch each separately in turn (`symbols` may list multiple targets). On failure, use `https://open.er-api.com/v6/latest/<FROM>`.
+3. Multiply amount by rate; report result, rate, date.
