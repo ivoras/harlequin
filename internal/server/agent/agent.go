@@ -43,6 +43,9 @@ type Agent struct {
 	// WebFetchModel is the model used to analyse fetched web content (a small,
 	// fast model). Empty uses the provider's default model.
 	WebFetchModel string
+	// ReportTiming, when true, measures and reports per-turn model operation
+	// timing (prompt processing, token generation, wall clock) to the client.
+	ReportTiming bool
 
 	// RecordUsage, if set, is called with attributed token usage per completion.
 	// userDB is the caller's open per-user database.
@@ -159,6 +162,19 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	var turnModel string
 	var turnContextTokens int
 	var turnContextMax int
+
+	// Per-turn model operation timing, aggregated over LLM calls.
+	turnStart := time.Now()
+	// Fallback (wall-clock) accumulators, used when the provider reports no
+	// server-side timing. Prompt tokens are cache-discounted so PP is not
+	// inflated by KV-cached conversation history.
+	var timePromptTokens, timeCompletionTokens int
+	var timePrefill, timeDecode time.Duration
+	// Server-reported timing accumulators (preferred; prompt_n excludes cache).
+	var srvPromptN, srvPredN int
+	var srvPromptMS, srvPredMS float64
+	var haveSrvTimings bool
+
 	for step := 1; step <= a.MaxSteps; step++ {
 		rc.step = step
 		if ctx.Err() != nil {
@@ -172,6 +188,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 			"temperature": a.Temperature, "estimated_prompt_tokens": estimatedTokens,
 		})
 
+		reqStart := time.Now()
 		stream, err := a.Provider.Chat(ctx, llm.ChatRequest{
 			Messages:    msgs,
 			Tools:       toolDefs,
@@ -187,7 +204,11 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 		var thinkingText string
 		var toolCalls []llm.ToolCall
 		var lastProvider, lastModel string
+		var firstTokenAt, doneAt time.Time
 		for chunk := range stream {
+			if (chunk.ThinkingDelta != "" || chunk.TextDelta != "") && firstTokenAt.IsZero() {
+				firstTokenAt = time.Now()
+			}
 			if chunk.Err != nil {
 				emit(types.StreamEvent{Type: types.SSEError, Error: chunk.Err.Error()})
 				a.logEvent(ctx, rc, sessionlog.TypeError, map[string]any{"error": chunk.Err.Error()})
@@ -208,6 +229,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 				}
 			}
 			if chunk.Done {
+				doneAt = time.Now()
 				toolCalls = chunk.ToolCalls
 				lastProvider = chunk.Provider
 				lastModel = chunk.Model
@@ -216,6 +238,22 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 					turnContextTokens = chunk.Usage.PromptTokens
 				} else {
 					turnContextTokens = estimatedTokens
+				}
+				if chunk.Usage != nil {
+					// Discount cached prefill: count only tokens actually processed.
+					processed := chunk.Usage.PromptTokens - chunk.Usage.CachedPromptTokens()
+					if processed < 0 {
+						processed = 0
+					}
+					timePromptTokens += processed
+					timeCompletionTokens += chunk.Usage.CompletionTokens
+				}
+				if chunk.Timings != nil {
+					haveSrvTimings = true
+					srvPromptN += chunk.Timings.PromptN
+					srvPredN += chunk.Timings.PredictedN
+					srvPromptMS += chunk.Timings.PromptMS
+					srvPredMS += chunk.Timings.PredictedMS
 				}
 				if a.ContextMax != nil {
 					turnContextMax = a.ContextMax(turnModel)
@@ -234,6 +272,16 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 					}
 				}
 			}
+		}
+
+		// Accumulate model operation timing for this step: prefill = request start
+		// to first token, decode = first token to completion.
+		if !firstTokenAt.IsZero() {
+			if doneAt.IsZero() {
+				doneAt = time.Now()
+			}
+			timePrefill += firstTokenAt.Sub(reqStart)
+			timeDecode += doneAt.Sub(firstTokenAt)
 		}
 
 		a.logEvent(ctx, rc, sessionlog.TypeLLMResponse, map[string]any{
@@ -280,14 +328,75 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 		}
 	}
 
-	a.logEvent(ctx, rc, sessionlog.TypeSessionEnd, map[string]any{
+	var timing *types.TurnTiming
+	if haveSrvTimings {
+		timing = timingFromServer(srvPromptN, srvPredN, srvPromptMS, srvPredMS, time.Since(turnStart))
+	} else {
+		timing = buildTurnTiming(timePromptTokens, timeCompletionTokens, timePrefill, timeDecode, time.Since(turnStart))
+	}
+
+	sessionEnd := map[string]any{
 		"status": "ok", "steps": rc.step,
 		"model": turnModel, "context_tokens": turnContextTokens, "context_max": turnContextMax,
-	})
+	}
+	if timing != nil {
+		sessionEnd["timing"] = timing
+	}
+	a.logEvent(ctx, rc, sessionlog.TypeSessionEnd, sessionEnd)
+
 	done := types.StreamEvent{Type: types.SSEDone, Model: turnModel, ContextTokens: turnContextTokens, ContextMax: turnContextMax}
+	if a.ReportTiming {
+		done.Timing = timing
+	}
 	emit(done)
 
 	return finalText, nil
+}
+
+// timingFromServer builds per-turn timing from server-reported llama.cpp timings
+// aggregated over the turn's calls. This is accurate under KV caching because
+// prompt_n counts only the tokens actually evaluated (cache hits excluded).
+func timingFromServer(promptN, predN int, promptMS, predMS float64, total time.Duration) *types.TurnTiming {
+	if total <= 0 {
+		return nil
+	}
+	t := &types.TurnTiming{
+		PromptTokens:     promptN,
+		CompletionTokens: predN,
+		PrefillMS:        int64(promptMS),
+		DecodeMS:         int64(predMS),
+		TotalMS:          total.Milliseconds(),
+	}
+	if promptMS > 0 && promptN > 0 {
+		t.PPRate = float64(promptN) / (promptMS / 1000)
+	}
+	if predMS > 0 && predN > 0 {
+		t.TGRate = float64(predN) / (predMS / 1000)
+	}
+	return t
+}
+
+// buildTurnTiming assembles per-turn timing with PP/TG rates (tokens/sec) from
+// wall-clock measurements (fallback when the provider reports no server timing).
+// Returns nil when nothing measurable happened.
+func buildTurnTiming(promptTokens, completionTokens int, prefill, decode, total time.Duration) *types.TurnTiming {
+	if total <= 0 {
+		return nil
+	}
+	t := &types.TurnTiming{
+		PromptTokens:     promptTokens,
+		CompletionTokens: completionTokens,
+		PrefillMS:        prefill.Milliseconds(),
+		DecodeMS:         decode.Milliseconds(),
+		TotalMS:          total.Milliseconds(),
+	}
+	if prefill > 0 && promptTokens > 0 {
+		t.PPRate = float64(promptTokens) / prefill.Seconds()
+	}
+	if decode > 0 && completionTokens > 0 {
+		t.TGRate = float64(completionTokens) / decode.Seconds()
+	}
+	return t
 }
 
 // dispatch runs one tool call, emitting tool_call/tool_result events and logging.

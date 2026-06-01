@@ -65,6 +65,7 @@ type Model struct {
 	slashSel       int    // highlighted item in the slash-command autocomplete menu
 	user           *types.User
 	ctxMeter       contextMeterState
+	pendingTiming  *types.TurnTiming // timing from the latest SSEDone, shown after the turn
 
 	// Submitted input lines for up/down recall (messages and slash commands).
 	inputHistory []string
