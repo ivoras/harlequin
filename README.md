@@ -152,6 +152,8 @@ third_party/sqlite     vendored sqlite3.h (compile-time; see third_party/sqlite/
 
 # Running with llama.cpp local models
 
+These are just example command lines for starting the LLM server and the embeddings server.
+
 ```sh
 llama-server -m Qwen3.6-35B-A3B-IQ4_XS-3.53bpw.gguf --port 2234 --host 0.0.0.0 --metrics -c 120000 --timeout 3600 -ctk q8_0 -ctv q8_0 --kv-unified --batch-size 4096 -np 2 --presence-penalty 0.5 --repeat-penalty 1.05 --temperature 0.6 --min_p 0.05 --top_p 0.95 --reasoning-budget 3000 --chat-template-kwargs '{"preserve_thinking": true}' --spec-type ngram-mod --spec-ngram-mod-n-match 24 --spec-ngram-mod-n-min 48 --spec-ngram-mod-n-max 64
 ```
