@@ -159,7 +159,7 @@ func formatTiming(t *types.TurnTiming) string {
 	if t.TGRate > 0 {
 		tg = fmt.Sprintf("%.1f tok/s (%d tok / %.2fs)", t.TGRate, t.CompletionTokens, secs(t.DecodeMS))
 	}
-	return fmt.Sprintf("⏱ PP %s · TG %s · %.2fs wall", pp, tg, secs(t.TotalMS))
+	return fmt.Sprintf("⏱ PP %s · TG %s · %.2fs total", pp, tg, secs(t.TotalMS))
 }
 
 // renderAskUser formats an ask_user prompt: the question followed by any

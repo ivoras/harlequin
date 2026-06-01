@@ -22,6 +22,9 @@ func TestFetchUsesCacheNoNetwork(t *testing.T) {
 	if res.Markdown != "CACHED" {
 		t.Fatalf("got %q, want CACHED", res.Markdown)
 	}
+	if !res.Cached {
+		t.Fatal("expected Cached=true on a cache hit")
+	}
 	if elapsed > 50*time.Millisecond {
 		t.Fatalf("cache hit took %v (network was likely hit)", elapsed)
 	}

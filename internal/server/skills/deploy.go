@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -20,6 +21,8 @@ func Deploy(bakedFS fs.FS, srcRoot, destDir, dataDir string) error {
 	manifestPath := filepath.Join(dataDir, srcRoot+".hashes.json")
 	manifest := loadManifest(manifestPath)
 	newManifest := map[string]string{}
+
+	var created, updated, preserved []string
 
 	err := fs.WalkDir(bakedFS, srcRoot, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -43,6 +46,7 @@ func Deploy(bakedFS fs.FS, srcRoot, destDir, dataDir string) error {
 
 		onDisk, readErr := os.ReadFile(dest)
 		if os.IsNotExist(readErr) {
+			created = append(created, rel)
 			return os.WriteFile(dest, baked, 0o644)
 		}
 		if readErr != nil {
@@ -57,10 +61,12 @@ func Deploy(bakedFS fs.FS, srcRoot, destDir, dataDir string) error {
 			return nil
 		case known && diskHash == prevHash:
 			// Unchanged since last deploy -> replace with new baked version.
+			updated = append(updated, rel)
 			return os.WriteFile(dest, baked, 0o644)
 		default:
 			// Edited on disk -> preserve, warn.
-			log.Printf("skills: preserving locally edited %s (not overwriting on update)", rel)
+			preserved = append(preserved, rel)
+			log.Printf("%s: preserving locally edited %s (not overwriting on update)", srcRoot, rel)
 			return nil
 		}
 	})
@@ -68,7 +74,23 @@ func Deploy(bakedFS fs.FS, srcRoot, destDir, dataDir string) error {
 		return err
 	}
 
+	logDeployed(srcRoot, destDir, created, updated, preserved)
 	return saveManifest(manifestPath, newManifest)
+}
+
+// logDeployed reports which embedded asset files were written to disk this run.
+func logDeployed(srcRoot, destDir string, created, updated, preserved []string) {
+	sort.Strings(created)
+	sort.Strings(updated)
+	if len(created) > 0 {
+		log.Printf("%s: deployed %d new file(s) into %s: %s", srcRoot, len(created), destDir, strings.Join(created, ", "))
+	}
+	if len(updated) > 0 {
+		log.Printf("%s: updated %d file(s) in %s: %s", srcRoot, len(updated), destDir, strings.Join(updated, ", "))
+	}
+	if len(created) == 0 && len(updated) == 0 {
+		log.Printf("%s: assets up to date in %s (%d preserved local edit(s))", srcRoot, destDir, len(preserved))
+	}
 }
 
 func loadManifest(path string) map[string]string {
