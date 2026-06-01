@@ -28,6 +28,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/skills"
 	"github.com/ivoras/harlequin/internal/server/storage"
 	"github.com/ivoras/harlequin/internal/server/usage"
+	"github.com/ivoras/harlequin/internal/server/webfetch"
 )
 
 func main() {
@@ -122,6 +123,11 @@ func main() {
 	makeCtx := mdtmpl.New(memStore, docStore, store)
 	skillMgr := skills.NewManager(store.Shared, cfg.SkillsDir(), cfg.HatsDir(), skillRunner, makeCtx)
 
+	var webFetcher *webfetch.Client
+	if cfg.Agent.WebFetch.EnabledValue() {
+		webFetcher = webfetch.New(webfetch.Options{AllowPrivate: cfg.Agent.WebFetch.AllowPrivate})
+	}
+
 	ag := &agent.Agent{
 		Provider:      router,
 		Storage:       store,
@@ -131,6 +137,8 @@ func main() {
 		Runner:        runner,
 		Conversations: convStore,
 		Session:       session,
+		WebFetcher:    webFetcher,
+		WebFetchModel: cfg.Agent.WebFetch.Model,
 		MaxSteps:      cfg.Agent.MaxSteps,
 		Temperature:   cfg.Agent.TemperatureValue(),
 		AutoExtract:   cfg.Memory.AutoExtract,

@@ -20,6 +20,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/skills"
 	"github.com/ivoras/harlequin/internal/server/storage"
+	"github.com/ivoras/harlequin/internal/server/webfetch"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
@@ -33,11 +34,15 @@ type Agent struct {
 	Runner        *jsrun.Runner
 	Conversations *conversation.Store
 	Session       *sessionlog.Logger
+	WebFetcher    *webfetch.Client
 
 	MaxSteps      int
 	Temperature   float64
 	AutoExtract   bool
 	MemDefaultTTL time.Duration
+	// WebFetchModel is the model used to analyse fetched web content (a small,
+	// fast model). Empty uses the provider's default model.
+	WebFetchModel string
 
 	// RecordUsage, if set, is called with attributed token usage per completion.
 	// userDB is the caller's open per-user database.
