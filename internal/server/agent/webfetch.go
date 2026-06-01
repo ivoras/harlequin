@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -82,6 +83,7 @@ func (a *Agent) webFetch(ctx context.Context, rc *runContext, args map[string]an
 			"url": rawURL, "depth": depth, "ok": false,
 			"error": err.Error(), "fetch_ms": fetchMS,
 		})
+		log.Printf("webfetch: GET %s failed after %dms (depth=%d): %v", rawURL, fetchMS, depth, err)
 		return fmt.Sprintf("error: failed to fetch %s: %v", rawURL, err), nil
 	}
 	a.logEvent(ctx, rc, sessionlog.TypeWebFetch, map[string]any{
@@ -89,6 +91,8 @@ func (a *Agent) webFetch(ctx context.Context, rc *runContext, args map[string]an
 		"cached": res.Cached, "fetch_ms": fetchMS,
 		"bytes": len(res.Markdown), "title": res.Title,
 	})
+	log.Printf("webfetch: GET %s -> %s (cached=%v, %dms, %d bytes, depth=%d)",
+		rawURL, res.FinalURL, res.Cached, fetchMS, len(res.Markdown), depth)
 
 	content := res.Markdown
 	if len(content) > webFetchMaxContent {
@@ -138,11 +142,16 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, prompt string, r
 			Temperature: llm.Ptr(a.Temperature),
 		})
 		callMS := time.Since(callStart).Milliseconds()
+		model := a.WebFetchModel
+		if model == "" {
+			model = "default"
+		}
 		if err != nil {
 			a.logEvent(ctx, rc, sessionlog.TypeDelegatedLLMResponse, map[string]any{
 				"delegate": "web_fetch", "model": a.WebFetchModel, "depth": depth,
 				"delegate_step": step + 1, "duration_ms": callMS, "error": err.Error(),
 			})
+			log.Printf("webfetch: delegated LLM (%s) step %d failed after %dms: %v", model, step+1, callMS, err)
 			return fmt.Sprintf("error: analysis model failed: %v", err), nil
 		}
 		a.logEvent(ctx, rc, sessionlog.TypeDelegatedLLMResponse, map[string]any{
@@ -150,6 +159,8 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, prompt string, r
 			"delegate_step": step + 1, "duration_ms": callMS,
 			"content": text, "tool_calls": logToolCalls(toolCalls),
 		})
+		log.Printf("webfetch: delegated LLM (%s) step %d took %dms (depth=%d, %d tool call(s))",
+			model, step+1, callMS, depth, len(toolCalls))
 		lastText = text
 		if len(toolCalls) == 0 {
 			return text, nil
