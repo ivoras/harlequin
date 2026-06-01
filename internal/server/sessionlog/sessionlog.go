@@ -28,6 +28,11 @@ const (
 	TypeUsage        = "usage"
 	TypeError        = "error"
 	TypeSessionEnd   = "session_end"
+	// WebFetch tool: the network fetch and the delegated (inner) LLM call that
+	// analyses the fetched page.
+	TypeWebFetch             = "web_fetch"
+	TypeDelegatedLLMRequest  = "delegated_llm_request"
+	TypeDelegatedLLMResponse = "delegated_llm_response"
 )
 
 // Event is one JSONL line. Fields beyond the envelope go into Data.

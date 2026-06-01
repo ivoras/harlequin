@@ -41,6 +41,8 @@ type Result struct {
 	FinalURL string
 	// Title is the page <title>, when present.
 	Title string
+	// Cached is true when this result was served from the in-memory cache.
+	Cached bool
 }
 
 type cacheEntry struct {
@@ -95,6 +97,7 @@ func (c *Client) Fetch(ctx context.Context, url string) (Result, error) {
 	}
 
 	if r, ok := c.cacheGet(url); ok {
+		r.Cached = true
 		return r, nil
 	}
 
