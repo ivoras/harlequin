@@ -76,6 +76,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/memory", s.handleListMemory)
 			r.Get("/memory/conflicts", s.handleListMemoryConflicts)
 			r.Get("/memory/search", s.handleSearchMemory)
+			r.Get("/memory/find", s.handleFindMemory)
 			r.Get("/memory/{id}", s.handleGetMemory)
 			r.Post("/memory", s.handleCreateMemory)
 			r.Patch("/memory/{id}", s.handlePatchMemory)
