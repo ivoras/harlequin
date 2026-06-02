@@ -81,14 +81,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case streamEndMsg:
 		m.loading = false
-		if m.cfg.ShowThinking && m.streamingThinking.Len() > 0 {
-			m.appendBlock("thinking", m.streamingThinking.String())
-			m.streamingThinking.Reset()
-		}
-		if m.streaming.Len() > 0 {
-			m.appendBlock("assistant", m.streaming.String())
-			m.streaming.Reset()
-		}
+		m.flushStreaming()
 		if m.pendingTiming != nil {
 			m.appendBlock("status", formatTiming(m.pendingTiming))
 			m.pendingTiming = nil
@@ -122,17 +115,17 @@ func (m *Model) handleStreamEvent(ev types.StreamEvent) (tea.Model, tea.Cmd) {
 		m.streaming.WriteString(ev.Text)
 		m.refreshViewport()
 	case types.SSEToolCall:
+		// Commit the reasoning/text that led to this call first, so the tool
+		// call appears after them in chronological order.
+		m.flushStreaming()
 		m.appendBlock("tool", "⚙ "+ev.ToolName+"("+truncate(ev.ToolArgs, 120)+")")
 	case types.SSEToolResult:
 		m.appendBlock("tool", "  ↳ "+truncate(strings.TrimSpace(ev.Output), 200))
 	case types.SSEError:
 		m.appendBlock("error", ev.Error)
 	case types.SSEAskUser:
-		// Flush any partial assistant text first so the question renders after it.
-		if m.streaming.Len() > 0 {
-			m.appendBlock("assistant", m.streaming.String())
-			m.streaming.Reset()
-		}
+		// Flush any partial reasoning/text first so the question renders after it.
+		m.flushStreaming()
 		m.appendBlock("assistant", renderAskUser(ev.Text, ev.Options))
 	case types.SSEDone:
 		if ev.ContextMax > 0 {
