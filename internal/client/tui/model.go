@@ -187,6 +187,22 @@ func (m *Model) appendBlock(role, text string) {
 	m.refreshViewport()
 }
 
+// flushStreaming commits any in-flight thinking and assistant text to the
+// transcript (chronological order: reasoning then text) and clears the buffers.
+// Called at every tool-call boundary and at turn end so that reasoning, answer
+// text, and tool calls interleave in the order they actually occurred rather
+// than collapsing into separate sections. Does not refresh; the caller does.
+func (m *Model) flushStreaming() {
+	if m.cfg.ShowThinking && m.streamingThinking.Len() > 0 {
+		m.blocks = append(m.blocks, roleBlock{role: "thinking", text: m.streamingThinking.String()})
+		m.streamingThinking.Reset()
+	}
+	if m.streaming.Len() > 0 {
+		m.blocks = append(m.blocks, roleBlock{role: "assistant", text: m.streaming.String()})
+		m.streaming.Reset()
+	}
+}
+
 func (m *Model) refreshViewport() {
 	var sb strings.Builder
 	for _, b := range m.blocks {
