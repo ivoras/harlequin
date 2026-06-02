@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log"
@@ -11,6 +12,8 @@ import (
 	"github.com/ivoras/harlequin/internal/server/auth"
 	"github.com/ivoras/harlequin/internal/server/config"
 	"github.com/ivoras/harlequin/internal/server/db"
+	"github.com/ivoras/harlequin/internal/server/embed"
+	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/storage"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
@@ -35,6 +38,9 @@ func dispatchCLI(args []string) bool {
 	case "print-trajectory":
 		runPrintTrajectory(args[1:])
 		return true
+	case "backfill-slot-keys":
+		runBackfillSlotKeys(args[1:])
+		return true
 	case "help", "-h", "--help":
 		printUsage()
 		os.Exit(0)
@@ -46,7 +52,7 @@ func dispatchCLI(args []string) bool {
 // must be the first argument (before any flags).
 func isSubcommand(name string) bool {
 	switch name {
-	case "createuser", "changepassword", "deleteuser", "listusers", "print-trajectory":
+	case "createuser", "changepassword", "deleteuser", "listusers", "print-trajectory", "backfill-slot-keys":
 		return true
 	}
 	return false
@@ -81,6 +87,7 @@ Usage:
   harlequin-server deleteuser [flags] <username>
   harlequin-server listusers [flags]
   harlequin-server print-trajectory [flags] <file.jsonl>
+  harlequin-server backfill-slot-keys [flags]
   harlequin-server help
 
 Server flags:
@@ -101,6 +108,11 @@ deleteuser flags:
 
 listusers flags:
   --config path     server config YAML (default server.yaml)
+
+backfill-slot-keys flags:
+  --config path     server config YAML (default server.yaml)
+                    re-embeds every slot key (shared + all users) with the
+                    humanized form; run once after upgrading.
 
 print-trajectory flags:
   --verbose, -v     include token/thinking delta events
@@ -282,6 +294,55 @@ func runListUsers(args []string) {
 	for _, u := range users {
 		fmt.Printf("%-5d  %-20s  %-6s  %s\n", u.ID, u.Username, u.Role, u.CreatedAt.UTC().Format("2006-01-02T15:04Z"))
 	}
+}
+
+func runBackfillSlotKeys(args []string) {
+	f, err := parseCmdFlags(args, false)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "backfill-slot-keys:", err)
+		os.Exit(2)
+	}
+	if f.username != "" {
+		fmt.Fprintln(os.Stderr, "backfill-slot-keys: unexpected argument", f.username)
+		printUsage()
+		os.Exit(2)
+	}
+
+	cfg, err := config.Load(f.config)
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+	store, err := storage.New(cfg.DataDir, cfg.DBPath, cfg.Embeddings.Dim)
+	if err != nil {
+		log.Fatalf("storage: %v", err)
+	}
+	defer store.Close()
+	embedder := embed.New(cfg.Embeddings.BaseURL, cfg.Embeddings.APIKey, cfg.Embeddings.Model, cfg.Embeddings.Dim)
+	mem := memory.NewStore(store.Shared, embedder)
+
+	ctx := context.Background()
+	total := 0
+	n, err := mem.BackfillSlotKeyEmbeddings(ctx, store.Shared)
+	if err != nil {
+		log.Fatalf("backfill-slot-keys (shared): %v", err)
+	}
+	total += n
+	fmt.Printf("shared: reindexed %d slot key(s)\n", n)
+
+	if err := store.EachUser(ctx, func(uid int64, udb *sql.DB) error {
+		un, err := mem.BackfillSlotKeyEmbeddings(ctx, udb)
+		if err != nil {
+			return fmt.Errorf("user %d: %w", uid, err)
+		}
+		if un > 0 {
+			fmt.Printf("user %d: reindexed %d slot key(s)\n", uid, un)
+		}
+		total += un
+		return nil
+	}); err != nil {
+		log.Fatalf("backfill-slot-keys: %v", err)
+	}
+	fmt.Printf("done: reindexed %d slot key(s) total\n", total)
 }
 
 func resolvePassword(flagValue string) string {
