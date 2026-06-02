@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"strings"
+	"unicode"
 
 	"github.com/ivoras/harlequin/internal/server/llm"
 	"github.com/ivoras/harlequin/internal/server/memory/slotextract"
@@ -111,8 +112,94 @@ func (s *Store) storeSlot(ctx context.Context, userDB *sql.DB, memID string, slo
 	if !ok {
 		return
 	}
-	keyBlob, _ := s.embed(ctx, slot.Key)
+	// Embed the humanized form of the key (e.g. "organisation name") so it
+	// compares well to natural-language queries; the stored key column keeps the
+	// canonical dotted form used for exact-match conflict detection.
+	keyBlob, _ := s.embed(ctx, humanizeKey(slot.Key))
 	_ = s.memFor(scope, userDB).insertSlot(ctx, local, slot.Key, slot.Value, keyBlob)
+}
+
+// humanizeKey turns a canonical slot key into a natural-language phrase for
+// embedding: dot/underscore/hyphen/slash separators become spaces and camelCase
+// boundaries are split, lowercased (e.g. "organisation.name" -> "organisation
+// name", "preferredCurrency" -> "preferred currency").
+func humanizeKey(key string) string {
+	var b strings.Builder
+	prevAlnum := false
+	for _, r := range key {
+		switch {
+		case r == '.' || r == '_' || r == '-' || r == '/':
+			b.WriteByte(' ')
+			prevAlnum = false
+		case unicode.IsUpper(r):
+			if prevAlnum {
+				b.WriteByte(' ')
+			}
+			b.WriteRune(unicode.ToLower(r))
+			prevAlnum = true
+		default:
+			b.WriteRune(r)
+			prevAlnum = unicode.IsLetter(r) || unicode.IsDigit(r)
+		}
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+// BackfillSlotKeyEmbeddings re-embeds every slot key in db using the humanized
+// form and rewrites its memory_slots_vec row. Use after changing the key
+// embedding scheme. Returns the number of slots reindexed.
+func (s *Store) BackfillSlotKeyEmbeddings(ctx context.Context, db *sql.DB) (int, error) {
+	if db == nil {
+		return 0, nil
+	}
+	// Read all (id, key) first, then re-embed/rewrite — nested queries on a
+	// single-connection sqlite handle would otherwise deadlock.
+	rows, err := db.QueryContext(ctx, `SELECT id, key FROM memory_slots`)
+	if err != nil {
+		return 0, err
+	}
+	type slotKey struct {
+		id  int64
+		key string
+	}
+	var all []slotKey
+	for rows.Next() {
+		var sk slotKey
+		if err := rows.Scan(&sk.id, &sk.key); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		all = append(all, sk)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	n := 0
+	for _, sk := range all {
+		blob, err := s.embed(ctx, humanizeKey(sk.key))
+		if err != nil || blob == nil {
+			continue
+		}
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return n, err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM memory_slots_vec WHERE rowid = ?`, sk.id); err != nil {
+			tx.Rollback()
+			return n, err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO memory_slots_vec(rowid, embedding) VALUES (?, ?)`, sk.id, blob); err != nil {
+			tx.Rollback()
+			return n, err
+		}
+		if err := tx.Commit(); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
 }
 
 // slotConflicts records duplicate/conflict pairs for existing memories that
