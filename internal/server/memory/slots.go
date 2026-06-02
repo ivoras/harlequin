@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"unicode"
 
@@ -117,6 +118,21 @@ func (s *Store) storeSlot(ctx context.Context, userDB *sql.DB, memID string, slo
 	// canonical dotted form used for exact-match conflict detection.
 	keyBlob, _ := s.embed(ctx, humanizeKey(slot.Key))
 	_ = s.memFor(scope, userDB).insertSlot(ctx, local, slot.Key, slot.Value, keyBlob)
+}
+
+// AddSlot attaches a known (key, value) slot to an existing memory and indexes
+// its humanized key embedding. For imports and evaluation where slots are
+// supplied directly rather than LLM-extracted.
+func (s *Store) AddSlot(ctx context.Context, userDB *sql.DB, memID, key, value string) error {
+	scope, local, ok := decodeID(memID)
+	if !ok {
+		return fmt.Errorf("invalid memory id %q", memID)
+	}
+	keyBlob, err := s.embed(ctx, humanizeKey(key))
+	if err != nil {
+		return err
+	}
+	return s.memFor(scope, userDB).insertSlot(ctx, local, key, value, keyBlob)
 }
 
 // humanizeKey turns a canonical slot key into a natural-language phrase for

@@ -267,6 +267,18 @@ func (s *Store) Find(ctx context.Context, userDB *sql.DB, query string, userID i
 // databases with hybrid FTS + vector search and RRF. scope ("user"|"shared"|"")
 // narrows which databases are consulted.
 func (s *Store) Search(ctx context.Context, userDB *sql.DB, query string, userID int64, scope string, limit int) ([]types.SearchResult, error) {
+	return s.searchTuned(ctx, userDB, query, userID, scope, limit, 0)
+}
+
+// SearchTuned is Search with an additional slot-key RRF leg, weighted by
+// slotWeight (0 disables it, reproducing plain Search). It lets the slot-key
+// embeddings contribute an attribute-match signal to ranking. Exposed for
+// tuning and evaluation.
+func (s *Store) SearchTuned(ctx context.Context, userDB *sql.DB, query string, userID int64, scope string, limit int, slotWeight float64) ([]types.SearchResult, error) {
+	return s.searchTuned(ctx, userDB, query, userID, scope, limit, slotWeight)
+}
+
+func (s *Store) searchTuned(ctx context.Context, userDB *sql.DB, query string, userID int64, scope string, limit int, slotWeight float64) ([]types.SearchResult, error) {
 	if limit <= 0 {
 		limit = 8
 	}
@@ -278,7 +290,7 @@ func (s *Store) Search(ctx context.Context, userDB *sql.DB, query string, userID
 	ranks := map[string]float64{}
 	contents := map[string]string{}
 	for _, m := range s.scopes(scope, userDB) {
-		m.search(ctx, query, blob, limit, ranks, contents)
+		m.search(ctx, query, blob, limit, slotWeight, ranks, contents)
 	}
 	out := topN(ranks, contents, limit)
 	s.attachSlotsToResults(ctx, userDB, out)
@@ -312,7 +324,7 @@ func (s *Store) scopes(scope string, userDB *sql.DB) []memDB {
 
 // search runs the FTS + vector legs against this file, folding RRF scores keyed
 // by composite id into ranks/contents.
-func (m memDB) search(ctx context.Context, query string, blob any, limit int, ranks map[string]float64, contents map[string]string) {
+func (m memDB) search(ctx context.Context, query string, blob any, limit int, slotWeight float64, ranks map[string]float64, contents map[string]string) {
 	if m.db == nil {
 		return
 	}
@@ -321,19 +333,31 @@ func (m memDB) search(ctx context.Context, query string, blob any, limit int, ra
 		FROM memories_fts f JOIN memories m ON m.id = f.rowid
 		WHERE memories_fts MATCH ? AND ` + notExpired + `
 		ORDER BY f.rank LIMIT ?`
-	_ = m.collect(ctx, ftsSQL, []any{query, limit * 4}, ranks, contents)
+	_ = m.collect(ctx, ftsSQL, []any{query, limit * 4}, 1.0, ranks, contents)
 
 	if blob != nil {
 		vecSQL := `SELECT m.id, m.content
 			FROM memories_vec v JOIN memories m ON m.id = v.rowid
 			WHERE v.embedding MATCH ? AND k = ? AND ` + notExpired + `
 			ORDER BY v.distance`
-		_ = m.collect(ctx, vecSQL, []any{blob, limit * 4}, ranks, contents)
+		_ = m.collect(ctx, vecSQL, []any{blob, limit * 4}, 1.0, ranks, contents)
+
+		// Slot-key leg (optional): nearest slot keys by embedding, mapped back to
+		// their memories, folded in with slotWeight. Surfaces attribute matches.
+		if slotWeight > 0 {
+			slotSQL := `SELECT m.id, m.content
+				FROM memory_slots_vec v
+				JOIN memory_slots sl ON sl.id = v.rowid
+				JOIN memories m ON m.id = sl.memory_id
+				WHERE v.embedding MATCH ? AND k = ? AND ` + notExpired + `
+				ORDER BY v.distance`
+			_ = m.collect(ctx, slotSQL, []any{blob, limit * 4}, slotWeight, ranks, contents)
+		}
 	}
 }
 
-// collect runs a ranked query and folds 1/(k+rank) RRF scores into ranks.
-func (m memDB) collect(ctx context.Context, query string, args []any, ranks map[string]float64, contents map[string]string) error {
+// collect runs a ranked query and folds weight/(k+rank) RRF scores into ranks.
+func (m memDB) collect(ctx context.Context, query string, args []any, weight float64, ranks map[string]float64, contents map[string]string) error {
 	rows, err := m.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return err
@@ -348,7 +372,7 @@ func (m memDB) collect(ctx context.Context, query string, args []any, ranks map[
 		}
 		rank++
 		id := m.encode(local)
-		ranks[id] += 1.0 / (rrfK + float64(rank))
+		ranks[id] += weight / (rrfK + float64(rank))
 		contents[id] = content
 	}
 	return rows.Err()
