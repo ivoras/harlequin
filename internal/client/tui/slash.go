@@ -13,7 +13,7 @@ var slashCommands = []string{
 
 var slashHelp = map[string]string{
 	"/docs":   "search organisation documents",
-	"/export": "save transcript to session_YYYYMMDD_HHMM.md",
+	"/export": "save transcript (User+Assistant; add 'raw' for everything)",
 	"/hat":    "list / show / wear hats",
 	"/help":   "show help",
 	"/memory": "list / show / manage memories",
