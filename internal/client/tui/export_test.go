@@ -34,3 +34,22 @@ func TestFormatSessionMarkdown_header(t *testing.T) {
 		t.Fatalf("header missing fields:\n%s", out)
 	}
 }
+
+func TestOnlyConversationFiltersToUserAndAssistant(t *testing.T) {
+	blocks := []roleBlock{
+		{role: "user", text: "hi"},
+		{role: "thinking", text: "hmm"},
+		{role: "tool", text: "⚙ WebFetch(...)"},
+		{role: "assistant", text: "hello"},
+		{role: "status", text: "connected"},
+		{role: "error", text: "boom"},
+	}
+	got := onlyConversation(blocks)
+	if len(got) != 2 || got[0].role != "user" || got[1].role != "assistant" {
+		t.Fatalf("got %+v", got)
+	}
+	// raw keeps everything; default keeps only the conversation.
+	if len(onlyConversation(blocks)) == len(blocks) {
+		t.Fatal("non-raw export should drop non-conversation blocks")
+	}
+}

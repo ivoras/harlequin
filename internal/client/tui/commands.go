@@ -35,7 +35,7 @@ const helpText = `Commands:
   /docs <query>         search organisation documents
   /resume               list recent conversations
   /usage                show your token/cost usage
-  /export               save chat transcript to session_YYYYMMDD_HHMM.md (cwd)
+  /export [raw]         save transcript to session_YYYYMMDD_HHMM.md (cwd); raw includes thinking/tools, else User+Assistant only
   /quit                 exit`
 
 func (m *Model) handleSlash(line string) tea.Cmd {
@@ -47,12 +47,17 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 	case "/help":
 		return infoCmd(helpText)
 	case "/export":
+		raw := len(args) > 0 && strings.EqualFold(args[0], "raw")
 		return func() tea.Msg {
-			path, err := m.exportSession()
+			path, err := m.exportSession(raw)
 			if err != nil {
 				return errMsg{err}
 			}
-			return infoMsg{"exported session to " + path}
+			what := "conversation"
+			if raw {
+				what = "full transcript"
+			}
+			return infoMsg{fmt.Sprintf("exported %s to %s", what, path)}
 		}
 	case "/quit", "/exit":
 		return tea.Quit

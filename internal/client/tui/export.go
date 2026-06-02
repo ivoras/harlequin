@@ -9,8 +9,13 @@ import (
 )
 
 // exportSession writes the visible transcript to session_YYYYMMDD_HHMM.md in cwd.
-func (m *Model) exportSession() (string, error) {
+// When raw is true everything is exported (thinking, tools, status, etc.);
+// otherwise only the User and Assistant sections are kept.
+func (m *Model) exportSession(raw bool) (string, error) {
 	blocks := m.sessionBlocksForExport()
+	if !raw {
+		blocks = onlyConversation(blocks)
+	}
 	if len(blocks) == 0 {
 		return "", fmt.Errorf("nothing to export")
 	}
@@ -35,6 +40,18 @@ func (m *Model) sessionBlocksForExport() []roleBlock {
 	}
 	if m.streaming.Len() > 0 {
 		out = append(out, roleBlock{role: "assistant", text: m.streaming.String()})
+	}
+	return out
+}
+
+// onlyConversation keeps just the User and Assistant blocks (drops thinking,
+// tool calls, status, info, errors) for the default, non-raw export.
+func onlyConversation(blocks []roleBlock) []roleBlock {
+	out := make([]roleBlock, 0, len(blocks))
+	for _, b := range blocks {
+		if b.role == "user" || b.role == "assistant" {
+			out = append(out, b)
+		}
 	}
 	return out
 }
