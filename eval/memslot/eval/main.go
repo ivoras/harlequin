@@ -5,6 +5,8 @@
 //	baseline  - FTS + content-vector RRF (no slot leg)
 //	option A  - baseline + slot-key RRF leg at weight 1.0
 //	option B  - baseline + slot-key RRF leg at swept weights
+//	option C  - baseline + slot leg where the slot vector embeds key+value
+//	            (swept weights), indexed into a second store
 //
 //	go run ./eval/memslot/eval --config server.yaml
 //
@@ -57,39 +59,61 @@ func main() {
 	loadJSON(filepath.Join(*dataDir, "queries.json"), &queries)
 	fmt.Printf("loaded %d memories, %d queries\n", len(mems), len(queries))
 
-	// Fresh temp shared database.
-	tmp, err := os.MkdirTemp("", "memslot-eval-*")
-	must(err)
-	defer os.RemoveAll(tmp)
-	database, err := db.Open(filepath.Join(tmp, "shared.db"), db.Shared, cfg.Embeddings.Dim)
-	must(err)
-	defer database.Close()
-
 	embedder := embed.New(cfg.Embeddings.BaseURL, cfg.Embeddings.APIKey, cfg.Embeddings.Model, cfg.Embeddings.Dim)
-	store := memory.NewStore(database, embedder)
 	ctx := context.Background()
 
-	// Load: each memory becomes a shared memory + a directly-attached slot.
-	fmt.Print("indexing")
+	// Two index builds differing only in the slot vector's embed text:
+	//   key store - humanized key (baseline / A / B)
+	//   kv store  - humanized key + value (option C)
+	keyStore, keyMap, closeKey := buildStore(ctx, cfg, embedder, mems,
+		func(k, v string) string { return memory.HumanizeKey(k) }, "key")
+	defer closeKey()
+	kvStore, kvMap, closeKV := buildStore(ctx, cfg, embedder, mems,
+		func(k, v string) string { return memory.HumanizeKey(k) + " " + v }, "key+value")
+	defer closeKV()
+
+	fmt.Printf("\n%-24s %7s %7s %7s %7s %7s\n", "variant", "R@1", "R@3", "R@5", "R@10", "MRR")
+	row := func(name string, st *memory.Store, idMap map[string]string, w float64) {
+		m := evalWeight(ctx, st, queries, idMap, *limit, w)
+		fmt.Printf("%-24s %7.3f %7.3f %7.3f %7.3f %7.3f\n", name, m.r1, m.r3, m.r5, m.r10, m.mrr)
+	}
+	row("baseline (no slot)", keyStore, keyMap, 0)
+	for _, w := range []float64{0.25, 0.5, 1.0, 2.0, 4.0} {
+		name := fmt.Sprintf("B: key w=%.2f", w)
+		if w == 1.0 {
+			name = "A: key w=1.0"
+		}
+		row(name, keyStore, keyMap, w)
+	}
+	for _, w := range []float64{0.25, 0.5, 1.0, 2.0} {
+		row(fmt.Sprintf("C: key+value w=%.2f", w), kvStore, kvMap, w)
+	}
+}
+
+// buildStore loads the dataset into a fresh temp shared DB, attaching each
+// memory's slot with a vector embedded from slotText(key, value). Returns the
+// store, the dataset-id -> composite-id map, and a cleanup func.
+func buildStore(ctx context.Context, cfg *config.Config, embedder *embed.OpenAIEmbedder, mems []memRecord, slotText func(key, value string) string, tag string) (*memory.Store, map[string]string, func()) {
+	tmp, err := os.MkdirTemp("", "memslot-"+tag+"-*")
+	must(err)
+	database, err := db.Open(filepath.Join(tmp, "shared.db"), db.Shared, cfg.Embeddings.Dim)
+	must(err)
+	store := memory.NewStore(database, embedder)
+
+	fmt.Printf("indexing [%s]", tag)
 	start := time.Now()
-	idMap := make(map[string]string, len(mems)) // dataset id -> composite id
+	idMap := make(map[string]string, len(mems))
 	for i, m := range mems {
 		rec, err := store.Add(ctx, nil, types.CreateMemoryRequest{Scope: "shared", Content: m.Content, Source: "eval"}, 0)
 		must(err)
-		must(store.AddSlot(ctx, nil, rec.ID, m.Key, m.Value))
+		must(store.AddSlotEmbed(ctx, nil, rec.ID, m.Key, m.Value, slotText(m.Key, m.Value)))
 		idMap[m.ID] = rec.ID
-		if (i+1)%100 == 0 {
+		if (i+1)%200 == 0 {
 			fmt.Printf(" %d", i+1)
 		}
 	}
-	fmt.Printf("\nindexed in %s\n\n", time.Since(start).Round(time.Second))
-
-	weights := []float64{0, 0.25, 0.5, 1.0, 2.0, 4.0}
-	fmt.Printf("%-22s %7s %7s %7s %7s %7s\n", "variant", "R@1", "R@3", "R@5", "R@10", "MRR")
-	for _, w := range weights {
-		m := evalWeight(ctx, store, queries, idMap, *limit, w)
-		fmt.Printf("%-22s %7.3f %7.3f %7.3f %7.3f %7.3f\n", label(w), m.r1, m.r3, m.r5, m.r10, m.mrr)
-	}
+	fmt.Printf("  (%s)\n", time.Since(start).Round(time.Second))
+	return store, idMap, func() { database.Close(); os.RemoveAll(tmp) }
 }
 
 type metrics struct{ r1, r3, r5, r10, mrr float64 }
@@ -131,17 +155,6 @@ func evalWeight(ctx context.Context, store *memory.Store, queries []query, idMap
 	}
 	n := float64(len(queries))
 	return metrics{r1 / n, r3 / n, r5 / n, r10 / n, rr / n}
-}
-
-func label(w float64) string {
-	switch {
-	case w == 0:
-		return "baseline (no slot)"
-	case w == 1:
-		return "A: slot w=1.0"
-	default:
-		return fmt.Sprintf("B: slot w=%.2f", w)
-	}
 }
 
 func loadJSON(path string, v any) {

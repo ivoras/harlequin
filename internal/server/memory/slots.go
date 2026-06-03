@@ -116,7 +116,7 @@ func (s *Store) storeSlot(ctx context.Context, userDB *sql.DB, memID string, slo
 	// Embed the humanized form of the key (e.g. "organisation name") so it
 	// compares well to natural-language queries; the stored key column keeps the
 	// canonical dotted form used for exact-match conflict detection.
-	keyBlob, _ := s.embed(ctx, humanizeKey(slot.Key))
+	keyBlob, _ := s.embed(ctx, HumanizeKey(slot.Key))
 	_ = s.memFor(scope, userDB).insertSlot(ctx, local, slot.Key, slot.Value, keyBlob)
 }
 
@@ -124,22 +124,29 @@ func (s *Store) storeSlot(ctx context.Context, userDB *sql.DB, memID string, slo
 // its humanized key embedding. For imports and evaluation where slots are
 // supplied directly rather than LLM-extracted.
 func (s *Store) AddSlot(ctx context.Context, userDB *sql.DB, memID, key, value string) error {
+	return s.AddSlotEmbed(ctx, userDB, memID, key, value, HumanizeKey(key))
+}
+
+// AddSlotEmbed attaches a slot whose vector is the embedding of embedText rather
+// than the default humanized key. For evaluating alternative slot-vector schemes
+// (e.g. key+value); production code uses AddSlot.
+func (s *Store) AddSlotEmbed(ctx context.Context, userDB *sql.DB, memID, key, value, embedText string) error {
 	scope, local, ok := decodeID(memID)
 	if !ok {
 		return fmt.Errorf("invalid memory id %q", memID)
 	}
-	keyBlob, err := s.embed(ctx, humanizeKey(key))
+	blob, err := s.embed(ctx, embedText)
 	if err != nil {
 		return err
 	}
-	return s.memFor(scope, userDB).insertSlot(ctx, local, key, value, keyBlob)
+	return s.memFor(scope, userDB).insertSlot(ctx, local, key, value, blob)
 }
 
-// humanizeKey turns a canonical slot key into a natural-language phrase for
+// HumanizeKey turns a canonical slot key into a natural-language phrase for
 // embedding: dot/underscore/hyphen/slash separators become spaces and camelCase
 // boundaries are split, lowercased (e.g. "organisation.name" -> "organisation
 // name", "preferredCurrency" -> "preferred currency").
-func humanizeKey(key string) string {
+func HumanizeKey(key string) string {
 	var b strings.Builder
 	prevAlnum := false
 	for _, r := range key {
@@ -194,7 +201,7 @@ func (s *Store) BackfillSlotKeyEmbeddings(ctx context.Context, db *sql.DB) (int,
 
 	n := 0
 	for _, sk := range all {
-		blob, err := s.embed(ctx, humanizeKey(sk.key))
+		blob, err := s.embed(ctx, HumanizeKey(sk.key))
 		if err != nil || blob == nil {
 			continue
 		}
