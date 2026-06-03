@@ -30,7 +30,7 @@ func newStyles() Styles {
 		Assistant:  lipgloss.NewStyle().Foreground(colorText),
 		Tool:       lipgloss.NewStyle().Foreground(colorMuted).Italic(true),
 		ToolOutput: lipgloss.NewStyle().Foreground(colorMuted),
-		Thinking:   lipgloss.NewStyle().Foreground(colorViolet).Italic(true),
+		Thinking:   lipgloss.NewStyle().Foreground(colorBG).Background(colorViolet).Italic(true),
 		InputBox: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).BorderForeground(colorAccent).Padding(0, 1),
 		Help:            lipgloss.NewStyle().Foreground(colorMuted),
