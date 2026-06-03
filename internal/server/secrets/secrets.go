@@ -10,6 +10,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -43,15 +44,20 @@ func New(key []byte) (*Cipher, error) {
 	return &Cipher{aead: aead}, nil
 }
 
-// DecodeKey parses a base64 (standard or URL, with or without padding) encoded
-// 32-byte key.
+// DecodeKey parses a 32-byte key encoded as hex (64 chars) or base64 (standard
+// or URL, with or without padding). Hex is detected by length.
 func DecodeKey(s string) ([]byte, error) {
+	if len(s) == hex.EncodedLen(KeySize) {
+		if b, err := hex.DecodeString(s); err == nil {
+			return b, nil
+		}
+	}
 	for _, enc := range []*base64.Encoding{base64.StdEncoding, base64.RawStdEncoding, base64.URLEncoding, base64.RawURLEncoding} {
 		if b, err := enc.DecodeString(s); err == nil && len(b) == KeySize {
 			return b, nil
 		}
 	}
-	return nil, fmt.Errorf("secrets: key must be base64 of %d bytes", KeySize)
+	return nil, fmt.Errorf("secrets: key must be hex (%d chars) or base64 of %d bytes", hex.EncodedLen(KeySize), KeySize)
 }
 
 // Encrypt seals plaintext, returning nonce||ciphertext. A nil Cipher returns

@@ -3,6 +3,8 @@ package secrets
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
 	"testing"
 )
 
@@ -76,5 +78,38 @@ func TestNilCipherFailsClosed(t *testing.T) {
 func TestNewBadKeySize(t *testing.T) {
 	if _, err := New([]byte("short")); err == nil {
 		t.Fatal("expected error for short key")
+	}
+}
+
+func TestDecodeKey(t *testing.T) {
+	raw := make([]byte, KeySize)
+	for i := range raw {
+		raw[i] = byte(i)
+	}
+	ok := []string{
+		hex.EncodeToString(raw),                   // hex (64 chars)
+		base64.StdEncoding.EncodeToString(raw),    // base64 std
+		base64.RawStdEncoding.EncodeToString(raw), // base64 std, no padding
+		base64.URLEncoding.EncodeToString(raw),    // base64 url
+	}
+	for _, s := range ok {
+		got, err := DecodeKey(s)
+		if err != nil {
+			t.Fatalf("DecodeKey(%q): %v", s, err)
+		}
+		if !bytes.Equal(got, raw) {
+			t.Fatalf("DecodeKey(%q) wrong bytes", s)
+		}
+	}
+	bad := []string{
+		"",
+		"tooshort",
+		hex.EncodeToString(raw[:16]),       // 32 hex chars -> only 16 bytes
+		"zz" + hex.EncodeToString(raw)[2:], // right length, not hex/base64
+	}
+	for _, s := range bad {
+		if _, err := DecodeKey(s); err == nil {
+			t.Fatalf("DecodeKey(%q): expected error", s)
+		}
 	}
 }
