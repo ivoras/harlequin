@@ -33,6 +33,7 @@ Client-server AI agent system in Go. A REST/SSE **server** talks to LLMs, stores
 - **Session logging**: full chat trajectory written as JSONL at `<data_dir>/sessions/<user_id>.<conv_id>.jsonl` (ids zero-padded to ≥5 digits). Optional via `sessions.enabled` (default true).
 
 ## Conventions
+- Comments should be terse and explain the non-obvious (the *why*, edge cases, gotchas); don't restate what the code plainly says.
 - Secrets only in `.env`, never in YAML or code.
 - All JS (templating, `run_js`, skill tools) runs through the sandboxed `jsrun` runner: no file/network (except allow-listed `fetch`), hard `vm.Interrupt` timeout, output cap.
 - **Autonomous LLM judgments**: any server process that is *not* directly started by the user (background workers, post-turn hooks, scheduled jobs, etc.) and asks the LLM to *judge* whether to take an action must:
