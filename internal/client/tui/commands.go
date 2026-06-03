@@ -45,6 +45,10 @@ const helpText = `Commands:
   /quit                 exit`
 
 func (m *Model) handleSlash(line string) tea.Cmd {
+	// Echo the command into the transcript (bold command word, args in the
+	// user-prompt colour) so it's visible alongside its result. Both Enter paths
+	// in update.go funnel here, so this is the single place to do it.
+	m.appendBlock("command", line)
 	fields := strings.Fields(line)
 	cmd := strings.ToLower(fields[0])
 	args := fields[1:]
