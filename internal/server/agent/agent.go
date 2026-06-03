@@ -16,6 +16,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/jsrun"
 	"github.com/ivoras/harlequin/internal/server/llm"
+	"github.com/ivoras/harlequin/internal/server/mcp"
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/skills"
@@ -35,6 +36,7 @@ type Agent struct {
 	Conversations *conversation.Store
 	Session       *sessionlog.Logger
 	WebFetcher    *webfetch.Client
+	MCP           *mcp.Manager
 
 	MaxSteps      int
 	Temperature   float64

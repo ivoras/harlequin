@@ -5,10 +5,12 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/ivoras/harlequin/internal/server/secrets"
 	"github.com/joho/godotenv"
 	"gopkg.in/yaml.v3"
 )
@@ -47,10 +49,15 @@ type Config struct {
 	Agent      AgentConfig      `yaml:"agent"`
 	Memory     MemoryConfig     `yaml:"memory"`
 	Sessions   SessionsConfig   `yaml:"sessions"`
+	MCP        MCPConfig        `yaml:"mcp"`
 
 	// Secrets, populated from the environment (not YAML).
 	JWTSecret string `yaml:"-"`
 	DBPath    string `yaml:"-"`
+	// SecretKey is the 32-byte AES master key for encrypting credentials at
+	// rest (MCP header secrets and OAuth tokens), decoded from the base64
+	// HARLEQUIN_SECRET_KEY env var. Nil when unset; features needing it fail closed.
+	SecretKey []byte `yaml:"-"`
 }
 
 // ServerConfig holds HTTP server settings.
@@ -189,6 +196,48 @@ func (s SessionsConfig) RetentionDaysValue() int {
 	return *s.RetentionDays
 }
 
+// MCPConfig controls the MCP (Model Context Protocol) client: whether external
+// MCP servers may be registered and used as tool sources, and connection tuning.
+type MCPConfig struct {
+	// Enabled turns the MCP client on. Default false.
+	Enabled bool `yaml:"enabled"`
+	// AllowUserServers lets ordinary users register their own (user-scope) MCP
+	// servers. Shared-scope servers are always admin-only. Default true.
+	AllowUserServers *bool `yaml:"allow_user_servers"`
+	// SessionIdle closes an idle pooled MCP session after this duration (default 5m).
+	SessionIdle Duration `yaml:"session_idle"`
+	// ToolsCacheTTL caches a server's tools/list for this long (default 5m).
+	ToolsCacheTTL Duration `yaml:"tools_cache_ttl"`
+	// OAuthCallbackBaseURL is the externally reachable base URL of this server,
+	// used to build the OAuth redirect URI (e.g. "https://harlequin.example.com").
+	// Required for OAuth-authenticated MCP servers.
+	OAuthCallbackBaseURL string `yaml:"oauth_callback_base_url"`
+}
+
+// AllowUserServersValue reports whether users may register user-scope servers (default true).
+func (m MCPConfig) AllowUserServersValue() bool {
+	if m.AllowUserServers == nil {
+		return true
+	}
+	return *m.AllowUserServers
+}
+
+// SessionIdleValue returns the idle session timeout (default 5m).
+func (m MCPConfig) SessionIdleValue() time.Duration {
+	if m.SessionIdle.D() <= 0 {
+		return 5 * time.Minute
+	}
+	return m.SessionIdle.D()
+}
+
+// ToolsCacheTTLValue returns the tools/list cache TTL (default 5m).
+func (m MCPConfig) ToolsCacheTTLValue() time.Duration {
+	if m.ToolsCacheTTL.D() <= 0 {
+		return 5 * time.Minute
+	}
+	return m.ToolsCacheTTL.D()
+}
+
 // Load reads the YAML config at path, loads .env (if present), resolves secrets,
 // applies defaults, and validates.
 func Load(path string) (*Config, error) {
@@ -251,6 +300,14 @@ func (c *Config) resolveSecrets() {
 	c.DBPath = os.Getenv("HARLEQUIN_DB_PATH")
 	if c.DBPath == "" {
 		c.DBPath = filepath.Join(c.DataDir, "harlequin.db")
+	}
+
+	if s := os.Getenv("HARLEQUIN_SECRET_KEY"); s != "" {
+		if key, err := secrets.DecodeKey(s); err == nil {
+			c.SecretKey = key
+		} else {
+			log.Printf("config: ignoring invalid HARLEQUIN_SECRET_KEY: %v", err)
+		}
 	}
 
 	for i := range c.Providers {

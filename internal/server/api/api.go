@@ -14,6 +14,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/config"
 	"github.com/ivoras/harlequin/internal/server/conversation"
 	"github.com/ivoras/harlequin/internal/server/documents"
+	"github.com/ivoras/harlequin/internal/server/mcp"
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/skills"
@@ -35,6 +36,7 @@ type Server struct {
 	Audit         *audit.Store
 	Session       *sessionlog.Logger
 	Agent         *agent.Agent
+	MCP           *mcp.Manager
 }
 
 // Router builds the chi router.
@@ -47,6 +49,11 @@ func (s *Server) Router() http.Handler {
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/auth/login", s.handleLogin)
+		// OAuth redirect target for MCP authorization (browser-facing; the state
+		// parameter authenticates the request, so it is outside the bearer group).
+		if s.MCP != nil {
+			r.Get("/mcp/oauth/callback", s.handleMCPOAuthCallback)
+		}
 
 		// Authenticated routes.
 		r.Group(func(r chi.Router) {
@@ -87,6 +94,16 @@ func (s *Server) Router() http.Handler {
 			r.Post("/documents", s.handleCreateDocument)
 			r.Delete("/documents/{id}", s.handleDeleteDocument)
 			r.Get("/documents/search", s.handleSearchDocuments)
+
+			if s.MCP != nil {
+				r.Get("/mcp", s.handleListMCP)
+				r.Get("/mcp/{scope}/{name}", s.handleGetMCP)
+				r.Post("/mcp", s.handleRegisterMCP)
+				r.Patch("/mcp/{scope}/{name}", s.handleUpdateMCP)
+				r.Delete("/mcp/{scope}/{name}", s.handleDeleteMCP)
+				r.Post("/mcp/{scope}/{name}/test", s.handleTestMCP)
+				r.Post("/mcp/{scope}/{name}/oauth/start", s.handleMCPOAuthStart)
+			}
 
 			r.Get("/usage", s.handleUsage)
 			r.Get("/audit", s.handleAudit)

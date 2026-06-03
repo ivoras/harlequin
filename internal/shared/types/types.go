@@ -74,6 +74,57 @@ type SetConversationHatRequest struct {
 	Hat string `json:"hat"` // empty clears the hat
 }
 
+// MCPServer describes a registered MCP server as seen by clients. Secret fields
+// (header value, OAuth client secret, tokens) are never serialized; HasCredential
+// reports whether a static credential is stored.
+type MCPServer struct {
+	Scope         string `json:"scope"` // "shared" | "user"
+	Name          string `json:"name"`
+	URL           string `json:"url"`
+	Transport     string `json:"transport"`
+	AuthType      string `json:"auth_type"` // "none" | "header" | "oauth"
+	HeaderName    string `json:"header_name,omitempty"`
+	HasCredential bool   `json:"has_credential"`
+	Enabled       bool   `json:"enabled"`
+	// Status, populated on list/get.
+	AuthSatisfied bool   `json:"auth_satisfied"`
+	NeedsAuth     bool   `json:"needs_auth"`
+	ToolCount     int    `json:"tool_count,omitempty"`
+	Error         string `json:"error,omitempty"`
+	// Tools is populated on the single-server detail endpoint (GET /mcp/{scope}/{name}).
+	Tools []MCPTool `json:"tools,omitempty"`
+}
+
+// MCPTool is a tool advertised by an MCP server.
+type MCPTool struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+// RegisterMCPRequest is the body of POST /mcp.
+type RegisterMCPRequest struct {
+	Scope       string   `json:"scope"` // "shared" | "user" (default "user")
+	Name        string   `json:"name"`
+	URL         string   `json:"url"`
+	AuthType    string   `json:"auth_type"` // "none" | "header" | "oauth"
+	HeaderName  string   `json:"header_name,omitempty"`
+	HeaderValue string   `json:"header_value,omitempty"`
+	OAuthScopes []string `json:"oauth_scopes,omitempty"`
+	Enabled     *bool    `json:"enabled,omitempty"`
+}
+
+// MCPTestResult is the body of POST /mcp/{scope}/{name}/test.
+type MCPTestResult struct {
+	OK    bool     `json:"ok"`
+	Tools []string `json:"tools,omitempty"`
+	Error string   `json:"error,omitempty"`
+}
+
+// MCPAuthStartResult is the body of POST /mcp/{scope}/{name}/oauth/start.
+type MCPAuthStartResult struct {
+	AuthorizeURL string `json:"authorize_url"`
+}
+
 // Message is a single message in a conversation.
 type Message struct {
 	ID             int64      `json:"id"`
