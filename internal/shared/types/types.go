@@ -81,7 +81,11 @@ type Message struct {
 	Role           string     `json:"role"` // system | user | assistant | tool
 	Content        string     `json:"content"`
 	ToolCalls      []ToolCall `json:"tool_calls,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
+	// ToolCallID and Name link a tool-result message back to the assistant
+	// tool call it answers (required by OpenAI-compatible providers on replay).
+	ToolCallID string    `json:"tool_call_id,omitempty"`
+	Name       string    `json:"name,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // ToolCall is an OpenAI-style tool call emitted by the model.
