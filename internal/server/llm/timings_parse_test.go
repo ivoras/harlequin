@@ -18,3 +18,18 @@ func TestSSEChunkParsesTimings(t *testing.T) {
 		t.Fatalf("cached tokens = %d, want 1400", c.Usage.CachedPromptTokens())
 	}
 }
+
+func TestSSEChunkParsesError(t *testing.T) {
+	data := `{"error":{"message":"messages: tool_call_id missing","code":400,"type":"invalid_request_error"}}`
+	var c sseChunk
+	if err := json.Unmarshal([]byte(data), &c); err != nil {
+		t.Fatal(err)
+	}
+	if c.Error == nil {
+		t.Fatal("error not parsed")
+	}
+	got := c.Error.String()
+	if got != "messages: tool_call_id missing (code 400)" {
+		t.Fatalf("String() = %q", got)
+	}
+}
