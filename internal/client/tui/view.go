@@ -39,6 +39,8 @@ func (m *Model) View() tea.View {
 		content = "loading…"
 	case m.phase == phaseLoginUser || m.phase == phaseLoginPass:
 		content = m.loginView()
+	case m.phase == phaseAsk:
+		content = m.askView()
 	default:
 		content = m.chatView()
 	}

@@ -90,6 +90,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.appendBlock("error", msg.err.Error())
 		}
 		m.refreshViewport()
+		if len(m.pendingAsk) > 0 {
+			return m, m.enterAsk()
+		}
+		return m, nil
+
+	case askPulseMsg:
+		if m.phase == phaseAsk {
+			m.askFrame++
+			return m, askPulseTick()
+		}
 		return m, nil
 	}
 
@@ -124,9 +134,10 @@ func (m *Model) handleStreamEvent(ev types.StreamEvent) (tea.Model, tea.Cmd) {
 	case types.SSEError:
 		m.appendBlock("error", ev.Error)
 	case types.SSEAskUser:
-		// Flush any partial reasoning/text first so the question renders after it.
+		// Flush any partial reasoning/text first, then collect the question; it is
+		// presented interactively when the turn ends (handles multiple questions).
 		m.flushStreaming()
-		m.appendBlock("assistant", renderAskUser(ev.Text, ev.Options))
+		m.pendingAsk = append(m.pendingAsk, askItem{question: strings.TrimSpace(ev.Text), options: ev.Options})
 	case types.SSEDone:
 		if ev.ContextMax > 0 {
 			m.ctxMeter = contextMeterState{
@@ -155,17 +166,6 @@ func formatTiming(t *types.TurnTiming) string {
 	return fmt.Sprintf("⏱ PP %s · TG %s · %.2fs total", pp, tg, secs(t.TotalMS))
 }
 
-// renderAskUser formats an ask_user prompt: the question followed by any
-// suggested options as a numbered list.
-func renderAskUser(question string, options []string) string {
-	var sb strings.Builder
-	sb.WriteString(strings.TrimSpace(question))
-	for i, opt := range options {
-		fmt.Fprintf(&sb, "\n  %d. %s", i+1, opt)
-	}
-	return sb.String()
-}
-
 func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 
@@ -184,6 +184,8 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch m.phase {
+	case phaseAsk:
+		return m.handleAskKey(msg, key)
 	case phaseLoginUser:
 		if key == "enter" {
 			m.loginUser = strings.TrimSpace(m.input.Value())
@@ -273,8 +275,13 @@ func (m *Model) doLogin(user, pass string) tea.Cmd {
 }
 
 // sendMessage posts the message and starts streaming via the program.
-func (m *Model) sendMessage(text string) tea.Cmd {
-	m.appendBlock("user", text)
+func (m *Model) sendMessage(text string) tea.Cmd { return m.sendMessageAs(text, text) }
+
+// sendMessageAs shows display in the transcript but sends sendText to the
+// server (used by the ask flow to show concise answers but send full Q&A).
+func (m *Model) sendMessageAs(display, sendText string) tea.Cmd {
+	m.appendBlock("user", display)
+	text := sendText
 	m.loading = true
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancelStream = cancel
