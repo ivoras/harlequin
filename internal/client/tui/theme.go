@@ -7,6 +7,7 @@ type Styles struct {
 	Header           lipgloss.Style
 	Status           lipgloss.Style
 	User             lipgloss.Style
+	UserArg          lipgloss.Style
 	Assistant        lipgloss.Style
 	Tool             lipgloss.Style
 	ToolOutput       lipgloss.Style
@@ -28,6 +29,7 @@ func newStyles() Styles {
 			Foreground(colorBG).Background(colorAccent).Bold(true).Padding(0, 1),
 		Status:     lipgloss.NewStyle().Foreground(colorMuted),
 		User:       lipgloss.NewStyle().Foreground(colorWarm).Bold(true),
+		UserArg:    lipgloss.NewStyle().Foreground(colorWarm),
 		Assistant:  lipgloss.NewStyle().Foreground(colorText),
 		Tool:       lipgloss.NewStyle().Foreground(colorMuted).Italic(true),
 		ToolOutput: lipgloss.NewStyle().Foreground(colorMuted),

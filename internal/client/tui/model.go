@@ -244,6 +244,8 @@ func (m *Model) renderBlock(b roleBlock) string {
 	switch b.role {
 	case "user":
 		return m.wrapStyled(m.styles.User, "› "+b.text)
+	case "command":
+		return m.renderCommand(b.text)
 	case "assistant":
 		return m.renderAssistant(b.text)
 	case "thinking":
@@ -259,6 +261,17 @@ func (m *Model) renderBlock(b roleBlock) string {
 	}
 }
 
+// renderCommand echoes a slash command the user typed: the command word in bold,
+// the arguments in the regular user-prompt colour.
+func (m *Model) renderCommand(text string) string {
+	cmd, rest := text, ""
+	if i := strings.IndexAny(text, " \t"); i >= 0 {
+		cmd, rest = text[:i], text[i:]
+	}
+	styled := "› " + m.styles.User.Render(cmd) + m.styles.UserArg.Render(rest)
+	return wrapWidth(m.contentWidth(), styled)
+}
+
 func (m *Model) renderAssistant(text string) string {
 	return wrapWidth(m.contentWidth(), renderMarkdown(m.contentWidth(), text))
 }
@@ -269,8 +282,18 @@ func (m *Model) renderThinking(text string, streaming bool) string {
 		label = "💭 thinking…"
 	}
 	header := m.styles.Thinking.Render(label)
-	body := wrapWidth(m.contentWidth(), m.styles.Thinking.Render(text))
-	return header + "\n" + body
+	// Style each line separately: styling the whole block at once makes lipgloss
+	// pad short lines to the widest and fill the padding with the background.
+	lines := strings.Split(wrapWidth(m.contentWidth(), text), "\n")
+	for i, ln := range lines {
+		ln = strings.TrimRight(ln, " ")
+		if ln == "" {
+			lines[i] = ""
+			continue
+		}
+		lines[i] = m.styles.Thinking.Render(ln)
+	}
+	return header + "\n" + strings.Join(lines, "\n")
 }
 
 func errCmd(err error) tea.Cmd  { return func() tea.Msg { return errMsg{err} } }
