@@ -4,14 +4,31 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/ivoras/harlequin/internal/server/auth"
 	"github.com/ivoras/harlequin/internal/server/mcp"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
+
+// mcpScopeName reads the (scope, name) of a single server from the query string.
+// Names are query-, not path-encoded so they may contain any characters.
+func mcpScopeName(r *http.Request) (scope, name string) {
+	q := r.URL.Query()
+	return q.Get("scope"), q.Get("name")
+}
+
+// mcpNameRe restricts server names to a URL- and tool-namespace-safe charset.
+var mcpNameRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+// validMCPURL reports whether s is an absolute http(s) URL.
+func validMCPURL(s string) bool {
+	u, err := url.Parse(s)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+}
 
 // mcpScopeAllowed enforces who may mutate a registration at a given scope:
 // shared requires owner/admin; user requires an authenticated user and that the
@@ -97,7 +114,7 @@ func (s *Server) handleGetMCP(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	scope, name := chi.URLParam(r, "scope"), chi.URLParam(r, "name")
+	scope, name := mcpScopeName(r)
 	var out types.MCPServer
 	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
 		srv, err := s.MCP.Registry().Get(r.Context(), scope, name, udb)
@@ -144,6 +161,14 @@ func (s *Server) handleRegisterMCP(w http.ResponseWriter, r *http.Request) {
 	req.URL = strings.TrimSpace(req.URL)
 	if req.Name == "" || req.URL == "" {
 		writeErr(w, http.StatusBadRequest, "name and url are required")
+		return
+	}
+	if !mcpNameRe.MatchString(req.Name) {
+		writeErr(w, http.StatusBadRequest, "invalid name: use letters, digits, '.', '_' or '-' (no spaces, slashes, or a URL)")
+		return
+	}
+	if !validMCPURL(req.URL) {
+		writeErr(w, http.StatusBadRequest, "invalid url: must be an absolute http(s) URL")
 		return
 	}
 	if req.AuthType == "" {
@@ -194,7 +219,7 @@ func (s *Server) handleRegisterMCP(w http.ResponseWriter, r *http.Request) {
 
 // handleUpdateMCP updates url / enabled / header credential of a server.
 func (s *Server) handleUpdateMCP(w http.ResponseWriter, r *http.Request) {
-	scope, name := chi.URLParam(r, "scope"), chi.URLParam(r, "name")
+	scope, name := mcpScopeName(r)
 	u, ok := s.mcpScopeAllowed(w, r, scope)
 	if !ok {
 		return
@@ -238,7 +263,7 @@ func (s *Server) handleUpdateMCP(w http.ResponseWriter, r *http.Request) {
 
 // handleDeleteMCP removes a server registration.
 func (s *Server) handleDeleteMCP(w http.ResponseWriter, r *http.Request) {
-	scope, name := chi.URLParam(r, "scope"), chi.URLParam(r, "name")
+	scope, name := mcpScopeName(r)
 	u, ok := s.mcpScopeAllowed(w, r, scope)
 	if !ok {
 		return
@@ -265,7 +290,7 @@ func (s *Server) handleTestMCP(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	scope, name := chi.URLParam(r, "scope"), chi.URLParam(r, "name")
+	scope, name := mcpScopeName(r)
 	var res types.MCPTestResult
 	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
 		srv, err := s.MCP.Registry().Get(r.Context(), scope, name, udb)
@@ -301,7 +326,7 @@ func (s *Server) handleMCPOAuthStart(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	scope, name := chi.URLParam(r, "scope"), chi.URLParam(r, "name")
+	scope, name := mcpScopeName(r)
 	var authURL string
 	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
 		var e error

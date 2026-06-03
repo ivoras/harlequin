@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -100,7 +101,14 @@ func registerClient(ctx context.Context, hc *http.Client, meta *OAuthMeta, clien
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
-		return "", "", fmt.Errorf("mcp: dynamic client registration failed: %s", resp.Status)
+		// Surface the server's error body — providers often explain (e.g. an
+		// "invalid_redirect_uri" when DCR is restricted to specific clients).
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		detail := strings.TrimSpace(string(body))
+		if detail == "" {
+			detail = resp.Status
+		}
+		return "", "", fmt.Errorf("mcp: dynamic client registration failed (%s): %s", resp.Status, detail)
 	}
 	var reg struct {
 		ClientID     string `json:"client_id"`
