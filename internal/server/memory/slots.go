@@ -225,6 +225,54 @@ func (s *Store) BackfillSlotKeyEmbeddings(ctx context.Context, db *sql.DB) (int,
 	return n, nil
 }
 
+// SlotMemory pairs a memory with its slot key/value (for GLOB key lookups).
+type SlotMemory struct {
+	ID      string // composite memory id (u.N / s.N)
+	Key     string // slot key
+	Value   string // slot value
+	Content string // memory content
+}
+
+// MemoriesBySlotGlob returns memories whose slot key matches a GLOB pattern
+// (e.g. "user.*"), across the given scope ("user"|"shared"|"" for both), newest
+// first. GLOB is used so the BINARY index on memory_slots(key) serves prefix
+// patterns as a range seek (LIKE would not — see the slot-key index notes).
+func (s *Store) MemoriesBySlotGlob(ctx context.Context, userDB *sql.DB, glob, scope string, limit int) ([]SlotMemory, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	var out []SlotMemory
+	for _, m := range s.scopes(scope, userDB) {
+		out = append(out, m.slotsByGlob(ctx, glob, limit)...)
+	}
+	return out, nil
+}
+
+// slotsByGlob runs the GLOB key query against this file.
+func (m memDB) slotsByGlob(ctx context.Context, glob string, limit int) []SlotMemory {
+	if m.db == nil {
+		return nil
+	}
+	rows, err := m.db.QueryContext(ctx, `
+		SELECT m.id, sl.key, sl.value, m.content
+		FROM memory_slots sl JOIN memories m ON m.id = sl.memory_id
+		WHERE sl.key GLOB ? AND (m.expires_at IS NULL OR m.expires_at > CURRENT_TIMESTAMP)
+		ORDER BY m.created_at DESC LIMIT ?`, glob, limit)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []SlotMemory
+	for rows.Next() {
+		var local int64
+		var key, value, content string
+		if rows.Scan(&local, &key, &value, &content) == nil {
+			out = append(out, SlotMemory{ID: m.encode(local), Key: key, Value: value, Content: content})
+		}
+	}
+	return out
+}
+
 // slotConflicts records duplicate/conflict pairs for existing memories that
 // share the new memory's slot key (across the user and shared databases) and
 // returns them. Same key + same value is a duplicate; same key + different

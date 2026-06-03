@@ -27,6 +27,9 @@ type Context struct {
 	// MemorySearch and SearchDocs are optional guarded helpers.
 	MemorySearch func(query string) []string
 	SearchDocs   func(query string) []string
+	// MemoryGlob returns memories whose slot key matches a GLOB pattern
+	// (e.g. "user.*"); each item has id, key, value, content.
+	MemoryGlob func(glob string) []map[string]string
 }
 
 // Render evaluates all <?js ?> blocks in src and returns the rendered string.
@@ -97,6 +100,12 @@ func renderBlock(runner *jsrun.Runner, code string, c Context, nowFn func() time
 		}
 		return toVal(call, c.SearchDocs(call.Argument(0).String()))
 	}
+	funcs["__ctx_memory_glob"] = func(call otto.FunctionCall) otto.Value {
+		if c.MemoryGlob == nil {
+			return toVal(call, []map[string]string{})
+		}
+		return toVal(call, c.MemoryGlob(call.Argument(0).String()))
+	}
 
 	// Build a ctx object in JS that wires the helpers together.
 	shim := `var ctx = {
@@ -105,7 +114,8 @@ func renderBlock(runner *jsrun.Runner, code string, c Context, nowFn func() time
 		date: __ctx_date,
 		now: function(){ return __ctx_now(); },
 		memorySearch: function(q){ return __ctx_memory_search(q); },
-		searchDocs: function(q){ return __ctx_search_docs(q); }
+		searchDocs: function(q){ return __ctx_search_docs(q); },
+		memoryGlob: function(g){ return __ctx_memory_glob(g); }
 	};
 ` + code
 

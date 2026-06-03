@@ -33,6 +33,7 @@ Rendering **fails closed**: a JavaScript error or timeout aborts the whole rende
 | `ctx.skill`           | string   | The skill being rendered (empty for the system/hat prompt).  |
 | `ctx.memorySearch(q)` | string[] | Top matches from the user's + shared memory for query `q`.   |
 | `ctx.searchDocs(q)`   | string[] | Top matches from the organisation document corpus.           |
+| `ctx.memoryGlob(g)`   | object[] | Memories whose slot key matches GLOB `g` (e.g. `"user.*"`); each item has `id`, `key`, `value`, `content`. |
 
 The context is defined in one place; to add a variable, extend
 `internal/server/mdtmpl` and the `jstmpl` shim — every templated `.md` then sees it.
