@@ -36,3 +36,13 @@ Grounding rules (reduce hallucinations):
 
 System information:
 - Today's date is <?js print(ctx.date); ?>
+
+What you know about the user (from memory):
+<?js
+var slots = ctx.memoryGlob("user.*");
+if (slots.length > 0) {
+  for (var i = 0; i < slots.length; i++) {
+    println("- " + slots[i].key + ": " + slots[i].content);
+  }
+}
+?>

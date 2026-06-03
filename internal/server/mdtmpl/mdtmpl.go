@@ -41,6 +41,18 @@ func New(mem *memory.Store, docs *documents.Store, store *storage.Manager) Conte
 				res, _ := docs.Search(context.Background(), q, 5)
 				return contents(res)
 			},
+			MemoryGlob: func(glob string) []map[string]string {
+				var res []memory.SlotMemory
+				_ = store.WithUser(context.Background(), userID, func(udb *sql.DB) error {
+					res, _ = mem.MemoriesBySlotGlob(context.Background(), udb, glob, "", 50)
+					return nil
+				})
+				out := make([]map[string]string, len(res))
+				for i, r := range res {
+					out[i] = map[string]string{"id": r.ID, "key": r.Key, "value": r.Value, "content": r.Content}
+				}
+				return out
+			},
 		}
 	}
 }
