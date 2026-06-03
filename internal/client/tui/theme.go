@@ -19,6 +19,7 @@ type Styles struct {
 	ContextWarn      lipgloss.Style
 	ContextCritical  lipgloss.Style
 	ContextMuted     lipgloss.Style
+	Selected         lipgloss.Style
 }
 
 func newStyles() Styles {
@@ -40,5 +41,6 @@ func newStyles() Styles {
 		ContextWarn:     lipgloss.NewStyle().Foreground(colorWarm),
 		ContextCritical: lipgloss.NewStyle().Foreground(colorError),
 		ContextMuted:    lipgloss.NewStyle().Foreground(colorMuted),
+		Selected:        lipgloss.NewStyle().Foreground(colorBG).Background(colorAccent).Bold(true),
 	}
 }

@@ -27,7 +27,14 @@ const (
 	phaseLoginUser phase = iota
 	phaseLoginPass
 	phaseChat
+	phaseAsk // interactive ask_user answering
 )
+
+// askItem is one question the model asked via ask_user, with suggested options.
+type askItem struct {
+	question string
+	options  []string
+}
 
 // roleBlock is a rendered transcript entry.
 type roleBlock struct {
@@ -74,6 +81,15 @@ type Model struct {
 
 	// cancel for the in-flight stream (Esc).
 	cancelStream context.CancelFunc
+
+	// ask_user interaction (phaseAsk): questions collected during a turn and the
+	// answers being assembled.
+	pendingAsk []askItem
+	askIndex   int      // which question is being answered
+	askSel     int      // highlighted option (len(options) == the "Other" entry)
+	askAnswers []string // answers collected so far
+	askOther   bool     // free-text entry mode for the current question
+	askFrame   int      // animation frame for the selected-row marker
 }
 
 // New constructs the TUI model.
