@@ -170,7 +170,10 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 
 	msgs := []llm.Message{{Role: llm.RoleSystem, Content: systemPrompt}}
 	for _, m := range history {
-		msgs = append(msgs, llm.Message{Role: m.Role, Content: m.Content, ToolCalls: toLLMToolCalls(m.ToolCalls)})
+		msgs = append(msgs, llm.Message{
+			Role: m.Role, Content: m.Content, ToolCalls: toLLMToolCalls(m.ToolCalls),
+			ToolCallID: m.ToolCallID, Name: m.Name,
+		})
 	}
 
 	var finalText string
@@ -329,7 +332,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 				ToolCallID: tc.ID,
 				Name:       tc.Function.Name,
 			})
-			_, _ = a.Conversations.AddMessage(ctx, rc.userDB, conversationID, llm.RoleTool, result, nil)
+			_, _ = a.Conversations.AddMessageFull(ctx, rc.userDB, conversationID, llm.RoleTool, result, nil, tc.ID, tc.Function.Name)
 			if tc.Function.Name == "ask_user" {
 				askedUser = true
 			}

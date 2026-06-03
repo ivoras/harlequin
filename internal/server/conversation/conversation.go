@@ -106,6 +106,13 @@ func (s *Store) Delete(ctx context.Context, db *sql.DB, id, userID int64) error 
 
 // AddMessage appends a message to a conversation and bumps updated_at.
 func (s *Store) AddMessage(ctx context.Context, db *sql.DB, conversationID int64, role, content string, toolCalls []types.ToolCall) (*types.Message, error) {
+	return s.AddMessageFull(ctx, db, conversationID, role, content, toolCalls, "", "")
+}
+
+// AddMessageFull persists a message including a tool-result's toolCallID and name
+// (empty for non-tool messages), so the conversation replays as a valid
+// OpenAI-compatible sequence.
+func (s *Store) AddMessageFull(ctx context.Context, db *sql.DB, conversationID int64, role, content string, toolCalls []types.ToolCall, toolCallID, name string) (*types.Message, error) {
 	var tcJSON any
 	if len(toolCalls) > 0 {
 		b, err := json.Marshal(toolCalls)
@@ -115,8 +122,8 @@ func (s *Store) AddMessage(ctx context.Context, db *sql.DB, conversationID int64
 		tcJSON = string(b)
 	}
 	res, err := db.ExecContext(ctx,
-		`INSERT INTO messages(conversation_id, role, content, tool_calls) VALUES (?, ?, ?, ?)`,
-		conversationID, role, content, tcJSON)
+		`INSERT INTO messages(conversation_id, role, content, tool_calls, tool_call_id, name) VALUES (?, ?, ?, ?, ?, ?)`,
+		conversationID, role, content, tcJSON, nullIfEmpty(toolCallID), nullIfEmpty(name))
 	if err != nil {
 		return nil, err
 	}
@@ -124,14 +131,21 @@ func (s *Store) AddMessage(ctx context.Context, db *sql.DB, conversationID int64
 	id, _ := res.LastInsertId()
 	return &types.Message{
 		ID: id, ConversationID: conversationID, Role: role, Content: content,
-		ToolCalls: toolCalls, CreatedAt: time.Now(),
+		ToolCalls: toolCalls, ToolCallID: toolCallID, Name: name, CreatedAt: time.Now(),
 	}, nil
+}
+
+func nullIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 // Messages returns the messages of a conversation in order.
 func (s *Store) Messages(ctx context.Context, db *sql.DB, conversationID int64) ([]types.Message, error) {
 	rows, err := db.QueryContext(ctx,
-		`SELECT id, conversation_id, role, content, tool_calls, created_at
+		`SELECT id, conversation_id, role, content, tool_calls, tool_call_id, name, created_at
 		 FROM messages WHERE conversation_id = ? ORDER BY id ASC`, conversationID)
 	if err != nil {
 		return nil, err
@@ -140,13 +154,15 @@ func (s *Store) Messages(ctx context.Context, db *sql.DB, conversationID int64) 
 	var out []types.Message
 	for rows.Next() {
 		var m types.Message
-		var tc sql.NullString
-		if err := rows.Scan(&m.ID, &m.ConversationID, &m.Role, &m.Content, &tc, &m.CreatedAt); err != nil {
+		var tc, tcID, name sql.NullString
+		if err := rows.Scan(&m.ID, &m.ConversationID, &m.Role, &m.Content, &tc, &tcID, &name, &m.CreatedAt); err != nil {
 			return nil, err
 		}
 		if tc.Valid && tc.String != "" {
 			_ = json.Unmarshal([]byte(tc.String), &m.ToolCalls)
 		}
+		m.ToolCallID = tcID.String
+		m.Name = name.String
 		out = append(out, m)
 	}
 	return out, rows.Err()
