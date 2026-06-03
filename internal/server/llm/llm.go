@@ -217,8 +217,33 @@ type sseChunk struct {
 		Delta jsonDelta `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
-	Usage   *Usage   `json:"usage"`
-	Timings *Timings `json:"timings"`
+	Usage   *Usage       `json:"usage"`
+	Timings *Timings     `json:"timings"`
+	Error   *streamError `json:"error"`
+}
+
+// streamError is a provider error delivered inside a 200 SSE stream (e.g.
+// OpenRouter). Without surfacing it the agent sees an empty completion and
+// silently stops — so it must become a real error.
+type streamError struct {
+	Message  string `json:"message"`
+	Code     any    `json:"code"`
+	Type     string `json:"type"`
+	Metadata any    `json:"metadata"`
+}
+
+func (e *streamError) String() string {
+	if e == nil {
+		return ""
+	}
+	s := e.Message
+	if s == "" {
+		s = e.Type
+	}
+	if e.Code != nil {
+		s = fmt.Sprintf("%s (code %v)", s, e.Code)
+	}
+	return s
 }
 
 // jsonDelta captures content, tool_calls, and any provider-specific thinking
@@ -283,6 +308,12 @@ func (p *OpenAICompatible) readStream(resp *http.Response, model string, out cha
 		var c sseChunk
 		if err := json.Unmarshal([]byte(data), &c); err != nil {
 			continue
+		}
+		if c.Error != nil {
+			// Provider returned an error inside a 200 stream — surface it instead
+			// of ending the turn empty.
+			flush(fmt.Errorf("provider %s: %s", p.name, c.Error.String()))
+			return
 		}
 		if c.Model != "" {
 			resolvedModel = c.Model
