@@ -163,8 +163,13 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, prompt string, r
 			"delegate_step": step + 1, "duration_ms": callMS,
 			"content": text, "tool_calls": logToolCalls(toolCalls),
 		})
-		log.Printf("webfetch: delegated LLM (%s) step %d took %dms (depth=%d, %d tool call(s))",
-			model, step+1, callMS, depth, len(toolCalls))
+		if len(toolCalls) > 0 {
+			log.Printf("webfetch: delegated LLM (%s) step %d took %dms (depth=%d, %d tool call(s): %s)",
+				model, step+1, callMS, depth, len(toolCalls), formatToolCalls(toolCalls))
+		} else {
+			log.Printf("webfetch: delegated LLM (%s) step %d took %dms (depth=%d, 0 tool calls)",
+				model, step+1, callMS, depth)
+		}
 		lastText = text
 		if len(toolCalls) == 0 {
 			return text, nil
@@ -190,7 +195,23 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, prompt string, r
 	return lastText, nil
 }
 
-// webFetchResult was an alias; analysis uses webfetch.Result directly.
+// formatToolCalls renders tool calls as "name(args), name(args)" for one-line
+// logging, truncating each call's arguments to keep the line readable.
+func formatToolCalls(calls []llm.ToolCall) string {
+	parts := make([]string, 0, len(calls))
+	for _, tc := range calls {
+		parts = append(parts, tc.Function.Name+"("+truncateArgs(tc.Function.Arguments, 200)+")")
+	}
+	return strings.Join(parts, ", ")
+}
+
+func truncateArgs(s string, max int) string {
+	s = strings.Join(strings.Fields(s), " ") // collapse whitespace/newlines
+	if len(s) > max {
+		return s[:max] + "…"
+	}
+	return s
+}
 
 // completeOnce runs a single non-streaming-from-the-caller's-view completion,
 // draining the provider stream and returning the assistant text and tool calls.
