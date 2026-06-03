@@ -23,7 +23,7 @@ Credentials (static header values and OAuth tokens) are **encrypted at rest** wi
 a master key supplied via the environment:
 
 ```sh
-export HARLEQUIN_SECRET_KEY="$(head -c32 /dev/urandom | base64)"   # 32 random bytes, base64
+export HARLEQUIN_SECRET_KEY="$(openssl rand -hex 32)"   # 32 bytes, hex or base64
 ```
 
 Keep this key stable and backed up: rotating it makes existing stored credentials

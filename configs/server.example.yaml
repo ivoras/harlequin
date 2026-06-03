@@ -79,7 +79,7 @@ sessions:
 # Servers are registered at "shared" (org-wide, admin-only) or "user" (per-user)
 # scope via the /mcp commands. Remote Streamable-HTTP servers only. Credentials
 # (static headers, OAuth tokens) are encrypted at rest with the master key in the
-# HARLEQUIN_SECRET_KEY environment variable (base64 of 32 random bytes); without
+# HARLEQUIN_SECRET_KEY environment variable (32 bytes, hex or base64); without
 # it, only auth-less servers work. See docs/mcp.md.
 mcp:
   enabled: false                    # turn the MCP client on (default false)
