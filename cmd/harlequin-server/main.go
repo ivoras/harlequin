@@ -110,6 +110,7 @@ func main() {
 	})
 
 	memStore := memory.NewStore(store.Shared, embedder)
+	memStore.SetSlotSearchWeight(cfg.Memory.SlotSearchWeightValue())
 	if cfg.Memory.ConflictCheckEnabled() {
 		memStore.SetConflictJudge(router, cfg.Memory.ConflictCandidates)
 	}

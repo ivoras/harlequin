@@ -140,6 +140,9 @@ type MemoryConfig struct {
 	DefaultTTL         Duration `yaml:"default_ttl"`
 	ConflictCheck      *bool    `yaml:"conflict_check"` // default true when unset
 	ConflictCandidates int      `yaml:"conflict_candidates"`
+	// SlotSearchWeight is the RRF weight of the slot-key leg in memory search
+	// (0 disables it). Default 1.0. See docs/memory_experiment_key_slots.md.
+	SlotSearchWeight *float64 `yaml:"slot_search_weight"`
 }
 
 // ConflictCheckEnabled reports whether post-write conflict detection runs.
@@ -148,6 +151,14 @@ func (m MemoryConfig) ConflictCheckEnabled() bool {
 		return *m.ConflictCheck
 	}
 	return true
+}
+
+// SlotSearchWeightValue returns the slot-key search-leg weight (default 1.0).
+func (m MemoryConfig) SlotSearchWeightValue() float64 {
+	if m.SlotSearchWeight != nil {
+		return *m.SlotSearchWeight
+	}
+	return 1.0
 }
 
 // SessionsConfig controls JSONL trajectory (session) logging.

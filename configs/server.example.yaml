@@ -66,6 +66,7 @@ memory:
   default_ttl: ""          # e.g. "720h"; empty means no expiry
   conflict_check: true     # LLM-judge new memories against FTS/vector candidates
   conflict_candidates: 8   # max similar memories to compare per write
+  slot_search_weight: 1.0  # RRF weight of the slot-key leg in search (0 disables); see docs/memory_experiment_key_slots.md
 
 sessions:
   enabled: true            # trajectory JSONL logs (default true; set false to disable)

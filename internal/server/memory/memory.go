@@ -37,12 +37,17 @@ type Store struct {
 	embedder           embed.Embedder
 	judge              llm.Provider
 	conflictCandidates int
+	slotSearchWeight   float64
 }
 
 // NewStore constructs a memory Store bound to the shared database.
 func NewStore(shared *sql.DB, embedder embed.Embedder) *Store {
 	return &Store{shared: shared, embedder: embedder}
 }
+
+// SetSlotSearchWeight sets the RRF weight of the slot-key leg used by Search
+// (0 disables it). See docs/memory_experiment_key_slots.md.
+func (s *Store) SetSlotSearchWeight(w float64) { s.slotSearchWeight = w }
 
 // memDB is one memories-bearing database file together with its scope label.
 // All operations on a single file (insert, search, list, get, delete, conflict
@@ -267,7 +272,7 @@ func (s *Store) Find(ctx context.Context, userDB *sql.DB, query string, userID i
 // databases with hybrid FTS + vector search and RRF. scope ("user"|"shared"|"")
 // narrows which databases are consulted.
 func (s *Store) Search(ctx context.Context, userDB *sql.DB, query string, userID int64, scope string, limit int) ([]types.SearchResult, error) {
-	return s.searchTuned(ctx, userDB, query, userID, scope, limit, 0)
+	return s.searchTuned(ctx, userDB, query, userID, scope, limit, s.slotSearchWeight)
 }
 
 // SearchTuned is Search with an additional slot-key RRF leg, weighted by
