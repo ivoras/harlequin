@@ -30,7 +30,7 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 	reg := map[string]toolEntry{}
 
 	reg["memory_search"] = toolEntry{
-		def: fnTool("memory_search", "Search the user's and shared memory. Each hit includes composite id (u.N/s.N) and slot_key when present — use those with memory_change or memory_delete.", map[string]any{
+		def: fnTool("memory_search", "Search the user's and shared memory and finds remembered facts, preferences, habits and information about the user and their environment. Each hit includes composite id (u.N/s.N) and slot_key when present — use those with memory_change or memory_delete.", map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"query": map[string]any{"type": "string"},
