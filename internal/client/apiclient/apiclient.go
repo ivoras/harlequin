@@ -133,6 +133,45 @@ func (c *Client) SetConversationHat(ctx context.Context, conversationID int64, h
 		types.SetConversationHatRequest{Hat: hat}, nil)
 }
 
+// ListMCP returns the visible MCP servers (shared + the user's own) with status.
+func (c *Client) ListMCP(ctx context.Context) ([]types.MCPServer, error) {
+	var out []types.MCPServer
+	return out, c.do(ctx, http.MethodGet, "/mcp", nil, &out)
+}
+
+// GetMCP returns one MCP server.
+func (c *Client) GetMCP(ctx context.Context, scope, name string) (*types.MCPServer, error) {
+	var out types.MCPServer
+	return &out, c.do(ctx, http.MethodGet, "/mcp/"+scope+"/"+name, nil, &out)
+}
+
+// RegisterMCP registers a new MCP server.
+func (c *Client) RegisterMCP(ctx context.Context, req types.RegisterMCPRequest) error {
+	return c.do(ctx, http.MethodPost, "/mcp", req, nil)
+}
+
+// UpdateMCP updates an MCP server (url / enabled / header credential).
+func (c *Client) UpdateMCP(ctx context.Context, scope, name string, req types.RegisterMCPRequest) error {
+	return c.do(ctx, http.MethodPatch, "/mcp/"+scope+"/"+name, req, nil)
+}
+
+// DeleteMCP removes an MCP server.
+func (c *Client) DeleteMCP(ctx context.Context, scope, name string) error {
+	return c.do(ctx, http.MethodDelete, "/mcp/"+scope+"/"+name, nil, nil)
+}
+
+// TestMCP connects to a server and returns its tool names.
+func (c *Client) TestMCP(ctx context.Context, scope, name string) (*types.MCPTestResult, error) {
+	var out types.MCPTestResult
+	return &out, c.do(ctx, http.MethodPost, "/mcp/"+scope+"/"+name+"/test", nil, &out)
+}
+
+// StartMCPOAuth begins the OAuth flow and returns the authorize URL.
+func (c *Client) StartMCPOAuth(ctx context.Context, scope, name string) (*types.MCPAuthStartResult, error) {
+	var out types.MCPAuthStartResult
+	return &out, c.do(ctx, http.MethodPost, "/mcp/"+scope+"/"+name+"/oauth/start", nil, &out)
+}
+
 // Messages returns a conversation's messages.
 func (c *Client) Messages(ctx context.Context, id int64) ([]types.Message, error) {
 	var out []types.Message

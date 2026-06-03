@@ -22,8 +22,10 @@ import (
 	"github.com/ivoras/harlequin/internal/server/embed"
 	"github.com/ivoras/harlequin/internal/server/jsrun"
 	"github.com/ivoras/harlequin/internal/server/llm"
+	"github.com/ivoras/harlequin/internal/server/mcp"
 	"github.com/ivoras/harlequin/internal/server/mdtmpl"
 	"github.com/ivoras/harlequin/internal/server/memory"
+	"github.com/ivoras/harlequin/internal/server/secrets"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/skills"
 	"github.com/ivoras/harlequin/internal/server/storage"
@@ -129,6 +131,29 @@ func main() {
 		webFetcher = webfetch.New(webfetch.Options{AllowPrivate: cfg.Agent.WebFetch.AllowPrivate})
 	}
 
+	// MCP client: external tool servers. Credentials are encrypted at rest with
+	// the configured master key; without it, only auth-less servers are usable.
+	var mcpManager *mcp.Manager
+	if cfg.MCP.Enabled {
+		var cipher *secrets.Cipher
+		if len(cfg.SecretKey) > 0 {
+			if cipher, err = secrets.New(cfg.SecretKey); err != nil {
+				log.Fatalf("mcp: invalid secret key: %v", err)
+			}
+		} else {
+			log.Printf("mcp: HARLEQUIN_SECRET_KEY not set; only auth-less MCP servers will work")
+		}
+		reg := mcp.NewRegistry(store.Shared, cipher)
+		mcpManager = mcp.NewManager(reg, mcp.ManagerConfig{
+			SessionIdle:     cfg.MCP.SessionIdleValue(),
+			ToolsCacheTTL:   cfg.MCP.ToolsCacheTTLValue(),
+			CallbackBaseURL: cfg.MCP.OAuthCallbackBaseURL,
+			ClientName:      "harlequin",
+			ClientVersion:   "0.1.0",
+		}, nil)
+		defer mcpManager.Close()
+	}
+
 	ag := &agent.Agent{
 		Provider:      router,
 		Storage:       store,
@@ -139,6 +164,7 @@ func main() {
 		Conversations: convStore,
 		Session:       session,
 		WebFetcher:    webFetcher,
+		MCP:           mcpManager,
 		WebFetchModel: cfg.Agent.WebFetch.Model,
 		ReportTiming:  cfg.Agent.ReportTiming,
 		MaxSteps:      cfg.Agent.MaxSteps,
@@ -163,6 +189,7 @@ func main() {
 		Audit:         auditStore,
 		Session:       session,
 		Agent:         ag,
+		MCP:           mcpManager,
 	}
 
 	// Background maintenance: expire memories and sweep old session logs (hourly).

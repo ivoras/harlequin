@@ -34,6 +34,9 @@ const (
 	TypeWebFetch             = "web_fetch"
 	TypeDelegatedLLMRequest  = "delegated_llm_request"
 	TypeDelegatedLLMResponse = "delegated_llm_response"
+
+	// MCP (Model Context Protocol) external tool calls.
+	TypeMCPCall = "mcp_call"
 )
 
 // Event is one JSONL line. Fields beyond the envelope go into Data.

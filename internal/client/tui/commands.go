@@ -25,6 +25,12 @@ const helpText = `Commands:
   /hat show <name>      show a hat's details
   /hat wear <name>      wear a hat in this conversation
   /hat off              remove the hat (use the default)
+  /mcp                  list MCP servers (shared + your own) and status
+  /mcp show <s/name>    show one MCP server (scope = shared|user)
+  /mcp add <s/name> <url> [header <H> <val> | oauth]  register an MCP server
+  /mcp test <s/name>    connect and list the server's tools
+  /mcp auth <s/name>    authorize an OAuth MCP server (prints a URL to open)
+  /mcp rm <s/name>      remove an MCP server
   /reload               (admin) re-read skill/prompt/hat files
   /memory [scope]       list memories with ids (scope: user|shared)
   /memory find <phrase> search memories (own + shared) by relevance
@@ -77,6 +83,8 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 		}
 	case "/hat":
 		return m.handleHatSub(args)
+	case "/mcp":
+		return m.handleMCPSub(args)
 	case "/reload":
 		if !m.canManageShared() {
 			return infoCmd("/reload is owner/admin only")
@@ -192,6 +200,186 @@ func (m *Model) handleHatSub(args []string) tea.Cmd {
 	default:
 		return infoCmd("usage: /hat [list|show <name>|wear <name>|off]")
 	}
+}
+
+// parseMCPRef parses "scope/name" or bare "name" (default scope "user").
+func parseMCPRef(s string) (scope, name string) {
+	if i := strings.Index(s, "/"); i >= 0 {
+		scope, name = strings.ToLower(s[:i]), s[i+1:]
+		if scope == "shared" || scope == "user" {
+			return scope, name
+		}
+	}
+	return "user", s
+}
+
+func (m *Model) handleMCPSub(args []string) tea.Cmd {
+	if len(args) == 0 || strings.ToLower(args[0]) == "list" {
+		return func() tea.Msg {
+			servers, err := m.client.ListMCP(context.Background())
+			if err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{renderMCPList(servers)}
+		}
+	}
+	switch strings.ToLower(args[0]) {
+	case "show":
+		if len(args) < 2 {
+			return infoCmd("usage: /mcp show <scope/name>")
+		}
+		scope, name := parseMCPRef(args[1])
+		return func() tea.Msg {
+			srv, err := m.client.GetMCP(context.Background(), scope, name)
+			if err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{renderMCPDetail(*srv)}
+		}
+	case "add":
+		return m.handleMCPAdd(args[1:])
+	case "rm", "remove", "delete":
+		if len(args) < 2 {
+			return infoCmd("usage: /mcp rm <scope/name>")
+		}
+		scope, name := parseMCPRef(args[1])
+		return func() tea.Msg {
+			if err := m.client.DeleteMCP(context.Background(), scope, name); err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{fmt.Sprintf("removed MCP server %s/%s", scope, name)}
+		}
+	case "test":
+		if len(args) < 2 {
+			return infoCmd("usage: /mcp test <scope/name>")
+		}
+		scope, name := parseMCPRef(args[1])
+		return func() tea.Msg {
+			res, err := m.client.TestMCP(context.Background(), scope, name)
+			if err != nil {
+				return errMsg{err}
+			}
+			if !res.OK {
+				return errMsg{fmt.Errorf("connection failed: %s", res.Error)}
+			}
+			if len(res.Tools) == 0 {
+				return infoMsg{fmt.Sprintf("%s/%s connected; no tools advertised", scope, name)}
+			}
+			return infoMsg{fmt.Sprintf("%s/%s connected; tools: %s", scope, name, strings.Join(res.Tools, ", "))}
+		}
+	case "auth":
+		if len(args) < 2 {
+			return infoCmd("usage: /mcp auth <scope/name>")
+		}
+		scope, name := parseMCPRef(args[1])
+		return func() tea.Msg {
+			res, err := m.client.StartMCPOAuth(context.Background(), scope, name)
+			if err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{"Open this URL in a browser to authorize, then run /mcp test " + scope + "/" + name + ":\n" + res.AuthorizeURL}
+		}
+	default:
+		return infoCmd("usage: /mcp [list|show <s/name>|add ...|test <s/name>|auth <s/name>|rm <s/name>]")
+	}
+}
+
+// handleMCPAdd parses: <scope/name> <url> [header <Name> <value> | oauth [scope...]]
+func (m *Model) handleMCPAdd(args []string) tea.Cmd {
+	if len(args) < 2 {
+		return infoCmd("usage: /mcp add <scope/name> <url> [header <Name> <value> | oauth]")
+	}
+	scope, name := parseMCPRef(args[0])
+	req := types.RegisterMCPRequest{Scope: scope, Name: name, URL: args[1], AuthType: "none"}
+	rest := args[2:]
+	if len(rest) > 0 {
+		switch strings.ToLower(rest[0]) {
+		case "header":
+			if len(rest) < 3 {
+				return infoCmd("usage: /mcp add <scope/name> <url> header <HeaderName> <value>")
+			}
+			req.AuthType = "header"
+			req.HeaderName = rest[1]
+			req.HeaderValue = strings.Join(rest[2:], " ")
+		case "oauth":
+			req.AuthType = "oauth"
+			req.OAuthScopes = rest[1:]
+		default:
+			return infoCmd("unknown auth mode; use 'header <Name> <value>' or 'oauth'")
+		}
+	}
+	return func() tea.Msg {
+		if err := m.client.RegisterMCP(context.Background(), req); err != nil {
+			return errMsg{err}
+		}
+		msg := fmt.Sprintf("registered MCP server %s/%s", scope, name)
+		if req.AuthType == "oauth" {
+			msg += "; run /mcp auth " + scope + "/" + name + " to authorize"
+		} else {
+			msg += "; run /mcp test " + scope + "/" + name + " to verify"
+		}
+		return infoMsg{msg}
+	}
+}
+
+func renderMCPList(servers []types.MCPServer) string {
+	if len(servers) == 0 {
+		return "No MCP servers registered. Add one with /mcp add <scope/name> <url>."
+	}
+	var sb strings.Builder
+	sb.WriteString("MCP servers (scope/name — auth — status):\n")
+	for _, s := range servers {
+		fmt.Fprintf(&sb, " %s/%-16s %-7s %s\n", s.Scope, s.Name, s.AuthType, mcpStatusText(s))
+	}
+	return strings.TrimRight(sb.String(), "\n")
+}
+
+func mcpStatusText(s types.MCPServer) string {
+	switch {
+	case !s.Enabled:
+		return "disabled"
+	case s.NeedsAuth:
+		return "needs auth (run /mcp auth)"
+	case s.Error != "":
+		return "error: " + s.Error
+	case s.AuthSatisfied:
+		return fmt.Sprintf("ready (%d tools)", s.ToolCount)
+	default:
+		return "no credential"
+	}
+}
+
+func renderMCPDetail(s types.MCPServer) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "MCP server %s/%s\n", s.Scope, s.Name)
+	fmt.Fprintf(&sb, "  url:    %s\n", s.URL)
+	fmt.Fprintf(&sb, "  auth:   %s", s.AuthType)
+	if s.HeaderName != "" {
+		fmt.Fprintf(&sb, " (header %s)", s.HeaderName)
+	}
+	sb.WriteString("\n")
+	fmt.Fprintf(&sb, "  status: %s", mcpStatusText(s))
+	if len(s.Tools) > 0 {
+		sb.WriteString("\n  tools:")
+		for _, t := range s.Tools {
+			fmt.Fprintf(&sb, "\n    - %s", t.Name)
+			if t.Description != "" {
+				fmt.Fprintf(&sb, ": %s", firstLine(t.Description))
+			}
+		}
+	}
+	return sb.String()
+}
+
+// firstLine returns the first non-empty line of a (possibly multi-line) tool
+// description, trimmed, so the /mcp show listing stays compact.
+func firstLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			return line
+		}
+	}
+	return ""
 }
 
 func renderHatList(hats []types.Hat, current string) string {

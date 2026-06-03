@@ -286,6 +286,11 @@ Only owner/admin may use shared. When you are owner/admin and the user states an
 		}
 	}
 
+	// External MCP server tools (shared + user), namespaced mcp__<server>__<tool>.
+	if a.MCP != nil {
+		a.registerMCPTools(ctx, rc, reg)
+	}
+
 	return reg
 }
 
