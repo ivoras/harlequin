@@ -96,13 +96,15 @@ func (s *Server) Router() http.Handler {
 			r.Get("/documents/search", s.handleSearchDocuments)
 
 			if s.MCP != nil {
+				// A server is addressed by ?scope=&name= (not a path segment) so
+				// arbitrary names encode safely.
 				r.Get("/mcp", s.handleListMCP)
-				r.Get("/mcp/{scope}/{name}", s.handleGetMCP)
 				r.Post("/mcp", s.handleRegisterMCP)
-				r.Patch("/mcp/{scope}/{name}", s.handleUpdateMCP)
-				r.Delete("/mcp/{scope}/{name}", s.handleDeleteMCP)
-				r.Post("/mcp/{scope}/{name}/test", s.handleTestMCP)
-				r.Post("/mcp/{scope}/{name}/oauth/start", s.handleMCPOAuthStart)
+				r.Get("/mcp/server", s.handleGetMCP)
+				r.Patch("/mcp/server", s.handleUpdateMCP)
+				r.Delete("/mcp/server", s.handleDeleteMCP)
+				r.Post("/mcp/server/test", s.handleTestMCP)
+				r.Post("/mcp/server/oauth/start", s.handleMCPOAuthStart)
 			}
 
 			r.Get("/usage", s.handleUsage)

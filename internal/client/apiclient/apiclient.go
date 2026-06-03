@@ -139,10 +139,19 @@ func (c *Client) ListMCP(ctx context.Context) ([]types.MCPServer, error) {
 	return out, c.do(ctx, http.MethodGet, "/mcp", nil, &out)
 }
 
+// mcpItemQuery builds the ?scope=&name= query addressing a single server, so
+// names with any characters encode safely.
+func mcpItemQuery(scope, name string) string {
+	v := url.Values{}
+	v.Set("scope", scope)
+	v.Set("name", name)
+	return "?" + v.Encode()
+}
+
 // GetMCP returns one MCP server.
 func (c *Client) GetMCP(ctx context.Context, scope, name string) (*types.MCPServer, error) {
 	var out types.MCPServer
-	return &out, c.do(ctx, http.MethodGet, "/mcp/"+scope+"/"+name, nil, &out)
+	return &out, c.do(ctx, http.MethodGet, "/mcp/server"+mcpItemQuery(scope, name), nil, &out)
 }
 
 // RegisterMCP registers a new MCP server.
@@ -152,24 +161,24 @@ func (c *Client) RegisterMCP(ctx context.Context, req types.RegisterMCPRequest) 
 
 // UpdateMCP updates an MCP server (url / enabled / header credential).
 func (c *Client) UpdateMCP(ctx context.Context, scope, name string, req types.RegisterMCPRequest) error {
-	return c.do(ctx, http.MethodPatch, "/mcp/"+scope+"/"+name, req, nil)
+	return c.do(ctx, http.MethodPatch, "/mcp/server"+mcpItemQuery(scope, name), req, nil)
 }
 
 // DeleteMCP removes an MCP server.
 func (c *Client) DeleteMCP(ctx context.Context, scope, name string) error {
-	return c.do(ctx, http.MethodDelete, "/mcp/"+scope+"/"+name, nil, nil)
+	return c.do(ctx, http.MethodDelete, "/mcp/server"+mcpItemQuery(scope, name), nil, nil)
 }
 
 // TestMCP connects to a server and returns its tool names.
 func (c *Client) TestMCP(ctx context.Context, scope, name string) (*types.MCPTestResult, error) {
 	var out types.MCPTestResult
-	return &out, c.do(ctx, http.MethodPost, "/mcp/"+scope+"/"+name+"/test", nil, &out)
+	return &out, c.do(ctx, http.MethodPost, "/mcp/server/test"+mcpItemQuery(scope, name), nil, &out)
 }
 
 // StartMCPOAuth begins the OAuth flow and returns the authorize URL.
 func (c *Client) StartMCPOAuth(ctx context.Context, scope, name string) (*types.MCPAuthStartResult, error) {
 	var out types.MCPAuthStartResult
-	return &out, c.do(ctx, http.MethodPost, "/mcp/"+scope+"/"+name+"/oauth/start", nil, &out)
+	return &out, c.do(ctx, http.MethodPost, "/mcp/server/oauth/start"+mcpItemQuery(scope, name), nil, &out)
 }
 
 // Messages returns a conversation's messages.
