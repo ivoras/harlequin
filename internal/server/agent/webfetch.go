@@ -162,7 +162,7 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, prompt string, r
 			Model:       a.WebFetchModel,
 			Messages:    msgs,
 			Tools:       tools,
-			Temperature: llm.Ptr(a.Temperature),
+			Temperature: llm.Ptr(a.WebFetchTemperature),
 		})
 		callMS := time.Since(callStart).Milliseconds()
 		model := a.WebFetchModel
