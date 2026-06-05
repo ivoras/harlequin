@@ -20,7 +20,7 @@ If the memory is not a single factual attribute (e.g. a preference list, an even
 
 Rules:
 - "key" is a short lowercase dotted path naming the attribute, e.g. "company.name", "user.timezone", "project.deadline". Use only the characters a-z, 0-9, "." and "_".
-- You are given the keys already in use. If one of them denotes the SAME attribute as this memory, REUSE it exactly; only invent a new key when none fit.
+- You are given the keys already in use. Reuse one EXACTLY only if it names the same kind of attribute about the same subject as this memory (e.g. do not reuse "company.domain_candidate" for a product's price). Otherwise invent a new key; when unsure, invent a new key rather than forcing a fit.
 - "value" is the attribute's value as a short plain string (no surrounding quotes, no trailing punctuation).
 - Extract the single most salient attribute; never invent facts not present in the memory.`
 
@@ -67,12 +67,33 @@ func NormalizeKey(k string) string {
 	return strings.Trim(b.String(), ".")
 }
 
-// BuildUserPrompt renders the user message: the candidate keys to reuse plus the
-// memory to extract from.
-func BuildUserPrompt(candidateKeys []string, content string) string {
-	keys := "(none yet)"
-	if len(candidateKeys) > 0 {
-		keys = strings.Join(candidateKeys, ", ")
+// KeyExample is an existing slot key offered to the extractor for reuse, with a
+// representative value so the model can tell what attribute the key denotes
+// (e.g. that "company.domain_candidate" is about domains, not prices).
+type KeyExample struct {
+	Key     string
+	Example string // a sample value; may be empty
+}
+
+// BuildUserPrompt renders the user message: the candidate keys to reuse (each
+// with an example value, when known) plus the memory to extract from.
+func BuildUserPrompt(candidateKeys []KeyExample, content string) string {
+	var b strings.Builder
+	if len(candidateKeys) == 0 {
+		b.WriteString("Keys already in use: (none yet)")
+	} else {
+		b.WriteString("Keys already in use:")
+		for _, k := range candidateKeys {
+			b.WriteString("\n- ")
+			b.WriteString(k.Key)
+			if k.Example != "" {
+				b.WriteString(` (e.g. "`)
+				b.WriteString(k.Example)
+				b.WriteString(`")`)
+			}
+		}
 	}
-	return "Keys already in use: " + keys + "\n\nMemory:\n" + content
+	b.WriteString("\n\nMemory:\n")
+	b.WriteString(content)
+	return b.String()
 }

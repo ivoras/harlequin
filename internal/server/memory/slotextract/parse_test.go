@@ -36,8 +36,12 @@ func TestBuildUserPrompt(t *testing.T) {
 	if got := BuildUserPrompt(nil, "x"); got == "" || !contains(got, "(none yet)") {
 		t.Fatalf("empty keys: %q", got)
 	}
-	if got := BuildUserPrompt([]string{"a.b", "c.d"}, "x"); !contains(got, "a.b, c.d") {
-		t.Fatalf("keys joined: %q", got)
+	got := BuildUserPrompt([]KeyExample{{Key: "a.b", Example: "v1"}, {Key: "c.d"}}, "x")
+	if !contains(got, `- a.b (e.g. "v1")`) {
+		t.Fatalf("key with example: %q", got)
+	}
+	if !contains(got, "- c.d\n") {
+		t.Fatalf("key without example: %q", got)
 	}
 }
 
