@@ -248,6 +248,40 @@ Only owner/admin may use shared. When you are owner/admin and the user states an
 		},
 	}
 
+	reg["calculator"] = toolEntry{
+		def: fnTool("calculator", `Evaluate a single arithmetic/JavaScript expression and return the result. Examples: "2 + 2 * 10", "(1500 * 1.08).toFixed(2)", "Math.sqrt(144)". ES5 expression syntax; Math is available. On error, returns what went wrong.`, map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"expression": map[string]any{"type": "string", "description": "The expression to evaluate, e.g. \"3 * (4 + 5)\""},
+			},
+			"required": []string{"expression"},
+		}),
+		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+			expr, _ := args["expression"].(string)
+			expr = strings.TrimSpace(expr)
+			if expr == "" {
+				return "error: expression is required", nil
+			}
+			// Wrap as a return so the expression's value is captured (the runner
+			// wraps code in a function body, where a bare expression yields nothing).
+			res, err := a.Runner.Run("return ("+expr+");", jsrun.RunContext{})
+			if err != nil {
+				return fmt.Sprintf("error evaluating %q: %v", expr, err), nil
+			}
+			if res.Value == nil {
+				if out := strings.TrimSpace(res.Output); out != "" {
+					return out, nil
+				}
+				return fmt.Sprintf("error: %q did not evaluate to a value", expr), nil
+			}
+			b, err := json.Marshal(res.Value)
+			if err != nil {
+				return fmt.Sprintf("%v", res.Value), nil
+			}
+			return string(b), nil
+		},
+	}
+
 	if a.WebFetcher != nil {
 		reg["WebFetch"] = a.webFetchEntry()
 	}
