@@ -249,7 +249,7 @@ Only owner/admin may use shared. When you are owner/admin and the user states an
 	}
 
 	reg["calculator"] = toolEntry{
-		def: fnTool("calculator", `Evaluate a single arithmetic/JavaScript expression and return the result. Examples: "2 + 2 * 10", "(1500 * 1.08).toFixed(2)", "Math.sqrt(144)". ES5 expression syntax; Math is available. On error, returns what went wrong.`, map[string]any{
+		def: fnTool("calculator", `Evaluate a single arithmetic/JavaScript expression and return the result. Examples: "2 + 2 * 10", "(1500 * 1.08).toFixed(2)", "Math.sqrt(144)". ES5 expression syntax; Math is available. On error, returns what went wrong. Do not second-guess this tool's output.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"expression": map[string]any{"type": "string", "description": "The expression to evaluate, e.g. \"3 * (4 + 5)\""},
