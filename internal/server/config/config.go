@@ -123,6 +123,9 @@ type WebFetchConfig struct {
 	// Model is the small, fast model used to analyse fetched content. Empty uses
 	// the provider's default model.
 	Model string `yaml:"model"`
+	// Temperature for the content-analysis call. Low for consistent extraction;
+	// pointer so an omitted key defaults via TemperatureValue (0.1).
+	Temperature *float64 `yaml:"temperature"`
 	// AllowPrivate permits fetching loopback/private/link-local addresses. Off by
 	// default as an SSRF guard.
 	AllowPrivate bool `yaml:"allow_private"`
@@ -131,6 +134,14 @@ type WebFetchConfig struct {
 // EnabledValue reports whether the WebFetch tool is exposed (default true).
 func (w WebFetchConfig) EnabledValue() bool {
 	return w.Enabled == nil || *w.Enabled
+}
+
+// TemperatureValue returns the content-analysis sampling temperature (default 0.1).
+func (w WebFetchConfig) TemperatureValue() float64 {
+	if w.Temperature != nil {
+		return *w.Temperature
+	}
+	return 0.1
 }
 
 // TemperatureValue returns the configured chat temperature (default 0.2).

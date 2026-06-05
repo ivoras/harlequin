@@ -55,6 +55,7 @@ agent:
   web_fetch:               # WebFetch tool: fetch a URL, convert to Markdown, analyse with a small model
     enabled: true          # expose the WebFetch tool to the model (default true; set false to disable)
     model: ""              # small/fast model for analysing fetched content; empty = provider default
+    temperature: 0.1       # sampling temperature for the content-analysis call (low = consistent extraction)
     allow_private: false   # allow fetching loopback/private/link-local addresses (SSRF guard; keep false)
   # Show model operation timing after each LLM turn in chat: PP (prompt
   # processing, tok/s), TG (token generation, tok/s), and wall-clock time.

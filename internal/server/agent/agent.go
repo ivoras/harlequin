@@ -45,6 +45,9 @@ type Agent struct {
 	// WebFetchModel is the model used to analyse fetched web content (a small,
 	// fast model). Empty uses the provider's default model.
 	WebFetchModel string
+	// WebFetchTemperature is the sampling temperature for the content-analysis
+	// call (low, for consistent extraction; separate from the chat Temperature).
+	WebFetchTemperature float64
 	// ReportTiming, when true, measures and reports per-turn model operation
 	// timing (prompt processing, token generation, wall clock) to the client.
 	ReportTiming bool
