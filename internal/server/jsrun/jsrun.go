@@ -15,8 +15,9 @@ import (
 	"github.com/robertkrimen/otto"
 )
 
-// errHalt is the sentinel used to interrupt a long-running VM.
-var errHalt = errors.New("jsrun: execution timeout")
+// ErrTimeout is the sentinel used to interrupt (and report) a run that exceeds
+// the configured execution timeout.
+var ErrTimeout = errors.New("jsrun: execution timeout")
 
 // ErrOutputCap is returned when output exceeds the configured cap.
 var ErrOutputCap = errors.New("jsrun: output cap exceeded")
@@ -117,15 +118,15 @@ func (r *Runner) Run(code string, rc RunContext) (res Result, err error) {
 	go func() {
 		select {
 		case <-time.After(r.opts.Timeout):
-			vm.Interrupt <- func() { panic(errHalt) }
+			vm.Interrupt <- func() { panic(ErrTimeout) }
 		case <-done:
 		}
 	}()
 
 	defer func() {
 		if caught := recover(); caught != nil {
-			if caught == errHalt {
-				err = errHalt
+			if caught == ErrTimeout {
+				err = ErrTimeout
 				res = Result{Output: sb.String()}
 				return
 			}

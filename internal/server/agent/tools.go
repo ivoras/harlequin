@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
+	"time"
 
 	"github.com/ivoras/harlequin/internal/server/jsrun"
 	"github.com/ivoras/harlequin/internal/server/llm"
@@ -74,18 +76,21 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 			if scope == "shared" && !rc.canShareMemory {
 				return "error: only owner or admin users can create shared memories; store this as a user-scoped memory instead, or ask an owner/admin.", nil
 			}
-			// Explicit slot: store the fact and attach the exact (key, value) slot,
-			// skipping LLM slot extraction and conflict detection.
+			// Explicit slot: store the fact under the exact (key, value) slot,
+			// skipping LLM slot extraction and conflict detection. Idempotent —
+			// writing the same key again updates the one memory rather than creating
+			// duplicates, so a retry is harmless.
 			if slotKey, _ := args["slot_key"].(string); strings.TrimSpace(slotKey) != "" {
-				mem, err := a.Memory.Add(ctx, rc.userDB, types.CreateMemoryRequest{Scope: scope, Content: content, Source: "tool"}, rc.userID)
+				key := strings.TrimSpace(slotKey)
+				id, created, err := a.Memory.WriteSlot(ctx, rc.userDB, scope, key, content, rc.userID, rc.canShareMemory)
 				if err != nil {
 					return "", err
 				}
-				if err := a.Memory.AddSlot(ctx, rc.userDB, mem.ID, strings.TrimSpace(slotKey), content); err != nil {
-					return "", err
-				}
 				rc.memWritten = append(rc.memWritten, content)
-				return fmt.Sprintf("Stored as memory %s under slot %s.", mem.ID, strings.TrimSpace(slotKey)), nil
+				if created {
+					return fmt.Sprintf("Stored as memory %s under slot %s. Done — do not write it again.", id, key), nil
+				}
+				return fmt.Sprintf("Slot %s already existed; updated memory %s to this value (no duplicate created). Done — do not write it again.", key, id), nil
 			}
 			mem, hits, err := a.Memory.AddWithConflicts(ctx, rc.userDB, types.CreateMemoryRequest{Scope: scope, Content: content, Source: "tool"}, rc.userID)
 			if err != nil {
@@ -250,8 +255,13 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 		}),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 			code, _ := args["code"].(string)
+			start := time.Now()
 			res, err := a.Runner.Run(code, jsrun.RunContext{})
 			if err != nil {
+				if errors.Is(err, jsrun.ErrTimeout) {
+					log.Printf("run_js: execution timed out after %dms (%d bytes of code): %s",
+						time.Since(start).Milliseconds(), len(code), truncateArgs(code, 200))
+				}
 				return fmt.Sprintf("error: %v\noutput: %s", err, res.Output), nil
 			}
 			out := res.Output
@@ -264,39 +274,7 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 		},
 	}
 
-	reg["calculator"] = toolEntry{
-		def: fnTool("calculator", `Evaluate a single arithmetic/JavaScript expression and return the result. Examples: "2 + 2 * 10", "(1500 * 1.08).toFixed(2)", "Math.sqrt(144)". ES5 expression syntax; Math is available. On error, returns what went wrong. Do not second-guess this tool's output.`, map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"expression": map[string]any{"type": "string", "description": "The expression to evaluate, e.g. \"3 * (4 + 5)\""},
-			},
-			"required": []string{"expression"},
-		}),
-		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
-			expr, _ := args["expression"].(string)
-			expr = strings.TrimSpace(expr)
-			if expr == "" {
-				return "error: expression is required", nil
-			}
-			// Wrap as a return so the expression's value is captured (the runner
-			// wraps code in a function body, where a bare expression yields nothing).
-			res, err := a.Runner.Run("return ("+expr+");", jsrun.RunContext{})
-			if err != nil {
-				return fmt.Sprintf("error evaluating %q: %v", expr, err), nil
-			}
-			if res.Value == nil {
-				if out := strings.TrimSpace(res.Output); out != "" {
-					return out, nil
-				}
-				return fmt.Sprintf("error: %q did not evaluate to a value", expr), nil
-			}
-			b, err := json.Marshal(res.Value)
-			if err != nil {
-				return fmt.Sprintf("%v", res.Value), nil
-			}
-			return string(b), nil
-		},
-	}
+	reg["calculator"] = a.calculatorEntry()
 
 	if a.WebFetcher != nil {
 		reg["WebFetch"] = a.webFetchEntry()
@@ -397,6 +375,44 @@ func conflictLine(h memory.ConflictHit) string {
 		key = " slot_key=" + h.Key
 	}
 	return fmt.Sprintf("- %s [%s]%s %q (%s)", h.OtherID, h.Relationship, key, strings.TrimSpace(h.OtherContent), h.Reason)
+}
+
+// calculatorEntry is the shared calculator tool (offered to the main agent and
+// to delegated calls such as WebFetch analysis).
+func (a *Agent) calculatorEntry() toolEntry {
+	return toolEntry{
+		def: fnTool("calculator", `Evaluate a single arithmetic/JavaScript expression and return the result. Examples: "2 + 2 * 10", "(1500 * 1.08).toFixed(2)", "Math.sqrt(144)". ES5 expression syntax; Math is available. On error, returns what went wrong. Do not second-guess this tool's output.`, map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"expression": map[string]any{"type": "string", "description": "The expression to evaluate, e.g. \"3 * (4 + 5)\""},
+			},
+			"required": []string{"expression"},
+		}),
+		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+			expr, _ := args["expression"].(string)
+			expr = strings.TrimSpace(expr)
+			if expr == "" {
+				return "error: expression is required", nil
+			}
+			// Wrap as a return so the expression's value is captured (the runner
+			// wraps code in a function body, where a bare expression yields nothing).
+			res, err := a.Runner.Run("return ("+expr+");", jsrun.RunContext{})
+			if err != nil {
+				return fmt.Sprintf("error evaluating %q: %v", expr, err), nil
+			}
+			if res.Value == nil {
+				if out := strings.TrimSpace(res.Output); out != "" {
+					return out, nil
+				}
+				return fmt.Sprintf("error: %q did not evaluate to a value", expr), nil
+			}
+			b, err := json.Marshal(res.Value)
+			if err != nil {
+				return fmt.Sprintf("%v", res.Value), nil
+			}
+			return string(b), nil
+		},
+	}
 }
 
 func fnTool(name, desc string, params map[string]any) llm.Tool {

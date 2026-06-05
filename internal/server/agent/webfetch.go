@@ -28,7 +28,7 @@ const (
 	// webFetchDefaultPrompt is used when the caller passes an empty prompt.
 	webFetchDefaultPrompt = "Extract raw facts from this scraped web page."
 	// webFetchSystemPrompt is the simplified system prompt for the analysis call.
-	webFetchSystemPrompt = "You extract information from a scraped web page."
+	webFetchSystemPrompt = "You extract information from scraped web pages. If the answer is not found in the page, decide if recursively fetching some of the links on the domain would be helpful. If so, call the WebFetch tool again with the new URL. If not, report that the answer is not found in the page. For any arithmetic over figures on the page, use the calculator tool rather than computing it yourself."
 	// webFetchMaxDepth bounds nested WebFetch calls made by the analysis model.
 	webFetchMaxDepth = 2
 	// webFetchMaxSteps bounds the analysis tool-calling loop per fetch.
@@ -145,7 +145,10 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, prompt string, r
 		{Role: llm.RoleSystem, Content: webFetchSystemPrompt},
 		{Role: llm.RoleUser, Content: userMsg.String()},
 	}
-	tools := []llm.Tool{webFetchToolDef()}
+	// Offer the analysis model WebFetch (to follow links) and calculator (for any
+	// arithmetic over figures on the page).
+	calc := a.calculatorEntry()
+	tools := []llm.Tool{webFetchToolDef(), calc.def}
 
 	var lastText string
 	for step := 0; step < webFetchMaxSteps; step++ {
@@ -193,19 +196,21 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, prompt string, r
 		if len(toolCalls) == 0 {
 			return text, nil
 		}
-		// Beyond the depth limit, stop fetching further and return what we have.
-		if depth >= webFetchMaxDepth {
-			if strings.TrimSpace(text) != "" {
-				return text, nil
-			}
-			return "(nested WebFetch depth limit reached)", nil
-		}
 		msgs = append(msgs, llm.Message{Role: llm.RoleAssistant, Content: text, ToolCalls: toolCalls})
 		for _, tc := range toolCalls {
 			var out string
-			if tc.Function.Name == "WebFetch" {
-				out, _ = a.webFetch(ctx, rc, parseToolArgs(tc.Function.Arguments), depth+1, seen)
-			} else {
+			switch tc.Function.Name {
+			case "WebFetch":
+				// Bound nested fetching; calculator and other non-fetch tools are
+				// unaffected by the depth limit.
+				if depth >= webFetchMaxDepth {
+					out = "error: nested WebFetch depth limit reached; do not fetch more pages, answer from the content already provided"
+				} else {
+					out, _ = a.webFetch(ctx, rc, parseToolArgs(tc.Function.Arguments), depth+1, seen)
+				}
+			case "calculator":
+				out, _ = calc.handler(ctx, rc, parseToolArgs(tc.Function.Arguments))
+			default:
 				out = fmt.Sprintf("error: unknown tool %q", tc.Function.Name)
 			}
 			msgs = append(msgs, llm.Message{Role: llm.RoleTool, Content: out, ToolCallID: tc.ID, Name: tc.Function.Name})
