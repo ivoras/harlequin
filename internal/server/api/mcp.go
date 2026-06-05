@@ -30,6 +30,15 @@ func validMCPURL(s string) bool {
 	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
 }
 
+// toMCPHeaders converts request headers to the mcp package's type.
+func toMCPHeaders(hs []types.MCPHeader) []mcp.Header {
+	out := make([]mcp.Header, 0, len(hs))
+	for _, h := range hs {
+		out = append(out, mcp.Header{Name: h.Name, Value: h.Value})
+	}
+	return out
+}
+
 // mcpScopeAllowed enforces who may mutate a registration at a given scope:
 // shared requires owner/admin; user requires an authenticated user and that the
 // server permits user-registered servers.
@@ -55,14 +64,18 @@ func (s *Server) mcpScopeAllowed(w http.ResponseWriter, r *http.Request, scope s
 }
 
 func toAPIMCPServer(srv mcp.Server, st mcp.Status) types.MCPServer {
-	hasCred := srv.HeaderValue != "" || (srv.OAuth != nil && srv.OAuth.ClientID != "")
+	hasCred := len(srv.Headers) > 0 || (srv.OAuth != nil && srv.OAuth.ClientID != "")
+	var headerNames []string
+	for _, h := range srv.Headers {
+		headerNames = append(headerNames, h.Name)
+	}
 	return types.MCPServer{
 		Scope:         srv.Scope,
 		Name:          srv.Name,
 		URL:           srv.URL,
 		Transport:     srv.Transport,
 		AuthType:      string(srv.AuthType),
-		HeaderName:    srv.HeaderName,
+		HeaderNames:   headerNames,
 		HasCredential: hasCred,
 		Enabled:       srv.Enabled,
 		AuthSatisfied: st.AuthSatisfied,
@@ -175,27 +188,26 @@ func (s *Server) handleRegisterMCP(w http.ResponseWriter, r *http.Request) {
 		req.AuthType = string(mcp.AuthNone)
 	}
 	srv := mcp.Server{
-		Scope:      req.Scope,
-		Name:       req.Name,
-		URL:        req.URL,
-		Transport:  "http",
-		AuthType:   mcp.AuthType(req.AuthType),
-		HeaderName: req.HeaderName,
-		CreatedBy:  u.ID,
-		Enabled:    req.Enabled == nil || *req.Enabled,
+		Scope:     req.Scope,
+		Name:      req.Name,
+		URL:       req.URL,
+		Transport: "http",
+		AuthType:  mcp.AuthType(req.AuthType),
+		CreatedBy: u.ID,
+		Enabled:   req.Enabled == nil || *req.Enabled,
 	}
 	switch srv.AuthType {
 	case mcp.AuthNone:
 	case mcp.AuthHeader:
-		if req.HeaderValue == "" {
-			writeErr(w, http.StatusBadRequest, "header_value is required for header auth")
+		if len(req.Headers) == 0 {
+			writeErr(w, http.StatusBadRequest, "at least one header is required for header auth")
 			return
 		}
 		if !s.MCP.Registry().HasCipher() {
 			writeErr(w, http.StatusBadRequest, "server has no encryption key configured (set HARLEQUIN_SECRET_KEY)")
 			return
 		}
-		srv.HeaderValue = req.HeaderValue
+		srv.Headers = toMCPHeaders(req.Headers)
 	case mcp.AuthOAuth:
 		if !s.MCP.Registry().HasCipher() {
 			writeErr(w, http.StatusBadRequest, "server has no encryption key configured (set HARLEQUIN_SECRET_KEY)")
@@ -240,12 +252,9 @@ func (s *Server) handleUpdateMCP(w http.ResponseWriter, r *http.Request) {
 		if req.Enabled != nil {
 			srv.Enabled = *req.Enabled
 		}
-		if req.HeaderValue != "" {
+		if len(req.Headers) > 0 {
 			srv.AuthType = mcp.AuthHeader
-			if req.HeaderName != "" {
-				srv.HeaderName = req.HeaderName
-			}
-			srv.HeaderValue = req.HeaderValue
+			srv.Headers = toMCPHeaders(req.Headers)
 		}
 		return s.MCP.Registry().Update(r.Context(), srv, udb)
 	})

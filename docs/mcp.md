@@ -44,7 +44,7 @@ registers the server once, then each user authorizes individually.
 | `auth_type` | How it connects                                              |
 |-------------|--------------------------------------------------------------|
 | `none`      | No credentials.                                              |
-| `header`    | A static request header, e.g. `Authorization: Bearer <tok>`.|
+| `header`    | One or more static request headers, e.g. `Authorization: Bearer <tok>`.|
 | `oauth`     | OAuth 2.1 (discovery + PKCE + refresh); per-user tokens.     |
 
 ## Commands (in the TUI)
@@ -53,7 +53,7 @@ registers the server once, then each user authorizes individually.
 /mcp                                   list servers (shared + your own) with status
 /mcp show <scope/name>                 show one server
 /mcp add <scope/name> <url>            register an auth-less server
-/mcp add <scope/name> <url> header Authorization "Bearer sk-..."   static header
+/mcp add <scope/name> <url> header Authorization:"Bearer sk-..." [X-Api-Key:"..."]   static header(s)
 /mcp add <scope/name> <url> oauth      OAuth server (then authorize)
 /mcp test <scope/name>                 connect and list the server's tools
 /mcp auth <scope/name>                 start OAuth; prints a URL to open in a browser

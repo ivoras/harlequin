@@ -26,8 +26,8 @@ const (
 )
 
 // Server is a decrypted, in-memory MCP server registration. Secret fields
-// (HeaderValue, OAuth.ClientSecret) are populated only when the caller has the
-// encryption key; they never leave the server process.
+// (Headers values, OAuth.ClientSecret) are populated only when the caller has
+// the encryption key; they never leave the server process.
 type Server struct {
 	Scope     string // ScopeShared | ScopeUser
 	Name      string
@@ -35,15 +35,21 @@ type Server struct {
 	Transport string // "http"
 	AuthType  AuthType
 
-	// Header auth.
-	HeaderName  string
-	HeaderValue string // decrypted; empty if no cipher
+	// Header auth: one or more request headers sent on every call. Values are
+	// decrypted (empty if no cipher).
+	Headers []Header
 
 	// OAuth auth (non-secret config; ClientSecret decrypted separately).
 	OAuth *OAuthMeta
 
 	Enabled   bool
 	CreatedBy int64
+}
+
+// Header is a single static request header for header auth.
+type Header struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
 }
 
 // OAuthMeta holds the non-secret OAuth client configuration discovered during
