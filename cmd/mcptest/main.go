@@ -58,8 +58,11 @@ func run() error {
 	// 1. Shared header server: create, list, verify decryption.
 	shared := mcp.Server{
 		Scope: mcp.ScopeShared, Name: "wiki", URL: "https://wiki.example.com/mcp",
-		AuthType: mcp.AuthHeader, HeaderName: "Authorization", HeaderValue: "Bearer secret-123",
-		Enabled: true, CreatedBy: 1,
+		AuthType: mcp.AuthHeader, Enabled: true, CreatedBy: 1,
+		Headers: []mcp.Header{
+			{Name: "Authorization", Value: "Bearer secret-123"},
+			{Name: "X-Api-Key", Value: "key-456"},
+		},
 	}
 	if err := reg.Create(ctx, shared, nil); err != nil {
 		return fmt.Errorf("create shared: %w", err)
@@ -68,8 +71,9 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("get shared: %w", err)
 	}
-	if got.HeaderValue != "Bearer secret-123" || got.HeaderName != "Authorization" {
-		return fmt.Errorf("header credential did not round-trip: %+v", got)
+	if len(got.Headers) != 2 || got.Headers[0] != (mcp.Header{Name: "Authorization", Value: "Bearer secret-123"}) ||
+		got.Headers[1] != (mcp.Header{Name: "X-Api-Key", Value: "key-456"}) {
+		return fmt.Errorf("header credentials did not round-trip: %+v", got.Headers)
 	}
 
 	// Verify the stored credential is actually ciphertext, not plaintext.

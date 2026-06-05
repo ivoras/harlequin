@@ -82,9 +82,9 @@ type MCPServer struct {
 	Name          string `json:"name"`
 	URL           string `json:"url"`
 	Transport     string `json:"transport"`
-	AuthType      string `json:"auth_type"` // "none" | "header" | "oauth"
-	HeaderName    string `json:"header_name,omitempty"`
-	HasCredential bool   `json:"has_credential"`
+	AuthType      string   `json:"auth_type"` // "none" | "header" | "oauth"
+	HeaderNames   []string `json:"header_names,omitempty"`
+	HasCredential bool     `json:"has_credential"`
 	Enabled       bool   `json:"enabled"`
 	// Status, populated on list/get.
 	AuthSatisfied bool   `json:"auth_satisfied"`
@@ -101,16 +101,21 @@ type MCPTool struct {
 	Description string `json:"description,omitempty"`
 }
 
+// MCPHeader is one static request header for header auth.
+type MCPHeader struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
 // RegisterMCPRequest is the body of POST /mcp.
 type RegisterMCPRequest struct {
-	Scope       string   `json:"scope"` // "shared" | "user" (default "user")
-	Name        string   `json:"name"`
-	URL         string   `json:"url"`
-	AuthType    string   `json:"auth_type"` // "none" | "header" | "oauth"
-	HeaderName  string   `json:"header_name,omitempty"`
-	HeaderValue string   `json:"header_value,omitempty"`
-	OAuthScopes []string `json:"oauth_scopes,omitempty"`
-	Enabled     *bool    `json:"enabled,omitempty"`
+	Scope       string      `json:"scope"` // "shared" | "user" (default "user")
+	Name        string      `json:"name"`
+	URL         string      `json:"url"`
+	AuthType    string      `json:"auth_type"` // "none" | "header" | "oauth"
+	Headers     []MCPHeader `json:"headers,omitempty"`
+	OAuthScopes []string    `json:"oauth_scopes,omitempty"`
+	Enabled     *bool       `json:"enabled,omitempty"`
 }
 
 // MCPTestResult is the body of POST /mcp/{scope}/{name}/test.

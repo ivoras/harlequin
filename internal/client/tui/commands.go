@@ -27,7 +27,7 @@ const helpText = `Commands:
   /hat off              remove the hat (use the default)
   /mcp                  list MCP servers (shared + your own) and status
   /mcp show <s/name>    show one MCP server (scope = shared|user)
-  /mcp add <s/name> <url> [header <H> <val> | oauth]  register an MCP server
+  /mcp add <s/name> <url> [header Name:"Value" [Name2:"Value2" ...] | oauth]  register an MCP server
   /mcp test <s/name>    connect and list the server's tools
   /mcp auth <s/name>    authorize an OAuth MCP server (prints a URL to open)
   /mcp rm <s/name>      remove an MCP server
@@ -88,7 +88,7 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 	case "/hat":
 		return m.handleHatSub(args)
 	case "/mcp":
-		return m.handleMCPSub(args)
+		return m.handleMCPSub(args, line)
 	case "/reload":
 		if !m.canManageShared() {
 			return infoCmd("/reload is owner/admin only")
@@ -217,7 +217,7 @@ func parseMCPRef(s string) (scope, name string) {
 	return "user", s
 }
 
-func (m *Model) handleMCPSub(args []string) tea.Cmd {
+func (m *Model) handleMCPSub(args []string, raw string) tea.Cmd {
 	if len(args) == 0 || strings.ToLower(args[0]) == "list" {
 		return func() tea.Msg {
 			servers, err := m.client.ListMCP(context.Background())
@@ -241,7 +241,7 @@ func (m *Model) handleMCPSub(args []string) tea.Cmd {
 			return infoMsg{renderMCPDetail(*srv)}
 		}
 	case "add":
-		return m.handleMCPAdd(args[1:])
+		return m.handleMCPAdd(args[1:], raw)
 	case "rm", "remove", "delete":
 		if len(args) < 2 {
 			return infoCmd("usage: /mcp rm <scope/name>")
@@ -288,10 +288,11 @@ func (m *Model) handleMCPSub(args []string) tea.Cmd {
 	}
 }
 
-// handleMCPAdd parses: <scope/name> <url> [header <Name> <value> | oauth [scope...]]
-func (m *Model) handleMCPAdd(args []string) tea.Cmd {
+// handleMCPAdd parses: <scope/name> <url> [header Name:"Value" [Name2:"Value2" ...] | oauth [scope...]]
+func (m *Model) handleMCPAdd(args []string, raw string) tea.Cmd {
+	const headerUsage = `usage: /mcp add <scope/name> <url> header Name:"Value" [Name2:"Value2" ...]`
 	if len(args) < 2 {
-		return infoCmd("usage: /mcp add <scope/name> <url> [header <Name> <value> | oauth]")
+		return infoCmd(`usage: /mcp add <scope/name> <url> [header Name:"Value" ... | oauth]`)
 	}
 	scope, name := parseMCPRef(args[0])
 	req := types.RegisterMCPRequest{Scope: scope, Name: name, URL: args[1], AuthType: "none"}
@@ -299,17 +300,20 @@ func (m *Model) handleMCPAdd(args []string) tea.Cmd {
 	if len(rest) > 0 {
 		switch strings.ToLower(rest[0]) {
 		case "header":
-			if len(rest) < 3 {
-				return infoCmd("usage: /mcp add <scope/name> <url> header <HeaderName> <value>")
+			// Header values may contain spaces inside quotes, which the field
+			// splitter loses, so parse the headers from the raw command line
+			// (everything after "/mcp add <ref> <url> header").
+			headers, err := parseHeaderSpecs(afterNFields(raw, 5))
+			if err != nil {
+				return infoCmd(headerUsage + " — " + err.Error())
 			}
 			req.AuthType = "header"
-			req.HeaderName = rest[1]
-			req.HeaderValue = strings.Join(rest[2:], " ")
+			req.Headers = headers
 		case "oauth":
 			req.AuthType = "oauth"
 			req.OAuthScopes = rest[1:]
 		default:
-			return infoCmd("unknown auth mode; use 'header <Name> <value>' or 'oauth'")
+			return infoCmd(`unknown auth mode; use 'header Name:"Value" ...' or 'oauth'`)
 		}
 	}
 	return func() tea.Msg {
@@ -324,6 +328,51 @@ func (m *Model) handleMCPAdd(args []string) tea.Cmd {
 		}
 		return infoMsg{msg}
 	}
+}
+
+// afterNFields returns the remainder of s after skipping n whitespace-separated
+// fields, preserving the original spacing/quoting of that remainder.
+func afterNFields(s string, n int) string {
+	for i := 0; i < n; i++ {
+		s = strings.TrimLeft(s, " \t")
+		j := strings.IndexAny(s, " \t")
+		if j < 0 {
+			return ""
+		}
+		s = s[j:]
+	}
+	return strings.TrimSpace(s)
+}
+
+// parseHeaderSpecs parses one or more `Name:"Value"` header specs (values are
+// quoted so they may contain spaces).
+func parseHeaderSpecs(s string) ([]types.MCPHeader, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, fmt.Errorf("no headers given")
+	}
+	var out []types.MCPHeader
+	for len(s) > 0 {
+		colon := strings.IndexByte(s, ':')
+		if colon < 0 {
+			return nil, fmt.Errorf(`expected Name:"Value"`)
+		}
+		name := strings.TrimSpace(s[:colon])
+		if name == "" {
+			return nil, fmt.Errorf("empty header name")
+		}
+		rest := strings.TrimLeft(s[colon+1:], " \t")
+		if len(rest) == 0 || rest[0] != '"' {
+			return nil, fmt.Errorf("value for %q must be quoted", name)
+		}
+		end := strings.IndexByte(rest[1:], '"')
+		if end < 0 {
+			return nil, fmt.Errorf("unterminated quote for %q", name)
+		}
+		out = append(out, types.MCPHeader{Name: name, Value: rest[1 : 1+end]})
+		s = strings.TrimSpace(rest[1+end+1:])
+	}
+	return out, nil
 }
 
 func renderMCPList(servers []types.MCPServer) string {
@@ -358,8 +407,8 @@ func renderMCPDetail(s types.MCPServer) string {
 	fmt.Fprintf(&sb, "MCP server %s/%s\n", s.Scope, s.Name)
 	fmt.Fprintf(&sb, "  url:    %s\n", s.URL)
 	fmt.Fprintf(&sb, "  auth:   %s", s.AuthType)
-	if s.HeaderName != "" {
-		fmt.Fprintf(&sb, " (header %s)", s.HeaderName)
+	if len(s.HeaderNames) > 0 {
+		fmt.Fprintf(&sb, " (headers: %s)", strings.Join(s.HeaderNames, ", "))
 	}
 	sb.WriteString("\n")
 	fmt.Fprintf(&sb, "  status: %s", mcpStatusText(s))

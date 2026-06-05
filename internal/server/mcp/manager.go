@@ -111,7 +111,7 @@ func (m *Manager) authSatisfied(ctx context.Context, userDB *sql.DB, srv Server)
 	case AuthNone:
 		return true
 	case AuthHeader:
-		return srv.HeaderValue != ""
+		return len(srv.Headers) > 0
 	case AuthOAuth:
 		tok, err := m.reg.LoadToken(ctx, userDB, srv.Scope, srv.Name)
 		return err == nil && tok != nil && tok.RefreshToken != ""
@@ -125,14 +125,10 @@ func (m *Manager) httpClientFor(ctx context.Context, userDB *sql.DB, srv Server)
 	case AuthNone:
 		return &http.Client{Transport: m.base, Timeout: 60 * time.Second}, nil
 	case AuthHeader:
-		if srv.HeaderValue == "" {
+		if len(srv.Headers) == 0 {
 			return nil, ErrNeedAuth
 		}
-		name := srv.HeaderName
-		if name == "" {
-			name = "Authorization"
-		}
-		return &http.Client{Transport: &headerRT{name: name, value: srv.HeaderValue, base: m.base}, Timeout: 60 * time.Second}, nil
+		return &http.Client{Transport: &headerRT{headers: srv.Headers, base: m.base}, Timeout: 60 * time.Second}, nil
 	case AuthOAuth:
 		tok, err := m.reg.LoadToken(ctx, userDB, srv.Scope, srv.Name)
 		if err != nil {
@@ -400,13 +396,19 @@ func (m *Manager) CompleteAuth(ctx context.Context, userDB *sql.DB, state, code 
 // --- helpers ---
 
 type headerRT struct {
-	name, value string
-	base        http.RoundTripper
+	headers []Header
+	base    http.RoundTripper
 }
 
 func (h *headerRT) RoundTrip(req *http.Request) (*http.Response, error) {
 	r := req.Clone(req.Context())
-	r.Header.Set(h.name, h.value)
+	for _, hd := range h.headers {
+		name := hd.Name
+		if name == "" {
+			name = "Authorization"
+		}
+		r.Header.Set(name, hd.Value)
+	}
 	return h.base.RoundTrip(r)
 }
 

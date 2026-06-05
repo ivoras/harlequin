@@ -46,6 +46,27 @@ func (r *Registry) dbFor(scope string, userDB *sql.DB) (*sql.DB, error) {
 	}
 }
 
+// decodeHeaders parses the decrypted header-auth blob. The current format is a
+// JSON array of {name,value}; the legacy single-header format {"header","value"}
+// is still accepted so pre-existing registrations keep working.
+func decodeHeaders(plain []byte) ([]Header, error) {
+	var arr []Header
+	if err := json.Unmarshal(plain, &arr); err == nil && len(arr) > 0 {
+		return arr, nil
+	}
+	var legacy struct {
+		Header string `json:"header"`
+		Value  string `json:"value"`
+	}
+	if err := json.Unmarshal(plain, &legacy); err != nil {
+		return nil, fmt.Errorf("mcp: decode header credential: %w", err)
+	}
+	if legacy.Header == "" {
+		return nil, nil
+	}
+	return []Header{{Name: legacy.Header, Value: legacy.Value}}, nil
+}
+
 const serverCols = `name, url, transport, auth_type, auth_secret_enc, oauth_meta, enabled, created_by`
 
 func (r *Registry) scanServer(scope string, sc interface {
@@ -74,11 +95,10 @@ func (r *Registry) scanServer(scope string, sc interface {
 			if err != nil {
 				return Server{}, fmt.Errorf("mcp: decrypt header credential: %w", err)
 			}
-			var hc struct{ Header, Value string }
-			if err := json.Unmarshal(plain, &hc); err != nil {
+			s.Headers, err = decodeHeaders(plain)
+			if err != nil {
 				return Server{}, err
 			}
-			s.HeaderName, s.HeaderValue = hc.Header, hc.Value
 		}
 	case AuthOAuth:
 		var m OAuthMeta
@@ -151,14 +171,11 @@ func (r *Registry) Get(ctx context.Context, scope, name string, userDB *sql.DB) 
 func (r *Registry) encodeSecret(s Server) (secretEnc []byte, oauthMeta sql.NullString, err error) {
 	switch s.AuthType {
 	case AuthHeader:
-		if s.HeaderValue != "" {
+		if len(s.Headers) > 0 {
 			if r.cipher == nil {
 				return nil, oauthMeta, secrets.ErrNoCipher
 			}
-			b, _ := json.Marshal(struct {
-				Header string `json:"header"`
-				Value  string `json:"value"`
-			}{s.HeaderName, s.HeaderValue})
+			b, _ := json.Marshal(s.Headers)
 			if secretEnc, err = r.cipher.Encrypt(b); err != nil {
 				return nil, oauthMeta, err
 			}
