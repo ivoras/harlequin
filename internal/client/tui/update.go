@@ -91,6 +91,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spin, cmd = m.spin.Update(msg)
+		// Re-render so the in-transcript thinking indicator animates (spinner step
+		// and colour glow) while a turn is in flight.
+		if m.loading {
+			m.refreshViewport()
+		}
 		return m, cmd
 
 	case thinkPulseMsg:
@@ -360,6 +365,8 @@ func (m *Model) sendMessageAs(display, sendText string) tea.Cmd {
 // block to the transcript (callers render their own context, e.g. a notification).
 func (m *Model) startTurn(text string) tea.Cmd {
 	m.loading = true
+	m.turnStart = time.Now()
+	m.refreshViewport() // show the thinking indicator immediately, before the first tick
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancelStream = cancel
 
