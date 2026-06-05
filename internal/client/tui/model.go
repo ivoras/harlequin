@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
@@ -51,19 +52,20 @@ type Model struct {
 
 	styles Styles
 
-	phase phase
-	width int
+	phase  phase
+	width  int
 	height int
 
-	vp      viewport.Model
-	input   textarea.Model
-	spin    spinner.Model
-	loading bool
+	vp        viewport.Model
+	input     textarea.Model
+	spin      spinner.Model
+	loading   bool
+	turnStart time.Time // when the in-flight turn began (drives the elapsed readout)
 
 	// login scratch
 	loginUser string
 
-	blocks    []roleBlock
+	blocks            []roleBlock
 	streamingThinking strings.Builder // in-flight reasoning text
 	streaming         strings.Builder // in-flight assistant response text
 
@@ -233,6 +235,10 @@ func (m *Model) refreshViewport() {
 		sb.WriteString(m.renderAssistant(m.streaming.String()))
 		sb.WriteString("\n")
 	}
+	if m.loading {
+		sb.WriteString(m.renderThinkingIndicator())
+		sb.WriteString("\n")
+	}
 	atBottom := m.vp.AtBottom()
 	m.vp.SetContent(sb.String())
 	if atBottom {
@@ -278,6 +284,22 @@ func (m *Model) renderAssistant(text string) string {
 	return wrapWidth(m.contentWidth(), renderMarkdown(m.contentWidth(), text))
 }
 
+// renderThinkingIndicator is the animated status shown as the final transcript
+// line while a turn is in flight: a braille spinner and a "Thinking…" label that
+// glow with the same colour pulse as the top bar, an elapsed-seconds readout, and
+// a dim cancel hint. The spinner advances and the glow breathes because
+// refreshViewport re-renders on each spinner tick while loading.
+func (m *Model) renderThinkingIndicator() string {
+	pulse := lipgloss.Color(thinkingPulseColor(time.Now()))
+	glow := lipgloss.NewStyle().Foreground(pulse).Bold(true)
+	out := glow.Render(m.spin.View()+" Thinking") + glow.Render("…")
+	if !m.turnStart.IsZero() {
+		out += m.styles.Help.Render(fmt.Sprintf("  %ds", int(time.Since(m.turnStart).Seconds())))
+	}
+	out += m.styles.Help.Render("   esc to cancel")
+	return out
+}
+
 func (m *Model) renderThinking(text string, streaming bool) string {
 	label := "💭 thinking"
 	if streaming {
@@ -298,8 +320,8 @@ func (m *Model) renderThinking(text string, streaming bool) string {
 	return header + "\n" + strings.Join(lines, "\n")
 }
 
-func errCmd(err error) tea.Cmd  { return func() tea.Msg { return errMsg{err} } }
-func infoCmd(s string) tea.Cmd  { return func() tea.Msg { return infoMsg{s} } }
+func errCmd(err error) tea.Cmd { return func() tea.Msg { return errMsg{err} } }
+func infoCmd(s string) tea.Cmd { return func() tea.Msg { return infoMsg{s} } }
 
 func renderSkillList(infos []types.SkillInfo) string {
 	var sb strings.Builder

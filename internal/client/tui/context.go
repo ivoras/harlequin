@@ -12,9 +12,9 @@ import (
 
 // contextMeterState holds the latest context usage from the server (SSE done).
 type contextMeterState struct {
-	model  string
-	used   int
-	max    int
+	model string
+	used  int
+	max   int
 }
 
 func (m *Model) headerZoneBG() color.Color {
@@ -26,40 +26,26 @@ func (m *Model) headerZoneBG() color.Color {
 
 func (m *Model) renderHeaderLine() string {
 	left := m.styles.Header.Render(" Harlequin ")
+	// The whole zone background fades while the model is thinking (the spinner and
+	// "Thinking…" label themselves live on the latest transcript entry now).
 	bg := m.headerZoneBG()
 	leftW := lipgloss.Width(left)
 	zoneW := m.width - leftW
 	if zoneW < 1 {
 		zoneW = 1
 	}
-	// The meter is right-aligned and takes priority; the thinking indicator gets
-	// whatever space is left. Truncate (rather than clamp the gap) so the line
+	// The meter is right-aligned; truncate (rather than clamp the gap) so the line
 	// never exceeds zoneW and wraps onto a second row.
 	right := m.renderContextMeter(bg)
 	if rightW := lipgloss.Width(right); rightW > zoneW {
 		right = ansi.Truncate(right, zoneW, "")
 	}
-	rightW := lipgloss.Width(right)
-	thinking := m.renderHeaderThinking(bg)
-	if avail := zoneW - rightW - 1; lipgloss.Width(thinking) > avail {
-		if avail < 0 {
-			avail = 0
-		}
-		thinking = ansi.Truncate(thinking, avail, "")
-	}
-	gap := zoneW - lipgloss.Width(thinking) - rightW
+	gap := zoneW - lipgloss.Width(right)
 	if gap < 0 {
 		gap = 0
 	}
 	gapFill := lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", gap))
-	return left + thinking + gapFill + right
-}
-
-func (m *Model) renderHeaderThinking(bg color.Color) string {
-	if !m.loading {
-		return ""
-	}
-	return m.styles.Status.Background(bg).Render(m.spin.View() + " thinking…  (Esc to cancel)")
+	return left + gapFill + right
 }
 
 func (m *Model) renderContextMeter(bg color.Color) string {
