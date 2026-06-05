@@ -25,9 +25,9 @@ const webFetchDescription = `
 
 const (
 	// webFetchDefaultPrompt is used when the caller passes an empty prompt.
-	webFetchDefaultPrompt = "Extract raw facts from this scraped web page:"
+	webFetchDefaultPrompt = "Extract raw facts from this scraped web page."
 	// webFetchSystemPrompt is the simplified system prompt for the analysis call.
-	webFetchSystemPrompt = "You are a helpful assistent specialised in analysing web site content."
+	webFetchSystemPrompt = "You are a helpful assistent specialised in analysing web site content. Do not fetch the same URL multiple times."
 	// webFetchMaxDepth bounds nested WebFetch calls made by the analysis model.
 	webFetchMaxDepth = 2
 	// webFetchMaxSteps bounds the analysis tool-calling loop per fetch.
@@ -67,7 +67,8 @@ func (a *Agent) webFetch(ctx context.Context, rc *runContext, args map[string]an
 		return "error: web fetching is not enabled on this server", nil
 	}
 	rawURL, _ := args["url"].(string)
-	if strings.TrimSpace(rawURL) == "" {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
 		return "error: url is required", nil
 	}
 	prompt, _ := args["prompt"].(string)

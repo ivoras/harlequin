@@ -9,7 +9,8 @@ import (
 
 // Prompt is the system prompt for autonomous memory extraction (uses judge.PromptRules).
 var Prompt = `You decide whether a chat turn contains durable facts worth remembering long-term
-(preferences, identity, organisation facts, ongoing projects, constraints).
+(preferences, identity, organisation facts, ongoing projects, constraints). For shared scope,
+only consider facts that are surprising and unknown, and avoid trivia or easily computable facts.
 
 Respond with JSON only (no markdown, no commentary):
 {"memories":[{"content":"...","confidence":N,"scope":"user"|"shared"}, ...]}
