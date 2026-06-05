@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -136,6 +137,7 @@ type OpenAICompatible struct {
 	apiKey  string
 	model   string
 	client  *http.Client
+	ppAvg   *ppTracker // rolling prompt-processing rate, drives the dynamic timeout
 }
 
 // NewOpenAICompatible constructs a provider. defaultModel is used when a request
@@ -146,7 +148,10 @@ func NewOpenAICompatible(name, baseURL, apiKey, defaultModel string) *OpenAIComp
 		baseURL: strings.TrimRight(baseURL, "/"),
 		apiKey:  apiKey,
 		model:   defaultModel,
-		client:  &http.Client{Timeout: 5 * time.Minute},
+		// No fixed client timeout: each call gets a dynamic per-request deadline
+		// via context (see Chat / requestTimeout).
+		client: &http.Client{},
+		ppAvg:  newPPTracker(),
 	}
 }
 
@@ -187,8 +192,15 @@ func (p *OpenAICompatible) Chat(ctx context.Context, req ChatRequest) (<-chan Ch
 		return nil, err
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/chat/completions", bytes.NewReader(body))
+	// Dynamic per-call deadline: ppTimeoutMultiplier x the predicted prompt-
+	// processing time for this request, instead of one fixed client timeout.
+	estTokens := EstimateMessagesTokens(req.Messages, req.Tools)
+	timeout := p.requestTimeout(estTokens)
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
+
+	httpReq, err := http.NewRequestWithContext(callCtx, http.MethodPost, p.baseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -196,18 +208,23 @@ func (p *OpenAICompatible) Chat(ctx context.Context, req ChatRequest) (<-chan Ch
 		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 	}
 
+	start := time.Now()
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
+		cancel()
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, fmt.Errorf("provider %s: status %d: %s", p.name, resp.StatusCode, strings.TrimSpace(string(msg)))
 	}
+	log.Printf("llm[%s]: model %s, ~%d prompt tokens, timeout %s (avg PP %.0f tok/s)",
+		p.name, model, estTokens, timeout.Round(time.Second), p.ppAvg.avg())
 
 	out := make(chan Chunk, 32)
-	go p.readStream(resp, model, out)
+	go p.readStream(resp, model, out, start, cancel)
 	return out, nil
 }
 
@@ -273,7 +290,8 @@ func (d *jsonDelta) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (p *OpenAICompatible) readStream(resp *http.Response, model string, out chan<- Chunk) {
+func (p *OpenAICompatible) readStream(resp *http.Response, model string, out chan<- Chunk, start time.Time, cancel context.CancelFunc) {
+	defer cancel() // release the per-call deadline once the stream is fully drained
 	defer resp.Body.Close()
 	defer close(out)
 
@@ -285,9 +303,11 @@ func (p *OpenAICompatible) readStream(resp *http.Response, model string, out cha
 	var order []int
 	var usage *Usage
 	var timings *Timings
+	var firstContentAt time.Time // first token, for the wall-clock PP fallback
 	resolvedModel := model
 
 	flush := func(streamErr error) {
+		p.recordPP(usage, timings, start, firstContentAt)
 		calls := make([]ToolCall, 0, len(order))
 		for _, idx := range order {
 			calls = append(calls, *toolAcc[idx])
@@ -326,9 +346,15 @@ func (p *OpenAICompatible) readStream(resp *http.Response, model string, out cha
 		}
 		for _, ch := range c.Choices {
 			if thinking := normalizeThinking(ch.Delta.extra); thinking != "" {
+				if firstContentAt.IsZero() {
+					firstContentAt = time.Now()
+				}
 				out <- Chunk{ThinkingDelta: thinking, Provider: p.name, Model: model}
 			}
 			if ch.Delta.Content != "" {
+				if firstContentAt.IsZero() {
+					firstContentAt = time.Now()
+				}
 				out <- Chunk{TextDelta: ch.Delta.Content, Provider: p.name, Model: model}
 			}
 			for _, tc := range ch.Delta.ToolCalls {
