@@ -291,6 +291,7 @@ func (s *Store) slotConflicts(ctx context.Context, userDB *sql.DB, newID string,
 				Relationship: rel,
 				Reason:       reason,
 				Confidence:   conf,
+				Key:          slot.Key,
 			})
 		}
 	}
