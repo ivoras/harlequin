@@ -33,7 +33,7 @@ func TestDelegatedLLMCallIsLogged(t *testing.T) {
 	rc := &runContext{conversationID: 7, userID: 3, turn: 1, step: 2}
 	res := webfetch.Result{Markdown: "page md", FinalURL: "https://example.com/x", Title: "X"}
 
-	out, err := a.analyzeWeb(context.Background(), rc, "Summarize", res, "page md", 0)
+	out, err := a.analyzeWeb(context.Background(), rc, "Summarize", res, "page md", 0, map[string]bool{})
 	if err != nil {
 		t.Fatal(err)
 	}

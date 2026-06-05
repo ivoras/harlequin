@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/url"
 	"strings"
 	"time"
 
@@ -55,14 +56,16 @@ func (a *Agent) webFetchEntry() toolEntry {
 	return toolEntry{
 		def: webFetchToolDef(),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
-			return a.webFetch(ctx, rc, args, 0)
+			return a.webFetch(ctx, rc, args, 0, map[string]bool{})
 		},
 	}
 }
 
 // webFetch fetches the URL, converts it to markdown, and runs the analysis model
-// over it. depth bounds recursive WebFetch calls issued by the analysis model.
-func (a *Agent) webFetch(ctx context.Context, rc *runContext, args map[string]any, depth int) (string, error) {
+// over it. depth bounds recursive WebFetch calls issued by the analysis model;
+// seen records the URLs already fetched in this chain so the analysis model can't
+// recurse back into a page it has already retrieved.
+func (a *Agent) webFetch(ctx context.Context, rc *runContext, args map[string]any, depth int, seen map[string]bool) (string, error) {
 	if a.WebFetcher == nil {
 		return "error: web fetching is not enabled on this server", nil
 	}
@@ -71,6 +74,15 @@ func (a *Agent) webFetch(ctx context.Context, rc *runContext, args map[string]an
 	if rawURL == "" {
 		return "error: url is required", nil
 	}
+	key := normalizeURL(rawURL)
+	if seen[key] {
+		a.logEvent(ctx, rc, sessionlog.TypeWebFetch, map[string]any{
+			"url": rawURL, "depth": depth, "ok": false, "skipped": "already_seen",
+		})
+		log.Printf("webfetch: skipping already-seen URL %s (depth=%d)", rawURL, depth)
+		return fmt.Sprintf("error: %s was already fetched in this WebFetch chain; use the content already provided instead of fetching it again", rawURL), nil
+	}
+	seen[key] = true
 	prompt, _ := args["prompt"].(string)
 	if strings.TrimSpace(prompt) == "" {
 		prompt = webFetchDefaultPrompt
@@ -99,18 +111,24 @@ func (a *Agent) webFetch(ctx context.Context, rc *runContext, args map[string]an
 	log.Printf("webfetch: GET %s (cached=%v, %dms, %d bytes, depth=%d)",
 		target, res.Cached, fetchMS, len(res.Markdown), depth)
 
+	// A redirect can land on a different URL; record it too so the analysis model
+	// can't re-fetch the resolved page under its final address.
+	if res.FinalURL != "" {
+		seen[normalizeURL(res.FinalURL)] = true
+	}
+
 	content := res.Markdown
 	if len(content) > webFetchMaxContent {
 		content = content[:webFetchMaxContent] + "\n\n[content truncated]"
 	}
 
-	return a.analyzeWeb(ctx, rc, prompt, res, content, depth)
+	return a.analyzeWeb(ctx, rc, prompt, res, content, depth, seen)
 }
 
 // analyzeWeb runs the small, fast analysis model over the fetched markdown. The
 // model is given the WebFetch tool only; nested calls are executed up to
 // webFetchMaxDepth so it can follow a link if needed.
-func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, prompt string, res webfetch.Result, content string, depth int) (string, error) {
+func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, prompt string, res webfetch.Result, content string, depth int, seen map[string]bool) (string, error) {
 	var userMsg strings.Builder
 	userMsg.WriteString(prompt)
 	userMsg.WriteString("\n\nURL: ")
@@ -186,7 +204,7 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, prompt string, r
 		for _, tc := range toolCalls {
 			var out string
 			if tc.Function.Name == "WebFetch" {
-				out, _ = a.webFetch(ctx, rc, parseToolArgs(tc.Function.Arguments), depth+1)
+				out, _ = a.webFetch(ctx, rc, parseToolArgs(tc.Function.Arguments), depth+1, seen)
 			} else {
 				out = fmt.Sprintf("error: unknown tool %q", tc.Function.Name)
 			}
@@ -194,6 +212,25 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, prompt string, r
 		}
 	}
 	return lastText, nil
+}
+
+// normalizeURL canonicalizes a URL for "already seen" comparison: lowercased
+// scheme/host, no fragment, and no trailing slash on the path. Falls back to the
+// lowercased raw string if it doesn't parse.
+func normalizeURL(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Host == "" {
+		return strings.ToLower(strings.TrimSpace(raw))
+	}
+	u.Scheme = strings.ToLower(u.Scheme)
+	u.Host = strings.ToLower(u.Host)
+	u.Fragment = ""
+	if u.Path == "/" {
+		u.Path = ""
+	} else {
+		u.Path = strings.TrimRight(u.Path, "/")
+	}
+	return u.String()
 }
 
 // formatToolCalls renders tool calls as "name(args), name(args)" for one-line
