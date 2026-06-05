@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	bkey "charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
@@ -11,6 +12,70 @@ import (
 
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
+
+// notificationsInterval is how often the client polls the server for pending
+// notifications after the initial post-login check.
+const notificationsInterval = time.Minute
+
+type notificationsTickMsg struct{}
+type notificationsMsg struct{ list []types.Notification }
+
+// notifyTick re-arms the once-a-minute notification poll.
+func notifyTick() tea.Cmd {
+	return tea.Tick(notificationsInterval, func(time.Time) tea.Msg { return notificationsTickMsg{} })
+}
+
+// fetchNotificationsCmd loads pending notifications in the background.
+func (m *Model) fetchNotificationsCmd() tea.Cmd {
+	return func() tea.Msg {
+		list, err := m.client.ListNotifications(context.Background())
+		if err != nil {
+			return notificationsMsg{} // ignore transient poll errors
+		}
+		return notificationsMsg{list: list}
+	}
+}
+
+// ackNotifyCmd marks a notification handled (best-effort).
+func (m *Model) ackNotifyCmd(id int64) tea.Cmd {
+	return func() tea.Msg {
+		_ = m.client.AckNotification(context.Background(), id)
+		return nil
+	}
+}
+
+// handleNotifications renders pending notifications and auto-runs at most one
+// prompt per pass. It defers entirely while a turn is streaming so an auto-run
+// can't collide with an in-flight conversation; deferred ones stay pending and
+// are retried on the next tick.
+func (m *Model) handleNotifications(list []types.Notification) tea.Cmd {
+	if m.phase != phaseChat || m.loading || len(list) == 0 {
+		return nil
+	}
+	var cmds []tea.Cmd
+	ranOne := false
+	for _, n := range list {
+		autoRun := n.AutoRun && strings.TrimSpace(n.Prompt) != ""
+		if autoRun && ranOne {
+			continue // run one prompt at a time; pick up the rest next tick
+		}
+		m.appendBlock("notification", renderNotification(n))
+		cmds = append(cmds, m.ackNotifyCmd(n.ID))
+		if autoRun {
+			cmds = append(cmds, m.startTurn(n.Prompt))
+			ranOne = true
+		}
+	}
+	return tea.Batch(cmds...)
+}
+
+// renderNotification formats a notification for the transcript.
+func renderNotification(n types.Notification) string {
+	if n.Description != "" {
+		return "🔔 " + n.Title + " — " + n.Description
+	}
+	return "🔔 " + n.Title
+}
 
 // Update implements tea.Model.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -51,7 +116,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.blocks = nil
 		m.appendConnectedStatus()
 		m.layout()
-		return m, m.input.Focus()
+		// Check for server notifications now, then once a minute.
+		return m, tea.Batch(m.input.Focus(), m.fetchNotificationsCmd(), notifyTick())
+
+	case notificationsTickMsg:
+		return m, tea.Batch(m.fetchNotificationsCmd(), notifyTick())
+
+	case notificationsMsg:
+		return m, m.handleNotifications(msg.list)
 
 	case loginDoneMsg:
 		if msg.err != nil {
@@ -281,7 +353,12 @@ func (m *Model) sendMessage(text string) tea.Cmd { return m.sendMessageAs(text, 
 // server (used by the ask flow to show concise answers but send full Q&A).
 func (m *Model) sendMessageAs(display, sendText string) tea.Cmd {
 	m.appendBlock("user", display)
-	text := sendText
+	return m.startTurn(sendText)
+}
+
+// startTurn sends text to the agent and streams the reply, without adding a user
+// block to the transcript (callers render their own context, e.g. a notification).
+func (m *Model) startTurn(text string) tea.Cmd {
 	m.loading = true
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancelStream = cancel

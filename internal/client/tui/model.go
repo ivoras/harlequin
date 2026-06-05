@@ -256,6 +256,8 @@ func (m *Model) renderBlock(b roleBlock) string {
 		return m.wrapStyled(m.styles.Error, "error: "+b.text)
 	case "status":
 		return m.wrapStyled(m.styles.Status, b.text)
+	case "notification":
+		return m.wrapStyled(m.styles.Accent, b.text)
 	default:
 		return m.wrapStyled(m.styles.Help, b.text)
 	}

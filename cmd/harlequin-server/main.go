@@ -25,6 +25,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/mcp"
 	"github.com/ivoras/harlequin/internal/server/mdtmpl"
 	"github.com/ivoras/harlequin/internal/server/memory"
+	"github.com/ivoras/harlequin/internal/server/notify"
 	"github.com/ivoras/harlequin/internal/server/secrets"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/skills"
@@ -191,6 +192,7 @@ func main() {
 		Session:       session,
 		Agent:         ag,
 		MCP:           mcpManager,
+		Notify:        notify.NewStore(),
 	}
 
 	// Background maintenance: expire memories and sweep old session logs (hourly).

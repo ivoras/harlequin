@@ -54,11 +54,14 @@ scope "shared" (org-wide, owner/admin only): organisation identity and org-wide 
 
 scope "user" (default): personal preferences and habits, private or sensitive information, facts about this individual only ("User prefers …", "I like …"). If unsure and you are not owner/admin, use user.
 
-Only owner/admin may use shared. When you are owner/admin and the user states an org-wide fact, prefer shared over user.`, map[string]any{
+Only owner/admin may use shared. When you are owner/admin and the user states an org-wide fact, prefer shared over user.
+
+Optionally pass slot_key to file the fact under an exact attribute key (e.g. "user.preferred_currency"); the content is then stored as that slot's value verbatim and no conflict check runs. Omit slot_key for normal free-text facts.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"content": map[string]any{"type": "string"},
-				"scope":   map[string]any{"type": "string", "enum": []string{"user", "shared"}},
+				"content":  map[string]any{"type": "string"},
+				"scope":    map[string]any{"type": "string", "enum": []string{"user", "shared"}},
+				"slot_key": map[string]any{"type": "string", "description": "Optional exact slot key, e.g. user.name; content becomes its value."},
 			},
 			"required": []string{"content"},
 		}),
@@ -70,6 +73,19 @@ Only owner/admin may use shared. When you are owner/admin and the user states an
 			}
 			if scope == "shared" && !rc.canShareMemory {
 				return "error: only owner or admin users can create shared memories; store this as a user-scoped memory instead, or ask an owner/admin.", nil
+			}
+			// Explicit slot: store the fact and attach the exact (key, value) slot,
+			// skipping LLM slot extraction and conflict detection.
+			if slotKey, _ := args["slot_key"].(string); strings.TrimSpace(slotKey) != "" {
+				mem, err := a.Memory.Add(ctx, rc.userDB, types.CreateMemoryRequest{Scope: scope, Content: content, Source: "tool"}, rc.userID)
+				if err != nil {
+					return "", err
+				}
+				if err := a.Memory.AddSlot(ctx, rc.userDB, mem.ID, strings.TrimSpace(slotKey), content); err != nil {
+					return "", err
+				}
+				rc.memWritten = append(rc.memWritten, content)
+				return fmt.Sprintf("Stored as memory %s under slot %s.", mem.ID, strings.TrimSpace(slotKey)), nil
 			}
 			mem, hits, err := a.Memory.AddWithConflicts(ctx, rc.userDB, types.CreateMemoryRequest{Scope: scope, Content: content, Source: "tool"}, rc.userID)
 			if err != nil {
