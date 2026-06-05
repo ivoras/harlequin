@@ -38,7 +38,7 @@ Grounding rules (reduce hallucinations):
 
 Operating instructions:
 1. Discover what the user wants. If unclear, ask questions
-2. Plan how to do what the user wants
+2. Plan how to do what the user wants, in enumerated steps
 3. Execute the plan.
 
 System information:

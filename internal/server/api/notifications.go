@@ -38,6 +38,21 @@ func (s *Server) ensureOnboarding(ctx context.Context, udb *sql.DB, userID int64
 	})
 }
 
+// SweepOnboarding queues the onboarding notification for every user who has no
+// user-scoped memories and no existing onboarding notification. Run once at
+// server startup so users who registered while an older build was running still
+// get onboarded. Best-effort: per-user errors are swallowed so one bad DB does
+// not abort the sweep.
+func (s *Server) SweepOnboarding(ctx context.Context) {
+	if s.Notify == nil || s.Memory == nil {
+		return
+	}
+	_ = s.Storage.EachUser(ctx, func(userID int64, udb *sql.DB) error {
+		s.ensureOnboarding(ctx, udb, userID)
+		return nil
+	})
+}
+
 // handleListNotifications returns the caller's pending notifications.
 func (s *Server) handleListNotifications(w http.ResponseWriter, r *http.Request) {
 	u, ok := auth.UserFromContext(r.Context())

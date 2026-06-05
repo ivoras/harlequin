@@ -195,6 +195,9 @@ func main() {
 		Notify:        notify.NewStore(),
 	}
 
+	// Queue onboarding for any existing users who still need it.
+	srv.SweepOnboarding(context.Background())
+
 	// Background maintenance: expire memories and sweep old session logs (hourly).
 	go maintenance(store, memStore, session, cfg.Sessions.RetentionDaysValue())
 

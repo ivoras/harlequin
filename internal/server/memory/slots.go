@@ -137,6 +137,60 @@ func (s *Store) AddSlotEmbed(ctx context.Context, userDB *sql.DB, memID, key, va
 	return s.memFor(scope, userDB).insertSlot(ctx, local, key, value, blob)
 }
 
+// WriteSlot sets a single-valued slot to (key, content), idempotently. If a
+// memory in the target scope already carries this slot key, its content and slot
+// value are updated in place (and any duplicate carriers are collapsed into the
+// oldest one); otherwise a new memory + slot is created. Returns the surviving
+// memory id and whether it was newly created. This keeps keyed memory_write
+// repeatable: writing the same key twice updates one memory instead of piling up
+// duplicate entries.
+func (s *Store) WriteSlot(ctx context.Context, userDB *sql.DB, scope, key, content string, userID int64, canManageShared bool) (string, bool, error) {
+	key = strings.TrimSpace(key)
+	if scope == "" {
+		scope = scopeUser
+	}
+	m := s.memFor(scope, userDB)
+	rows := m.slotsForKey(ctx, key)
+	if len(rows) == 0 {
+		mem, err := s.add(ctx, userDB, types.CreateMemoryRequest{Scope: scope, Content: content, Source: "tool"}, userID)
+		if err != nil {
+			return "", false, err
+		}
+		if err := s.AddSlot(ctx, userDB, mem.ID, key, content); err != nil {
+			return "", false, err
+		}
+		return mem.ID, true, nil
+	}
+	// Keep the oldest carrier; update it; delete any others so the slot stays
+	// single-valued.
+	keepLocal := rows[0].memoryLocal
+	for _, r := range rows[1:] {
+		if r.memoryLocal < keepLocal {
+			keepLocal = r.memoryLocal
+		}
+	}
+	keepID := m.encode(keepLocal)
+	blob, err := s.embed(ctx, content)
+	if err != nil {
+		return "", false, err
+	}
+	// updateContent re-indexes content and clears the memory's slots; re-attach
+	// the slot afterwards so the (key, value) survives with the new value.
+	if _, err := m.updateContent(ctx, keepLocal, content, blob); err != nil {
+		return "", false, err
+	}
+	if err := s.AddSlot(ctx, userDB, keepID, key, content); err != nil {
+		return "", false, err
+	}
+	s.deleteConflictsFor(ctx, userDB, keepID)
+	for _, r := range rows {
+		if r.memoryLocal != keepLocal {
+			_ = s.Delete(ctx, userDB, m.encode(r.memoryLocal), userID, canManageShared)
+		}
+	}
+	return keepID, false, nil
+}
+
 // HumanizeKey turns a canonical slot key into a natural-language phrase for
 // embedding: dot/underscore/hyphen/slash separators become spaces and camelCase
 // boundaries are split, lowercased (e.g. "organisation.name" -> "organisation
