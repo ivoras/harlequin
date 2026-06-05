@@ -82,7 +82,7 @@ Only owner/admin may use shared. When you are owner/admin and the user states an
 			var sb strings.Builder
 			fmt.Fprintf(&sb, "Stored as memory %s, but it conflicts with existing memories:\n", mem.ID)
 			for _, h := range hits {
-				fmt.Fprintf(&sb, "- %s [%s] %q (%s)\n", h.OtherID, h.Relationship, strings.TrimSpace(h.OtherContent), h.Reason)
+				sb.WriteString(conflictLine(h) + "\n")
 			}
 			sb.WriteString("Tell the user about this conflict and use ask_user to ask how to resolve it (e.g. update the old memory with memory_change, keep the new and delete the old, discard the new, or keep both).")
 			return sb.String(), nil
@@ -122,7 +122,7 @@ Only owner/admin may use shared. When you are owner/admin and the user states an
 			var sb strings.Builder
 			fmt.Fprintf(&sb, "Updated memory %s, but the new text conflicts with other memories:\n", mem.ID)
 			for _, h := range hits {
-				fmt.Fprintf(&sb, "- %s [%s] %q (%s)\n", h.OtherID, h.Relationship, strings.TrimSpace(h.OtherContent), h.Reason)
+				sb.WriteString(conflictLine(h) + "\n")
 			}
 			sb.WriteString("Tell the user and use ask_user if they need to resolve further.")
 			return sb.String(), nil
@@ -335,6 +335,18 @@ func toStringSlice(v any) []string {
 		}
 	}
 	return out
+}
+
+// conflictLine renders a detected conflict for a memory tool result, surfacing
+// the shared slot key when the conflict came from the structured slot path (so
+// the model and user can see *why* two memories collided, e.g. a misattributed
+// key).
+func conflictLine(h memory.ConflictHit) string {
+	key := ""
+	if h.Key != "" {
+		key = " slot_key=" + h.Key
+	}
+	return fmt.Sprintf("- %s [%s]%s %q (%s)", h.OtherID, h.Relationship, key, strings.TrimSpace(h.OtherContent), h.Reason)
 }
 
 func fnTool(name, desc string, params map[string]any) llm.Tool {

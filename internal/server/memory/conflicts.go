@@ -24,6 +24,7 @@ type ConflictHit struct {
 	Relationship string // "conflicts" | "duplicate"
 	Reason       string
 	Confidence   int
+	Key          string // shared slot key, when the conflict came from the structured slot path
 }
 
 // SetConflictJudge enables conflict detection on memory writes using the LLM.
