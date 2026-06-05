@@ -181,6 +181,17 @@ func (c *Client) StartMCPOAuth(ctx context.Context, scope, name string) (*types.
 	return &out, c.do(ctx, http.MethodPost, "/mcp/server/oauth/start"+mcpItemQuery(scope, name), nil, &out)
 }
 
+// ListNotifications returns the caller's pending notifications.
+func (c *Client) ListNotifications(ctx context.Context) ([]types.Notification, error) {
+	var out []types.Notification
+	return out, c.do(ctx, http.MethodGet, "/notifications", nil, &out)
+}
+
+// AckNotification marks a notification delivered (handled) so it isn't re-shown.
+func (c *Client) AckNotification(ctx context.Context, id int64) error {
+	return c.do(ctx, http.MethodPost, fmt.Sprintf("/notifications/%d/ack", id), nil, nil)
+}
+
 // Messages returns a conversation's messages.
 func (c *Client) Messages(ctx context.Context, id int64) ([]types.Message, error) {
 	var out []types.Message

@@ -95,6 +95,18 @@ type MCPServer struct {
 	Tools []MCPTool `json:"tools,omitempty"`
 }
 
+// Notification is a server→user message stored in the user's database. It may
+// carry a prompt the client can run, optionally automatically (AutoRun).
+type Notification struct {
+	ID          int64  `json:"id"`
+	Kind        string `json:"kind,omitempty"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	Prompt      string `json:"prompt,omitempty"`
+	AutoRun     bool   `json:"auto_run"`
+	Status      string `json:"status"`
+}
+
 // MCPTool is a tool advertised by an MCP server.
 type MCPTool struct {
 	Name        string `json:"name"`

@@ -31,6 +31,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.Storage.WithUser(r.Context(), user.ID, func(udb *sql.DB) error {
 		s.Audit.Log(r.Context(), udb, "login", user.Username, nil)
+		s.ensureOnboarding(r.Context(), udb, user.ID)
 		return nil
 	})
 	writeJSON(w, http.StatusOK, types.LoginResponse{Token: token, User: *user})

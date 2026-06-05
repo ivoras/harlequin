@@ -16,6 +16,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/mcp"
 	"github.com/ivoras/harlequin/internal/server/memory"
+	"github.com/ivoras/harlequin/internal/server/notify"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/skills"
 	"github.com/ivoras/harlequin/internal/server/storage"
@@ -37,6 +38,7 @@ type Server struct {
 	Session       *sessionlog.Logger
 	Agent         *agent.Agent
 	MCP           *mcp.Manager
+	Notify        *notify.Store
 }
 
 // Router builds the chi router.
@@ -106,6 +108,10 @@ func (s *Server) Router() http.Handler {
 				r.Post("/mcp/server/test", s.handleTestMCP)
 				r.Post("/mcp/server/oauth/start", s.handleMCPOAuthStart)
 			}
+
+			r.Get("/notifications", s.handleListNotifications)
+			r.Post("/notifications/{id}/ack", s.handleAckNotification)
+			r.Post("/notifications/{id}/dismiss", s.handleDismissNotification)
 
 			r.Get("/usage", s.handleUsage)
 			r.Get("/audit", s.handleAudit)
