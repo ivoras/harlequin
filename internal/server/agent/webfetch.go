@@ -28,7 +28,7 @@ const (
 	// webFetchDefaultPrompt is used when the caller passes an empty prompt.
 	webFetchDefaultPrompt = "Extract raw facts from this scraped web page."
 	// webFetchSystemPrompt is the simplified system prompt for the analysis call.
-	webFetchSystemPrompt = "You are a helpful assistent specialised in analysing web site content. Do not fetch the same URL multiple times."
+	webFetchSystemPrompt = "You extract information from a scraped web page."
 	// webFetchMaxDepth bounds nested WebFetch calls made by the analysis model.
 	webFetchMaxDepth = 2
 	// webFetchMaxSteps bounds the analysis tool-calling loop per fetch.
