@@ -13,14 +13,14 @@ import (
 )
 
 const (
-	// slotKeyCanonicalThreshold is the number of distinct slot keys (counted
-	// across the user and shared databases) at or above which we stop sending
-	// the extractor every existing key and instead send only the most similar
-	// ones (retrieved by key-embedding similarity).
-	slotKeyCanonicalThreshold = 100
-	// slotKeyTopK is how many similar keys to offer the extractor per database
-	// in the retrieval (large key set) regime.
+	// slotKeyTopK is how many similar existing keys to offer the extractor per
+	// database, retrieved by key-embedding similarity to the new memory. Offering
+	// only nearby keys (rather than every key) keeps the prompt bounded and avoids
+	// tempting the model to reuse an unrelated key.
 	slotKeyTopK = 12
+	// slotKeyExampleMax caps the length of the example value shown next to a
+	// candidate key, so one long value can't bloat the prompt.
+	slotKeyExampleMax = 40
 )
 
 // extractSlot asks the LLM to distill a normalized (key, value) slot from
@@ -51,40 +51,35 @@ func (s *Store) extractSlot(ctx context.Context, userDB *sql.DB, content string,
 	return slotextract.Parse(text)
 }
 
-// candidateKeys gathers existing slot keys (across the user and shared
-// databases) to offer the extractor for canonicalization. While the total
-// distinct key count is below slotKeyCanonicalThreshold it returns all of them;
-// past it, only the keys most similar to contentBlob.
-func (s *Store) candidateKeys(ctx context.Context, userDB *sql.DB, contentBlob any) []string {
+// candidateKeys gathers the existing slot keys most similar to the new memory
+// (across the user and shared databases), each with an example value, to offer
+// the extractor for canonicalization. Restricting to nearby keys keeps the
+// prompt bounded and reduces mis-reuse of unrelated keys. When contentBlob is
+// nil (embedding unavailable) it falls back to all distinct keys without
+// examples so canonicalization still has something to work with.
+func (s *Store) candidateKeys(ctx context.Context, userDB *sql.DB, contentBlob any) []slotextract.KeyExample {
 	mems := []memDB{s.userMem(userDB), s.sharedMem()}
-
-	total := 0
-	for _, m := range mems {
-		total += m.distinctKeyCount(ctx)
-	}
-
 	seen := map[string]bool{}
-	var out []string
-	add := func(keys []string) {
-		for _, k := range keys {
-			if !seen[k] {
-				seen[k] = true
-				out = append(out, k)
+	var out []slotextract.KeyExample
+
+	if contentBlob == nil {
+		for _, m := range mems {
+			for _, k := range m.distinctKeys(ctx) {
+				if !seen[k] {
+					seen[k] = true
+					out = append(out, slotextract.KeyExample{Key: k})
+				}
 			}
 		}
-	}
-
-	if total < slotKeyCanonicalThreshold {
-		for _, m := range mems {
-			add(m.distinctKeys(ctx))
-		}
-		return out
-	}
-	if contentBlob == nil {
 		return out
 	}
 	for _, m := range mems {
-		add(m.keysNear(ctx, contentBlob, slotKeyTopK))
+		for _, ke := range m.keysNearWithExample(ctx, contentBlob, slotKeyTopK) {
+			if !seen[ke.Key] {
+				seen[ke.Key] = true
+				out = append(out, ke)
+			}
+		}
 	}
 	return out
 }
@@ -329,15 +324,6 @@ func (m memDB) insertSlot(ctx context.Context, memoryLocal int64, key, value str
 	return tx.Commit()
 }
 
-func (m memDB) distinctKeyCount(ctx context.Context) int {
-	if m.db == nil {
-		return 0
-	}
-	var n int
-	_ = m.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT key) FROM memory_slots`).Scan(&n)
-	return n
-}
-
 func (m memDB) distinctKeys(ctx context.Context) []string {
 	if m.db == nil {
 		return nil
@@ -357,28 +343,38 @@ func (m memDB) distinctKeys(ctx context.Context) []string {
 	return out
 }
 
-// keysNear returns up to k distinct keys whose embeddings are closest to blob.
-func (m memDB) keysNear(ctx context.Context, blob any, k int) []string {
+// keysNearWithExample returns up to k distinct keys whose embeddings are closest
+// to blob, each with a representative value (the nearest slot's value, capped).
+func (m memDB) keysNearWithExample(ctx context.Context, blob any, k int) []slotextract.KeyExample {
 	if m.db == nil || blob == nil {
 		return nil
 	}
 	rows, err := m.db.QueryContext(ctx,
-		`SELECT s.key FROM memory_slots_vec v JOIN memory_slots s ON s.id = v.rowid
+		`SELECT s.key, s.value FROM memory_slots_vec v JOIN memory_slots s ON s.id = v.rowid
 		 WHERE v.embedding MATCH ? AND k = ? ORDER BY v.distance`, blob, k)
 	if err != nil {
 		return nil
 	}
 	defer rows.Close()
 	seen := map[string]bool{}
-	var out []string
+	var out []slotextract.KeyExample
 	for rows.Next() {
-		var key string
-		if rows.Scan(&key) == nil && !seen[key] {
+		var key, value string
+		if rows.Scan(&key, &value) == nil && !seen[key] {
 			seen[key] = true
-			out = append(out, key)
+			out = append(out, slotextract.KeyExample{Key: key, Example: capExample(value)})
 		}
 	}
 	return out
+}
+
+// capExample trims a sample value to slotKeyExampleMax runes for the prompt.
+func capExample(v string) string {
+	v = strings.TrimSpace(v)
+	if len(v) <= slotKeyExampleMax {
+		return v
+	}
+	return strings.TrimSpace(v[:slotKeyExampleMax]) + "…"
 }
 
 // slotForMemory returns the slot row for one memory, if any.
