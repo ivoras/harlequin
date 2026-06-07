@@ -28,7 +28,7 @@ const (
 	// webFetchDefaultPrompt is used when the caller passes an empty prompt.
 	webFetchDefaultPrompt = "Extract raw facts from this scraped web page."
 	// webFetchSystemPrompt is the simplified system prompt for the analysis call.
-	webFetchSystemPrompt = "You extract information from scraped web pages. If the answer is not found in the page, decide if recursively fetching some of the links on the domain would be helpful. If so, call the WebFetch tool again with the new URL. If not, report that the answer is not found in the page. For any arithmetic over figures on the page, use the calculator tool rather than computing it yourself."
+	webFetchSystemPrompt = "You extract information from scraped web pages. If the answer is not found in the page, decide if recursively fetching some of the links on the domain would be helpful. If so, call the WebFetch tool again with the new URL. If not, report that the answer is not found in the page. For any arithmetic, use the calculator tool rather than computing it yourself."
 	// webFetchMaxDepth bounds nested WebFetch calls made by the analysis model.
 	webFetchMaxDepth = 2
 	// webFetchMaxSteps bounds the analysis tool-calling loop per fetch.
