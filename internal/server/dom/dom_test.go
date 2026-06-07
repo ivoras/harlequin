@@ -106,6 +106,44 @@ func TestGrepAttrs(t *testing.T) {
 	}
 }
 
+func TestRepeatingGroups(t *testing.T) {
+	html := `<html><body>
+	<ul class="nav"><li>Home</li><li>About</li></ul>
+	<ul class="calls">
+	  <li class="accordion-header accordion-header-natjecaji"><div>otvoren</div><div>Call One</div></li>
+	  <li class="accordion-header accordion-header-natjecaji"><div>otvoren</div><div>Call Two</div></li>
+	  <li class="accordion-header accordion-header-natjecaji"><div>zatvoren</div><div>Call Three</div></li>
+	</ul></body></html>`
+	d, err := Parse([]byte(html))
+	if err != nil {
+		t.Fatal(err)
+	}
+	groups := d.RepeatingGroups(3, 10, 80)
+	var found *GroupCandidate
+	for i := range groups {
+		if strings.Contains(groups[i].Selector, "accordion-header-natjecaji") {
+			found = &groups[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("expected the calls list group, got %+v", groups)
+	}
+	if found.Count != 3 {
+		t.Errorf("count = %d, want 3", found.Count)
+	}
+	// The 2-item nav list is below minCount and must be excluded.
+	for _, g := range groups {
+		if g.Count < 3 {
+			t.Errorf("group below minCount leaked: %+v", g)
+		}
+	}
+	// The reported selector must actually select the items.
+	nodes, err := d.Query(found.Selector, 0)
+	if err != nil || len(nodes) != 3 {
+		t.Fatalf("selector %q -> %d nodes (err %v), want 3", found.Selector, len(nodes), err)
+	}
+}
+
 func TestSkeletonDepth(t *testing.T) {
 	d := mustParse(t)
 	sk, err := d.Skeleton(SkelOptions{Selector: "ul.calls", MaxDepth: 1, Paths: true})
