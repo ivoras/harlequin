@@ -246,17 +246,35 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 	}
 
 	reg["run_js"] = toolEntry{
-		def: fnTool("run_js", "Execute JavaScript in a sandbox and return its output; ES5 only (var, not let/const; no arrows, classes, or async). Use println() and print() to emit output.", map[string]any{
+		def: fnTool("run_js", `Execute JavaScript in a sandbox and return its output; ES5 only (var, not let/const; no arrows, classes, async, or template literals). Emit output with println()/print().
+Available helpers: fetch(url) -> {status, body, finalUrl, contentType}; dom.parse(html) -> handle, then dom.query(handle, cssSelector), dom.grep(handle, text), dom.json(handle); per-user file stores tmp.* and storage.* (read/write/list/remove/exists); load(uri)/include(uri) for skill://<skill>/<path>, storage://<path>, tmp://<path> scripts.
+Pass code inline, OR set script=<uri> to run a saved script instead. An optional args object is exposed to the script as the global 'args'.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"code": map[string]any{"type": "string"},
+				"code":   map[string]any{"type": "string", "description": "Inline JS to run (ES5)."},
+				"script": map[string]any{"type": "string", "description": "URI of a saved script to run instead of code: skill://<skill>/<path>, storage://<path>, or tmp://<path>."},
+				"args":   map[string]any{"type": "object", "description": "Optional object exposed to the script as the global 'args'."},
 			},
-			"required": []string{"code"},
 		}),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 			code, _ := args["code"].(string)
+			script, _ := args["script"].(string)
+			rcx := a.jsRunContext(ctx, rc)
+			if jsArgs, ok := args["args"].(map[string]any); ok {
+				rcx.Globals = map[string]any{"args": jsArgs}
+			}
+			if s := strings.TrimSpace(script); s != "" {
+				src, err := rcx.Resolve(s)
+				if err != nil {
+					return fmt.Sprintf("error: %v", err), nil
+				}
+				code = src
+			}
+			if strings.TrimSpace(code) == "" {
+				return "error: provide either code or script", nil
+			}
 			start := time.Now()
-			res, err := a.Runner.Run(code, jsrun.RunContext{})
+			res, err := a.Runner.Run(code, rcx)
 			if err != nil {
 				if errors.Is(err, jsrun.ErrTimeout) {
 					log.Printf("run_js: execution timed out after %dms (%d bytes of code): %s",
@@ -278,6 +296,7 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 
 	if a.WebFetcher != nil {
 		reg["WebFetch"] = a.webFetchEntry()
+		reg["WebFetchDOM"] = a.webFetchDOMEntry()
 	}
 
 	if a.Docs != nil {
@@ -332,7 +351,9 @@ func (a *Agent) registerSkillTool(reg map[string]toolEntry, skillName string, td
 	reg[full] = toolEntry{
 		def: fnTool(full, td.Description, params),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
-			res, err := a.Runner.Run(run, jsrun.RunContext{Globals: map[string]any{"args": args}})
+			rcx := a.jsRunContext(ctx, rc)
+			rcx.Globals = map[string]any{"args": args}
+			res, err := a.Runner.Run(run, rcx)
 			if err != nil {
 				return fmt.Sprintf("error: %v\noutput: %s", err, res.Output), nil
 			}
@@ -417,7 +438,7 @@ func (a *Agent) calculatorEntry() toolEntry {
 
 func fnTool(name, desc string, params map[string]any) llm.Tool {
 	return llm.Tool{
-		Type: "function",
+		Type:     "function",
 		Function: llm.FunctionDefinition{Name: name, Description: desc, Parameters: params},
 	}
 }

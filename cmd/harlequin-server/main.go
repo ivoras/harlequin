@@ -101,11 +101,6 @@ func main() {
 
 	embedder := embed.New(cfg.Embeddings.BaseURL, cfg.Embeddings.APIKey, cfg.Embeddings.Model, cfg.Embeddings.Dim)
 
-	runner := jsrun.New(jsrun.Options{
-		Timeout:        cfg.Agent.JSToolTimeout.D(),
-		OutputCap:      cfg.Agent.JSOutputCap,
-		FetchAllowlist: cfg.Agent.JSFetchAllowlist,
-	})
 	skillRunner := jsrun.New(jsrun.Options{
 		Timeout:        cfg.Agent.SkillRenderTimeout.D(),
 		OutputCap:      cfg.Agent.JSOutputCap,
@@ -131,6 +126,19 @@ func main() {
 	if cfg.Agent.WebFetch.EnabledValue() {
 		webFetcher = webfetch.New(webfetch.Options{AllowPrivate: cfg.Agent.WebFetch.AllowPrivate})
 	}
+
+	// The run_js / skill-tool runner. fetch() is routed through the web fetcher
+	// (any public host, SSRF-guarded) when WebFetch is enabled; otherwise it falls
+	// back to the optional host allowlist.
+	runnerOpts := jsrun.Options{
+		Timeout:        cfg.Agent.JSToolTimeout.D(),
+		OutputCap:      cfg.Agent.JSOutputCap,
+		FetchAllowlist: cfg.Agent.JSFetchAllowlist,
+	}
+	if webFetcher != nil {
+		runnerOpts.Fetcher = webFetchAdapter{c: webFetcher}
+	}
+	runner := jsrun.New(runnerOpts)
 
 	// MCP client: external tool servers. Credentials are encrypted at rest with
 	// the configured master key; without it, only auth-less servers are usable.
@@ -173,6 +181,7 @@ func main() {
 		Temperature:         cfg.Agent.TemperatureValue(),
 		AutoExtract:         cfg.Memory.AutoExtract,
 		MemDefaultTTL:       cfg.Memory.DefaultTTL.D(),
+		DataDir:             cfg.DataDir,
 		RecordUsage: func(ctx context.Context, userDB *sql.DB, userID int64, conversationID *int64, provider, model string, u llm.Usage) {
 			_ = usageStore.Record(ctx, userDB, conversationID, provider, model, u.PromptTokens, u.CompletionTokens)
 		},
@@ -209,6 +218,19 @@ func main() {
 	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("server: %v", err)
 	}
+}
+
+// webFetchAdapter adapts the web fetcher to the jsrun.Fetcher interface so the
+// sandbox fetch() reuses the same anti-bot headers, redirect handling, and SSRF
+// guard as the WebFetch tool.
+type webFetchAdapter struct{ c *webfetch.Client }
+
+func (a webFetchAdapter) FetchRaw(ctx context.Context, url string) (jsrun.FetchResult, error) {
+	r, err := a.c.FetchRaw(ctx, url)
+	if err != nil {
+		return jsrun.FetchResult{}, err
+	}
+	return jsrun.FetchResult{Status: r.Status, Body: r.Body, FinalURL: r.FinalURL, ContentType: r.ContentType}, nil
 }
 
 func maintenance(store *storage.Manager, mem *memory.Store, session *sessionlog.Logger, sessionRetentionDays int) {

@@ -42,6 +42,9 @@ type Agent struct {
 	Temperature   float64
 	AutoExtract   bool
 	MemDefaultTTL time.Duration
+	// DataDir is the server data directory; per-user sandbox files live under
+	// <DataDir>/users/<id>/.tmp and .storage.
+	DataDir string
 	// WebFetchModel is the model used to analyse fetched web content (a small,
 	// fast model). Empty uses the provider's default model.
 	WebFetchModel string
@@ -67,7 +70,7 @@ type runContext struct {
 	conversationID int64
 	userID         int64
 	username       string
-	canShareMemory bool // owner or admin: may create/delete shared memories
+	canShareMemory bool       // owner or admin: may create/delete shared memories
 	userDB         *sql.DB    // the caller's open per-user database for this request
 	hat            *types.Hat // the conversation's worn hat, or nil
 	turn           int
@@ -283,11 +286,11 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 				}
 				if chunk.Usage != nil {
 					a.logEvent(ctx, rc, sessionlog.TypeUsage, map[string]any{
-						"provider":            chunk.Provider,
-						"model":               chunk.Model,
-						"prompt_tokens":       chunk.Usage.PromptTokens,
-						"completion_tokens":   chunk.Usage.CompletionTokens,
-						"total_tokens":        chunk.Usage.TotalTokens,
+						"provider":          chunk.Provider,
+						"model":             chunk.Model,
+						"prompt_tokens":     chunk.Usage.PromptTokens,
+						"completion_tokens": chunk.Usage.CompletionTokens,
+						"total_tokens":      chunk.Usage.TotalTokens,
 					})
 					if a.RecordUsage != nil {
 						cid := conversationID
