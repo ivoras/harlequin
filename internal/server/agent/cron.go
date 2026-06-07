@@ -62,7 +62,7 @@ func (a *Agent) RunCronJS(ctx context.Context, userID int64, username string, us
 // bias toward; job.Prompt is the message; job.Input is appended as context. Returns
 // the agent's final text.
 func (a *Agent) RunCronSkill(ctx context.Context, userID int64, username, role string, userDB *sql.DB, job types.CronJob) (string, error) {
-	conv, err := a.Conversations.Create(ctx, userDB, userID, "cron: "+job.Name, "")
+	conv, err := a.Conversations.Create(ctx, userDB, userID, "cron: "+job.Name, "", types.APICron, types.InterfaceCron)
 	if err != nil {
 		return "", err
 	}
@@ -72,6 +72,8 @@ func (a *Agent) RunCronSkill(ctx context.Context, userID int64, username, role s
 		username:       username,
 		canShareMemory: types.IsElevated(role),
 		userDB:         userDB,
+		api:            types.APICron,
+		iface:          types.InterfaceCron,
 		turn:           1,
 		emit:           func(types.StreamEvent) {}, // headless: discard streamed events
 	}

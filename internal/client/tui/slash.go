@@ -7,11 +7,12 @@ import (
 
 // slashCommands are the top-level commands offered by the autocomplete menu.
 var slashCommands = []string{
-	"/cron", "/docs", "/export", "/hat", "/help", "/mcp", "/memory", "/new",
+	"/config", "/cron", "/docs", "/export", "/hat", "/help", "/mcp", "/memory", "/new",
 	"/quit", "/reload", "/resume", "/skill", "/skills", "/usage",
 }
 
 var slashHelp = map[string]string{
+	"/config": "view / set per-user config (e.g. Telegram)",
 	"/cron":   "list / add / manage scheduled jobs",
 	"/docs":   "search organisation documents",
 	"/export": "save transcript (User+Assistant; add 'raw' for everything)",

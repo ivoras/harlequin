@@ -17,12 +17,13 @@ import (
 func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	var conv *types.Conversation
 	var ownErr error
 	_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
-		_, ownErr = s.Conversations.Get(r.Context(), udb, id, u.ID)
+		conv, ownErr = s.Conversations.Get(r.Context(), udb, id, u.ID)
 		return nil
 	})
-	if ownErr != nil {
+	if ownErr != nil || conv == nil {
 		writeErr(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -58,7 +59,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 
-	if err := s.Agent.Run(r.Context(), id, u.ID, u.Username, u.Role, req.Content, emit); err != nil {
+	if err := s.Agent.Run(r.Context(), id, u.ID, u.Username, u.Role, conv.API, conv.Interface, req.Content, emit); err != nil {
 		// Best-effort error event (may already be sent by the loop).
 		emit(types.StreamEvent{Type: types.SSEError, Error: err.Error()})
 	}

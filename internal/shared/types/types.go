@@ -47,14 +47,42 @@ type CreateUserRequest struct {
 	Role     string `json:"role"`
 }
 
-// Conversation is a chat session.
+// HeaderInterface is the request header by which a REST client announces which
+// interface it is (e.g. "TUI"). The transport ("API") is server-derived.
+const HeaderInterface = "X-Harlequin-Interface"
+
+// Interface is the medium through which a user talks to the agent. Each session
+// is tied to exactly one. The transport an interface uses is its API (below).
+const (
+	InterfaceTUI      = "TUI"
+	InterfaceTelegram = "Telegram"
+	InterfaceCron     = "Cron" // internal: scheduled jobs that start an agent turn
+)
+
+// API is the transport a client reaches the server through.
+const (
+	APIREST     = "REST"
+	APITelegram = "Telegram"
+	APICron     = "Cron"
+)
+
+// Conversation is a chat session, tied to a single interface/API.
 type Conversation struct {
-	ID        int64     `json:"id"`
-	UserID    int64     `json:"user_id"`
-	Title     string    `json:"title"`
-	Hat       *string   `json:"hat,omitempty"` // the worn hat's name, or nil
+	ID     int64   `json:"id"`
+	UserID int64   `json:"user_id"`
+	Title  string  `json:"title"`
+	Hat    *string `json:"hat,omitempty"` // the worn hat's name, or nil
+	// API is the transport the session arrived over ("REST"); Interface is the
+	// medium ("TUI"). Set at creation and fixed for the session's lifetime.
+	API       string    `json:"api"`
+	Interface string    `json:"interface"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// SetConfigRequest is the body of PUT /config/{key}.
+type SetConfigRequest struct {
+	Value string `json:"value"`
 }
 
 // Hat is an org-defined, file-based collection of resources for a type of work:

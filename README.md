@@ -4,7 +4,7 @@
 
 This repo is the answer to the questions I had: why all AI agent harnesses seem to be "local"? How would a "proper" client-server agentic system look like, from the aspects of scalability and common operation expectations?
 
-**You probably don't want to use it**, at least not yet. It's a research project in very early development. 
+**You probably don't want to use it**, at least not yet. It's a research project in very early development.
 
 A client-server AI agent system written in Go. A REST/SSE **server** communicates with LLMs,
 stores data in SQLite (FTS5 + vector search), runs an agentic tool-calling loop, and manages
@@ -128,6 +128,33 @@ API token in the client config.
 
 The TUI client uses truecolor RGB when available (`COLORTERM=truecolor` or equivalent);
 older terminals get automatic downgrades to 256-color or 16-color via Lip Gloss and Bubble Tea.
+
+## Interfaces
+
+An **interface** is the medium a user talks to the agent through. Each session (a
+conversation and its logged trajectory) is tied to exactly one interface, recorded
+together with its **API** — the transport the request arrived over:
+
+| Interface | API | Notes |
+|-----------|-----|-------|
+| `TUI` | `REST` | the built-in text user interface (TUI) client |
+| `Telegram` | `Telegram` | planned: a Telegram chatbot bridge |
+| `Cron` | `Cron` | internal: scheduled jobs that start an agent turn |
+
+Because the REST/SSE API is shared by different clients, a REST client **announces
+which interface it is** via the `X-Harlequin-Interface` header (the TUI sends
+`TUI`).
+
+Per-user settings a new interface needs live in a generic **`config`** table in
+each user's database (key/value). For example, a user registers a Telegram
+connection by storing `telegram.chat_id` (and optionally `telegram.username`).
+Manage it from the TUI:
+
+```
+/config                              list your config
+/config set telegram.chat_id 12345   register a Telegram chat
+/config rm telegram.chat_id          remove it
+```
 
 ## Layout
 

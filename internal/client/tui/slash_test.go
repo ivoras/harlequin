@@ -12,10 +12,10 @@ func TestMatchSlashCommands(t *testing.T) {
 		want []string
 	}{
 		{"", nil},
-		{"hello", nil},          // no leading slash
-		{"a /hat", nil},         // slash not at char 1
-		{"/hat wear x", nil},    // has a space -> typing args, menu closed
-		{"/", slashCommands},    // all commands
+		{"hello", nil},       // no leading slash
+		{"a /hat", nil},      // slash not at char 1
+		{"/hat wear x", nil}, // has a space -> typing args, menu closed
+		{"/", slashCommands}, // all commands
 		{"/re", []string{"/reload", "/resume"}},
 		{"/RE", []string{"/reload", "/resume"}}, // case-insensitive
 		{"/reload", []string{"/reload"}},

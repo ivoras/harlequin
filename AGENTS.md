@@ -14,13 +14,13 @@ Client-server AI agent system in Go. A REST/SSE **server** talks to LLMs, stores
 - Config: YAML (structure) + `.env` (secrets); env overrides YAML.
 
 ## Layout
-- `internal/server/{config,db,auth,api,llm,embed,jsrun,agent,memory,documents,audit,sessionlog,usage,conversation,skills}`
+- `internal/server/{config,db,auth,api,llm,embed,jsrun,agent,memory,documents,audit,sessionlog,usage,conversation,skills,userconfig,cron}`
 - `internal/server/skills/jstmpl` — PHP-style `<?js ?>` templating (on `jsrun`).
 - `internal/client/{config,apiclient,tui,skills}`
 - `internal/shared/types` — REST DTOs. `migrations/{system,shared,user}/*.sql` and `skills/` embedded via `embed.FS`.
 
 ## Storage (three-tier SQLite, all WAL)
-- `internal/server/storage.Manager` owns the handles. `data/harlequin.db` (system: users, api_tokens) and `data/shared.db` (org: shared memories, documents, org skill overrides) are **kept open**. Each user has `data/users/<id>/user.db` (their memories, conversations, messages, usage, audit, user skill overrides), **opened and closed per request** via `WithUser`; `EachUser` fans out for admin aggregation and maintenance sweeps. Uploaded files go to `data/shared_files/` and `data/users/<id>/files/`.
+- `internal/server/storage.Manager` owns the handles. `data/harlequin.db` (system: users, api_tokens) and `data/shared.db` (org: shared memories, documents, org skill overrides) are **kept open**. Each user has `data/users/<id>/user.db` (their memories, conversations, messages, usage, audit, user skill overrides, cron jobs, and a generic `config` key/value table), **opened and closed per request** via `WithUser`; `EachUser` fans out for admin aggregation and maintenance sweeps. Uploaded files go to `data/shared_files/` and `data/users/<id>/files/`.
 - No cross-file foreign keys: memory ids are composite strings `u.<localid>`/`s.<localid>`, and `memory_conflicts` endpoints/ids are composite (conflicts involving a user memory live in that user's db; shared–shared in `shared.db`).
 
 ## Core flows
@@ -31,6 +31,8 @@ Client-server AI agent system in Go. A REST/SSE **server** talks to LLMs, stores
 - **Skills**: baked into the binary, deployed to `<data_dir>/skills/` with a hash manifest (unchanged files replaced on update). Resolution precedence: per-user override -> org-published -> deployed. Server is the single source of truth; clients pull/push via `/skill` slash-commands. Skills support inline `<?js ?>` and frontmatter-declared tools.
 - **WebFetch** (`internal/server/webfetch`, on by default, `agent.web_fetch.enabled: false` to disable): fetches a URL with browser-like anti-bot measures — realistic Chrome headers, a uTLS Chrome JA3/TLS fingerprint, HTTP/2, a cookie jar, redirect following, request jitter (no headless browser, no CAPTCHA solving) — converts HTML to Markdown (`JohannesKaufmann/html-to-markdown`), then analyses it with a small model (`agent.web_fetch.model`) given only the WebFetch tool. http→https upgrade; 15-minute per-URL cache; SSRF guard blocks private/loopback targets unless `allow_private`. The trajectory logs each fetch (`web_fetch`: url, final_url, cached, fetch_ms, bytes) and the delegated inner LLM call (`delegated_llm_request`/`delegated_llm_response`, labeled `delegate: web_fetch`, with `duration_ms`).
 - **Session logging**: full chat trajectory written as JSONL at `<data_dir>/sessions/<user_id>.<conv_id>.jsonl` (ids zero-padded to ≥5 digits). Optional via `sessions.enabled` (default true).
+- **Interfaces**: each session is tied to one *interface* (the medium a user talks through) plus its *API* (transport), stored on the conversation (`api`, `interface` columns) and logged in `session_start`. REST clients announce the interface via the `X-Harlequin-Interface` header (TUI → API `REST` / interface `TUI`); cron-started sessions use `Cron`/`Cron`; a planned Telegram bridge sets `Telegram`/`Telegram`. Add an interface by announcing a new header value, or set api/interface directly in a server-side bridge. Constants in `internal/shared/types` (`InterfaceTUI`, `APIREST`, …).
+- **Per-user config**: generic key/value `config` table in `user.db`, via `internal/server/userconfig.Store` (Get/Set/Delete/All) and REST `/config`, `PUT|DELETE /config/{key}` (TUI `/config`). Holds small settings that don't warrant their own table — e.g. registering a Telegram connection (`telegram.chat_id`, `telegram.username`).
 
 ## Conventions
 - Comments should be terse and explain the non-obvious (the *why*, edge cases, gotchas); don't restate what the code plainly says.

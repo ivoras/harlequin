@@ -20,14 +20,17 @@ import (
 type Client struct {
 	baseURL string
 	token   string
+	iface   string // the interface this client announces (e.g. "TUI")
 	http    *http.Client
 }
 
-// New constructs a Client.
-func New(baseURL, token string) *Client {
+// New constructs a Client that announces itself as the given interface (e.g.
+// types.InterfaceTUI); the server records it per session.
+func New(baseURL, token, iface string) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		token:   token,
+		iface:   iface,
 		http:    &http.Client{Timeout: 0},
 	}
 }
@@ -56,6 +59,9 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	}
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	if c.iface != "" {
+		req.Header.Set(types.HeaderInterface, c.iface)
 	}
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
@@ -226,6 +232,22 @@ func (c *Client) RunCron(ctx context.Context, id int64) error {
 	return c.do(ctx, http.MethodPost, fmt.Sprintf("/cron/%d/run", id), nil, nil)
 }
 
+// GetConfig returns the user's per-user config (key -> value).
+func (c *Client) GetConfig(ctx context.Context) (map[string]string, error) {
+	var out map[string]string
+	return out, c.do(ctx, http.MethodGet, "/config", nil, &out)
+}
+
+// SetConfig upserts one config key.
+func (c *Client) SetConfig(ctx context.Context, key, value string) error {
+	return c.do(ctx, http.MethodPut, "/config/"+url.PathEscape(key), types.SetConfigRequest{Value: value}, nil)
+}
+
+// DeleteConfig removes one config key.
+func (c *Client) DeleteConfig(ctx context.Context, key string) error {
+	return c.do(ctx, http.MethodDelete, "/config/"+url.PathEscape(key), nil, nil)
+}
+
 // Messages returns a conversation's messages.
 func (c *Client) Messages(ctx context.Context, id int64) ([]types.Message, error) {
 	var out []types.Message
@@ -318,6 +340,9 @@ func (c *Client) SendMessage(ctx context.Context, conversationID int64, content 
 	req.Header.Set("Accept", "text/event-stream")
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	if c.iface != "" {
+		req.Header.Set(types.HeaderInterface, c.iface)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {

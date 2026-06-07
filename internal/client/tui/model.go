@@ -96,7 +96,7 @@ type Model struct {
 
 // New constructs the TUI model.
 func New(cfg *clientcfg.Config) *Model {
-	client := apiclient.New(cfg.ServerURL, cfg.Token)
+	client := apiclient.New(cfg.ServerURL, cfg.Token, types.InterfaceTUI)
 	ta := textarea.New()
 	ta.Placeholder = "Type a message, or /help for commands"
 	ta.DynamicHeight = true

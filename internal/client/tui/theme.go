@@ -4,23 +4,23 @@ import "charm.land/lipgloss/v2"
 
 // Styles holds the reusable lipgloss styles.
 type Styles struct {
-	Header           lipgloss.Style
-	Status           lipgloss.Style
-	User             lipgloss.Style
-	UserArg          lipgloss.Style
-	Assistant        lipgloss.Style
-	Tool             lipgloss.Style
-	ToolOutput       lipgloss.Style
-	Thinking         lipgloss.Style
-	InputBox         lipgloss.Style
-	Help             lipgloss.Style
-	Error            lipgloss.Style
-	Accent           lipgloss.Style
-	ContextOK        lipgloss.Style
-	ContextWarn      lipgloss.Style
-	ContextCritical  lipgloss.Style
-	ContextMuted     lipgloss.Style
-	Selected         lipgloss.Style
+	Header          lipgloss.Style
+	Status          lipgloss.Style
+	User            lipgloss.Style
+	UserArg         lipgloss.Style
+	Assistant       lipgloss.Style
+	Tool            lipgloss.Style
+	ToolOutput      lipgloss.Style
+	Thinking        lipgloss.Style
+	InputBox        lipgloss.Style
+	Help            lipgloss.Style
+	Error           lipgloss.Style
+	Accent          lipgloss.Style
+	ContextOK       lipgloss.Style
+	ContextWarn     lipgloss.Style
+	ContextCritical lipgloss.Style
+	ContextMuted    lipgloss.Style
+	Selected        lipgloss.Style
 }
 
 func newStyles() Styles {
