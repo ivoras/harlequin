@@ -90,13 +90,14 @@ func (a *Agent) webFetch(ctx context.Context, rc *runContext, args map[string]an
 
 	fetchStart := time.Now()
 	res, err := a.WebFetcher.Fetch(ctx, rawURL)
-	fetchMS := time.Since(fetchStart).Milliseconds()
+	fetchDur := time.Since(fetchStart)
+	fetchMS := fetchDur.Milliseconds()
 	if err != nil {
 		a.logEvent(ctx, rc, sessionlog.TypeWebFetch, map[string]any{
 			"url": rawURL, "depth": depth, "ok": false,
 			"error": err.Error(), "fetch_ms": fetchMS,
 		})
-		log.Printf("webfetch: GET %s failed after %dms (depth=%d): %v", rawURL, fetchMS, depth, err)
+		log.Printf("webfetch: GET %s failed after %s (depth=%d): %v", rawURL, fmtDur(fetchDur), depth, err)
 		return fmt.Sprintf("error: failed to fetch %s: %v", rawURL, err), nil
 	}
 	a.logEvent(ctx, rc, sessionlog.TypeWebFetch, map[string]any{
@@ -108,8 +109,8 @@ func (a *Agent) webFetch(ctx context.Context, rc *runContext, args map[string]an
 	if res.FinalURL != "" && res.FinalURL != rawURL {
 		target = rawURL + " -> " + res.FinalURL // show redirect/upgrade only when it changed
 	}
-	log.Printf("webfetch: GET %s (cached=%v, %dms, %d bytes, depth=%d)",
-		target, res.Cached, fetchMS, len(res.Markdown), depth)
+	log.Printf("webfetch: GET %s (cached=%v, %s, %d bytes, depth=%d)",
+		target, res.Cached, fmtDur(fetchDur), len(res.Markdown), depth)
 
 	// A redirect can land on a different URL; record it too so the analysis model
 	// can't re-fetch the resolved page under its final address.
@@ -167,7 +168,8 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, prompt string, r
 			Tools:       tools,
 			Temperature: llm.Ptr(a.WebFetchTemperature),
 		})
-		callMS := time.Since(callStart).Milliseconds()
+		callDur := time.Since(callStart)
+		callMS := callDur.Milliseconds()
 		model := a.WebFetchModel
 		if model == "" {
 			model = "default"
@@ -177,7 +179,7 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, prompt string, r
 				"delegate": "web_fetch", "model": a.WebFetchModel, "depth": depth,
 				"delegate_step": step + 1, "duration_ms": callMS, "error": err.Error(),
 			})
-			log.Printf("webfetch: delegated LLM (%s) step %d failed after %dms: %v", model, step+1, callMS, err)
+			log.Printf("webfetch: delegated LLM (%s) step %d failed after %s: %v", model, step+1, fmtDur(callDur), err)
 			return fmt.Sprintf("error: analysis model failed: %v", err), nil
 		}
 		a.logEvent(ctx, rc, sessionlog.TypeDelegatedLLMResponse, map[string]any{
@@ -186,11 +188,11 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, prompt string, r
 			"content": text, "tool_calls": logToolCalls(toolCalls),
 		})
 		if len(toolCalls) > 0 {
-			log.Printf("webfetch: delegated LLM (%s) step %d took %dms (depth=%d, %d tool call(s): %s)",
-				model, step+1, callMS, depth, len(toolCalls), formatToolCalls(toolCalls))
+			log.Printf("webfetch: delegated LLM (%s) step %d took %s (depth=%d, %d tool call(s): %s)",
+				model, step+1, fmtDur(callDur), depth, len(toolCalls), formatToolCalls(toolCalls))
 		} else {
-			log.Printf("webfetch: delegated LLM (%s) step %d took %dms (depth=%d, 0 tool calls)",
-				model, step+1, callMS, depth)
+			log.Printf("webfetch: delegated LLM (%s) step %d took %s (depth=%d, 0 tool calls)",
+				model, step+1, fmtDur(callDur), depth)
 		}
 		lastText = text
 		if len(toolCalls) == 0 {
@@ -254,6 +256,19 @@ func truncateArgs(s string, max int) string {
 		return s[:max] + "…"
 	}
 	return s
+}
+
+// fmtDur renders a duration for logs: minutes+seconds once it reaches a minute
+// (e.g. "4m13s"), seconds with millis above a second ("1.235s"), else plain ms.
+func fmtDur(d time.Duration) string {
+	switch {
+	case d >= time.Minute:
+		return d.Round(time.Second).String()
+	case d >= time.Second:
+		return d.Round(time.Millisecond).String()
+	default:
+		return fmt.Sprintf("%dms", d.Milliseconds())
+	}
 }
 
 // completeOnce runs a single non-streaming-from-the-caller's-view completion,
