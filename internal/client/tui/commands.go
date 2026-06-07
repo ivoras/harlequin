@@ -38,6 +38,9 @@ const helpText = `Commands:
   /cron on|off <id>     enable / disable a job
   /cron run <id>        run a job now
   /cron rm <id>         delete a job
+  /config               list your per-user config
+  /config set <k> <v>   set a config key (e.g. telegram.chat_id 12345)
+  /config rm <key>      delete a config key
   /reload               (admin) re-read skill/prompt/hat files
   /memory [scope]       list memories with ids (scope: user|shared)
   /memory find <phrase> search memories (own + shared) by relevance
@@ -98,6 +101,8 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 		return m.handleMCPSub(args, line)
 	case "/cron":
 		return m.handleCronSub(args, line)
+	case "/config":
+		return m.handleConfigSub(args)
 	case "/reload":
 		if !m.canManageShared() {
 			return infoCmd("/reload is owner/admin only")

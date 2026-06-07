@@ -32,6 +32,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/skills"
 	"github.com/ivoras/harlequin/internal/server/storage"
 	"github.com/ivoras/harlequin/internal/server/usage"
+	"github.com/ivoras/harlequin/internal/server/userconfig"
 	"github.com/ivoras/harlequin/internal/server/webfetch"
 )
 
@@ -209,6 +210,7 @@ func main() {
 		Notify:        notifyStore,
 		Cron:          cronStore,
 		CronSched:     cron.NewScheduler(store, cronStore, ag, notifyStore),
+		UserConfig:    userconfig.NewStore(),
 	}
 
 	// Queue onboarding for any existing users who still need it.

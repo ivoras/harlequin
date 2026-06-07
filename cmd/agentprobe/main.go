@@ -36,7 +36,7 @@ func main() {
 	if cfg.Token == "" {
 		fatal(fmt.Errorf("no token in %s (log in with the TUI first)", cfg.Path()))
 	}
-	client := apiclient.New(cfg.ServerURL, cfg.Token)
+	client := apiclient.New(cfg.ServerURL, cfg.Token, types.InterfaceTUI)
 	ctx := context.Background()
 
 	id := *convID

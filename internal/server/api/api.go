@@ -5,6 +5,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -22,6 +23,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/skills"
 	"github.com/ivoras/harlequin/internal/server/storage"
 	"github.com/ivoras/harlequin/internal/server/usage"
+	"github.com/ivoras/harlequin/internal/server/userconfig"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
@@ -42,6 +44,7 @@ type Server struct {
 	Notify        *notify.Store
 	Cron          *cron.Store
 	CronSched     *cron.Scheduler
+	UserConfig    *userconfig.Store
 }
 
 // Router builds the chi router.
@@ -116,6 +119,12 @@ func (s *Server) Router() http.Handler {
 			r.Post("/notifications/{id}/ack", s.handleAckNotification)
 			r.Post("/notifications/{id}/dismiss", s.handleDismissNotification)
 
+			if s.UserConfig != nil {
+				r.Get("/config", s.handleGetConfig)
+				r.Put("/config/{key}", s.handleSetConfig)
+				r.Delete("/config/{key}", s.handleDeleteConfig)
+			}
+
 			if s.Cron != nil {
 				r.Get("/cron", s.handleListCron)
 				r.Post("/cron", s.handleCreateCron)
@@ -149,6 +158,15 @@ func writeErr(w http.ResponseWriter, status int, msg string) {
 func decode(r *http.Request, v any) error {
 	defer r.Body.Close()
 	return json.NewDecoder(r.Body).Decode(v)
+}
+
+// reqInterface returns the interface a REST client announced via the
+// X-Harlequin-Interface header, defaulting to the TUI (the built-in client).
+func reqInterface(r *http.Request) string {
+	if v := strings.TrimSpace(r.Header.Get(types.HeaderInterface)); v != "" {
+		return v
+	}
+	return types.InterfaceTUI
 }
 
 // requireElevated allows owners and admins (org-wide administrative actions).

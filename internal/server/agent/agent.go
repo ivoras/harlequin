@@ -75,6 +75,8 @@ type runContext struct {
 	canShareMemory bool       // owner or admin: may create/delete shared memories
 	userDB         *sql.DB    // the caller's open per-user database for this request
 	hat            *types.Hat // the conversation's worn hat, or nil
+	api            string     // transport this session arrived over (e.g. "REST")
+	iface          string     // interface/medium this session uses (e.g. "TUI")
 	turn           int
 	step           int
 	emit           EmitFunc
@@ -92,8 +94,14 @@ const fallbackSystemPrompt = `You are Harlequin, a helpful AI assistant for an o
 // Run executes a full turn for the given user message, streaming events via
 // emit. It opens the caller's per-user database for the duration of the turn
 // and closes it before any background work.
-func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username, role, userContent string, emit EmitFunc) error {
-	rc := &runContext{conversationID: conversationID, userID: userID, username: username, canShareMemory: types.IsElevated(role), turn: 1, emit: emit}
+func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username, role, api, iface, userContent string, emit EmitFunc) error {
+	if api == "" {
+		api = types.APIREST
+	}
+	if iface == "" {
+		iface = types.InterfaceTUI
+	}
+	rc := &runContext{conversationID: conversationID, userID: userID, username: username, canShareMemory: types.IsElevated(role), api: api, iface: iface, turn: 1, emit: emit}
 
 	var finalText string
 	if err := a.Storage.WithUser(ctx, userID, func(userDB *sql.DB) error {
@@ -123,6 +131,8 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	a.logEvent(ctx, rc, sessionlog.TypeSessionStart, map[string]any{
 		"max_steps": a.MaxSteps,
 		"provider":  a.Provider.Name(),
+		"api":       rc.api,
+		"interface": rc.iface,
 	})
 	a.logEvent(ctx, rc, sessionlog.TypeUserMessage, map[string]any{"content": userContent})
 
