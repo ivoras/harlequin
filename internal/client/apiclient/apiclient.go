@@ -192,6 +192,40 @@ func (c *Client) AckNotification(ctx context.Context, id int64) error {
 	return c.do(ctx, http.MethodPost, fmt.Sprintf("/notifications/%d/ack", id), nil, nil)
 }
 
+// ListCron returns the user's cron jobs.
+func (c *Client) ListCron(ctx context.Context) ([]types.CronJob, error) {
+	var out []types.CronJob
+	return out, c.do(ctx, http.MethodGet, "/cron", nil, &out)
+}
+
+// CreateCron creates a cron job.
+func (c *Client) CreateCron(ctx context.Context, req types.CreateCronJobRequest) (*types.CronJob, error) {
+	var out types.CronJob
+	return &out, c.do(ctx, http.MethodPost, "/cron", req, &out)
+}
+
+// GetCron returns one cron job.
+func (c *Client) GetCron(ctx context.Context, id int64) (*types.CronJob, error) {
+	var out types.CronJob
+	return &out, c.do(ctx, http.MethodGet, fmt.Sprintf("/cron/%d", id), nil, &out)
+}
+
+// UpdateCron applies a partial update (enable/disable/edit).
+func (c *Client) UpdateCron(ctx context.Context, id int64, req types.UpdateCronJobRequest) (*types.CronJob, error) {
+	var out types.CronJob
+	return &out, c.do(ctx, http.MethodPatch, fmt.Sprintf("/cron/%d", id), req, &out)
+}
+
+// DeleteCron removes a cron job.
+func (c *Client) DeleteCron(ctx context.Context, id int64) error {
+	return c.do(ctx, http.MethodDelete, fmt.Sprintf("/cron/%d", id), nil, nil)
+}
+
+// RunCron dispatches a cron job immediately.
+func (c *Client) RunCron(ctx context.Context, id int64) error {
+	return c.do(ctx, http.MethodPost, fmt.Sprintf("/cron/%d/run", id), nil, nil)
+}
+
 // Messages returns a conversation's messages.
 func (c *Client) Messages(ctx context.Context, id int64) ([]types.Message, error) {
 	var out []types.Message

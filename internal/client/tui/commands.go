@@ -31,6 +31,13 @@ const helpText = `Commands:
   /mcp test <s/name>    connect and list the server's tools
   /mcp auth <s/name>    authorize an OAuth MCP server (prints a URL to open)
   /mcp rm <s/name>      remove an MCP server
+  /cron                 list scheduled jobs
+  /cron show <id>       show a job (incl. last run output)
+  /cron add "<name>" "<spec>" js "<target>" ["<input-json>"]   schedule a JS job
+  /cron add "<name>" "<spec>" skill "<skill|->" "<prompt>"     schedule a skill job
+  /cron on|off <id>     enable / disable a job
+  /cron run <id>        run a job now
+  /cron rm <id>         delete a job
   /reload               (admin) re-read skill/prompt/hat files
   /memory [scope]       list memories with ids (scope: user|shared)
   /memory find <phrase> search memories (own + shared) by relevance
@@ -89,6 +96,8 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 		return m.handleHatSub(args)
 	case "/mcp":
 		return m.handleMCPSub(args, line)
+	case "/cron":
+		return m.handleCronSub(args, line)
 	case "/reload":
 		if !m.canManageShared() {
 			return infoCmd("/reload is owner/admin only")

@@ -319,6 +319,171 @@ Pass code inline, OR set script=<uri> to run a saved script instead. An optional
 		}
 	}
 
+	if a.Cron != nil {
+		reg["cron_create"] = toolEntry{
+			def: fnTool("cron_create", `Schedule a recurring job for the user.
+kind "js": run a JavaScript script with NO AI each time — best for cheap periodic checks like watching a website for changes. target is a script URI (skill://<skill>/<path>, storage://<path>, tmp://<path>) or inline ES5 code; input is a JSON object exposed to the script as the global 'args'.
+kind "skill": run an agent turn — target is an optional skill name to use, prompt is the message.
+spec is a cron schedule: 5-field "min hour dom mon dow", a @descriptor (@hourly, @daily), or "@every 30m".
+Example (watch a saved web-extractor check every 30 min): cron_create(name="fzoeu", spec="@every 30m", kind="js", target="skill://web-extractor/lib/check.js", input="{\"name\":\"fzoeu\"}").`, map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name":   map[string]any{"type": "string"},
+					"spec":   map[string]any{"type": "string", "description": "Cron schedule (5-field, @descriptor, or @every <dur>)"},
+					"kind":   map[string]any{"type": "string", "enum": []string{"js", "skill"}},
+					"target": map[string]any{"type": "string", "description": "js: script URI or inline code; skill: skill name"},
+					"prompt": map[string]any{"type": "string", "description": "skill: message to send to the agent"},
+					"input":  map[string]any{"type": "string", "description": "JSON object of inputs (js: exposed as args)"},
+				},
+				"required": []string{"name", "spec", "kind", "target"},
+			}),
+			handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+				req := types.CreateCronJobRequest{
+					Name:   argString(args, "name"),
+					Spec:   argString(args, "spec"),
+					Kind:   argString(args, "kind"),
+					Target: argString(args, "target"),
+					Prompt: argString(args, "prompt"),
+					Input:  argString(args, "input"),
+				}
+				job, err := a.Cron.Create(ctx, rc.userDB, req)
+				if err != nil {
+					return "error: " + err.Error(), nil
+				}
+				next := "unscheduled"
+				if job.NextRunAt != nil {
+					next = job.NextRunAt.Format("2006-01-02 15:04")
+				}
+				return fmt.Sprintf("Created cron job #%d %q (%s, %s); next run %s.", job.ID, job.Name, job.Kind, job.Spec, next), nil
+			},
+		}
+
+		reg["cron_list"] = toolEntry{
+			def: fnTool("cron_list", "List the user's scheduled cron jobs.", map[string]any{
+				"type": "object", "properties": map[string]any{},
+			}),
+			handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+				jobs, err := a.Cron.List(ctx, rc.userDB)
+				if err != nil {
+					return "error: " + err.Error(), nil
+				}
+				if len(jobs) == 0 {
+					return "(no cron jobs)", nil
+				}
+				var sb strings.Builder
+				for _, j := range jobs {
+					state := "enabled"
+					if !j.Enabled {
+						state = "disabled"
+					}
+					fmt.Fprintf(&sb, "#%d %s [%s, %s, %s] target=%s", j.ID, j.Name, j.Kind, j.Spec, state, j.Target)
+					if j.LastStatus != "" {
+						fmt.Fprintf(&sb, " last=%s", j.LastStatus)
+					}
+					sb.WriteString("\n")
+				}
+				return strings.TrimRight(sb.String(), "\n"), nil
+			},
+		}
+
+		reg["cron_delete"] = toolEntry{
+			def: fnTool("cron_delete", "Delete one of the user's cron jobs by id.", map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id": map[string]any{"type": "integer"},
+				},
+				"required": []string{"id"},
+			}),
+			handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+				id := int64(argInt(args, "id", 0))
+				if id <= 0 {
+					return "error: a positive id is required", nil
+				}
+				if err := a.Cron.Delete(ctx, rc.userDB, id); err != nil {
+					return "error: " + err.Error(), nil
+				}
+				return fmt.Sprintf("Deleted cron job #%d.", id), nil
+			},
+		}
+
+		reg["cron_update"] = toolEntry{
+			def: fnTool("cron_update", "Edit an existing cron job by id: change its schedule/target/etc., or enable/disable it. Only the fields you pass are changed.", map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id":      map[string]any{"type": "integer"},
+					"name":    map[string]any{"type": "string"},
+					"spec":    map[string]any{"type": "string", "description": "New cron schedule"},
+					"kind":    map[string]any{"type": "string", "enum": []string{"js", "skill"}},
+					"target":  map[string]any{"type": "string"},
+					"prompt":  map[string]any{"type": "string"},
+					"input":   map[string]any{"type": "string", "description": "JSON object of inputs"},
+					"enabled": map[string]any{"type": "boolean", "description": "Enable (true) or disable (false) the job"},
+				},
+				"required": []string{"id"},
+			}),
+			handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+				id := int64(argInt(args, "id", 0))
+				if id <= 0 {
+					return "error: a positive id is required", nil
+				}
+				var req types.UpdateCronJobRequest
+				if v, ok := args["name"].(string); ok {
+					req.Name = &v
+				}
+				if v, ok := args["spec"].(string); ok {
+					req.Spec = &v
+				}
+				if v, ok := args["kind"].(string); ok {
+					req.Kind = &v
+				}
+				if v, ok := args["target"].(string); ok {
+					req.Target = &v
+				}
+				if v, ok := args["prompt"].(string); ok {
+					req.Prompt = &v
+				}
+				if v, ok := args["input"].(string); ok {
+					req.Input = &v
+				}
+				if v, ok := args["enabled"].(bool); ok {
+					req.Enabled = &v
+				}
+				job, err := a.Cron.Update(ctx, rc.userDB, id, req)
+				if err != nil {
+					return "error: " + err.Error(), nil
+				}
+				state := "enabled"
+				if !job.Enabled {
+					state = "disabled"
+				}
+				return fmt.Sprintf("Updated cron job #%d %q (%s, %s, %s).", job.ID, job.Name, job.Kind, job.Spec, state), nil
+			},
+		}
+
+		reg["cron_run"] = toolEntry{
+			def: fnTool("cron_run", "Trigger a cron job to run now (it runs within a minute if enabled). Use to test a job or force an immediate check.", map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id": map[string]any{"type": "integer"},
+				},
+				"required": []string{"id"},
+			}),
+			handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+				id := int64(argInt(args, "id", 0))
+				if id <= 0 {
+					return "error: a positive id is required", nil
+				}
+				// Mark it due now; the scheduler picks it up on the next tick. This
+				// keeps the agent decoupled from the scheduler and off the turn's
+				// critical path.
+				if err := a.Cron.Reschedule(ctx, rc.userDB, id, time.Now()); err != nil {
+					return "error: " + err.Error(), nil
+				}
+				return fmt.Sprintf("Cron job #%d will run within a minute (if enabled); check it with cron_list.", id), nil
+			},
+		}
+	}
+
 	// Skill-defined tools, namespaced <skill>.<tool>, for the visible (hat-aware) skills.
 	infos, err := a.Skills.EffectiveSkillInfos(ctx, rc.userDB, rc.userID, rc.username, rc.hat)
 	if err == nil {

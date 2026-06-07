@@ -37,6 +37,8 @@ type Agent struct {
 	Session       *sessionlog.Logger
 	WebFetcher    *webfetch.Client
 	MCP           *mcp.Manager
+	// Cron, if set, lets the agent schedule/list/delete the user's cron jobs.
+	Cron CronStore
 
 	MaxSteps      int
 	Temperature   float64
