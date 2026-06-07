@@ -18,6 +18,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/auth"
 	"github.com/ivoras/harlequin/internal/server/config"
 	"github.com/ivoras/harlequin/internal/server/conversation"
+	"github.com/ivoras/harlequin/internal/server/cron"
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/embed"
 	"github.com/ivoras/harlequin/internal/server/jsrun"
@@ -163,6 +164,9 @@ func main() {
 		defer mcpManager.Close()
 	}
 
+	notifyStore := notify.NewStore()
+	cronStore := cron.NewStore()
+
 	ag := &agent.Agent{
 		Provider:            router,
 		Storage:             store,
@@ -182,6 +186,7 @@ func main() {
 		AutoExtract:         cfg.Memory.AutoExtract,
 		MemDefaultTTL:       cfg.Memory.DefaultTTL.D(),
 		DataDir:             cfg.DataDir,
+		Cron:                cronStore,
 		RecordUsage: func(ctx context.Context, userDB *sql.DB, userID int64, conversationID *int64, provider, model string, u llm.Usage) {
 			_ = usageStore.Record(ctx, userDB, conversationID, provider, model, u.PromptTokens, u.CompletionTokens)
 		},
@@ -201,7 +206,9 @@ func main() {
 		Session:       session,
 		Agent:         ag,
 		MCP:           mcpManager,
-		Notify:        notify.NewStore(),
+		Notify:        notifyStore,
+		Cron:          cronStore,
+		CronSched:     cron.NewScheduler(store, cronStore, ag, notifyStore),
 	}
 
 	// Queue onboarding for any existing users who still need it.
@@ -209,6 +216,10 @@ func main() {
 
 	// Background maintenance: expire memories and sweep old session logs (hourly).
 	go maintenance(store, memStore, session, cfg.Sessions.RetentionDaysValue())
+
+	// Start the cron scheduler (1-minute granularity; each due job runs in its
+	// own goroutine).
+	srv.CronSched.Start(context.Background())
 
 	httpServer := &http.Server{
 		Addr:    cfg.Server.Addr,

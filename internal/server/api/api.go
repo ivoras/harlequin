@@ -13,6 +13,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/auth"
 	"github.com/ivoras/harlequin/internal/server/config"
 	"github.com/ivoras/harlequin/internal/server/conversation"
+	"github.com/ivoras/harlequin/internal/server/cron"
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/mcp"
 	"github.com/ivoras/harlequin/internal/server/memory"
@@ -39,6 +40,8 @@ type Server struct {
 	Agent         *agent.Agent
 	MCP           *mcp.Manager
 	Notify        *notify.Store
+	Cron          *cron.Store
+	CronSched     *cron.Scheduler
 }
 
 // Router builds the chi router.
@@ -112,6 +115,15 @@ func (s *Server) Router() http.Handler {
 			r.Get("/notifications", s.handleListNotifications)
 			r.Post("/notifications/{id}/ack", s.handleAckNotification)
 			r.Post("/notifications/{id}/dismiss", s.handleDismissNotification)
+
+			if s.Cron != nil {
+				r.Get("/cron", s.handleListCron)
+				r.Post("/cron", s.handleCreateCron)
+				r.Get("/cron/{id}", s.handleGetCron)
+				r.Patch("/cron/{id}", s.handleUpdateCron)
+				r.Delete("/cron/{id}", s.handleDeleteCron)
+				r.Post("/cron/{id}/run", s.handleRunCron)
+			}
 
 			r.Get("/usage", s.handleUsage)
 			r.Get("/audit", s.handleAudit)

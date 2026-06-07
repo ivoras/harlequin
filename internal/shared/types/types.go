@@ -78,14 +78,14 @@ type SetConversationHatRequest struct {
 // (header value, OAuth client secret, tokens) are never serialized; HasCredential
 // reports whether a static credential is stored.
 type MCPServer struct {
-	Scope         string `json:"scope"` // "shared" | "user"
-	Name          string `json:"name"`
-	URL           string `json:"url"`
-	Transport     string `json:"transport"`
+	Scope         string   `json:"scope"` // "shared" | "user"
+	Name          string   `json:"name"`
+	URL           string   `json:"url"`
+	Transport     string   `json:"transport"`
 	AuthType      string   `json:"auth_type"` // "none" | "header" | "oauth"
 	HeaderNames   []string `json:"header_names,omitempty"`
 	HasCredential bool     `json:"has_credential"`
-	Enabled       bool   `json:"enabled"`
+	Enabled       bool     `json:"enabled"`
 	// Status, populated on list/get.
 	AuthSatisfied bool   `json:"auth_satisfied"`
 	NeedsAuth     bool   `json:"needs_auth"`
@@ -105,6 +105,61 @@ type Notification struct {
 	Prompt      string `json:"prompt,omitempty"`
 	AutoRun     bool   `json:"auto_run"`
 	Status      string `json:"status"`
+}
+
+// Cron job kinds.
+const (
+	CronKindJS    = "js"    // run a JavaScript script (LLM-free)
+	CronKindSkill = "skill" // run an agent turn that can use a skill
+)
+
+// CronJob is a per-user scheduled task: a JS script or an agent/skill turn run on
+// a cron schedule with user-provided inputs.
+type CronJob struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+	// Spec is the cron schedule (5-field, @descriptor, or "@every <dur>").
+	Spec string `json:"spec"`
+	Kind string `json:"kind"` // CronKindJS | CronKindSkill
+	// Target is the script for a JS job (an inline body or a skill:// / storage://
+	// / tmp:// URI), or the skill name for a skill job.
+	Target string `json:"target"`
+	// Prompt is the message sent to the agent for a skill job.
+	Prompt string `json:"prompt,omitempty"`
+	// Input is a JSON object of inputs: exposed to a JS job as the global `args`.
+	Input   string `json:"input,omitempty"`
+	Enabled bool   `json:"enabled"`
+	// Notify creates a user notification when the job's output changes (or errors).
+	Notify     bool       `json:"notify"`
+	NextRunAt  *time.Time `json:"next_run_at,omitempty"`
+	LastRunAt  *time.Time `json:"last_run_at,omitempty"`
+	LastStatus string     `json:"last_status,omitempty"` // "ok" | "error"
+	LastOutput string     `json:"last_output,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+}
+
+// CreateCronJobRequest is the body of POST /cron (and the cron_create tool).
+type CreateCronJobRequest struct {
+	Name    string `json:"name"`
+	Spec    string `json:"spec"`
+	Kind    string `json:"kind"`
+	Target  string `json:"target"`
+	Prompt  string `json:"prompt,omitempty"`
+	Input   string `json:"input,omitempty"`
+	Notify  *bool  `json:"notify,omitempty"`  // default true
+	Enabled *bool  `json:"enabled,omitempty"` // default true
+}
+
+// UpdateCronJobRequest is the body of PATCH /cron/{id}; nil fields are unchanged.
+type UpdateCronJobRequest struct {
+	Name    *string `json:"name,omitempty"`
+	Spec    *string `json:"spec,omitempty"`
+	Kind    *string `json:"kind,omitempty"`
+	Target  *string `json:"target,omitempty"`
+	Prompt  *string `json:"prompt,omitempty"`
+	Input   *string `json:"input,omitempty"`
+	Notify  *bool   `json:"notify,omitempty"`
+	Enabled *bool   `json:"enabled,omitempty"`
 }
 
 // MCPTool is a tool advertised by an MCP server.
@@ -193,18 +248,18 @@ type StreamEvent struct {
 	// Thinking is model reasoning text (SSEThinking), distinct from the final answer.
 	Thinking string `json:"thinking,omitempty"`
 	// Tool call info (for SSEToolCall / SSEToolResult).
-	ToolName string `json:"tool_name,omitempty"`
-	ToolArgs string `json:"tool_args,omitempty"`
-	Output   string `json:"output,omitempty"`
-	DurationMS int64 `json:"duration_ms,omitempty"`
+	ToolName   string `json:"tool_name,omitempty"`
+	ToolArgs   string `json:"tool_args,omitempty"`
+	Output     string `json:"output,omitempty"`
+	DurationMS int64  `json:"duration_ms,omitempty"`
 	// Error message (for SSEError).
 	Error string `json:"error,omitempty"`
 	// Options are suggested answers the user can choose from (for SSEAskUser).
 	Options []string `json:"options,omitempty"`
 	// Context reporting (SSEDone): prompt/context size and model limit for the turn.
-	Model          string `json:"model,omitempty"`
-	ContextTokens  int    `json:"context_tokens,omitempty"`
-	ContextMax     int    `json:"context_max,omitempty"`
+	Model         string `json:"model,omitempty"`
+	ContextTokens int    `json:"context_tokens,omitempty"`
+	ContextMax    int    `json:"context_max,omitempty"`
 	// Timing (SSEDone), populated only when the server's timing report is enabled.
 	// Present indicates timing is available for this turn.
 	Timing *TurnTiming `json:"timing,omitempty"`
@@ -236,7 +291,7 @@ type SkillFiles struct {
 
 // Memory is a stored memory entry.
 type Memory struct {
-	ID        string     `json:"id"` // composite: "u.<localid>" | "s.<localid>"
+	ID        string     `json:"id"`    // composite: "u.<localid>" | "s.<localid>"
 	Scope     string     `json:"scope"` // "user" | "shared"
 	UserID    *int64     `json:"user_id,omitempty"`
 	Content   string     `json:"content"`
