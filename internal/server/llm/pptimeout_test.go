@@ -40,11 +40,11 @@ func TestRequestTimeout(t *testing.T) {
 		est  int     // estimated prompt tokens
 		want time.Duration
 	}{
-		// predicted = est/rate = 50s; 5x = 250s, within bounds.
-		{"midrange", 100, 5000, 250 * time.Second},
-		// predicted = 0.1s; 5x = 0.5s -> clamped up to the floor.
+		// predicted = est/rate = 50s; 10x = 500s, within bounds.
+		{"midrange", 100, 5000, 500 * time.Second},
+		// predicted = 0.1s; 10x = 1s -> clamped up to the floor.
 		{"below floor", 1000, 100, minRequestTimeout},
-		// predicted = 10000s; 5x = 50000s -> clamped down to the ceiling.
+		// predicted = 10000s; 10x = 100000s -> clamped down to the ceiling.
 		{"above ceiling", 10, 100000, maxRequestTimeout},
 	}
 	for _, tc := range cases {

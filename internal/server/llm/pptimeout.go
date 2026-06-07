@@ -10,7 +10,7 @@ const (
 	ppWindow = 10
 	// ppTimeoutMultiplier caps a call's timeout at this many times its predicted
 	// prompt-processing time.
-	ppTimeoutMultiplier = 5
+	ppTimeoutMultiplier = 10
 	// minPPSampleTokens ignores tiny (mostly cache-hit) prefills whose rate is
 	// noisy and would skew the average.
 	minPPSampleTokens = 50
