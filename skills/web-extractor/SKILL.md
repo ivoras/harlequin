@@ -1,68 +1,54 @@
 ---
 name: web-extractor
-description: Watch a web page for changes or extract specific data from it. Use when the user wants to monitor a page ("tell me when there are new <items> on <url>", "check this page for new entries") or pull a value/list from a page repeatedly. Set up once with AI; then re-check with zero AI cost.
+description: Monitor a web page for changes or new items (e.g. "tell me when there are new <items> on <url>", "check this page every N hours"). Set up once with AI, then re-check on a schedule with zero AI cost. load_skill this whenever the user asks to watch/monitor a page.
 ---
 
-# Web data extraction & change watching
+# Watch a web page for changes
 
-Locate the wanted data on a page ONCE (with AI), save *how* to find it, then re-check
-forever with no AI in the loop. Repeat checks must NOT call WebFetchDOM or any model —
-they only run saved JavaScript.
+Find the list of items ONCE with **WebFetchDOM**, then schedule a **cron** job that
+re-checks it with no AI. Do this in three tool calls. Do NOT explore the page with
+`run_js` — use `WebFetchDOM`.
 
-## Phase 1 — Set up a watch (do this once, AI-assisted)
+## Step 1 — Find the selector for the list
 
-1. **Discover where the data is.** Call **WebFetchDOM** with the `url` and a `grep` of a
-   distinctive phrase near the data (a visible item title, a heading, a date). Each
-   result carries a CSS `path`. If you have no phrase, call WebFetchDOM with just the
-   `url` to see the structure, then grep or try a `selector`.
+Call **WebFetchDOM** with only the `url`. It returns **candidate lists**, each with a
+`selector`, a `count`, and a `sample`. Choose the candidate whose `sample` matches the
+items the user wants (e.g. the subsidy-call titles) and take its `selector`.
 
-2. **Generalise the path to a selector that matches ALL the repeating items.** A grep
-   `path` points at one item, e.g. `... > ul:nth-of-type(1) > li:nth-of-type(3) > a`.
-   Drop the `:nth-of-type(...)` on the repeating element to match its siblings
-   (`ul li a`), or use a class you saw (`ul.calls li a`). **Verify** by calling
-   **WebFetchDOM** with `selector="<your selector>"` — it should return the whole list,
-   not just one item.
+- To confirm, call **WebFetchDOM** again with `selector="<candidate>"` — it should
+  return the full list of items.
+- If no candidate fits, call **WebFetchDOM** with `grep="<a few words from one item>"`
+  and build a selector from the returned node's `class` (as `tag.class`) or use its `path`.
 
-3. **Pick a short slug `<name>`** for this watch (e.g. the site or topic).
+The selector must match EVERY item (the repeating row), not just one.
 
-4. **Save the recipe and a tiny parser** with **run_js** (inline `code`). The recipe is
-   the saved "how"; the parser is the saved code that re-checks it:
+## Step 2 — Schedule the watch
 
-   ```
-   storage.write("<name>/recipe.json", JSON.stringify({
-     url: "<url>", selector: "<selector>", label: "<human label>",
-     lastSeen: [], lastChecked: ""
-   }));
-   storage.write("<name>/parser.js",
-     'include("skill://web-extractor/lib/extract.js");\ncheckWatch("<name>");\n');
-   println("saved <name>");
-   ```
+Call **cron_create** (kind `js`), pointing at the shipped checker and passing the watch
+config as `input` (a JSON string):
 
-5. **Record the baseline** by running the check once (Phase 2). The first run lists all
-   current items as the starting point; tell the user it is now being watched.
+    cron_create(
+      name:   "<short-slug>",
+      spec:   "<schedule>",
+      kind:   "js",
+      target: "skill://web-extractor/lib/check.js",
+      input:  "{\"name\":\"<short-slug>\",\"url\":\"<url>\",\"selector\":\"<selector>\",\"label\":\"<what is watched>\"}"
+    )
 
-## Phase 2 — Check a watch (no AI, cheap, repeatable)
+Schedules: 5-field cron, `@hourly`/`@daily`, or `@every <dur>`. **Every 12 hours →
+`"0 0,12 * * *"`** (00:00 and 12:00), or `"@every 12h"`.
 
-Run the saved parser by reference:
+The first run saves the current items as the baseline; later runs report only
+additions/removals, and the user is notified when the list changes.
 
-```
-run_js({ script: "storage://<name>/parser.js" })
-```
+## Step 3 — Baseline now (optional) and confirm
 
-(equivalently: `run_js({ script: "skill://web-extractor/lib/check.js", args: { name: "<name>" } })`).
-
-It fetches the page, extracts the items at the saved selector, diffs them against the
-previous check, prints any `+` additions / `-` removals, and updates the saved state.
-Relay the result to the user. Re-run whenever asked (or on a schedule). Do not involve
-the model in extraction here.
+Call **cron_run** with the new job's id to run it immediately and capture the baseline
+(otherwise it first runs at the next scheduled time). Then tell the user what is being
+watched, on what schedule, and how many items are there now.
 
 ## Notes
-- Helpers: `skill://web-extractor/lib/extract.js` — `fetchDoc(url)`, `allTextAt(doc, sel)`,
-  `attrAt(doc, sel, attr)`, `diffList(old, new)`, `loadRecipe/saveRecipe`, `checkWatch`.
-- For a single value (not a list), use a selector matching the one element and read
-  `allTextAt(doc, selector)[0]`.
-- For pages needing custom logic, write your own `storage://<name>/parser.js` using the
-  helpers instead of the 2-line template.
-- List saved watches: `run_js({ code: 'println(storage.list("*/recipe.json").join("\\n"))' })`.
-- Sandbox JS is ES5 only: `var` (no `let`/`const`), no arrow functions, no template literals.
-```
+- Re-check a saved watch by hand:
+  `run_js({ script: "skill://web-extractor/lib/check.js", args: { name: "<slug>" } })`.
+- Helpers in `skill://web-extractor/lib/extract.js`: `fetchDoc`, `allTextAt`,
+  `attrAt`, `diffList`, `runWatch`. Sandbox JS is ES5 only.

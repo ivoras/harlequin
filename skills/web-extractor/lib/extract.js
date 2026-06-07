@@ -64,26 +64,47 @@ function nowISO() {
   try { return new Date().toISOString(); } catch (e) { return "" + (new Date()).getTime(); }
 }
 
-// checkWatch runs one LLM-free check of a saved watch: fetch the page, extract the
-// items at the recipe's selector, diff against the last seen list, print a concise
-// report, and persist the new state.
-function checkWatch(name) {
-  if (!name) { println("error: no watch name given"); return; }
+// runWatch performs one LLM-free check from a config object
+// {name, url, selector, label}. On the first run it creates the recipe from
+// url+selector; later runs reuse the saved recipe (cfg fields override it). It
+// fetches the page, extracts the items at the selector, diffs against the last
+// seen list, prints a concise report, and persists the new state. This is what a
+// cron job runs: cron passes {name,url,selector} as input the first time, and just
+// {name} (from the saved recipe) is enough thereafter.
+function runWatch(cfg) {
+  cfg = cfg || {};
+  var name = cfg.name;
+  if (!name) { println("error: missing 'name' in input"); return; }
   var r = loadRecipe(name);
-  if (!r) { println("error: no recipe for '" + name + "' (run setup first)"); return; }
+  if (!r) {
+    if (!cfg.url || !cfg.selector) {
+      println("error: first run of '" + name + "' needs 'url' and 'selector' in input");
+      return;
+    }
+    r = { url: cfg.url, selector: cfg.selector, label: cfg.label || name, lastSeen: [], lastChecked: "" };
+  } else {
+    if (cfg.url) r.url = cfg.url;
+    if (cfg.selector) r.selector = cfg.selector;
+    if (cfg.label) r.label = cfg.label;
+  }
   var doc = fetchDoc(r.url);
   var items = allTextAt(doc, r.selector);
   var d = diffList(r.lastSeen, items);
   var label = r.label || name;
-  if (d.added.length || d.removed.length) {
-    println("CHANGED: " + label + " (" + items.length + " items now)");
+  if (!r.lastChecked) {
+    println("Watching " + label + ": " + items.length + " item(s) now (baseline saved).");
+  } else if (d.added.length || d.removed.length) {
+    println("CHANGED: " + label + " (" + items.length + " item(s) now)");
     var i;
     for (i = 0; i < d.added.length; i++) println("  + " + d.added[i]);
     for (i = 0; i < d.removed.length; i++) println("  - " + d.removed[i]);
   } else {
-    println("No change: " + label + " (" + items.length + " items)");
+    println("No change: " + label + " (" + items.length + " item(s))");
   }
   r.lastSeen = items;
   r.lastChecked = nowISO();
   saveRecipe(name, r);
 }
+
+// checkWatch runs a saved watch by name (its config is already persisted).
+function checkWatch(name) { runWatch({ name: name }); }
