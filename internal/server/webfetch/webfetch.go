@@ -45,8 +45,24 @@ type Result struct {
 	Cached bool
 }
 
+// RawResult is a fetched page before any Markdown conversion: the decoded
+// (decompressed) response body plus enough metadata to parse or convert it. It
+// backs DOM parsing and the JS sandbox fetch(), which need raw HTML, not Markdown.
+type RawResult struct {
+	// Body is the decoded, decompressed response body.
+	Body []byte
+	// ContentType is the response Content-Type header, lowercased.
+	ContentType string
+	// FinalURL is the URL after following redirects.
+	FinalURL string
+	// Status is the HTTP status code.
+	Status int
+	// Cached is true when this result was served from the in-memory cache.
+	Cached bool
+}
+
 type cacheEntry struct {
-	res     Result
+	raw     RawResult
 	expires time.Time
 }
 
@@ -91,9 +107,29 @@ func New(opts Options) *Client {
 // Fetch retrieves url (upgrading http→https), follows redirects, and returns the
 // page as Markdown. Results are cached for 15 minutes per URL.
 func (c *Client) Fetch(ctx context.Context, url string) (Result, error) {
+	raw, err := c.FetchRaw(ctx, url)
+	if err != nil {
+		return Result{}, err
+	}
+	res := Result{FinalURL: raw.FinalURL, Cached: raw.Cached}
+	if strings.Contains(raw.ContentType, "html") || looksLikeHTML(raw.Body) {
+		md, title := htmlToMarkdown(raw.Body, raw.FinalURL)
+		res.Markdown = md
+		res.Title = title
+	} else {
+		// Non-HTML (plain text, JSON, etc.): return decoded text as-is.
+		res.Markdown = string(raw.Body)
+	}
+	return res, nil
+}
+
+// FetchRaw retrieves url (upgrading http→https), follows redirects, and returns
+// the decoded response body without Markdown conversion. Results are cached for
+// 15 minutes per URL (shared with Fetch).
+func (c *Client) FetchRaw(ctx context.Context, url string) (RawResult, error) {
 	url = upgradeScheme(strings.TrimSpace(url))
 	if url == "" {
-		return Result{}, errors.New("empty url")
+		return RawResult{}, errors.New("empty url")
 	}
 
 	if r, ok := c.cacheGet(url); ok {
@@ -106,22 +142,22 @@ func (c *Client) Fetch(ctx context.Context, url string) (Result, error) {
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return Result{}, err
+		return RawResult{}, err
 	}
 	setBrowserHeaders(req)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return Result{}, err
+		return RawResult{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return Result{}, fmt.Errorf("server returned %s", resp.Status)
+		return RawResult{}, fmt.Errorf("server returned %s", resp.Status)
 	}
 
 	body, err := decodeBody(resp)
 	if err != nil {
-		return Result{}, err
+		return RawResult{}, err
 	}
 
 	finalURL := url
@@ -129,22 +165,17 @@ func (c *Client) Fetch(ctx context.Context, url string) (Result, error) {
 		finalURL = resp.Request.URL.String()
 	}
 
-	res := Result{FinalURL: finalURL}
-	ct := strings.ToLower(resp.Header.Get("Content-Type"))
-	if strings.Contains(ct, "html") || looksLikeHTML(body) {
-		md, title := htmlToMarkdown(body, finalURL)
-		res.Markdown = md
-		res.Title = title
-	} else {
-		// Non-HTML (plain text, JSON, etc.): return decoded text as-is.
-		res.Markdown = string(body)
+	raw := RawResult{
+		Body:        body,
+		ContentType: strings.ToLower(resp.Header.Get("Content-Type")),
+		FinalURL:    finalURL,
+		Status:      resp.StatusCode,
 	}
-
-	c.cachePut(url, res)
-	return res, nil
+	c.cachePut(url, raw)
+	return raw, nil
 }
 
-func (c *Client) cacheGet(url string) (Result, bool) {
+func (c *Client) cacheGet(url string) (RawResult, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now := time.Now()
@@ -155,14 +186,14 @@ func (c *Client) cacheGet(url string) (Result, bool) {
 		}
 	}
 	if e, ok := c.cache[url]; ok && now.Before(e.expires) {
-		return e.res, true
+		return e.raw, true
 	}
-	return Result{}, false
+	return RawResult{}, false
 }
 
-func (c *Client) cachePut(url string, res Result) {
+func (c *Client) cachePut(url string, raw RawResult) {
 	c.mu.Lock()
-	c.cache[url] = cacheEntry{res: res, expires: time.Now().Add(cacheTTL)}
+	c.cache[url] = cacheEntry{raw: raw, expires: time.Now().Add(cacheTTL)}
 	c.mu.Unlock()
 }
 

@@ -11,7 +11,7 @@ import (
 func TestFetchUsesCacheNoNetwork(t *testing.T) {
 	c := New(Options{})
 	const url = "https://this-host-does-not-exist.invalid/page"
-	c.cachePut(url, Result{Markdown: "CACHED", FinalURL: url, Title: "T"})
+	c.cachePut(url, RawResult{Body: []byte("CACHED"), FinalURL: url})
 
 	start := time.Now()
 	res, err := c.Fetch(context.Background(), url)
@@ -38,7 +38,7 @@ func TestCacheTTLBoundary(t *testing.T) {
 
 	// Just inside the TTL: served.
 	c.mu.Lock()
-	c.cache[url] = cacheEntry{res: Result{Markdown: "fresh"}, expires: time.Now().Add(cacheTTL - time.Second)}
+	c.cache[url] = cacheEntry{raw: RawResult{Body: []byte("fresh")}, expires: time.Now().Add(cacheTTL - time.Second)}
 	c.mu.Unlock()
 	if _, ok := c.cacheGet(url); !ok {
 		t.Fatal("entry within 15m TTL should be served")
@@ -46,7 +46,7 @@ func TestCacheTTLBoundary(t *testing.T) {
 
 	// Just past the TTL: dropped.
 	c.mu.Lock()
-	c.cache[url] = cacheEntry{res: Result{Markdown: "stale"}, expires: time.Now().Add(-time.Second)}
+	c.cache[url] = cacheEntry{raw: RawResult{Body: []byte("stale")}, expires: time.Now().Add(-time.Second)}
 	c.mu.Unlock()
 	if _, ok := c.cacheGet(url); ok {
 		t.Fatal("expired entry should not be served")

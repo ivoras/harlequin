@@ -107,7 +107,10 @@ type AgentConfig struct {
 	SkillRenderTimeout Duration `yaml:"skill_render_timeout"`
 	JSToolTimeout      Duration `yaml:"js_tool_timeout"`
 	JSOutputCap        int      `yaml:"js_output_cap"`
-	JSFetchAllowlist   []string `yaml:"js_fetch_allowlist"`
+	// JSFetchAllowlist restricts the legacy GET-only fetch() to these hosts. When
+	// WebFetch is enabled the sandbox fetch() instead routes through the web
+	// fetcher (any public host, SSRF-guarded) and this list is ignored.
+	JSFetchAllowlist []string `yaml:"js_fetch_allowlist"`
 	// WebFetch enables/configures the WebFetch tool (fetch a URL, convert to
 	// Markdown, analyse with a small model).
 	WebFetch WebFetchConfig `yaml:"web_fetch"`

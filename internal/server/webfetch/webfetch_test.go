@@ -104,13 +104,13 @@ func TestCache(t *testing.T) {
 	if _, ok := c.cacheGet(url); ok {
 		t.Fatal("unexpected cache hit")
 	}
-	c.cachePut(url, Result{Markdown: "md", FinalURL: url})
-	if r, ok := c.cacheGet(url); !ok || r.Markdown != "md" {
-		t.Fatalf("cache miss after put: %v %q", ok, r.Markdown)
+	c.cachePut(url, RawResult{Body: []byte("md"), FinalURL: url})
+	if r, ok := c.cacheGet(url); !ok || string(r.Body) != "md" {
+		t.Fatalf("cache miss after put: %v %q", ok, r.Body)
 	}
 	// Force expiry.
 	c.mu.Lock()
-	c.cache[url] = cacheEntry{res: Result{Markdown: "md"}, expires: time.Now().Add(-time.Minute)}
+	c.cache[url] = cacheEntry{raw: RawResult{Body: []byte("md")}, expires: time.Now().Add(-time.Minute)}
 	c.mu.Unlock()
 	if _, ok := c.cacheGet(url); ok {
 		t.Fatal("expired entry should not be returned")
