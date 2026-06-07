@@ -101,11 +101,10 @@ storage.write("fzoeu/parser.js", 'include("skill://web-extractor/lib/extract.js"
 println("setup done");
 `)
 
-	// Baseline (first check vs empty state lists all current items as added).
+	// Baseline (first check just records the current items).
 	out := runScript("baseline", "storage://fzoeu/parser.js")
-	expect("baseline", out, "CHANGED")
-	expect("baseline", out, "+ Solar subsidy 2024")
-	expect("baseline", out, "+ EV charger grant")
+	expect("baseline", out, "Watching")
+	expect("baseline", out, "2 item(s)")
 
 	// Re-check with no change.
 	out = runScript("recheck-unchanged", "storage://fzoeu/parser.js")
