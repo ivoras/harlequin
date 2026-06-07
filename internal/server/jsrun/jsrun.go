@@ -19,6 +19,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/dom"
 	"github.com/ivoras/harlequin/internal/server/sandboxfs"
 	"github.com/robertkrimen/otto"
+	"golang.org/x/net/html"
 )
 
 // ErrTimeout is the sentinel used to interrupt (and report) a run that exceeds
@@ -267,8 +268,14 @@ func (r *Runner) makeFetchVia(vm *otto.Otto, ctx context.Context, f Fetcher) Hos
 // helper (with a per-run document registry), the scoped filesystems, and
 // load/include. Unconfigured capabilities return a JS error when used.
 func (r *Runner) hostAPI(vm *otto.Otto, rc RunContext) map[string]HostFunc {
-	docs := map[int64]*dom.Doc{}
+	docs := map[int64]*dom.Doc{}      // dom.parse handle -> doc (for json/lists)
+	nodeReg := map[int64]*html.Node{} // handle -> element/root node (for chainable query)
 	var nextHandle int64
+	register := func(n *html.Node) int64 {
+		nextHandle++
+		nodeReg[nextHandle] = n
+		return nextHandle
+	}
 
 	toJS := func(v any) otto.Value {
 		b, err := json.Marshal(v)
@@ -285,13 +292,48 @@ func (r *Runner) hostAPI(vm *otto.Otto, rc RunContext) map[string]HostFunc {
 		}
 		return out
 	}
-	getDoc := func(call otto.FunctionCall) *dom.Doc {
+	resolveDoc := func(call otto.FunctionCall) *dom.Doc {
 		h, _ := call.Argument(0).ToInteger()
 		d, ok := docs[h]
 		if !ok {
-			panic(vm.MakeCustomError("DomError", "unknown dom handle"))
+			panic(vm.MakeCustomError("DomError", "dom.json/dom.lists need the handle returned by dom.parse"))
 		}
 		return d
+	}
+	// resolveCtx accepts a dom handle (number, from dom.parse) or a node object
+	// returned by a previous dom.query (it carries an _h field), so queries chain.
+	resolveCtx := func(v otto.Value) *html.Node {
+		if v.IsNumber() {
+			h, _ := v.ToInteger()
+			if n, ok := nodeReg[h]; ok {
+				return n
+			}
+		} else if v.IsObject() {
+			if hv, err := v.Object().Get("_h"); err == nil && hv.IsNumber() {
+				h, _ := hv.ToInteger()
+				if n, ok := nodeReg[h]; ok {
+					return n
+				}
+			}
+		}
+		panic(vm.MakeCustomError("DomError", "first argument must be a dom handle (from dom.parse) or a node returned by a previous dom.query"))
+	}
+	makeNodeObj := func(n *html.Node) map[string]any {
+		s := dom.Summarize(n, 0)
+		m := map[string]any{"tag": s.Tag, "path": s.Path, "_h": register(n)}
+		if s.ID != "" {
+			m["id"] = s.ID
+		}
+		if s.Class != "" {
+			m["class"] = s.Class
+		}
+		if len(s.Attrs) > 0 {
+			m["attrs"] = s.Attrs
+		}
+		if s.Text != "" {
+			m["text"] = s.Text
+		}
+		return m
 	}
 	fsRoot := func(area string) *sandboxfs.Root {
 		switch area {
@@ -316,19 +358,25 @@ func (r *Runner) hostAPI(vm *otto.Otto, rc RunContext) map[string]HostFunc {
 		if err != nil {
 			panic(vm.MakeCustomError("DomError", err.Error()))
 		}
-		nextHandle++
-		docs[nextHandle] = d
-		v, _ := vm.ToValue(nextHandle)
+		h := register(d.RootNode())
+		docs[h] = d
+		v, _ := vm.ToValue(h)
 		return v
 	}
 	api["__dom_query"] = func(call otto.FunctionCall) otto.Value {
-		nodes, err := getDoc(call).Query(call.Argument(1).String(), 0)
+		ctx := resolveCtx(call.Argument(0))
+		nodes, err := dom.QueryNode(ctx, call.Argument(1).String())
 		if err != nil {
 			panic(vm.MakeCustomError("DomError", err.Error()))
 		}
-		return toJS(nodes)
+		out := make([]map[string]any, 0, len(nodes))
+		for _, n := range nodes {
+			out = append(out, makeNodeObj(n))
+		}
+		return toJS(out)
 	}
 	api["__dom_grep"] = func(call otto.FunctionCall) otto.Value {
+		ctx := resolveCtx(call.Argument(0))
 		opts := exportMap(call.Argument(2))
 		gopts := dom.GrepOptions{
 			Regex:      optBool(opts, "regex", false),
@@ -337,15 +385,18 @@ func (r *Runner) hostAPI(vm *otto.Otto, rc RunContext) map[string]HostFunc {
 			MaxMatches: optInt(opts, "maxMatches"),
 			TextChars:  optInt(opts, "textChars"),
 		}
-		nodes, err := getDoc(call).Grep(call.Argument(1).String(), gopts)
+		nodes, err := dom.GrepNode(ctx, call.Argument(1).String(), gopts)
 		if err != nil {
 			panic(vm.MakeCustomError("DomError", err.Error()))
 		}
 		return toJS(nodes)
 	}
+	api["__dom_lists"] = func(call otto.FunctionCall) otto.Value {
+		return toJS(resolveDoc(call).RepeatingGroups(3, 20, 160))
+	}
 	api["__dom_json"] = func(call otto.FunctionCall) otto.Value {
 		opts := exportMap(call.Argument(1))
-		sk, err := getDoc(call).Skeleton(dom.SkelOptions{
+		sk, err := resolveDoc(call).Skeleton(dom.SkelOptions{
 			Selector:    optString(opts, "selector"),
 			MaxDepth:    optIntDefault(opts, "maxDepth", 3),
 			MaxChildren: optInt(opts, "maxChildren"),
@@ -431,8 +482,9 @@ func (r *Runner) hostAPI(vm *otto.Otto, rc RunContext) map[string]HostFunc {
 const bootstrapJS = `
 var dom = {
   parse: function(html){ return __dom_parse(html); },
-  query: function(h, sel){ return __dom_query(h, sel); },
-  grep:  function(h, pat, opts){ return __dom_grep(h, pat, opts || {}); },
+  query: function(ctx, sel){ return __dom_query(ctx, sel); },
+  grep:  function(ctx, pat, opts){ return __dom_grep(ctx, pat, opts || {}); },
+  lists: function(h){ return __dom_lists(h); },
   json:  function(h, opts){ return __dom_json(h, opts || {}); }
 };
 function __mkfs(area){

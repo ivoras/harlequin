@@ -18,9 +18,9 @@ import (
 // webFetchDOMDescription is advertised to the model.
 const webFetchDOMDescription = `
 - Fetches a web page and returns its HTML structure as JSON so you can locate data precisely.
-- Use grep="<text on the page>" to find the deepest element(s) containing that text — each result includes a CSS "path" you can reuse.
-- Use selector="<css>" to return the elements matching a CSS selector.
-- With neither, returns a shallow structural skeleton; narrow down with grep=/selector=.
+- With NO grep/selector, returns "candidate lists" — repeating elements with a ready-to-use CSS selector, a count, and a sample of each. To monitor a list, pick the candidate whose sample is the data you want and use its selector. Also returns a page skeleton.
+- Use grep="<text that appears in an item>" to find the deepest element(s) containing that text — each result includes a CSS "path".
+- Use selector="<css>" to verify a selector returns the full list of items.
 - The full page HTML is saved to a tmp:// handle so you can re-query it with run_js (dom.parse(tmp.read(handle))) without re-fetching.
 - Workflow: use this to discover the path to the data once, then write a small run_js parser that reads that path on every future check — no AI needed after setup.
 `
@@ -122,11 +122,17 @@ func (a *Agent) webFetchDOM(ctx context.Context, rc *runContext, args map[string
 		fmt.Fprintf(&sb, "selector %q matched %d node(s)%s:\n%s", selector, len(nodes),
 			truncNote(len(nodes), len(shown)), marshalCapped(shown))
 	default:
+		// Lead with detected repeating lists — for "monitor a list" this usually
+		// gives the model the selector directly (pick the one whose sample matches
+		// the wanted data).
+		if groups := d.RepeatingGroups(3, 15, 160); len(groups) > 0 {
+			fmt.Fprintf(&sb, "Candidate lists (repeating elements; pick the selector whose sample is the data you want, then use it as the watch selector):\n%s\n\n", marshalCapped(groups))
+		}
 		sk, err := d.Skeleton(dom.SkelOptions{MaxDepth: maxDepth, MaxChildren: 40, Paths: true})
 		if err != nil {
 			return fmt.Sprintf("error: %v", err), nil
 		}
-		fmt.Fprintf(&sb, "Structure (depth %d) — narrow with grep=\"<text>\" or selector=\"<css>\":\n%s", maxDepth, marshalCapped(sk))
+		fmt.Fprintf(&sb, "Page structure (depth %d) — or narrow with grep=\"<text in an item>\" / selector=\"<css>\":\n%s", maxDepth, marshalCapped(sk))
 	}
 	return sb.String(), nil
 }

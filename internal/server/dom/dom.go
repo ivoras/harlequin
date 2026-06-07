@@ -75,6 +75,30 @@ func (d *Doc) Query(selector string, textChars int) ([]Node, error) {
 	return out, nil
 }
 
+// RootNode returns the document's root node, the default context for scoped
+// node queries.
+func (d *Doc) RootNode() *html.Node { return d.root() }
+
+// QueryNode returns the element nodes matching selector within ctx's subtree.
+// It backs the JS sandbox's chainable dom.query (query results are themselves
+// queryable contexts).
+func QueryNode(ctx *html.Node, selector string) ([]*html.Node, error) {
+	m, err := cascadia.Compile(strings.TrimSpace(selector))
+	if err != nil {
+		return nil, fmt.Errorf("invalid selector %q: %w", selector, err)
+	}
+	return cascadia.QueryAll(ctx, m), nil
+}
+
+// Summarize builds a Node summary (stable path + compact metadata + text) for an
+// element node.
+func Summarize(n *html.Node, textChars int) Node {
+	if textChars <= 0 {
+		textChars = defaultTextChars
+	}
+	return summary(n, textChars)
+}
+
 // GrepOptions tunes Grep.
 type GrepOptions struct {
 	// Regex treats the pattern as a regular expression instead of a substring.
@@ -94,11 +118,16 @@ type GrepOptions struct {
 // element — the one that contains the match but whose element children do not —
 // so the path points precisely at the datum rather than at a huge ancestor.
 func (d *Doc) Grep(pattern string, opts GrepOptions) ([]Node, error) {
+	return GrepNode(d.root(), pattern, opts)
+}
+
+// GrepNode runs Grep within ctx's subtree (ctx may be any element node).
+func GrepNode(ctx *html.Node, pattern string, opts GrepOptions) ([]Node, error) {
 	match, err := matcherFor(pattern, opts)
 	if err != nil {
 		return nil, err
 	}
-	root := d.root()
+	root := ctx
 	if root == nil {
 		return nil, nil
 	}
@@ -406,4 +435,97 @@ func truncate(s string, max int) string {
 		return s[:max] + "…"
 	}
 	return s
+}
+
+// GroupCandidate is a detected repeating sibling group — a likely list/table of
+// records (e.g. the rows of items to monitor).
+type GroupCandidate struct {
+	// Selector is a CSS selector (tag + classes) that matches the group's members.
+	Selector string `json:"selector"`
+	// Count is the largest number of matching siblings under a single parent.
+	Count int `json:"count"`
+	// Sample is the text of one member, so the model can recognise the right list.
+	Sample string `json:"sample"`
+}
+
+// RepeatingGroups finds likely lists: elements that share a tag+class signature
+// and recur across the page. It counts each signature's total occurrences
+// document-wide (so it catches both sibling rows and items spread across separate
+// wrapper containers — e.g. one <ul> per record). Returns up to max candidates
+// (count >= minCount), most frequent first, each with a reusable CSS selector and
+// a sample text, so a small model can locate "the list" in one shot.
+func (d *Doc) RepeatingGroups(minCount, max, sampleChars int) []GroupCandidate {
+	if minCount < 2 {
+		minCount = 2
+	}
+	if max <= 0 {
+		max = 12
+	}
+	if sampleChars <= 0 {
+		sampleChars = 120
+	}
+	root := d.root()
+	if root == nil {
+		return nil
+	}
+	counts := map[string]int{}       // signature -> total occurrences in the document
+	first := map[string]*html.Node{} // signature -> first occurrence (for the sample)
+	var walk func(n *html.Node)
+	walk = func(n *html.Node) {
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			if c.Type == html.ElementNode {
+				if sig := signature(c); sig != "" {
+					counts[sig]++
+					if _, ok := first[sig]; !ok {
+						first[sig] = c
+					}
+				}
+				walk(c)
+			}
+		}
+	}
+	walk(root)
+
+	out := make([]GroupCandidate, 0, len(counts))
+	for sig, cnt := range counts {
+		if cnt < minCount {
+			continue
+		}
+		sample := truncate(fullText(first[sig]), sampleChars)
+		if strings.TrimSpace(sample) == "" {
+			continue // structural/empty repeats (spacers, icons) aren't content lists
+		}
+		out = append(out, GroupCandidate{Selector: sig, Count: cnt, Sample: sample})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Selector < out[j].Selector
+	})
+	if len(out) > max {
+		out = out[:max]
+	}
+	return out
+}
+
+// signature builds a CSS selector token (tag + up to 3 classes) for an element.
+// Class-less elements return "" (too generic to be a useful list signature),
+// except list-ish containers (li/tr/article) which are kept as a tag selector.
+func signature(n *html.Node) string {
+	tag := n.Data
+	cls := strings.Fields(getAttr(n, "class"))
+	if len(cls) == 0 {
+		// Class-less rows/articles are genuine record containers; class-less <li>
+		// is almost always nav/menu noise, so require a class for it.
+		switch tag {
+		case "tr", "article":
+			return tag
+		}
+		return ""
+	}
+	if len(cls) > 3 {
+		cls = cls[:3]
+	}
+	return tag + "." + strings.Join(cls, ".")
 }
