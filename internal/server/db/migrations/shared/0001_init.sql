@@ -1,5 +1,5 @@
--- Harlequin shared (org-level) database: shared memories, documents, org skills.
--- Scope is implicit: every row here is org/shared-scoped.
+-- Harlequin shared (org-level) database: shared memories, documents, org skills,
+-- org-level MCP servers. Scope is implicit: every row here is org/shared-scoped.
 
 CREATE TABLE IF NOT EXISTS memories (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -26,6 +26,19 @@ CREATE TABLE IF NOT EXISTS memory_conflicts (
     CHECK (memory_a < memory_b),
     UNIQUE (memory_a, memory_b)
 );
+
+-- Structured (key, value) slots extracted from shared memories, used as a
+-- precise duplicate/conflict signal. memory_id references a memory in this same
+-- file (no FK: memory_slots_vec rows are cleaned up in Go, like FTS/vector).
+CREATE TABLE IF NOT EXISTS memory_slots (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    memory_id  INTEGER NOT NULL,
+    key        TEXT NOT NULL,
+    value      TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_memory_slots_key ON memory_slots(key);
+CREATE INDEX IF NOT EXISTS idx_memory_slots_memory ON memory_slots(memory_id);
 
 -- Org RAG corpus. created_by references a user in the system database (no FK).
 CREATE TABLE IF NOT EXISTS documents (
@@ -62,3 +75,21 @@ CREATE TABLE IF NOT EXISTS skill_override_files (
     content     BLOB NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_skill_override_files_override ON skill_override_files(override_id);
+
+-- Org-level (shared) MCP server registrations. Tools advertised by these servers
+-- become available to every user. Header credentials (auth_type='header') are an
+-- org-wide service credential, encrypted at rest. OAuth servers store no token
+-- here: each user authorizes individually (tokens live in their user.db).
+CREATE TABLE IF NOT EXISTS mcp_servers (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT NOT NULL UNIQUE,
+    url             TEXT NOT NULL,
+    transport       TEXT NOT NULL DEFAULT 'http',   -- 'http' (Streamable HTTP)
+    auth_type       TEXT NOT NULL DEFAULT 'none',    -- 'none' | 'header' | 'oauth'
+    auth_secret_enc BLOB,                            -- header auth: encrypted JSON {header,value}
+    oauth_meta      TEXT,                            -- oauth: non-secret JSON config
+    enabled         INTEGER NOT NULL DEFAULT 1,
+    created_by      INTEGER,
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
