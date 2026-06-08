@@ -20,17 +20,18 @@ func IsOwner(role string) bool { return role == RoleOwner }
 // reading the audit log, publishing skills, and viewing other users' data.
 func IsElevated(role string) bool { return role == RoleOwner || role == RoleAdmin }
 
-// User is a public representation of an account (no password hash).
+// User is a public representation of an account (no password hash). The login
+// identity is the email address.
 type User struct {
 	ID        int64     `json:"id"`
-	Username  string    `json:"username"`
+	Email     string    `json:"email"`
 	Role      string    `json:"role"` // "owner" | "admin" | "user"
 	CreatedAt time.Time `json:"created_at"`
 }
 
 // LoginRequest is the body of POST /auth/login.
 type LoginRequest struct {
-	Username string `json:"username"`
+	Email    string `json:"email"`
 	Password string `json:"password"`
 }
 
@@ -42,9 +43,35 @@ type LoginResponse struct {
 
 // CreateUserRequest is the body of POST /users (owner only).
 type CreateUserRequest struct {
-	Username string `json:"username"`
+	Email    string `json:"email"`
 	Password string `json:"password"`
 	Role     string `json:"role"`
+}
+
+// RegisterRequest is the body of POST /auth/register: it starts self-registration
+// by emailing a verification magic code.
+type RegisterRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+// RegisterResponse acknowledges that a verification code was sent.
+type RegisterResponse struct {
+	Status string `json:"status"` // "verification_sent"
+	Email  string `json:"email"`
+}
+
+// VerifyRequest is the body of POST /auth/verify: it completes registration by
+// presenting the emailed magic code, returning a login token on success.
+type VerifyRequest struct {
+	Email string `json:"email"`
+	Code  string `json:"code"`
+}
+
+// RegistrationStatus is returned by GET /auth/registration so clients can show or
+// hide the self-registration UI.
+type RegistrationStatus struct {
+	Enabled bool `json:"enabled"`
 }
 
 // HeaderInterface is the request header by which a REST client announces which

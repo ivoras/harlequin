@@ -82,9 +82,9 @@ func printUsage() {
 
 Usage:
   harlequin-server [server flags]
-  harlequin-server createuser [flags] <username>
-  harlequin-server changepassword [flags] <username>
-  harlequin-server deleteuser [flags] <username>
+  harlequin-server createuser [flags] <email>
+  harlequin-server changepassword [flags] <email>
+  harlequin-server deleteuser [flags] <email>
   harlequin-server listusers [flags]
   harlequin-server print-trajectory [flags] <file.jsonl>
   harlequin-server backfill-slot-keys [flags]
@@ -120,11 +120,11 @@ print-trajectory flags:
 
 Examples:
   harlequin-server --config server.yaml
-  harlequin-server createuser --owner --password secret owner
-  harlequin-server createuser --admin --password secret alice
-  harlequin-server changepassword alice --password newsecret
+  harlequin-server createuser --owner --password secret owner@example.com
+  harlequin-server createuser --admin --password secret alice@example.com
+  harlequin-server changepassword alice@example.com --password newsecret
   harlequin-server listusers
-  harlequin-server deleteuser alice
+  harlequin-server deleteuser alice@example.com
   harlequin-server print-trajectory data/sessions/00001.00042.jsonl
   harlequin-server print-trajectory -v --no-color trajectory.jsonl
 `)
@@ -135,7 +135,7 @@ type cmdFlags struct {
 	password string
 	admin    bool
 	owner    bool
-	username string
+	email string
 }
 
 func parseCmdFlags(args []string, allowAdmin bool) (cmdFlags, error) {
@@ -169,10 +169,10 @@ func parseCmdFlags(args []string, allowAdmin bool) (cmdFlags, error) {
 			if strings.HasPrefix(a, "-") {
 				return f, fmt.Errorf("unknown flag %s", a)
 			}
-			if f.username != "" {
+			if f.email != "" {
 				return f, fmt.Errorf("unexpected argument %q", a)
 			}
-			f.username = a
+			f.email = a
 		}
 	}
 	return f, nil
@@ -184,8 +184,8 @@ func runCreateUser(args []string) {
 		fmt.Fprintln(os.Stderr, "createuser:", err)
 		os.Exit(2)
 	}
-	if f.username == "" {
-		fmt.Fprintln(os.Stderr, "createuser: username required")
+	if f.email == "" {
+		fmt.Fprintln(os.Stderr, "createuser: email required")
 		printUsage()
 		os.Exit(2)
 	}
@@ -201,14 +201,14 @@ func runCreateUser(args []string) {
 	case f.admin:
 		role = types.RoleAdmin
 	}
-	u, err := store.auth.CreateUser(context.Background(), f.username, pw, role)
+	u, err := store.auth.CreateUser(context.Background(), f.email, pw, role)
 	if err != nil {
 		if errors.Is(err, auth.ErrUserExists) {
-			log.Fatalf("createuser: user %q already exists", f.username)
+			log.Fatalf("createuser: user %q already exists", f.email)
 		}
 		log.Fatalf("createuser: %v", err)
 	}
-	fmt.Printf("created user %s (id=%d, role=%s)\n", u.Username, u.ID, u.Role)
+	fmt.Printf("created user %s (id=%d, role=%s)\n", u.Email, u.ID, u.Role)
 }
 
 func runChangePassword(args []string) {
@@ -217,8 +217,8 @@ func runChangePassword(args []string) {
 		fmt.Fprintln(os.Stderr, "changepassword:", err)
 		os.Exit(2)
 	}
-	if f.username == "" {
-		fmt.Fprintln(os.Stderr, "changepassword: username required")
+	if f.email == "" {
+		fmt.Fprintln(os.Stderr, "changepassword: email required")
 		printUsage()
 		os.Exit(2)
 	}
@@ -227,13 +227,13 @@ func runChangePassword(args []string) {
 	store := openAuthStore(f.config)
 	defer store.db.Close()
 
-	if err := store.auth.ChangePassword(context.Background(), f.username, pw); err != nil {
+	if err := store.auth.ChangePassword(context.Background(), f.email, pw); err != nil {
 		if errors.Is(err, auth.ErrUserNotFound) {
-			log.Fatalf("changepassword: user %q not found", f.username)
+			log.Fatalf("changepassword: user %q not found", f.email)
 		}
 		log.Fatalf("changepassword: %v", err)
 	}
-	fmt.Printf("password changed for %s (existing API tokens revoked)\n", f.username)
+	fmt.Printf("password changed for %s (existing API tokens revoked)\n", f.email)
 }
 
 func runDeleteUser(args []string) {
@@ -242,8 +242,8 @@ func runDeleteUser(args []string) {
 		fmt.Fprintln(os.Stderr, "deleteuser:", err)
 		os.Exit(2)
 	}
-	if f.username == "" {
-		fmt.Fprintln(os.Stderr, "deleteuser: username required")
+	if f.email == "" {
+		fmt.Fprintln(os.Stderr, "deleteuser: email required")
 		printUsage()
 		os.Exit(2)
 	}
@@ -251,19 +251,19 @@ func runDeleteUser(args []string) {
 	store := openAuthStore(f.config)
 	defer store.db.Close()
 
-	id, err := store.auth.DeleteUser(context.Background(), f.username)
+	id, err := store.auth.DeleteUser(context.Background(), f.email)
 	if err != nil {
 		if errors.Is(err, auth.ErrUserNotFound) {
-			log.Fatalf("deleteuser: user %q not found", f.username)
+			log.Fatalf("deleteuser: user %q not found", f.email)
 		}
 		log.Fatalf("deleteuser: %v", err)
 	}
 	// Remove the user's per-user database and uploaded files.
 	dir := storage.UserDir(store.dataDir, id)
 	if err := os.RemoveAll(dir); err != nil {
-		log.Printf("deleteuser: removed user %q (id=%d) but failed to delete %s: %v", f.username, id, dir, err)
+		log.Printf("deleteuser: removed user %q (id=%d) but failed to delete %s: %v", f.email, id, dir, err)
 	} else {
-		fmt.Printf("deleted user %s (id=%d) and its data directory\n", f.username, id)
+		fmt.Printf("deleted user %s (id=%d) and its data directory\n", f.email, id)
 	}
 }
 
@@ -273,8 +273,8 @@ func runListUsers(args []string) {
 		fmt.Fprintln(os.Stderr, "listusers:", err)
 		os.Exit(2)
 	}
-	if f.username != "" {
-		fmt.Fprintln(os.Stderr, "listusers: unexpected argument", f.username)
+	if f.email != "" {
+		fmt.Fprintln(os.Stderr, "listusers: unexpected argument", f.email)
 		printUsage()
 		os.Exit(2)
 	}
@@ -290,9 +290,9 @@ func runListUsers(args []string) {
 		fmt.Println("no users")
 		return
 	}
-	fmt.Printf("%-5s  %-20s  %-6s  %s\n", "ID", "USERNAME", "ROLE", "CREATED")
+	fmt.Printf("%-5s  %-20s  %-6s  %s\n", "ID", "EMAIL", "ROLE", "CREATED")
 	for _, u := range users {
-		fmt.Printf("%-5d  %-20s  %-6s  %s\n", u.ID, u.Username, u.Role, u.CreatedAt.UTC().Format("2006-01-02T15:04Z"))
+		fmt.Printf("%-5d  %-20s  %-6s  %s\n", u.ID, u.Email, u.Role, u.CreatedAt.UTC().Format("2006-01-02T15:04Z"))
 	}
 }
 
@@ -302,8 +302,8 @@ func runBackfillSlotKeys(args []string) {
 		fmt.Fprintln(os.Stderr, "backfill-slot-keys:", err)
 		os.Exit(2)
 	}
-	if f.username != "" {
-		fmt.Fprintln(os.Stderr, "backfill-slot-keys: unexpected argument", f.username)
+	if f.email != "" {
+		fmt.Fprintln(os.Stderr, "backfill-slot-keys: unexpected argument", f.email)
 		printUsage()
 		os.Exit(2)
 	}

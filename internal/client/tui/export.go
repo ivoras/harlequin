@@ -62,7 +62,7 @@ func formatSessionMarkdown(m *Model, blocks []roleBlock) string {
 	sb.WriteString("# Harlequin session\n\n")
 	fmt.Fprintf(&sb, "- **Exported:** %s\n", now)
 	if m.user != nil {
-		fmt.Fprintf(&sb, "- **User:** %s\n", m.user.Username)
+		fmt.Fprintf(&sb, "- **User:** %s\n", m.user.Email)
 	}
 	if m.conversationID != 0 {
 		fmt.Fprintf(&sb, "- **Conversation ID:** %d\n", m.conversationID)

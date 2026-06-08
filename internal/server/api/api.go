@@ -16,6 +16,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/conversation"
 	"github.com/ivoras/harlequin/internal/server/cron"
 	"github.com/ivoras/harlequin/internal/server/documents"
+	"github.com/ivoras/harlequin/internal/server/email"
 	"github.com/ivoras/harlequin/internal/server/mcp"
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/notify"
@@ -47,6 +48,7 @@ type Server struct {
 	CronSched     *cron.Scheduler
 	UserConfig    *userconfig.Store
 	Presence      *presence.Tracker
+	Email         *email.Sender
 }
 
 // Router builds the chi router.
@@ -59,6 +61,11 @@ func (s *Server) Router() http.Handler {
 
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/auth/login", s.handleLogin)
+		// Public self-registration (gated by config; the handlers themselves
+		// enforce auth.allow_registration).
+		r.Get("/auth/registration", s.handleRegistrationStatus)
+		r.Post("/auth/register", s.handleRegister)
+		r.Post("/auth/verify", s.handleVerify)
 		// OAuth redirect target for MCP authorization (browser-facing; the state
 		// parameter authenticates the request, so it is outside the bearer group).
 		if s.MCP != nil {

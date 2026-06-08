@@ -206,7 +206,7 @@
       <header><strong>Menu</strong><span class="spacer"></span>
         <button class="ghost" onclick={() => (menu = false)}>Close</button></header>
       <div class="body list">
-        <div class="muted small">Signed in as {$user.username} ({$user.role})</div>
+        <div class="muted small">Signed in as {$user.email} ({$user.role})</div>
         <div class="row" style="flex-wrap:wrap; gap:8px;">
           {#each moreViews as v}
             <button onclick={() => { view.set(v); menu = false; }}>{v}</button>

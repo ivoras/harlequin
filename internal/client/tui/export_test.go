@@ -25,7 +25,7 @@ func TestFormatSessionMarkdown_header(t *testing.T) {
 	t.Parallel()
 	m := &Model{
 		cfg:            &clientcfg.Config{ServerURL: "http://localhost:8080"},
-		user:           &types.User{Username: "alice"},
+		user:           &types.User{Email: "alice"},
 		conversationID: 7,
 		blocks:         []roleBlock{{role: "user", text: "hi"}},
 	}

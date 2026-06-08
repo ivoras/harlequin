@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ivoras/harlequin/internal/server/auth"
+	"github.com/ivoras/harlequin/internal/server/email"
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
@@ -20,7 +22,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	token, user, err := s.Auth.Login(r.Context(), req.Username, req.Password)
+	token, user, err := s.Auth.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
 			writeErr(w, http.StatusUnauthorized, "invalid credentials")
@@ -30,7 +32,90 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Storage.WithUser(r.Context(), user.ID, func(udb *sql.DB) error {
-		s.Audit.Log(r.Context(), udb, "login", user.Username, nil)
+		s.Audit.Log(r.Context(), udb, "login", user.Email, nil)
+		s.ensureOnboarding(r.Context(), udb, user.ID)
+		return nil
+	})
+	writeJSON(w, http.StatusOK, types.LoginResponse{Token: token, User: *user})
+}
+
+// handleRegistrationStatus reports whether self-registration is enabled, so
+// clients can show or hide the registration UI.
+func (s *Server) handleRegistrationStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, types.RegistrationStatus{Enabled: s.Cfg.Auth.AllowRegistrationValue()})
+}
+
+// handleRegister starts self-registration: it validates the email, stores a
+// pending registration, and emails (or logs) a verification magic code.
+func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
+	if !s.Cfg.Auth.AllowRegistrationValue() {
+		writeErr(w, http.StatusForbidden, "registration is disabled")
+		return
+	}
+	var req types.RegisterRequest
+	if err := decode(r, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	addr := strings.ToLower(strings.TrimSpace(req.Email))
+	if !email.ValidAddress(addr) {
+		writeErr(w, http.StatusBadRequest, "invalid email address")
+		return
+	}
+	if len(req.Password) < 8 {
+		writeErr(w, http.StatusBadRequest, "password must be at least 8 characters")
+		return
+	}
+	code, err := s.Auth.StartRegistration(r.Context(), addr, req.Password)
+	if err != nil {
+		if errors.Is(err, auth.ErrUserExists) {
+			writeErr(w, http.StatusConflict, "an account with that email already exists")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	body := "Your Harlequin verification code is: " + code + "\n\nIt expires in 15 minutes."
+	if err := s.Email.Send(addr, "Harlequin verification code", body); err != nil {
+		writeErr(w, http.StatusInternalServerError, "failed to send verification code")
+		return
+	}
+	writeJSON(w, http.StatusOK, types.RegisterResponse{Status: "verification_sent", Email: addr})
+}
+
+// handleVerify completes registration with the emailed code, returning a login
+// token on success (auto-login).
+func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
+	if !s.Cfg.Auth.AllowRegistrationValue() {
+		writeErr(w, http.StatusForbidden, "registration is disabled")
+		return
+	}
+	var req types.VerifyRequest
+	if err := decode(r, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	addr := strings.ToLower(strings.TrimSpace(req.Email))
+	token, user, err := s.Auth.VerifyRegistration(r.Context(), addr, strings.TrimSpace(req.Code))
+	if err != nil {
+		switch {
+		case errors.Is(err, auth.ErrNoPendingRegistration):
+			writeErr(w, http.StatusNotFound, "no pending registration for that email")
+		case errors.Is(err, auth.ErrCodeExpired):
+			writeErr(w, http.StatusGone, "verification code expired — please register again")
+		case errors.Is(err, auth.ErrTooManyAttempts):
+			writeErr(w, http.StatusTooManyRequests, "too many attempts — please register again")
+		case errors.Is(err, auth.ErrInvalidCredentials):
+			writeErr(w, http.StatusUnauthorized, "incorrect verification code")
+		case errors.Is(err, auth.ErrUserExists):
+			writeErr(w, http.StatusConflict, "an account with that email already exists")
+		default:
+			writeErr(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	_ = s.Storage.WithUser(r.Context(), user.ID, func(udb *sql.DB) error {
+		s.Audit.Log(r.Context(), udb, "register", user.Email, nil)
 		s.ensureOnboarding(r.Context(), udb, user.ID)
 		return nil
 	})
@@ -59,7 +144,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	user, err := s.Auth.CreateUser(r.Context(), req.Username, req.Password, req.Role)
+	user, err := s.Auth.CreateUser(r.Context(), req.Email, req.Password, req.Role)
 	if err != nil {
 		if errors.Is(err, auth.ErrUserExists) {
 			writeErr(w, http.StatusConflict, "user exists")

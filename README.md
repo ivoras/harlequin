@@ -89,10 +89,11 @@ cp configs/server.example.yaml server.yaml    # adjust LLM/embeddings endpoints
 ```
 
 On first start the server creates its SQLite databases and deploys the baked-in skills into
-`<data_dir>/skills/`. Create the first user — make it an **owner**, the highest role:
+`<data_dir>/skills/`. Accounts are identified by **email address**. Create the first
+user — make it an **owner**, the highest role:
 
 ```sh
-./bin/harlequin-server createuser --config server.yaml --owner --password secret owner
+./bin/harlequin-server createuser --config server.yaml --owner --password secret owner@example.com
 ```
 
 #### Roles
@@ -114,7 +115,35 @@ memory instead.
 Change a user's password (revokes their existing API tokens):
 
 ```sh
-./bin/harlequin-server changepassword alice --config server.yaml --password newsecret
+./bin/harlequin-server changepassword alice@example.com --config server.yaml --password newsecret
+```
+
+#### Self-registration
+
+Users can also create their own (role `user`) accounts from the TUI or web UI.
+Registration is a two-step, email-verified flow:
+
+1. **Register** — submit an email + password; the server emails a 6-digit magic
+   code (valid 15 minutes) and holds the signup as *pending* until it's verified.
+2. **Verify** — submit the code; the account is created and you're logged in.
+
+In the TUI, type `register` at the email prompt. In the web UI, use **Create an
+account** on the sign-in screen.
+
+Self-registration is controlled by `auth.allow_registration` (default `true`; set
+`false` to require owner-created accounts). Code delivery uses the `email` SMTP
+settings — when `smtp_host` is empty the code is written to the **server console
+log** instead, so the flow works in development without a mail server:
+
+```yaml
+auth:
+  allow_registration: true
+email:
+  smtp_host: smtp.example.com   # empty -> code is logged to the console
+  smtp_port: 587                # 465 = implicit TLS; otherwise STARTTLS
+  smtp_username: ""
+  smtp_password_env: SMTP_PASSWORD  # env var holding the password (set it in .env / the environment)
+  from: ""                      # defaults to smtp_username
 ```
 
 ### Running the client
