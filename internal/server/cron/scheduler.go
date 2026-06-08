@@ -76,7 +76,7 @@ func (s *Scheduler) tick(ctx context.Context, now time.Time) {
 				continue
 			}
 			_ = s.store.Reschedule(ctx, udb, job.ID, next)
-			s.launch(userID, job)
+			s.launch(userID, job, "scheduled")
 		}
 		return nil
 	})
@@ -85,13 +85,16 @@ func (s *Scheduler) tick(ctx context.Context, now time.Time) {
 	}
 }
 
-// launch starts a job in its own goroutine unless it is already running.
-func (s *Scheduler) launch(userID int64, job types.CronJob) {
+// launch starts a job in its own goroutine unless it is already running. trigger
+// describes what dispatched it ("scheduled" or "manual") and is logged so the
+// console shows every task as it begins executing.
+func (s *Scheduler) launch(userID int64, job types.CronJob, trigger string) {
 	key := fmt.Sprintf("%d:%d", userID, job.ID)
 	if _, busy := s.running.LoadOrStore(key, struct{}{}); busy {
-		log.Printf("cron: skipping job %d (user %d): previous run still in flight", job.ID, userID)
+		log.Printf("cron: skipping job %d (%q) for user %d (%s): previous run still in flight", job.ID, job.Name, userID, trigger)
 		return
 	}
+	log.Printf("cron: starting job %d (%q) for user %d (%s, kind=%s)", job.ID, job.Name, userID, trigger, job.Kind)
 	go func() {
 		defer s.running.Delete(key)
 		s.run(context.Background(), userID, job)
@@ -111,7 +114,7 @@ func (s *Scheduler) RunNow(ctx context.Context, userID, jobID int64) error {
 	}); err != nil {
 		return err
 	}
-	s.launch(userID, job)
+	s.launch(userID, job, "manual")
 	return nil
 }
 
