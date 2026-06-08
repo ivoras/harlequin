@@ -29,6 +29,15 @@ func (m *Model) renderHeaderLine() string {
 	// The whole zone background fades while the model is thinking (the spinner and
 	// "Thinking…" label themselves live on the latest transcript entry now).
 	bg := m.headerZoneBG()
+	// Show the session title (set by the server's auto-titler) next to the brand,
+	// budget-limited so the context meter on the right always fits.
+	if t := strings.TrimSpace(m.convTitle); t != "" {
+		budget := m.width/2 - lipgloss.Width(left)
+		if budget > 4 {
+			label := " " + ansi.Truncate(t, budget, "…") + " "
+			left += m.styles.ContextMuted.Background(bg).Render(label)
+		}
+	}
 	leftW := lipgloss.Width(left)
 	zoneW := m.width - leftW
 	if zoneW < 1 {

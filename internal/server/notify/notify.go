@@ -29,21 +29,29 @@ func (s *Store) Create(ctx context.Context, db *sql.DB, n types.Notification) (i
 	if n.AutoRun {
 		auto = 1
 	}
+	var convID any
+	if n.ConversationID != nil {
+		convID = *n.ConversationID
+	}
 	res, err := db.ExecContext(ctx,
-		`INSERT INTO notifications(kind, title, description, prompt, auto_run, status)
-		 VALUES (?,?,?,?,?,?)`,
-		nullIfEmpty(n.Kind), n.Title, n.Description, nullIfEmpty(n.Prompt), auto, StatusPending)
+		`INSERT INTO notifications(kind, title, description, prompt, auto_run, status, conversation_id, target_interface)
+		 VALUES (?,?,?,?,?,?,?,?)`,
+		nullIfEmpty(n.Kind), n.Title, n.Description, nullIfEmpty(n.Prompt), auto, StatusPending, convID, nullIfEmpty(n.Interface))
 	if err != nil {
 		return 0, err
 	}
 	return res.LastInsertId()
 }
 
-// ListPending returns the user's pending notifications, oldest first.
-func (s *Store) ListPending(ctx context.Context, db *sql.DB) ([]types.Notification, error) {
+// ListPending returns the user's pending notifications, oldest first, that target
+// the given interface (or are broadcast — target_interface NULL). Pass "" to get
+// only broadcasts.
+func (s *Store) ListPending(ctx context.Context, db *sql.DB, iface string) ([]types.Notification, error) {
 	rows, err := db.QueryContext(ctx,
-		`SELECT id, kind, title, description, prompt, auto_run, status
-		 FROM notifications WHERE status = ? ORDER BY id`, StatusPending)
+		`SELECT id, kind, title, description, prompt, auto_run, status, conversation_id, target_interface
+		 FROM notifications
+		 WHERE status = ? AND (target_interface IS NULL OR target_interface = ?)
+		 ORDER BY id`, StatusPending, iface)
 	if err != nil {
 		return nil, err
 	}
@@ -51,14 +59,20 @@ func (s *Store) ListPending(ctx context.Context, db *sql.DB) ([]types.Notificati
 	var out []types.Notification
 	for rows.Next() {
 		var (
-			n            types.Notification
-			kind, prompt sql.NullString
-			auto         int
+			n               types.Notification
+			kind, prompt    sql.NullString
+			auto            int
+			convID          sql.NullInt64
+			targetInterface sql.NullString
 		)
-		if err := rows.Scan(&n.ID, &kind, &n.Title, &n.Description, &prompt, &auto, &n.Status); err != nil {
+		if err := rows.Scan(&n.ID, &kind, &n.Title, &n.Description, &prompt, &auto, &n.Status, &convID, &targetInterface); err != nil {
 			return nil, err
 		}
 		n.Kind, n.Prompt, n.AutoRun = kind.String, prompt.String, auto != 0
+		if convID.Valid {
+			n.ConversationID = &convID.Int64
+		}
+		n.Interface = targetInterface.String
 		out = append(out, n)
 	}
 	return out, rows.Err()

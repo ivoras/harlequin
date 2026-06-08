@@ -70,6 +70,7 @@ type Model struct {
 	streaming         strings.Builder // in-flight assistant response text
 
 	conversationID int64
+	convTitle      string // current session's title, shown in the header (auto-titled)
 	currentHat     string // hat worn by new conversations / the active one
 	slashSel       int    // highlighted item in the slash-command autocomplete menu
 	user           *types.User

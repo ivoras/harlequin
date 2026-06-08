@@ -55,6 +55,38 @@ func (s *Store) SetHat(ctx context.Context, db *sql.DB, id int64, hat string) er
 	return err
 }
 
+// SetTitle replaces a conversation's title (used by the auto-titler). It does not
+// bump updated_at, so a system-generated title doesn't reorder the recents list.
+func (s *Store) SetTitle(ctx context.Context, db *sql.DB, id int64, title string) error {
+	_, err := db.ExecContext(ctx, `UPDATE conversations SET title = ? WHERE id = ?`, title, id)
+	return err
+}
+
+// UntitledWithUserMessage returns conversations still carrying a generic/empty
+// title that have at least one user message — the candidates for auto-titling.
+// Internal (Cron) sessions are excluded.
+func (s *Store) UntitledWithUserMessage(ctx context.Context, db *sql.DB) ([]types.Conversation, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT id, title, interface FROM conversations
+		 WHERE (title = '' OR title = 'Session' OR title = 'New conversation')
+		   AND interface <> 'Cron'
+		   AND EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = conversations.id AND m.role = 'user')
+		 ORDER BY id DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []types.Conversation
+	for rows.Next() {
+		var c types.Conversation
+		if err := rows.Scan(&c.ID, &c.Title, &c.Interface); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 func nullableStr(s string) any {
 	if s == "" {
 		return nil

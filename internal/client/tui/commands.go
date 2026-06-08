@@ -88,6 +88,7 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 				return errMsg{err}
 			}
 			m.conversationID = conv.ID
+			m.convTitle = ""
 			m.blocks = nil
 			m.appendConnectedStatus()
 			if m.currentHat != "" {
