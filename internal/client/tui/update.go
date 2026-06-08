@@ -55,6 +55,15 @@ func (m *Model) handleNotifications(list []types.Notification) tea.Cmd {
 	var cmds []tea.Cmd
 	ranOne := false
 	for _, n := range list {
+		// Control notifications: a session-title update refreshes the header for the
+		// matching conversation; it is acked but never shown as a chat message.
+		if n.Kind == types.NotifyKindSessionTitle {
+			if n.ConversationID != nil && *n.ConversationID == m.conversationID {
+				m.convTitle = n.Title
+			}
+			cmds = append(cmds, m.ackNotifyCmd(n.ID))
+			continue
+		}
 		autoRun := n.AutoRun && strings.TrimSpace(n.Prompt) != ""
 		if autoRun && ranOne {
 			continue // run one prompt at a time; pick up the rest next tick
@@ -117,6 +126,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.phase = phaseChat
 		m.user = msg.user
 		m.conversationID = msg.conversationID
+		m.convTitle = ""
 		m.input.Placeholder = "Type a message, or /help for commands"
 		m.blocks = nil
 		m.appendConnectedStatus()

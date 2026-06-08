@@ -27,6 +27,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/mdtmpl"
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/notify"
+	"github.com/ivoras/harlequin/internal/server/presence"
 	"github.com/ivoras/harlequin/internal/server/secrets"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/skills"
@@ -167,6 +168,7 @@ func main() {
 
 	notifyStore := notify.NewStore()
 	cronStore := cron.NewStore()
+	presenceTracker := presence.New()
 
 	ag := &agent.Agent{
 		Provider:            router,
@@ -188,6 +190,8 @@ func main() {
 		MemDefaultTTL:       cfg.Memory.DefaultTTL.D(),
 		DataDir:             cfg.DataDir,
 		Cron:                cronStore,
+		Notify:              notifyStore,
+		Presence:            presenceTracker,
 		RecordUsage: func(ctx context.Context, userDB *sql.DB, userID int64, conversationID *int64, provider, model string, u llm.Usage) {
 			_ = usageStore.Record(ctx, userDB, conversationID, provider, model, u.PromptTokens, u.CompletionTokens)
 		},
@@ -211,6 +215,7 @@ func main() {
 		Cron:          cronStore,
 		CronSched:     cron.NewScheduler(store, cronStore, ag, notifyStore),
 		UserConfig:    userconfig.NewStore(),
+		Presence:      presenceTracker,
 	}
 
 	// Queue onboarding for any existing users who still need it.
@@ -222,6 +227,9 @@ func main() {
 	// Start the cron scheduler (1-minute granularity; each due job runs in its
 	// own goroutine).
 	srv.CronSched.Start(context.Background())
+
+	// Background session auto-titler: names idle, generically-titled sessions.
+	go ag.RunAutoTitle(context.Background(), cfg.Agent.AutoTitle.EnabledValue())
 
 	httpServer := &http.Server{
 		Addr:    cfg.Server.Addr,

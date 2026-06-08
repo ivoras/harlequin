@@ -19,6 +19,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/mcp"
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/notify"
+	"github.com/ivoras/harlequin/internal/server/presence"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/skills"
 	"github.com/ivoras/harlequin/internal/server/storage"
@@ -45,6 +46,7 @@ type Server struct {
 	Cron          *cron.Store
 	CronSched     *cron.Scheduler
 	UserConfig    *userconfig.Store
+	Presence      *presence.Tracker
 }
 
 // Router builds the chi router.
@@ -66,6 +68,7 @@ func (s *Server) Router() http.Handler {
 		// Authenticated routes.
 		r.Group(func(r chi.Router) {
 			r.Use(s.Auth.Middleware)
+			r.Use(s.touchPresence)
 
 			r.Post("/auth/logout", s.handleLogout)
 			r.Get("/me", s.handleMe)
@@ -167,6 +170,20 @@ func reqInterface(r *http.Request) string {
 		return v
 	}
 	return types.InterfaceTUI
+}
+
+// touchPresence records each authenticated request as a heartbeat for the
+// caller's (user, interface), so background tasks can tell which interfaces are
+// live. Runs after the auth middleware (user is in context).
+func (s *Server) touchPresence(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.Presence != nil {
+			if u, ok := auth.UserFromContext(r.Context()); ok {
+				s.Presence.Touch(u.ID, reqInterface(r))
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // requireElevated allows owners and admins (org-wide administrative actions).

@@ -116,6 +116,20 @@ type AgentConfig struct {
 	WebFetch WebFetchConfig `yaml:"web_fetch"`
 	// ReportTiming shows per-turn model operation timing (PP/TG/clock) in chat.
 	ReportTiming bool `yaml:"report_timing"`
+	// AutoTitle controls the background task that titles idle, generically-named
+	// sessions using the default LLM.
+	AutoTitle AutoTitleConfig `yaml:"auto_title"`
+}
+
+// AutoTitleConfig controls the background session auto-titler.
+type AutoTitleConfig struct {
+	// Enabled turns the auto-titler on (default true when omitted).
+	Enabled *bool `yaml:"enabled"`
+}
+
+// EnabledValue reports whether the auto-titler runs (default true).
+func (a AutoTitleConfig) EnabledValue() bool {
+	return a.Enabled == nil || *a.Enabled
 }
 
 // WebFetchConfig controls the WebFetch tool.

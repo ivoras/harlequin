@@ -123,6 +123,11 @@ type MCPServer struct {
 	Tools []MCPTool `json:"tools,omitempty"`
 }
 
+// NotifyKindSessionTitle is a control notification telling the client a session's
+// title changed (e.g. by the auto-titler): re-read/apply it for ConversationID.
+// The new title is carried in Title. Not shown as a chat message.
+const NotifyKindSessionTitle = "session-title"
+
 // Notification is a server→user message stored in the user's database. It may
 // carry a prompt the client can run, optionally automatically (AutoRun).
 type Notification struct {
@@ -133,6 +138,12 @@ type Notification struct {
 	Prompt      string `json:"prompt,omitempty"`
 	AutoRun     bool   `json:"auto_run"`
 	Status      string `json:"status"`
+	// ConversationID targets a specific session (set for control kinds like
+	// session-title); nil for general notifications.
+	ConversationID *int64 `json:"conversation_id,omitempty"`
+	// Interface targets a specific interface (e.g. "TUI"): only clients announcing
+	// it receive the notification. Empty = broadcast to any interface.
+	Interface string `json:"interface,omitempty"`
 }
 
 // Cron job kinds.

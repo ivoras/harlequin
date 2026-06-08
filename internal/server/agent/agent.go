@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/ivoras/harlequin/internal/server/conversation"
@@ -18,6 +19,8 @@ import (
 	"github.com/ivoras/harlequin/internal/server/llm"
 	"github.com/ivoras/harlequin/internal/server/mcp"
 	"github.com/ivoras/harlequin/internal/server/memory"
+	"github.com/ivoras/harlequin/internal/server/notify"
+	"github.com/ivoras/harlequin/internal/server/presence"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/skills"
 	"github.com/ivoras/harlequin/internal/server/storage"
@@ -39,6 +42,17 @@ type Agent struct {
 	MCP           *mcp.Manager
 	// Cron, if set, lets the agent schedule/list/delete the user's cron jobs.
 	Cron CronStore
+	// Notify, if set, lets background tasks (e.g. the auto-titler) raise
+	// notifications for the client.
+	Notify *notify.Store
+	// Presence, if set, tells background tasks which (user, interface) pairs are
+	// live, so they only notify connected interfaces.
+	Presence *presence.Tracker
+
+	// inFlight counts agent turns currently using the LLM (user chats and cron
+	// skill runs). The auto-titler only runs while it is zero, so it never
+	// competes with a live turn. Pointer-receiver only (never copied).
+	inFlight atomic.Int64
 
 	MaxSteps      int
 	Temperature   float64
@@ -124,6 +138,11 @@ func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username,
 // turn runs the tool-calling loop for one user message and returns the final
 // assistant text. rc.userDB must be an open per-user database.
 func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (string, error) {
+	// Mark the LLM busy for the whole turn so the background auto-titler stays off
+	// it while a real turn is running.
+	a.inFlight.Add(1)
+	defer a.inFlight.Add(-1)
+
 	conversationID := rc.conversationID
 	userID := rc.userID
 	emit := rc.emit
