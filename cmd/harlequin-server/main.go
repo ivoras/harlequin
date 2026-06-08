@@ -236,6 +236,9 @@ func main() {
 		Handler: srv.Router(),
 	}
 	log.Printf("harlequin-server listening on %s (data dir %s)", cfg.Server.Addr, cfg.DataDir)
+	if cfg.Server.Web.Dir != "" {
+		log.Printf("web UI: serving static files from %q at /", cfg.Server.Web.Dir)
+	}
 	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("server: %v", err)
 	}

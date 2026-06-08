@@ -63,6 +63,15 @@ type Config struct {
 // ServerConfig holds HTTP server settings.
 type ServerConfig struct {
 	Addr string `yaml:"addr"`
+	// Web optionally serves the static browser SPA at / (same origin as the API).
+	Web WebUIConfig `yaml:"web"`
+}
+
+// WebUIConfig controls serving the static web UI from the server.
+type WebUIConfig struct {
+	// Dir is the filesystem path to the built SPA (e.g. "./web/dist"). Empty
+	// disables serving (e.g. when nginx serves the static files instead).
+	Dir string `yaml:"dir"`
 }
 
 // ProviderConfig describes one chat LLM provider.

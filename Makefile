@@ -1,4 +1,4 @@
-.PHONY: build build-server build-client run-server run-client test tidy clean fmt vendor-sqlite
+.PHONY: build build-server build-client run-server run-client test tidy clean fmt vendor-sqlite web-install web-build web-dev
 
 # CGO + FTS5 are required for sqlite (mattn/go-sqlite3) and sqlite-vec.
 CGO_ENABLED ?= 1
@@ -37,6 +37,16 @@ fmt:
 
 clean:
 	rm -rf $(BIN_DIR)
+
+# --- Web UI (static Svelte SPA in web/) ---
+web-install:
+	cd web && npm install
+
+web-build: web-install
+	cd web && npm run build
+
+web-dev:
+	cd web && npm run dev
 
 # Copy sqlite3.h from mattn/go-sqlite3 (matches the runtime embedded engine).
 vendor-sqlite:

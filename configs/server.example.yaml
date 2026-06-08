@@ -3,6 +3,11 @@
 
 server:
   addr: ":8080"
+  # Optionally serve the static browser UI at / (same origin as /api/v1, no CORS).
+  # Build it with `make web-build`, then point dir at the output. Leave empty to
+  # disable (e.g. when nginx serves web/dist instead — see README).
+  web:
+    dir: ""   # e.g. "./web/dist"
 
 # Directory for the SQLite DB, deployed skills, and session logs.
 data_dir: "./data"

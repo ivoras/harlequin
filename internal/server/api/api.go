@@ -143,6 +143,13 @@ func (s *Server) Router() http.Handler {
 		})
 	})
 
+	// Optionally serve the static web UI at / (same origin as the API). The
+	// /api/v1 routes above are matched first; everything else falls through to the
+	// SPA handler.
+	if s.Cfg != nil && s.Cfg.Server.Web.Dir != "" {
+		r.Handle("/*", spaHandler(s.Cfg.Server.Web.Dir))
+	}
+
 	return r
 }
 

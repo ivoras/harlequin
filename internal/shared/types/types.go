@@ -55,6 +55,7 @@ const HeaderInterface = "X-Harlequin-Interface"
 // is tied to exactly one. The transport an interface uses is its API (below).
 const (
 	InterfaceTUI      = "TUI"
+	InterfaceWeb      = "Web" // the browser SPA
 	InterfaceTelegram = "Telegram"
 	InterfaceCron     = "Cron" // internal: scheduled jobs that start an agent turn
 )
