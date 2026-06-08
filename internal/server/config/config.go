@@ -203,6 +203,11 @@ type MemoryConfig struct {
 	// SlotSearchWeight is the RRF weight of the slot-key leg in memory search
 	// (0 disables it). Default 1.0. See docs/memory_experiment_key_slots.md.
 	SlotSearchWeight *float64 `yaml:"slot_search_weight"`
+	// SearchMaxDistance drops vector/slot search candidates whose cosine distance
+	// to the query exceeds this, so an unrelated query returns few/no results
+	// instead of padding to the limit. Range [0,2]; default 0.2. 0 disables the
+	// cutoff (the FTS leg is unaffected — it only matches real token hits).
+	SearchMaxDistance *float64 `yaml:"search_max_distance"`
 }
 
 // ConflictCheckEnabled reports whether post-write conflict detection runs.
@@ -219,6 +224,15 @@ func (m MemoryConfig) SlotSearchWeightValue() float64 {
 		return *m.SlotSearchWeight
 	}
 	return 1.0
+}
+
+// SearchMaxDistanceValue returns the cosine-distance cutoff for vector/slot
+// search candidates (default 0.2; 0 disables it).
+func (m MemoryConfig) SearchMaxDistanceValue() float64 {
+	if m.SearchMaxDistance != nil {
+		return *m.SearchMaxDistance
+	}
+	return 0.2
 }
 
 // SessionsConfig controls JSONL trajectory (session) logging.
