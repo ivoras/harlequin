@@ -38,6 +38,7 @@ type Store struct {
 	judge              llm.Provider
 	conflictCandidates int
 	slotSearchWeight   float64
+	searchMaxDist      float64 // cosine-distance cutoff for vector/slot legs; 0 = no cutoff
 }
 
 // NewStore constructs a memory Store bound to the shared database.
@@ -48,6 +49,11 @@ func NewStore(shared *sql.DB, embedder embed.Embedder) *Store {
 // SetSlotSearchWeight sets the RRF weight of the slot-key leg used by Search
 // (0 disables it). See docs/memory_experiment_key_slots.md.
 func (s *Store) SetSlotSearchWeight(w float64) { s.slotSearchWeight = w }
+
+// SetSearchMaxDistance sets the cosine-distance cutoff applied to the vector and
+// slot-key search legs (candidates farther than this are dropped before RRF).
+// 0 disables the cutoff. Requires the vec0 tables to use distance_metric=cosine.
+func (s *Store) SetSearchMaxDistance(d float64) { s.searchMaxDist = d }
 
 // memDB is one memories-bearing database file together with its scope label.
 // All operations on a single file (insert, search, list, get, delete, conflict
@@ -249,6 +255,50 @@ func (s *Store) embed(ctx context.Context, text string) (any, error) {
 	return sqlite_vec.SerializeFloat32(vecs[0])
 }
 
+// ReindexMemoryVectors re-embeds every memory's content and rewrites its
+// memories_vec row. Use after recreating the vec0 table (e.g. a metric change).
+// Returns the number of memories reindexed.
+func (s *Store) ReindexMemoryVectors(ctx context.Context, db *sql.DB) (int, error) {
+	if db == nil {
+		return 0, nil
+	}
+	rows, err := db.QueryContext(ctx, `SELECT id, content FROM memories`)
+	if err != nil {
+		return 0, err
+	}
+	type mem struct {
+		id      int64
+		content string
+	}
+	var all []mem
+	for rows.Next() {
+		var m mem
+		if err := rows.Scan(&m.id, &m.content); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		all = append(all, m)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	n := 0
+	for _, m := range all {
+		blob, err := s.embed(ctx, m.content)
+		if err != nil || blob == nil {
+			continue
+		}
+		if _, err := db.ExecContext(ctx,
+			`INSERT INTO memories_vec(rowid, embedding) VALUES (?, ?)`, m.id, blob); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
+}
+
 // Find runs a hybrid search and returns the matching memories as full records,
 // ranked best-first, so callers can render them like a memory listing.
 func (s *Store) Find(ctx context.Context, userDB *sql.DB, query string, userID int64, limit int) ([]types.Memory, error) {
@@ -295,7 +345,7 @@ func (s *Store) searchTuned(ctx context.Context, userDB *sql.DB, query string, u
 	ranks := map[string]float64{}
 	contents := map[string]string{}
 	for _, m := range s.scopes(scope, userDB) {
-		m.search(ctx, query, blob, limit, slotWeight, ranks, contents)
+		m.search(ctx, query, blob, limit, slotWeight, s.searchMaxDist, ranks, contents)
 	}
 	out := topN(ranks, contents, limit)
 	s.attachSlotsToResults(ctx, userDB, out)
@@ -329,7 +379,7 @@ func (s *Store) scopes(scope string, userDB *sql.DB) []memDB {
 
 // search runs the FTS + vector legs against this file, folding RRF scores keyed
 // by composite id into ranks/contents.
-func (m memDB) search(ctx context.Context, query string, blob any, limit int, slotWeight float64, ranks map[string]float64, contents map[string]string) {
+func (m memDB) search(ctx context.Context, query string, blob any, limit int, slotWeight, maxDist float64, ranks map[string]float64, contents map[string]string) {
 	if m.db == nil {
 		return
 	}
@@ -341,22 +391,25 @@ func (m memDB) search(ctx context.Context, query string, blob any, limit int, sl
 	_ = m.collect(ctx, ftsSQL, []any{query, limit * 4}, 1.0, ranks, contents)
 
 	if blob != nil {
-		vecSQL := `SELECT m.id, m.content
+		// Vector and slot legs are kNN with no inherent relevance floor, so a
+		// cosine-distance cutoff (maxDist; vec0 distance is cosine) drops far,
+		// irrelevant candidates before they earn an RRF score.
+		vecSQL := `SELECT m.id, m.content, v.distance
 			FROM memories_vec v JOIN memories m ON m.id = v.rowid
 			WHERE v.embedding MATCH ? AND k = ? AND ` + notExpired + `
 			ORDER BY v.distance`
-		_ = m.collect(ctx, vecSQL, []any{blob, limit * 4}, 1.0, ranks, contents)
+		_ = m.collectVec(ctx, vecSQL, []any{blob, limit * 4}, 1.0, maxDist, ranks, contents)
 
 		// Slot-key leg (optional): nearest slot keys by embedding, mapped back to
 		// their memories, folded in with slotWeight. Surfaces attribute matches.
 		if slotWeight > 0 {
-			slotSQL := `SELECT m.id, m.content
+			slotSQL := `SELECT m.id, m.content, v.distance
 				FROM memory_slots_vec v
 				JOIN memory_slots sl ON sl.id = v.rowid
 				JOIN memories m ON m.id = sl.memory_id
 				WHERE v.embedding MATCH ? AND k = ? AND ` + notExpired + `
 				ORDER BY v.distance`
-			_ = m.collect(ctx, slotSQL, []any{blob, limit * 4}, slotWeight, ranks, contents)
+			_ = m.collectVec(ctx, slotSQL, []any{blob, limit * 4}, slotWeight, maxDist, ranks, contents)
 		}
 	}
 }
@@ -374,6 +427,34 @@ func (m memDB) collect(ctx context.Context, query string, args []any, weight flo
 		var content string
 		if err := rows.Scan(&local, &content); err != nil {
 			return err
+		}
+		rank++
+		id := m.encode(local)
+		ranks[id] += weight / (rrfK + float64(rank))
+		contents[id] = content
+	}
+	return rows.Err()
+}
+
+// collectVec is collect for a leg that also yields a distance column: rows whose
+// distance exceeds maxDist (when maxDist > 0) are skipped before scoring, and
+// the rank used for RRF only advances for kept rows.
+func (m memDB) collectVec(ctx context.Context, query string, args []any, weight, maxDist float64, ranks map[string]float64, contents map[string]string) error {
+	rows, err := m.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	rank := 0
+	for rows.Next() {
+		var local int64
+		var content string
+		var distance float64
+		if err := rows.Scan(&local, &content, &distance); err != nil {
+			return err
+		}
+		if maxDist > 0 && distance > maxDist {
+			continue
 		}
 		rank++
 		id := m.encode(local)

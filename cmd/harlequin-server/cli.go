@@ -12,6 +12,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/auth"
 	"github.com/ivoras/harlequin/internal/server/config"
 	"github.com/ivoras/harlequin/internal/server/db"
+	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/embed"
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/storage"
@@ -41,6 +42,9 @@ func dispatchCLI(args []string) bool {
 	case "backfill-slot-keys":
 		runBackfillSlotKeys(args[1:])
 		return true
+	case "reindex-vectors":
+		runReindexVectors(args[1:])
+		return true
 	case "help", "-h", "--help":
 		printUsage()
 		os.Exit(0)
@@ -52,7 +56,7 @@ func dispatchCLI(args []string) bool {
 // must be the first argument (before any flags).
 func isSubcommand(name string) bool {
 	switch name {
-	case "createuser", "changepassword", "deleteuser", "listusers", "print-trajectory", "backfill-slot-keys":
+	case "createuser", "changepassword", "deleteuser", "listusers", "print-trajectory", "backfill-slot-keys", "reindex-vectors":
 		return true
 	}
 	return false
@@ -88,6 +92,7 @@ Usage:
   harlequin-server listusers [flags]
   harlequin-server print-trajectory [flags] <file.jsonl>
   harlequin-server backfill-slot-keys [flags]
+  harlequin-server reindex-vectors [flags]
   harlequin-server help
 
 Server flags:
@@ -113,6 +118,13 @@ backfill-slot-keys flags:
   --config path     server config YAML (default server.yaml)
                     re-embeds every slot key (shared + all users) with the
                     humanized form; run once after upgrading.
+
+reindex-vectors flags:
+  --config path     server config YAML (default server.yaml)
+                    drops and recreates the vec0 tables (shared + all users)
+                    and re-embeds every memory, slot key and document chunk.
+                    Run once after changing the embedding model or the vector
+                    distance metric.
 
 print-trajectory flags:
   --verbose, -v     include token/thinking delta events
@@ -343,6 +355,73 @@ func runBackfillSlotKeys(args []string) {
 		log.Fatalf("backfill-slot-keys: %v", err)
 	}
 	fmt.Printf("done: reindexed %d slot key(s) total\n", total)
+}
+
+func runReindexVectors(args []string) {
+	f, err := parseCmdFlags(args, false)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "reindex-vectors:", err)
+		os.Exit(2)
+	}
+	if f.email != "" {
+		fmt.Fprintln(os.Stderr, "reindex-vectors: unexpected argument", f.email)
+		printUsage()
+		os.Exit(2)
+	}
+
+	cfg, err := config.Load(f.config)
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+	store, err := storage.New(cfg.DataDir, cfg.DBPath, cfg.Embeddings.Dim)
+	if err != nil {
+		log.Fatalf("storage: %v", err)
+	}
+	defer store.Close()
+	embedder := embed.New(cfg.Embeddings.BaseURL, cfg.Embeddings.APIKey, cfg.Embeddings.Model, cfg.Embeddings.Dim)
+	mem := memory.NewStore(store.Shared, embedder)
+	docs := documents.NewStore(store.Shared, embedder)
+	ctx := context.Background()
+
+	// Shared: memories, slot keys, and document chunks.
+	if err := db.RecreateVectorTables(store.Shared, db.Shared, cfg.Embeddings.Dim); err != nil {
+		log.Fatalf("reindex-vectors (shared tables): %v", err)
+	}
+	smem, err := mem.ReindexMemoryVectors(ctx, store.Shared)
+	if err != nil {
+		log.Fatalf("reindex-vectors (shared memories): %v", err)
+	}
+	sslot, err := mem.BackfillSlotKeyEmbeddings(ctx, store.Shared)
+	if err != nil {
+		log.Fatalf("reindex-vectors (shared slots): %v", err)
+	}
+	sdoc, err := docs.ReindexChunkVectors(ctx)
+	if err != nil {
+		log.Fatalf("reindex-vectors (shared doc chunks): %v", err)
+	}
+	fmt.Printf("shared: %d memory(ies), %d slot(s), %d doc chunk(s)\n", smem, sslot, sdoc)
+
+	// Each user: memories and slot keys (documents are shared-only).
+	if err := store.EachUser(ctx, func(uid int64, udb *sql.DB) error {
+		if err := db.RecreateVectorTables(udb, db.User, cfg.Embeddings.Dim); err != nil {
+			return fmt.Errorf("user %d tables: %w", uid, err)
+		}
+		umem, err := mem.ReindexMemoryVectors(ctx, udb)
+		if err != nil {
+			return fmt.Errorf("user %d memories: %w", uid, err)
+		}
+		uslot, err := mem.BackfillSlotKeyEmbeddings(ctx, udb)
+		if err != nil {
+			return fmt.Errorf("user %d slots: %w", uid, err)
+		}
+		if umem > 0 || uslot > 0 {
+			fmt.Printf("user %d: %d memory(ies), %d slot(s)\n", uid, umem, uslot)
+		}
+		return nil
+	}); err != nil {
+		log.Fatalf("reindex-vectors: %v", err)
+	}
+	fmt.Println("done")
 }
 
 func resolvePassword(flagValue string) string {

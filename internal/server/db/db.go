@@ -144,21 +144,58 @@ func createVirtualTables(sqlDB *sql.DB, role Role, dim int) error {
 	case Shared:
 		stmts = []string{
 			`CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(content)`,
-			fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS memories_vec USING vec0(embedding float[%d])`, dim),
-			fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS memory_slots_vec USING vec0(embedding float[%d])`, dim),
 			`CREATE VIRTUAL TABLE IF NOT EXISTS doc_chunks_fts USING fts5(content)`,
-			fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS doc_chunks_vec USING vec0(embedding float[%d])`, dim),
 		}
 	case User:
 		stmts = []string{
 			`CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(content)`,
-			fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS memories_vec USING vec0(embedding float[%d])`, dim),
-			fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS memory_slots_vec USING vec0(embedding float[%d])`, dim),
 		}
 	case System:
 		return nil
 	}
+	stmts = append(stmts, vectorTableStmts(role, dim)...)
 	for _, s := range stmts {
+		if _, err := sqlDB.Exec(s); err != nil {
+			return fmt.Errorf("%s: %w", s, err)
+		}
+	}
+	return nil
+}
+
+// vectorTableNames lists the vec0 tables a role uses.
+func vectorTableNames(role Role) []string {
+	switch role {
+	case Shared:
+		return []string{"memories_vec", "memory_slots_vec", "doc_chunks_vec"}
+	case User:
+		return []string{"memories_vec", "memory_slots_vec"}
+	}
+	return nil
+}
+
+// vectorTableStmts returns the CREATE statements for a role's vec0 tables. The
+// vectors are L2-normalised by the embedding model, so cosine distance is the
+// natural metric (and yields interpretable [0,2] distances for thresholding).
+func vectorTableStmts(role Role, dim int) []string {
+	names := vectorTableNames(role)
+	stmts := make([]string, 0, len(names))
+	for _, n := range names {
+		stmts = append(stmts, fmt.Sprintf(
+			`CREATE VIRTUAL TABLE IF NOT EXISTS %s USING vec0(embedding float[%d] distance_metric=cosine)`, n, dim))
+	}
+	return stmts
+}
+
+// RecreateVectorTables drops and recreates a role's vec0 tables (e.g. to change
+// the distance metric). The caller must re-embed and re-insert every vector
+// afterwards, since dropping a vec0 table discards its contents.
+func RecreateVectorTables(sqlDB *sql.DB, role Role, dim int) error {
+	for _, n := range vectorTableNames(role) {
+		if _, err := sqlDB.Exec("DROP TABLE IF EXISTS " + n); err != nil {
+			return fmt.Errorf("drop %s: %w", n, err)
+		}
+	}
+	for _, s := range vectorTableStmts(role, dim) {
 		if _, err := sqlDB.Exec(s); err != nil {
 			return fmt.Errorf("%s: %w", s, err)
 		}

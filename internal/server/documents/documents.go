@@ -85,6 +85,54 @@ func (s *Store) Ingest(ctx context.Context, req types.CreateDocumentRequest, use
 	return &types.Document{ID: docID, Title: req.Title, URI: req.URI, Mime: mime, CreatedBy: userID}, nil
 }
 
+// ReindexChunkVectors re-embeds every chunk's content and rewrites its
+// doc_chunks_vec row. Use after recreating the vec0 table (e.g. a metric
+// change). Returns the number of chunks reindexed.
+func (s *Store) ReindexChunkVectors(ctx context.Context) (int, error) {
+	if s.db == nil {
+		return 0, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id, content FROM doc_chunks`)
+	if err != nil {
+		return 0, err
+	}
+	type chunk struct {
+		id      int64
+		content string
+	}
+	var all []chunk
+	for rows.Next() {
+		var c chunk
+		if err := rows.Scan(&c.id, &c.content); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		all = append(all, c)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	n := 0
+	for _, c := range all {
+		vecs, err := s.embedder.Embed(ctx, []string{c.content})
+		if err != nil || len(vecs) != 1 {
+			continue
+		}
+		blob, err := sqlite_vec.SerializeFloat32(vecs[0])
+		if err != nil {
+			return n, err
+		}
+		if _, err := s.db.ExecContext(ctx,
+			`INSERT INTO doc_chunks_vec(rowid, embedding) VALUES (?, ?)`, c.id, blob); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
+}
+
 // List returns all documents (newest first).
 func (s *Store) List(ctx context.Context) ([]types.Document, error) {
 	rows, err := s.db.QueryContext(ctx,

@@ -113,6 +113,7 @@ func main() {
 
 	memStore := memory.NewStore(store.Shared, embedder)
 	memStore.SetSlotSearchWeight(cfg.Memory.SlotSearchWeightValue())
+	memStore.SetSearchMaxDistance(cfg.Memory.SearchMaxDistanceValue())
 	if cfg.Memory.ConflictCheckEnabled() {
 		memStore.SetConflictJudge(router, cfg.Memory.ConflictCandidates)
 	}
