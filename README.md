@@ -156,6 +156,60 @@ Manage it from the TUI:
 /config rm telegram.chat_id          remove it
 ```
 
+## Web UI
+
+A static, mobile-first browser client lives in [`web/`](web/) (Svelte 5 + Vite). It
+uses the same REST/SSE API as the TUI and announces itself as the `Web` interface.
+
+Build it, then have the server serve it at `/` (same origin as the API — no CORS):
+
+```sh
+make web-build                       # -> web/dist (needs Node 20+)
+```
+
+```yaml
+# server.yaml
+server:
+  web:
+    dir: "./web/dist"
+```
+
+Now `http://<host>:<addr>/` serves the app and `…/api/v1/…` the API. Leave `web.dir`
+empty to disable serving.
+
+**Development:** `make web-dev` runs Vite with hot reload; it proxies `/api` to the
+server (set `VITE_API_BASE`, default `http://127.0.0.1:8890`).
+
+**Behind nginx (production):** serve the static build and reverse-proxy the API.
+Disable proxy buffering so SSE streams arrive token-by-token:
+
+```nginx
+server {
+    listen 80;
+    server_name harlequin.example.com;
+
+    root /srv/harlequin/web/dist;
+    index index.html;
+
+    # SPA: fall back to index.html for client-side routes.
+    location / {
+        try_files $uri /index.html;
+    }
+
+    # API + SSE chat stream.
+    location /api/ {
+        proxy_pass http://127.0.0.1:8890;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_buffering off;            # stream SSE immediately
+        proxy_read_timeout 1h;          # long-lived agent turns
+    }
+}
+```
+
+With nginx serving the static files, leave the server's `web.dir` empty.
+
 ## Layout
 
 ```
