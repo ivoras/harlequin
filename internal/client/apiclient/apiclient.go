@@ -83,14 +83,42 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	return nil
 }
 
-// Login authenticates and returns the issued token.
-func (c *Client) Login(ctx context.Context, username, password string) (*types.LoginResponse, error) {
+// Login authenticates (by email) and returns the issued token.
+func (c *Client) Login(ctx context.Context, email, password string) (*types.LoginResponse, error) {
 	var resp types.LoginResponse
-	if err := c.do(ctx, http.MethodPost, "/auth/login", types.LoginRequest{Username: username, Password: password}, &resp); err != nil {
+	if err := c.do(ctx, http.MethodPost, "/auth/login", types.LoginRequest{Email: email, Password: password}, &resp); err != nil {
 		return nil, err
 	}
 	c.token = resp.Token
 	return &resp, nil
+}
+
+// Register starts self-registration: the server emails a magic code to verify.
+func (c *Client) Register(ctx context.Context, email, password string) (*types.RegisterResponse, error) {
+	var resp types.RegisterResponse
+	if err := c.do(ctx, http.MethodPost, "/auth/register", types.RegisterRequest{Email: email, Password: password}, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// Verify completes registration with the emailed code, returning a login token.
+func (c *Client) Verify(ctx context.Context, email, code string) (*types.LoginResponse, error) {
+	var resp types.LoginResponse
+	if err := c.do(ctx, http.MethodPost, "/auth/verify", types.VerifyRequest{Email: email, Code: code}, &resp); err != nil {
+		return nil, err
+	}
+	c.token = resp.Token
+	return &resp, nil
+}
+
+// RegistrationEnabled reports whether self-registration is available.
+func (c *Client) RegistrationEnabled(ctx context.Context) (bool, error) {
+	var resp types.RegistrationStatus
+	if err := c.do(ctx, http.MethodGet, "/auth/registration", nil, &resp); err != nil {
+		return false, err
+	}
+	return resp.Enabled, nil
 }
 
 // Me returns the current user.

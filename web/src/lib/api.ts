@@ -71,8 +71,14 @@ const mcpRef = (scope: string, name: string) => `?scope=${q(scope)}&name=${q(nam
 
 export const api = {
   // auth / user
-  login: (username: string, password: string) =>
-    req<LoginResponse>("POST", "/auth/login", { username, password }),
+  login: (email: string, password: string) =>
+    req<LoginResponse>("POST", "/auth/login", { email, password }),
+  registrationEnabled: () =>
+    req<{ enabled: boolean }>("GET", "/auth/registration"),
+  register: (email: string, password: string) =>
+    req<{ status: string; email: string }>("POST", "/auth/register", { email, password }),
+  verify: (email: string, code: string) =>
+    req<LoginResponse>("POST", "/auth/verify", { email, code }),
   logout: () => req<void>("POST", "/auth/logout"),
   me: () => req<User>("GET", "/me"),
 

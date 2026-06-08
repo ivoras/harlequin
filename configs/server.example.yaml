@@ -93,3 +93,17 @@ mcp:
   session_idle: "5m"                # close an idle pooled MCP session after this long
   tools_cache_ttl: "5m"             # cache each server's tool list for this long
   oauth_callback_base_url: ""       # externally reachable base URL (e.g. https://harlequin.example.com); required for OAuth servers
+
+# Authentication policy. The login identity is the user's email address.
+auth:
+  allow_registration: true          # public self-registration via /auth/register + /auth/verify (default true; false = owner-created accounts only)
+
+# Outbound email, used to deliver registration magic codes. When smtp_host is
+# empty the code is logged to the server console instead (handy in development),
+# so registration still works without a mail server.
+email:
+  smtp_host: ""                     # e.g. smtp.gmail.com; empty disables real sending (code is logged)
+  smtp_port: 587                    # 465 = implicit TLS, anything else uses STARTTLS
+  smtp_username: ""                 # SMTP auth username (omit for unauthenticated relays)
+  smtp_password_env: SMTP_PASSWORD  # env var holding the SMTP password (like api_key_env; never put the secret in YAML)
+  from: ""                          # From address (defaults to smtp_username)

@@ -5,7 +5,7 @@ export const INTERFACE = "Web"; // X-Harlequin-Interface announced by this clien
 
 export interface User {
   id: number;
-  username: string;
+  email: string;
   role: string; // "owner" | "admin" | "user"
   created_at: string;
 }

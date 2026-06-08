@@ -14,7 +14,7 @@ func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
 	var infos []types.SkillInfo
 	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
 		var e error
-		infos, e = s.Skills.List(r.Context(), udb, u.ID, u.Username)
+		infos, e = s.Skills.List(r.Context(), udb, u.ID, u.Email)
 		return e
 	})
 	if err != nil {

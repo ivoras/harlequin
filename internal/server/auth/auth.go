@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/http"
 	"strings"
 	"time"
@@ -21,10 +22,19 @@ import (
 
 // Errors returned by the store.
 var (
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrUserExists         = errors.New("user already exists")
-	ErrUserNotFound       = errors.New("user not found")
-	ErrUnauthorized       = errors.New("unauthorized")
+	ErrInvalidCredentials  = errors.New("invalid credentials")
+	ErrUserExists          = errors.New("user already exists")
+	ErrUserNotFound        = errors.New("user not found")
+	ErrUnauthorized        = errors.New("unauthorized")
+	ErrNoPendingRegistration = errors.New("no pending registration")
+	ErrCodeExpired         = errors.New("verification code expired")
+	ErrTooManyAttempts     = errors.New("too many verification attempts")
+)
+
+// Registration tuning.
+const (
+	registrationCodeTTL = 15 * time.Minute
+	maxVerifyAttempts   = 5
 )
 
 // ctxKey is the private type for context keys.
@@ -42,8 +52,8 @@ func NewStore(db *sql.DB) *Store {
 	return &Store{db: db}
 }
 
-// CreateUser creates a user with a bcrypt-hashed password.
-func (s *Store) CreateUser(ctx context.Context, username, password, role string) (*types.User, error) {
+// CreateUser creates a user (identified by email) with a bcrypt-hashed password.
+func (s *Store) CreateUser(ctx context.Context, email, password, role string) (*types.User, error) {
 	if role == "" {
 		role = types.RoleUser
 	}
@@ -55,8 +65,8 @@ func (s *Store) CreateUser(ctx context.Context, username, password, role string)
 		return nil, err
 	}
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO users(username, password_hash, role) VALUES (?, ?, ?)`,
-		username, string(hash), role)
+		`INSERT INTO users(email, password_hash, role) VALUES (?, ?, ?)`,
+		email, string(hash), role)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			return nil, ErrUserExists
@@ -64,17 +74,18 @@ func (s *Store) CreateUser(ctx context.Context, username, password, role string)
 		return nil, err
 	}
 	id, _ := res.LastInsertId()
-	return &types.User{ID: id, Username: username, Role: role, CreatedAt: time.Now()}, nil
+	return &types.User{ID: id, Email: email, Role: role, CreatedAt: time.Now()}, nil
 }
 
-// ChangePassword sets a new bcrypt hash for username and revokes all API tokens.
-func (s *Store) ChangePassword(ctx context.Context, username, password string) error {
+// ChangePassword sets a new bcrypt hash for the account with this email and
+// revokes all its API tokens.
+func (s *Store) ChangePassword(ctx context.Context, email, password string) error {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE users SET password_hash = ? WHERE username = ?`, string(hash), username)
+		`UPDATE users SET password_hash = ? WHERE email = ?`, string(hash), email)
 	if err != nil {
 		return err
 	}
@@ -83,14 +94,14 @@ func (s *Store) ChangePassword(ctx context.Context, username, password string) e
 		return ErrUserNotFound
 	}
 	_, _ = s.db.ExecContext(ctx,
-		`DELETE FROM api_tokens WHERE user_id = (SELECT id FROM users WHERE username = ?)`, username)
+		`DELETE FROM api_tokens WHERE user_id = (SELECT id FROM users WHERE email = ?)`, email)
 	return nil
 }
 
 // ListUsers returns all accounts ordered by id.
 func (s *Store) ListUsers(ctx context.Context) ([]types.User, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, username, role, created_at FROM users ORDER BY id`)
+		`SELECT id, email, role, created_at FROM users ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +109,7 @@ func (s *Store) ListUsers(ctx context.Context) ([]types.User, error) {
 	var out []types.User
 	for rows.Next() {
 		var u types.User
-		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Email, &u.Role, &u.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, u)
@@ -108,9 +119,9 @@ func (s *Store) ListUsers(ctx context.Context) ([]types.User, error) {
 
 // DeleteUser removes an account (cascading its API tokens) and returns its id so
 // the caller can clean up the user's per-user database and files.
-func (s *Store) DeleteUser(ctx context.Context, username string) (int64, error) {
+func (s *Store) DeleteUser(ctx context.Context, email string) (int64, error) {
 	var id int64
-	err := s.db.QueryRowContext(ctx, `SELECT id FROM users WHERE username = ?`, username).Scan(&id)
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM users WHERE email = ?`, email).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, ErrUserNotFound
 	}
@@ -123,8 +134,9 @@ func (s *Store) DeleteUser(ctx context.Context, username string) (int64, error) 
 	return id, nil
 }
 
-// Login verifies credentials and issues a new API token (returning the plaintext).
-func (s *Store) Login(ctx context.Context, username, password string) (string, *types.User, error) {
+// Login verifies credentials (by email) and issues a new API token (returning the
+// plaintext).
+func (s *Store) Login(ctx context.Context, email, password string) (string, *types.User, error) {
 	var (
 		id   int64
 		hash string
@@ -132,7 +144,7 @@ func (s *Store) Login(ctx context.Context, username, password string) (string, *
 		ct   time.Time
 	)
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, password_hash, role, created_at FROM users WHERE username = ?`, username).
+		`SELECT id, password_hash, role, created_at FROM users WHERE email = ?`, email).
 		Scan(&id, &hash, &role, &ct)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil, ErrInvalidCredentials
@@ -148,7 +160,7 @@ func (s *Store) Login(ctx context.Context, username, password string) (string, *
 	if err != nil {
 		return "", nil, err
 	}
-	user := &types.User{ID: id, Username: username, Role: role, CreatedAt: ct}
+	user := &types.User{ID: id, Email: email, Role: role, CreatedAt: ct}
 	return token, user, nil
 }
 
@@ -167,6 +179,113 @@ func (s *Store) issueToken(ctx context.Context, userID int64) (string, error) {
 	return token, nil
 }
 
+// StartRegistration records (or replaces) a pending self-registration for email
+// and returns a freshly generated plaintext magic code for the caller to deliver.
+// It fails with ErrUserExists if an account already uses that email. The caller is
+// responsible for validating the email's format and for emailing the returned code.
+func (s *Store) StartRegistration(ctx context.Context, email, password string) (string, error) {
+	var existing int64
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM users WHERE email = ?`, email).Scan(&existing)
+	if err == nil {
+		return "", ErrUserExists
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+
+	pwHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	code, err := generateCode()
+	if err != nil {
+		return "", err
+	}
+	codeHash := sha256Hex(code)
+	expires := time.Now().Add(registrationCodeTTL)
+
+	// Upsert so re-requesting before verifying refreshes the code, password and
+	// expiry, and resets the attempt counter.
+	_, err = s.db.ExecContext(ctx,
+		`INSERT INTO pending_registrations(email, password_hash, code_hash, attempts, expires_at)
+		 VALUES (?, ?, ?, 0, ?)
+		 ON CONFLICT(email) DO UPDATE SET
+		   password_hash = excluded.password_hash,
+		   code_hash     = excluded.code_hash,
+		   attempts      = 0,
+		   expires_at    = excluded.expires_at,
+		   created_at    = CURRENT_TIMESTAMP`,
+		email, string(pwHash), codeHash, expires)
+	if err != nil {
+		return "", err
+	}
+	return code, nil
+}
+
+// VerifyRegistration completes a pending registration: on a correct, unexpired
+// code it creates the user (role "user"), removes the pending row, and issues a
+// login token. Wrong codes increment the attempt counter and return
+// ErrInvalidCredentials; the row is locked out after maxVerifyAttempts.
+func (s *Store) VerifyRegistration(ctx context.Context, email, code string) (string, *types.User, error) {
+	var (
+		pwHash   string
+		codeHash string
+		attempts int
+		expires  time.Time
+	)
+	err := s.db.QueryRowContext(ctx,
+		`SELECT password_hash, code_hash, attempts, expires_at FROM pending_registrations WHERE email = ?`, email).
+		Scan(&pwHash, &codeHash, &attempts, &expires)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil, ErrNoPendingRegistration
+	}
+	if err != nil {
+		return "", nil, err
+	}
+	if attempts >= maxVerifyAttempts {
+		return "", nil, ErrTooManyAttempts
+	}
+	if time.Now().After(expires) {
+		_, _ = s.db.ExecContext(ctx, `DELETE FROM pending_registrations WHERE email = ?`, email)
+		return "", nil, ErrCodeExpired
+	}
+	if sha256Hex(code) != codeHash {
+		_, _ = s.db.ExecContext(ctx,
+			`UPDATE pending_registrations SET attempts = attempts + 1 WHERE email = ?`, email)
+		return "", nil, ErrInvalidCredentials
+	}
+
+	// Code is correct: materialise the account from the stored password hash.
+	res, err := s.db.ExecContext(ctx,
+		`INSERT INTO users(email, password_hash, role) VALUES (?, ?, ?)`,
+		email, pwHash, types.RoleUser)
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") {
+			return "", nil, ErrUserExists
+		}
+		return "", nil, err
+	}
+	id, _ := res.LastInsertId()
+	_, _ = s.db.ExecContext(ctx, `DELETE FROM pending_registrations WHERE email = ?`, email)
+
+	token, err := s.issueToken(ctx, id)
+	if err != nil {
+		return "", nil, err
+	}
+	user := &types.User{ID: id, Email: email, Role: types.RoleUser, CreatedAt: time.Now()}
+	return token, user, nil
+}
+
+// generateCode returns a random 6-digit numeric verification code.
+func generateCode() (string, error) {
+	max := big.NewInt(1000000)
+	n, err := rand.Int(rand.Reader, max)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%06d", n.Int64()), nil
+}
+
 // Logout deletes the token used in this request.
 func (s *Store) Logout(ctx context.Context, token string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM api_tokens WHERE token_sha256 = ?`, sha256Hex(token))
@@ -180,10 +299,10 @@ func (s *Store) UserForToken(ctx context.Context, token string) (*types.User, er
 		expiresAt sql.NullTime
 	)
 	err := s.db.QueryRowContext(ctx,
-		`SELECT u.id, u.username, u.role, u.created_at, t.expires_at
+		`SELECT u.id, u.email, u.role, u.created_at, t.expires_at
 		 FROM api_tokens t JOIN users u ON u.id = t.user_id
 		 WHERE t.token_sha256 = ?`, sha256Hex(token)).
-		Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt, &expiresAt)
+		Scan(&u.ID, &u.Email, &u.Role, &u.CreatedAt, &expiresAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrUnauthorized
 	}

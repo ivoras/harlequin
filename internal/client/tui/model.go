@@ -27,9 +27,15 @@ type phase int
 const (
 	phaseLoginUser phase = iota
 	phaseLoginPass
+	phaseRegisterEmail
+	phaseRegisterPass
+	phaseRegisterCode
 	phaseChat
 	phaseAsk // interactive ask_user answering
 )
+
+// loginPrompt is the placeholder shown at the email step of the login screen.
+const loginPrompt = "Enter email (or type 'register')"
 
 // askItem is one question the model asked via ask_user, with suggested options.
 type askItem struct {
@@ -62,8 +68,10 @@ type Model struct {
 	loading   bool
 	turnStart time.Time // when the in-flight turn began (drives the elapsed readout)
 
-	// login scratch
+	// login / registration scratch
 	loginUser string
+	regEmail  string
+	regPass   string
 
 	blocks            []roleBlock
 	streamingThinking strings.Builder // in-flight reasoning text
@@ -156,7 +164,7 @@ func (m *Model) Init() tea.Cmd {
 	if m.phase == phaseChat {
 		cmds = append(cmds, m.bootstrapChat())
 	} else {
-		m.input.Placeholder = "Enter username"
+		m.input.Placeholder = loginPrompt
 		cmds = append(cmds, m.input.Focus())
 	}
 	return tea.Batch(cmds...)
@@ -194,11 +202,22 @@ type loginDoneMsg struct {
 type streamEventMsg struct{ ev types.StreamEvent }
 type streamEndMsg struct{ err error }
 
+// registerSentMsg reports the result of starting registration (a magic code was
+// emailed when err is nil).
+type registerSentMsg struct {
+	email string
+	err   error
+}
+
+// verifyDoneMsg reports the result of submitting the verification code. On
+// success the client already holds the issued token.
+type verifyDoneMsg struct{ err error }
+
 func (m *Model) appendConnectedStatus() {
 	if m.user == nil {
 		return
 	}
-	m.appendBlock("status", "connected as "+m.user.Username)
+	m.appendBlock("status", "connected as "+m.user.Email)
 }
 
 func (m *Model) appendBlock(role, text string) {

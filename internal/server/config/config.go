@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/ivoras/harlequin/internal/server/email"
 	"github.com/ivoras/harlequin/internal/server/secrets"
 	"github.com/joho/godotenv"
 	"gopkg.in/yaml.v3"
@@ -50,6 +51,8 @@ type Config struct {
 	Memory     MemoryConfig     `yaml:"memory"`
 	Sessions   SessionsConfig   `yaml:"sessions"`
 	MCP        MCPConfig        `yaml:"mcp"`
+	Auth       AuthConfig       `yaml:"auth"`
+	Email      email.Config     `yaml:"email"`
 
 	// Secrets, populated from the environment (not YAML).
 	JWTSecret string `yaml:"-"`
@@ -58,6 +61,19 @@ type Config struct {
 	// rest (MCP header secrets and OAuth tokens), decoded from the base64
 	// HARLEQUIN_SECRET_KEY env var. Nil when unset; features needing it fail closed.
 	SecretKey []byte `yaml:"-"`
+}
+
+// AuthConfig controls authentication-related policy.
+type AuthConfig struct {
+	// AllowRegistration enables the public self-registration endpoints
+	// (/auth/register + /auth/verify). Pointer so an omitted key defaults to
+	// enabled; set false to require owner-created accounts only.
+	AllowRegistration *bool `yaml:"allow_registration"`
+}
+
+// AllowRegistrationValue reports whether self-registration is enabled (default true).
+func (a AuthConfig) AllowRegistrationValue() bool {
+	return a.AllowRegistration == nil || *a.AllowRegistration
 }
 
 // ServerConfig holds HTTP server settings.
@@ -362,6 +378,10 @@ func (c *Config) resolveSecrets() {
 	}
 	if c.Embeddings.APIKey == "" {
 		c.Embeddings.APIKey = os.Getenv("EMBED_API_KEY")
+	}
+
+	if env := c.Email.PasswordEnv; env != "" {
+		c.Email.Password = os.Getenv(env)
 	}
 }
 

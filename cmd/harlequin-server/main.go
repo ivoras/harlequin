@@ -20,6 +20,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/conversation"
 	"github.com/ivoras/harlequin/internal/server/cron"
 	"github.com/ivoras/harlequin/internal/server/documents"
+	"github.com/ivoras/harlequin/internal/server/email"
 	"github.com/ivoras/harlequin/internal/server/embed"
 	"github.com/ivoras/harlequin/internal/server/jsrun"
 	"github.com/ivoras/harlequin/internal/server/llm"
@@ -216,6 +217,7 @@ func main() {
 		CronSched:     cron.NewScheduler(store, cronStore, ag, notifyStore),
 		UserConfig:    userconfig.NewStore(),
 		Presence:      presenceTracker,
+		Email:         email.New(cfg.Email),
 	}
 
 	// Queue onboarding for any existing users who still need it.

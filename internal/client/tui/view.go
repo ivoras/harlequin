@@ -37,7 +37,8 @@ func (m *Model) View() tea.View {
 	switch {
 	case m.width == 0:
 		content = "loading…"
-	case m.phase == phaseLoginUser || m.phase == phaseLoginPass:
+	case m.phase == phaseLoginUser || m.phase == phaseLoginPass ||
+		m.phase == phaseRegisterEmail || m.phase == phaseRegisterPass || m.phase == phaseRegisterCode:
 		content = m.loginView()
 	case m.phase == phaseAsk:
 		content = m.askView()
@@ -52,9 +53,14 @@ func (m *Model) View() tea.View {
 
 func (m *Model) loginView() string {
 	title := m.styles.Header.Render(" Harlequin ")
-	prompt := "Username"
-	if m.phase == phaseLoginPass {
+	prompt := "Email"
+	switch m.phase {
+	case phaseLoginPass, phaseRegisterPass:
 		prompt = "Password"
+	case phaseRegisterEmail:
+		prompt = "New account email"
+	case phaseRegisterCode:
+		prompt = "Verification code"
 	}
 	var sb strings.Builder
 	sb.WriteString(title + "\n\n")

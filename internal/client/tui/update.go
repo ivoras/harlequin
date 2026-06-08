@@ -119,7 +119,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case loginNeededMsg:
 		m.phase = phaseLoginUser
 		m.input.Reset()
-		m.input.Placeholder = "Enter username"
+		m.input.Placeholder = loginPrompt
 		return m, m.input.Focus()
 
 	case chatReadyMsg:
@@ -145,10 +145,37 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.appendBlock("error", msg.err.Error())
 			m.phase = phaseLoginUser
 			m.input.Reset()
-			m.input.Placeholder = "Enter username"
+			m.input.Placeholder = loginPrompt
 			return m, m.input.Focus()
 		}
 		// Persist token.
+		m.cfg.Token = m.client.Token()
+		_ = m.cfg.Save()
+		return m, m.bootstrapChat()
+
+	case registerSentMsg:
+		if msg.err != nil {
+			m.appendBlock("error", msg.err.Error())
+			m.phase = phaseLoginUser
+			m.input.Reset()
+			m.input.Placeholder = loginPrompt
+			return m, m.input.Focus()
+		}
+		m.appendBlock("info", "We sent a verification code to "+msg.email+". Enter it below (check the server console if email isn't configured).")
+		m.phase = phaseRegisterCode
+		m.input.Reset()
+		m.input.Placeholder = "Enter verification code"
+		return m, m.input.Focus()
+
+	case verifyDoneMsg:
+		if msg.err != nil {
+			// Stay on the code step so the user can retry.
+			m.appendBlock("error", msg.err.Error())
+			m.input.Reset()
+			m.input.Placeholder = "Enter verification code"
+			return m, m.input.Focus()
+		}
+		// Verified + auto-logged-in: persist the token and enter chat.
 		m.cfg.Token = m.client.Token()
 		_ = m.cfg.Save()
 		return m, m.bootstrapChat()
@@ -275,8 +302,16 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handleAskKey(msg, key)
 	case phaseLoginUser:
 		if key == "enter" {
-			m.loginUser = strings.TrimSpace(m.input.Value())
+			v := strings.TrimSpace(m.input.Value())
 			m.input.Reset()
+			// "register" at the email prompt switches to the sign-up flow.
+			if strings.EqualFold(v, "register") {
+				m.appendBlock("info", "Create an account — enter your email.")
+				m.input.Placeholder = "Enter email"
+				m.phase = phaseRegisterEmail
+				return m, nil
+			}
+			m.loginUser = v
 			m.input.Placeholder = "Enter password"
 			// Note: password is shown; for simplicity we do not mask in v1.
 			m.phase = phaseLoginPass
@@ -289,6 +324,28 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			user := m.loginUser
 			m.appendBlock("info", "logging in as "+user+"…")
 			return m, m.doLogin(user, pass)
+		}
+	case phaseRegisterEmail:
+		if key == "enter" {
+			m.regEmail = strings.TrimSpace(m.input.Value())
+			m.input.Reset()
+			m.input.Placeholder = "Choose a password (min 8 chars)"
+			m.phase = phaseRegisterPass
+			return m, nil
+		}
+	case phaseRegisterPass:
+		if key == "enter" {
+			m.regPass = m.input.Value()
+			m.input.Reset()
+			m.appendBlock("info", "registering "+m.regEmail+"…")
+			return m, m.doRegister(m.regEmail, m.regPass)
+		}
+	case phaseRegisterCode:
+		if key == "enter" {
+			code := strings.TrimSpace(m.input.Value())
+			m.input.Reset()
+			m.appendBlock("info", "verifying…")
+			return m, m.doVerify(m.regEmail, code)
 		}
 	case phaseChat:
 		if bkey.Matches(msg, m.vp.KeyMap.PageUp) || bkey.Matches(msg, m.vp.KeyMap.PageDown) {
@@ -358,6 +415,22 @@ func (m *Model) doLogin(user, pass string) tea.Cmd {
 	return func() tea.Msg {
 		_, err := m.client.Login(context.Background(), user, pass)
 		return loginDoneMsg{err: err}
+	}
+}
+
+// doRegister starts self-registration; the server emails a verification code.
+func (m *Model) doRegister(email, pass string) tea.Cmd {
+	return func() tea.Msg {
+		_, err := m.client.Register(context.Background(), email, pass)
+		return registerSentMsg{email: email, err: err}
+	}
+}
+
+// doVerify submits the emailed code; on success the client holds a fresh token.
+func (m *Model) doVerify(email, code string) tea.Cmd {
+	return func() tea.Msg {
+		_, err := m.client.Verify(context.Background(), email, code)
+		return verifyDoneMsg{err: err}
 	}
 }
 
