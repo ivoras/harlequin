@@ -82,6 +82,26 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 			// duplicates, so a retry is harmless.
 			if slotKey, _ := args["slot_key"].(string); strings.TrimSpace(slotKey) != "" {
 				key := strings.TrimSpace(slotKey)
+				// A slot key must not live in both shared and personal memory. If the
+				// same attribute already exists in the other scope, refuse (non-admin)
+				// or ask the user how to resolve (admin) — never create the duplicate.
+				if m, err := a.Memory.CrossScopeSlot(ctx, rc.userDB, scope, key); err == nil && m != nil {
+					otherScope := "shared"
+					if scope == "shared" {
+						otherScope = "personal"
+					}
+					if !rc.canShareMemory {
+						return fmt.Sprintf("error: can't store %q in your personal memory — that attribute already exists in shared memory as %s (%q). A regular user can't duplicate a shared slot; if the shared value is wrong, ask an owner/admin to change it.", key, m.ID, m.Value), nil
+					}
+					var sb strings.Builder
+					fmt.Fprintf(&sb, "Won't store %q yet: the attribute %q already exists in %s memory as %s (%q), and a slot can't be in both shared and personal memory. Use ask_user to ask whether to: (1) cancel storing it in %s memory, or (2) update the existing %s memory %s to %q (call memory_change with id %s).",
+						key, m.Key, otherScope, m.ID, m.Value, scope, otherScope, m.ID, content, m.ID)
+					if !m.Exact {
+						fmt.Fprintf(&sb, " (3) If the user says these are different attributes, store it under a clearly distinct slot_key instead.")
+					}
+					sb.WriteString(" Do not create the duplicate.")
+					return sb.String(), nil
+				}
 				id, created, err := a.Memory.WriteSlot(ctx, rc.userDB, scope, key, content, rc.userID, rc.canShareMemory)
 				if err != nil {
 					return "", err
