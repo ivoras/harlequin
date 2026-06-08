@@ -39,7 +39,11 @@
   async function run(j: CronJob) {
     try {
       await api.runCron(j.id);
-      toast("queued — runs within a minute");
+      toast(`running "${j.name}"…`);
+      // The run is async on the server; give it a moment, then refresh so the
+      // row's last-run status/output updates. (A job whose output is unchanged
+      // won't raise a notification by design — the refreshed row is the signal.)
+      setTimeout(load, 3000);
     } catch (e) {
       toast((e as Error).message, "error");
     }
@@ -79,7 +83,7 @@
             <span class="spacer"></span>{#if !j.enabled}<span class="muted small">disabled</span>{/if}
           </div>
           <div class="muted small wrap">{j.target}</div>
-          {#if j.last_status}<div class="muted small wrap">last: {j.last_status} — {j.last_output}</div>{/if}
+          {#if j.last_status}<div class="muted small wrap">last{#if j.last_run_at} <span class="mono">({new Date(j.last_run_at).toLocaleString()})</span>{/if}: {j.last_status} — {j.last_output}</div>{/if}
           <div class="row small" style="gap:6px;">
             <button onclick={() => run(j)}>Run now</button>
             <button onclick={() => toggle(j)}>{j.enabled ? "Disable" : "Enable"}</button>
