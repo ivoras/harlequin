@@ -20,6 +20,15 @@
   let abort: AbortController | null = null;
   let loadedFor = 0;
   let scrollEl: HTMLDivElement | undefined;
+  let inputEl: HTMLTextAreaElement | undefined;
+
+  // When the turn ends on a free-text question (no preset options), focus the
+  // composer so the user can answer immediately — no extra click needed.
+  $effect(() => {
+    if (loading) return;
+    const last = items.at(-1);
+    if (last && last.kind === "ask" && last.options.length === 0) inputEl?.focus();
+  });
 
   // Load history whenever the active conversation changes (not on each message).
   $effect(() => {
@@ -196,6 +205,8 @@
               <div class="row" style="flex-wrap:wrap; gap:6px;">
                 {#each it.options as o}<button class="small" onclick={() => answerAsk(o)}>{o}</button>{/each}
               </div>
+            {:else}
+              <div class="muted small">Type your answer below.</div>
             {/if}
           </div>
         {/if}
@@ -208,7 +219,7 @@
 
   <div class="composer">
     <div class="container row" style="align-items:flex-end; gap:8px;">
-      <textarea rows="1" placeholder="Message…" bind:value={input} onkeydown={onKey}></textarea>
+      <textarea rows="1" placeholder="Message…" bind:value={input} bind:this={inputEl} onkeydown={onKey}></textarea>
       {#if loading}
         <button class="danger" onclick={stop} title="Stop">■</button>
       {:else}
