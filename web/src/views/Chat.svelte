@@ -15,6 +15,7 @@
   let items = $state<Item[]>([]);
   let input = $state("");
   let loading = $state(false);
+  let ppLabel = $state(""); // live prompt-processing progress, before the first token
   let ctx = $state<{ model: string; used: number; max: number } | null>(null);
   let abort: AbortController | null = null;
   let loadedFor = 0;
@@ -88,18 +89,29 @@
       if (err.name !== "AbortError") toast(err.message, "error");
     } finally {
       loading = false;
+      ppLabel = "";
       abort = null;
     }
   }
 
   function handleEvent(ev: StreamEvent, getAssistant: () => Item) {
     switch (ev.type) {
+      case SSE.PromptProgress: {
+        const total = ev.prompt_total || 0;
+        if (total > 0) {
+          const pct = Math.floor(((ev.prompt_processed || 0) * 100) / total);
+          ppLabel = `Processing prompt ${pct}% (${ev.prompt_processed}/${total} tok)`;
+        }
+        break;
+      }
       case SSE.Token: {
+        ppLabel = ""; // prefill done once tokens flow
         const a = getAssistant();
         if (a.kind === "msg") a.content += ev.text || "";
         break;
       }
       case SSE.Thinking: {
+        ppLabel = "";
         let last = items.at(-1);
         if (!last || last.kind !== "thinking") {
           items.push({ kind: "thinking", text: "" });
@@ -203,7 +215,9 @@
         <button class="primary" onclick={send} disabled={!input.trim() || !$session.id}>Send</button>
       {/if}
     </div>
-    {#if ctx}
+    {#if loading && ppLabel}
+      <div class="container muted small" style="padding-top:2px;">{ppLabel}</div>
+    {:else if ctx}
       <div class="container muted small" style="padding-top:2px;">
         {ctx.model}{#if ctx.max} · {fmtk(ctx.used)}/{fmtk(ctx.max)} ctx{/if}
       </div>

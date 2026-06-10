@@ -97,6 +97,11 @@ type ProviderConfig struct {
 	Model         string `yaml:"model"`
 	APIKeyEnv     string `yaml:"api_key_env"`
 	ContextWindow int    `yaml:"context_window"` // max input tokens for this provider's model
+	// ReturnProgress asks the provider for live prompt-processing progress
+	// (llama.cpp's `return_progress`: streamed `prompt_progress` events before the
+	// first token). Only enable for llama.cpp servers; other backends may reject
+	// the unknown request field.
+	ReturnProgress bool `yaml:"return_progress"`
 
 	// APIKey is resolved from APIKeyEnv at load time.
 	APIKey string `yaml:"-"`

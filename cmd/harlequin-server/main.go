@@ -74,7 +74,9 @@ func main() {
 	usageStore := usage.NewStore(cfg.Prices)
 	providers := map[string]*llm.OpenAICompatible{}
 	for _, p := range cfg.Providers {
-		providers[p.Name] = llm.NewOpenAICompatible(p.Name, p.BaseURL, p.APIKey, p.Model)
+		prov := llm.NewOpenAICompatible(p.Name, p.BaseURL, p.APIKey, p.Model)
+		prov.SetReturnProgress(p.ReturnProgress)
+		providers[p.Name] = prov
 	}
 	// Usage is recorded in the agent loop where the user/conversation are known,
 	// so the routing provider's recorder is left nil to avoid double-counting.

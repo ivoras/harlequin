@@ -76,6 +76,7 @@ type Model struct {
 	blocks            []roleBlock
 	streamingThinking strings.Builder // in-flight reasoning text
 	streaming         strings.Builder // in-flight assistant response text
+	ppProgress        string          // in-flight prompt-processing progress label (cleared once tokens flow)
 
 	conversationID int64
 	convTitle      string // current session's title, shown in the header (auto-titled)
@@ -312,7 +313,11 @@ func (m *Model) renderAssistant(text string) string {
 func (m *Model) renderThinkingIndicator() string {
 	pulse := lipgloss.Color(thinkingPulseColor(time.Now()))
 	glow := lipgloss.NewStyle().Foreground(pulse).Bold(true)
-	out := glow.Render(m.spin.View()+" Thinking") + glow.Render("…")
+	label := "Thinking"
+	if m.ppProgress != "" {
+		label = m.ppProgress // show prefill progress until the first token arrives
+	}
+	out := glow.Render(m.spin.View()+" "+label) + glow.Render("…")
 	if !m.turnStart.IsZero() {
 		out += m.styles.Help.Render(fmt.Sprintf("  %ds", int(time.Since(m.turnStart).Seconds())))
 	}

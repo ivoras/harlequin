@@ -101,6 +101,17 @@ type Timings struct {
 	PredictedPerSecond float64 `json:"predicted_per_second"`
 }
 
+// PromptProgress is llama.cpp's live prompt-processing progress, emitted before
+// the first token when `return_progress` is requested. total = total prompt
+// tokens, cache = tokens reused from the KV cache, processed = tokens evaluated
+// so far. The work remaining is (total - cache); percent = processed/(total-cache).
+type PromptProgress struct {
+	Total     int `json:"total"`
+	Cache     int `json:"cache"`
+	Processed int `json:"processed"`
+	TimeMS    int `json:"time_ms"`
+}
+
 // Chunk is a streamed piece of a completion.
 type Chunk struct {
 	// TextDelta is incremental assistant text (final response).
@@ -115,6 +126,9 @@ type Chunk struct {
 	// Timings is set on the final chunk when the provider reports server-side
 	// model operation timing (llama.cpp).
 	Timings *Timings
+	// PromptProgress is set on a pre-generation progress chunk (llama.cpp
+	// `return_progress`); such chunks carry no text/tool calls and are not Done.
+	PromptProgress *PromptProgress
 	// Provider/Model that served this response.
 	Provider string
 	Model    string
@@ -132,12 +146,13 @@ type Provider interface {
 
 // OpenAICompatible talks to any OpenAI-compatible /chat/completions endpoint.
 type OpenAICompatible struct {
-	name    string
-	baseURL string
-	apiKey  string
-	model   string
-	client  *http.Client
-	ppAvg   *ppTracker // rolling prompt-processing rate, drives the dynamic timeout
+	name           string
+	baseURL        string
+	apiKey         string
+	model          string
+	client         *http.Client
+	ppAvg          *ppTracker // rolling prompt-processing rate, drives the dynamic timeout
+	returnProgress bool       // request llama.cpp prompt-processing progress events
 }
 
 // NewOpenAICompatible constructs a provider. defaultModel is used when a request
@@ -155,6 +170,10 @@ func NewOpenAICompatible(name, baseURL, apiKey, defaultModel string) *OpenAIComp
 	}
 }
 
+// SetReturnProgress enables requesting llama.cpp prompt-processing progress
+// (the `return_progress` extension). Leave off for non-llama.cpp backends.
+func (p *OpenAICompatible) SetReturnProgress(v bool) { p.returnProgress = v }
+
 // Name returns the provider name.
 func (p *OpenAICompatible) Name() string { return p.name }
 
@@ -162,12 +181,13 @@ func (p *OpenAICompatible) Name() string { return p.name }
 func (p *OpenAICompatible) Model() string { return p.model }
 
 type streamRequest struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	Tools       []Tool    `json:"tools,omitempty"`
-	Stream      bool      `json:"stream"`
-	StreamOpts  streamOpt `json:"stream_options"`
-	Temperature *float64  `json:"temperature,omitempty"`
+	Model          string    `json:"model"`
+	Messages       []Message `json:"messages"`
+	Tools          []Tool    `json:"tools,omitempty"`
+	Stream         bool      `json:"stream"`
+	StreamOpts     streamOpt `json:"stream_options"`
+	Temperature    *float64  `json:"temperature,omitempty"`
+	ReturnProgress bool      `json:"return_progress,omitempty"`
 }
 
 type streamOpt struct {
@@ -181,12 +201,13 @@ func (p *OpenAICompatible) Chat(ctx context.Context, req ChatRequest) (<-chan Ch
 		model = p.model
 	}
 	body, err := json.Marshal(streamRequest{
-		Model:       model,
-		Messages:    req.Messages,
-		Tools:       req.Tools,
-		Stream:      true,
-		StreamOpts:  streamOpt{IncludeUsage: true},
-		Temperature: req.Temperature,
+		Model:          model,
+		Messages:       req.Messages,
+		Tools:          req.Tools,
+		Stream:         true,
+		StreamOpts:     streamOpt{IncludeUsage: true},
+		Temperature:    req.Temperature,
+		ReturnProgress: p.returnProgress,
 	})
 	if err != nil {
 		return nil, err
@@ -234,9 +255,10 @@ type sseChunk struct {
 		Delta jsonDelta `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
-	Usage   *Usage       `json:"usage"`
-	Timings *Timings     `json:"timings"`
-	Error   *streamError `json:"error"`
+	Usage          *Usage          `json:"usage"`
+	Timings        *Timings        `json:"timings"`
+	PromptProgress *PromptProgress `json:"prompt_progress"`
+	Error          *streamError    `json:"error"`
 }
 
 // streamError is a provider error delivered inside a 200 SSE stream (e.g.
@@ -343,6 +365,11 @@ func (p *OpenAICompatible) readStream(resp *http.Response, model string, out cha
 		}
 		if c.Timings != nil {
 			timings = c.Timings
+		}
+		if c.PromptProgress != nil {
+			// Pre-generation progress; carries no content. Forward as-is and let
+			// the caller throttle/render.
+			out <- Chunk{PromptProgress: c.PromptProgress, Provider: p.name, Model: model}
 		}
 		for _, ch := range c.Choices {
 			if thinking := normalizeThinking(ch.Delta.extra); thinking != "" {

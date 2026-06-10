@@ -195,6 +195,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case streamEndMsg:
 		m.loading = false
+		m.ppProgress = ""
 		m.flushStreaming()
 		if m.pendingTiming != nil {
 			m.appendBlock("status", formatTiming(m.pendingTiming))
@@ -230,12 +231,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *Model) handleStreamEvent(ev types.StreamEvent) (tea.Model, tea.Cmd) {
 	switch ev.Type {
+	case types.SSEPromptProgress:
+		if ev.PromptTotal > 0 {
+			pct := ev.PromptProcessed * 100 / ev.PromptTotal
+			m.ppProgress = fmt.Sprintf("Processing prompt %d%% (%d/%d tok)", pct, ev.PromptProcessed, ev.PromptTotal)
+			m.refreshViewport()
+		}
 	case types.SSEThinking:
+		m.ppProgress = "" // prefill done once tokens flow
 		if m.cfg.ShowThinking {
 			m.streamingThinking.WriteString(ev.Thinking)
 			m.refreshViewport()
 		}
 	case types.SSEToken:
+		m.ppProgress = ""
 		m.streaming.WriteString(ev.Text)
 		m.refreshViewport()
 	case types.SSEToolCall:
