@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 const helpText = `Commands:
   /help                 show this help
   /new                  start a new conversation
+  /queue [del <n>|clear] messages typed while busy are queued; list/remove them
   /skills               list available skills
   /skill pull <name>    download a skill for local editing
   /skill push <name>    upload your edited skill as an override
@@ -105,6 +107,8 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 		return m.handleCronSub(args, line)
 	case "/config":
 		return m.handleConfigSub(args)
+	case "/queue":
+		return m.handleQueueSub(args)
 	case "/reload":
 		if !m.canManageShared() {
 			return infoCmd("/reload is owner/admin only")
@@ -495,6 +499,46 @@ func renderHatDetail(h types.Hat) string {
 		sb.WriteString("  prompt:      (default)")
 	}
 	return sb.String()
+}
+
+// handleQueueSub lists or edits the pending message queue (messages typed while
+// a turn was in flight). Mutates state inline + refreshes rather than going
+// through infoMsg, which would clear the in-flight loading state.
+func (m *Model) handleQueueSub(args []string) tea.Cmd {
+	report := func(s string) tea.Cmd {
+		m.appendBlock("info", s)
+		m.refreshViewport()
+		return nil
+	}
+	if len(args) == 0 {
+		if len(m.msgQueue) == 0 {
+			return report("queue is empty")
+		}
+		var sb strings.Builder
+		sb.WriteString("Queued messages (/queue del <n> to remove):")
+		for i, q := range m.msgQueue {
+			fmt.Fprintf(&sb, "\n  %d. %s", i+1, q)
+		}
+		return report(sb.String())
+	}
+	switch strings.ToLower(args[0]) {
+	case "clear":
+		n := len(m.msgQueue)
+		m.msgQueue = nil
+		return report(fmt.Sprintf("cleared %d queued message(s)", n))
+	case "del", "rm", "remove":
+		if len(args) < 2 {
+			return report("usage: /queue del <n>")
+		}
+		idx, err := strconv.Atoi(args[1])
+		if err != nil || idx < 1 || idx > len(m.msgQueue) {
+			return report(fmt.Sprintf("no queued message #%s", args[1]))
+		}
+		removed := m.msgQueue[idx-1]
+		m.msgQueue = append(m.msgQueue[:idx-1], m.msgQueue[idx:]...)
+		return report("removed: " + truncate(removed, 60))
+	}
+	return report("usage: /queue [del <n>|clear]")
 }
 
 func (m *Model) handleMemorySub(args []string) tea.Cmd {

@@ -16,6 +16,7 @@
   let input = $state("");
   let loading = $state(false);
   let ppLabel = $state(""); // live prompt-processing progress, before the first token
+  let queue = $state<string[]>([]); // messages typed while a turn is in flight
   let ctx = $state<{ model: string; used: number; max: number } | null>(null);
   let abort: AbortController | null = null;
   let loadedFor = 0;
@@ -67,10 +68,24 @@
     });
   }
 
-  async function send() {
+  // send() is the entry point from the composer. While a turn is in flight the
+  // message is queued (and shown) instead of starting a second concurrent turn;
+  // the queue drains in order as each turn finishes.
+  function send() {
     const text = input.trim();
-    if (!text || loading || !$session.id) return;
+    if (!text || !$session.id) return;
     input = "";
+    if (loading) {
+      queue.push(text);
+      return;
+    }
+    sendText(text);
+  }
+  function removeQueued(i: number) {
+    queue.splice(i, 1);
+  }
+
+  async function sendText(text: string) {
     items.push({ kind: "msg", role: "user", content: text });
     loading = true;
     let assistant: Item | null = null;
@@ -100,6 +115,11 @@
       loading = false;
       ppLabel = "";
       abort = null;
+      // Drain the next queued message, if any.
+      if (queue.length > 0) {
+        const next = queue.shift()!;
+        sendText(next);
+      }
     }
   }
 
@@ -218,8 +238,19 @@
   </div>
 
   <div class="composer">
+    {#if queue.length}
+      <div class="container col" style="gap:4px; padding-bottom:6px;">
+        <div class="muted small">Queued ({queue.length}) — sent in order as the agent frees up:</div>
+        {#each queue as q, i}
+          <div class="row queued" style="gap:6px; align-items:center;">
+            <span class="small wrap" style="flex:1; min-width:0;">{i + 1}. {q}</span>
+            <button class="ghost danger small" onclick={() => removeQueued(i)} aria-label="Remove">✕</button>
+          </div>
+        {/each}
+      </div>
+    {/if}
     <div class="container row" style="align-items:flex-end; gap:8px;">
-      <textarea rows="1" placeholder="Message…" bind:value={input} bind:this={inputEl} onkeydown={onKey}></textarea>
+      <textarea rows="1" placeholder={loading ? "Message (will queue)…" : "Message…"} bind:value={input} bind:this={inputEl} onkeydown={onKey}></textarea>
       {#if loading}
         <button class="danger" onclick={stop} title="Stop">■</button>
       {:else}

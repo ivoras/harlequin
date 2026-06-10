@@ -8,7 +8,7 @@ import (
 // slashCommands are the top-level commands offered by the autocomplete menu.
 var slashCommands = []string{
 	"/config", "/cron", "/docs", "/export", "/hat", "/help", "/mcp", "/memory", "/new",
-	"/quit", "/reload", "/resume", "/skill", "/skills", "/usage",
+	"/queue", "/quit", "/reload", "/resume", "/skill", "/skills", "/usage",
 }
 
 var slashHelp = map[string]string{
@@ -21,6 +21,7 @@ var slashHelp = map[string]string{
 	"/mcp":    "list / add / test / authorize MCP servers",
 	"/memory": "list / show / manage memories",
 	"/new":    "start a new conversation",
+	"/queue":  "list / del <n> / clear messages queued while busy",
 	"/quit":   "exit",
 	"/reload": "(admin) re-read skill/prompt/hat files",
 	"/resume": "list recent conversations",
