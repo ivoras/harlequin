@@ -14,7 +14,7 @@ var slashCommands = []string{
 var slashHelp = map[string]string{
 	"/config": "view / set per-user config (e.g. Telegram)",
 	"/cron":   "list / add / manage scheduled jobs",
-	"/docs":   "search organisation documents",
+	"/docs":   "search org documents; '/docs add <path>' uploads a file (e.g. PDF)",
 	"/export": "save transcript (User+Assistant; add 'raw' for everything)",
 	"/hat":    "list / show / wear hats",
 	"/help":   "show help",

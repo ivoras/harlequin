@@ -20,6 +20,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/mcp"
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/notify"
+	"github.com/ivoras/harlequin/internal/server/pdfextract"
 	"github.com/ivoras/harlequin/internal/server/presence"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/skills"
@@ -49,6 +50,7 @@ type Server struct {
 	UserConfig    *userconfig.Store
 	Presence      *presence.Tracker
 	Email         *email.Sender
+	PDFExtract    *pdfextract.Extractor
 }
 
 // Router builds the chi router.

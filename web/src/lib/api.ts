@@ -69,6 +69,23 @@ async function reqList<T>(method: string, path: string, body?: unknown): Promise
 const q = (s: string) => encodeURIComponent(s);
 const mcpRef = (scope: string, name: string) => `?scope=${q(scope)}&name=${q(name)}`;
 
+// uploadDoc posts a file as multipart/form-data (the server extracts text — PDFs
+// via PDFium — and ingests it). We must NOT set Content-Type: the browser adds
+// the multipart boundary itself.
+async function uploadDoc(file: File, title?: string): Promise<Document> {
+  const fd = new FormData();
+  fd.append("file", file);
+  if (title) fd.append("title", title);
+  const res = await fetch(apiUrl("/documents"), { method: "POST", headers: authHeaders(), body: fd });
+  if (!res.ok) {
+    let msg = res.status + " " + res.statusText;
+    try { const e = await res.json(); if (e && e.error) msg = e.error; } catch { /* keep status */ }
+    if (res.status === 401) setToken("");
+    throw new Error(msg);
+  }
+  return (await res.json()) as Document;
+}
+
 export const api = {
   // auth / user
   login: (email: string, password: string) =>
@@ -118,6 +135,7 @@ export const api = {
   // documents
   listDocuments: () => reqList<Document>("GET", "/documents"),
   createDocument: (r: CreateDocumentRequest) => req<Document>("POST", "/documents", r),
+  uploadDocument: (file: File, title?: string) => uploadDoc(file, title),
   deleteDocument: (id: number) => req<void>("DELETE", `/documents/${id}`),
   searchDocuments: (query: string) => reqList<SearchResult>("GET", `/documents/search?q=${q(query)}`),
 

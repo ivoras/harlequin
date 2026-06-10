@@ -49,6 +49,7 @@ const helpText = `Commands:
   /memory conflicts     list flagged duplicate/conflicting memory pairs
   /memory resolve <id>  mark a conflict flag as resolved
   /docs <query>         search organisation documents
+  /docs add <path>      upload a local file (e.g. a PDF) into the corpus
   /resume               list recent conversations
   /usage                show your token/cost usage
   /export [raw]         save transcript to session_YYYYMMDD_HHMM.md (cwd); raw includes thinking/tools, else User+Assistant only
@@ -127,6 +128,17 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 	case "/memory":
 		return m.handleMemorySub(args)
 	case "/docs":
+		// "/docs add <path>" uploads a local file (e.g. a PDF); otherwise search.
+		if len(args) >= 2 && args[0] == "add" {
+			path := strings.TrimSpace(strings.Join(args[1:], " "))
+			return func() tea.Msg {
+				d, err := m.client.UploadDocument(context.Background(), path, "")
+				if err != nil {
+					return errMsg{err}
+				}
+				return infoMsg{fmt.Sprintf("uploaded %q (document id=%d) into the org corpus", d.Title, d.ID)}
+			}
+		}
 		q := strings.Join(args, " ")
 		return func() tea.Msg {
 			res, err := m.client.SearchDocuments(context.Background(), q)

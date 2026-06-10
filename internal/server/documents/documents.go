@@ -16,8 +16,12 @@ import (
 
 const (
 	rrfK         = 60.0
-	chunkRunes   = 1200
-	chunkOverlap = 150
+	// Chunk size in runes. Kept conservatively below the embedding server's
+	// physical batch (llama.cpp ubatch, often 512 tokens) so a single chunk of
+	// token-dense text (e.g. multilingual/legal) still embeds in one batch:
+	// ~800 runes is well under 512 tokens even at ~0.5 tokens/rune.
+	chunkRunes   = 800
+	chunkOverlap = 100
 )
 
 // Store manages documents and chunks.

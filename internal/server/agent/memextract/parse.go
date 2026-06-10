@@ -23,6 +23,27 @@ Other rules:
 - If nothing qualifies, respond exactly: {"memories":[]}
 - Do not explain your reasoning. Do not output placeholder or meta text like "no facts found".`
 
+// DocumentPrompt is the system prompt for distilling durable facts from an
+// imported document (rather than a conversation turn). It targets the document's
+// salient, specific facts — what it is and the entities, dates, identifiers,
+// definitions, obligations or decisions it records — not personal/user facts.
+var DocumentPrompt = `You extract durable, factual knowledge worth remembering long-term from an imported document.
+Capture its salient, specific facts: what the document is, the organisations/people/parties involved,
+key dates, identifiers, definitions, decisions or obligations. Prefer concrete, non-obvious facts over
+generic or easily-computable ones. List discrete facts; do not summarise the whole document.
+
+Respond with JSON only (no markdown, no commentary):
+{"memories":[{"content":"...","confidence":N,"scope":"user"|"shared"}, ...]}
+
+` + ScopeRules + `
+
+Other rules:
+- "content" is one terse fact in third person.
+- Facts that are general knowledge from the document (not personal to one user) are "shared".
+` + judge.PromptRules() + `
+- If nothing qualifies, respond exactly: {"memories":[]}
+- Do not explain your reasoning. Do not output placeholder or meta text like "no facts found".`
+
 type Candidate struct {
 	Content    string
 	Scope      string // "user" or "shared"

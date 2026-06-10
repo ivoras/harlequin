@@ -28,6 +28,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/mdtmpl"
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/notify"
+	"github.com/ivoras/harlequin/internal/server/pdfextract"
 	"github.com/ivoras/harlequin/internal/server/presence"
 	"github.com/ivoras/harlequin/internal/server/secrets"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
@@ -221,6 +222,14 @@ func main() {
 		UserConfig:    userconfig.NewStore(),
 		Presence:      presenceTracker,
 		Email:         email.New(cfg.Email),
+	}
+
+	// PDF text extraction for document uploads (PDFium via wasm; best-effort).
+	if ex, err := pdfextract.New(); err != nil {
+		log.Printf("pdf extraction unavailable: %v", err)
+	} else {
+		srv.PDFExtract = ex
+		defer ex.Close()
 	}
 
 	// Queue onboarding for any existing users who still need it.
