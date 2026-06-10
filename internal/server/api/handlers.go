@@ -1,13 +1,19 @@
 package api
 
 import (
+	"bytes"
+	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ivoras/harlequin/internal/server/auth"
@@ -423,13 +429,25 @@ func (s *Server) handleListDocuments(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, docs)
 }
 
+// maxUploadBytes caps an uploaded document file (covers large PDFs, not media).
+const maxUploadBytes = 64 << 20 // 64 MiB
+
 func (s *Server) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
+
 	var req types.CreateDocumentRequest
-	if err := decode(r, &req); err != nil {
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		// File upload: extract text from the file (PDF via PDFium-wasm) and ingest.
+		var err error
+		req, err = s.documentFromUpload(w, r)
+		if err != nil {
+			return // documentFromUpload already wrote the error
+		}
+	} else if err := decode(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
+
 	d, err := s.Docs.Ingest(r.Context(), req, u.ID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
@@ -439,7 +457,70 @@ func (s *Server) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 		s.Audit.Log(r.Context(), udb, "document_ingest", req.Title, nil)
 		return nil
 	})
+
+	// Optional bridge: distill durable facts from the document into memory.
+	if s.Cfg.Memory.ExtractFromDocumentsEnabled() && s.Agent != nil && strings.TrimSpace(req.Content) != "" {
+		go s.Agent.ExtractMemoriesFromText(context.Background(), u.ID, req.Title, req.Content, types.IsElevated(u.Role))
+	}
+
 	writeJSON(w, http.StatusCreated, d)
+}
+
+// documentFromUpload reads a multipart "file" field, extracts its text (PDFs go
+// through PDFium-wasm; text-like files are used as-is), and builds an ingest
+// request. On failure it writes the HTTP error and returns a non-nil error.
+func (s *Server) documentFromUpload(w http.ResponseWriter, r *http.Request) (types.CreateDocumentRequest, error) {
+	var req types.CreateDocumentRequest
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
+	if err := r.ParseMultipartForm(8 << 20); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid upload: "+err.Error())
+		return req, err
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "missing file field")
+		return req, err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(file)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "read file: "+err.Error())
+		return req, err
+	}
+
+	title := r.FormValue("title")
+	if title == "" {
+		title = header.Filename
+	}
+
+	isPDF := strings.HasSuffix(strings.ToLower(header.Filename), ".pdf") ||
+		header.Header.Get("Content-Type") == "application/pdf" ||
+		bytes.HasPrefix(data, []byte("%PDF-"))
+
+	switch {
+	case isPDF:
+		if s.PDFExtract == nil {
+			writeErr(w, http.StatusUnsupportedMediaType, "PDF extraction is not available on this server")
+			return req, fmt.Errorf("no pdf extractor")
+		}
+		text, pages, err := s.PDFExtract.Text(data)
+		if err != nil {
+			writeErr(w, http.StatusUnprocessableEntity, "PDF extraction failed: "+err.Error())
+			return req, err
+		}
+		if strings.TrimSpace(text) == "" {
+			writeErr(w, http.StatusUnprocessableEntity, "no extractable text in PDF (it may be scanned images)")
+			return req, fmt.Errorf("empty pdf text")
+		}
+		log.Printf("documents: extracted %d chars from %q (%d pages) for user", len(text), header.Filename, pages)
+		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: "application/pdf", Content: text}
+	case utf8.Valid(data):
+		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: "text/plain", Content: string(data)}
+	default:
+		writeErr(w, http.StatusUnsupportedMediaType, "unsupported file type (only PDF and text are supported)")
+		return req, fmt.Errorf("unsupported file type")
+	}
+	return req, nil
 }
 
 func (s *Server) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {

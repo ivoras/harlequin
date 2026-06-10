@@ -74,6 +74,7 @@ memory:
   conflict_check: true     # LLM-judge new memories against FTS/vector candidates
   conflict_candidates: 8   # max similar memories to compare per write
   slot_search_weight: 1.0  # RRF weight of the slot-key leg in search (0 disables); see docs/memory_experiment_key_slots.md
+  extract_from_documents: true # also distill memories from imported documents (default true; set false for RAG-only import)
   search_max_distance: 0.2 # drop vector/slot search hits with cosine distance > this (range 0-2; 0 disables). Keeps unrelated queries from padding results.
 
 sessions:

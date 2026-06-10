@@ -8,8 +8,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -347,6 +350,65 @@ func (c *Client) ResolveMemoryConflict(ctx context.Context, id string) error {
 func (c *Client) SearchDocuments(ctx context.Context, q string) ([]types.SearchResult, error) {
 	var out []types.SearchResult
 	return out, c.do(ctx, http.MethodGet, "/documents/search?q="+q, nil, &out)
+}
+
+// UploadDocument uploads a local file (e.g. a PDF) to the org RAG corpus; the
+// server extracts its text (PDFs via PDFium) and ingests it. Uses a generous
+// timeout since server-side extraction + embedding can take a while.
+func (c *Client) UploadDocument(ctx context.Context, path, title string) (*types.Document, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	if title != "" {
+		_ = mw.WriteField("title", title)
+	}
+	fw, err := mw.CreateFormFile("file", filepath.Base(path))
+	if err != nil {
+		return nil, err
+	}
+	if _, err := io.Copy(fw, f); err != nil {
+		return nil, err
+	}
+	if err := mw.Close(); err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/documents", &buf)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	if c.iface != "" {
+		req.Header.Set(types.HeaderInterface, c.iface)
+	}
+
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		var er types.ErrorResponse
+		_ = json.NewDecoder(resp.Body).Decode(&er)
+		if er.Error == "" {
+			er.Error = resp.Status
+		}
+		return nil, fmt.Errorf("%s", er.Error)
+	}
+	var d types.Document
+	if err := json.NewDecoder(resp.Body).Decode(&d); err != nil {
+		return nil, err
+	}
+	return &d, nil
 }
 
 // Usage returns usage records for the current user.

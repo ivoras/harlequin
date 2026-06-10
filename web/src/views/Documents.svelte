@@ -10,6 +10,25 @@
   let results = $state<SearchResult[]>([]);
   let title = $state("");
   let content = $state("");
+  let uploading = $state(false);
+  let fileEl: HTMLInputElement | undefined;
+
+  async function upload(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    uploading = true;
+    try {
+      const d = await api.uploadDocument(file);
+      toast(`ingested "${d.title}"`);
+      await load();
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      uploading = false;
+      if (fileEl) fileEl.value = ""; // allow re-selecting the same file
+    }
+  }
 
   async function load() {
     try {
@@ -76,9 +95,15 @@
       {#if docs.length === 0}<div class="muted small">Empty.</div>{/if}
     </div>
     <div class="card col">
+      <div class="row" style="align-items:center; gap:8px;">
+        <input type="file" accept=".pdf,.txt,.md,application/pdf,text/plain" bind:this={fileEl} onchange={upload} disabled={uploading} />
+        {#if uploading}<span class="muted small">extracting & ingesting…</span>{/if}
+      </div>
+      <div class="muted small">Upload a PDF or text file (the server extracts the text).</div>
+      <hr />
       <input placeholder="title" bind:value={title} />
-      <textarea rows="3" placeholder="paste text to ingest…" bind:value={content}></textarea>
-      <button class="primary" onclick={add} disabled={!content.trim()}>Ingest</button>
+      <textarea rows="3" placeholder="…or paste text to ingest" bind:value={content}></textarea>
+      <button class="primary" onclick={add} disabled={!content.trim()}>Ingest text</button>
     </div>
   </div>
 </section>

@@ -36,7 +36,14 @@ func New(baseURL, apiKey, model string, dim int) *OpenAIEmbedder {
 		apiKey:  apiKey,
 		model:   model,
 		dim:     dim,
-		client:  &http.Client{Timeout: 60 * time.Second},
+		client: &http.Client{
+			Timeout: 60 * time.Second,
+			// Disable keep-alive: local embedding servers (llama.cpp) close idle
+			// connections, and a reused-but-stale pooled connection makes the next
+			// POST hang until timeout (POSTs aren't auto-retried). A fresh TCP
+			// connection per request is negligible over loopback.
+			Transport: &http.Transport{DisableKeepAlives: true},
+		},
 	}
 }
 

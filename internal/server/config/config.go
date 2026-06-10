@@ -208,6 +208,11 @@ type MemoryConfig struct {
 	// SlotSearchWeight is the RRF weight of the slot-key leg in memory search
 	// (0 disables it). Default 1.0. See docs/memory_experiment_key_slots.md.
 	SlotSearchWeight *float64 `yaml:"slot_search_weight"`
+	// ExtractFromDocuments runs memory extraction over the text of an imported
+	// document (in addition to indexing it for RAG), so uploads distill durable
+	// facts. Pointer so an omitted key defaults to enabled; set false to make
+	// document import RAG-only.
+	ExtractFromDocuments *bool `yaml:"extract_from_documents"`
 	// SearchMaxDistance drops vector/slot search candidates whose cosine distance
 	// to the query exceeds this, so an unrelated query returns few/no results
 	// instead of padding to the limit. Range [0,2]; default 0.2. 0 disables the
@@ -229,6 +234,12 @@ func (m MemoryConfig) SlotSearchWeightValue() float64 {
 		return *m.SlotSearchWeight
 	}
 	return 1.0
+}
+
+// ExtractFromDocumentsEnabled reports whether imported documents also feed memory
+// extraction (default true).
+func (m MemoryConfig) ExtractFromDocumentsEnabled() bool {
+	return m.ExtractFromDocuments == nil || *m.ExtractFromDocuments
 }
 
 // SearchMaxDistanceValue returns the cosine-distance cutoff for vector/slot
