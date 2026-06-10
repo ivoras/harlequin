@@ -1,0 +1,141 @@
+# Built-in tools
+
+These are the tools the Harlequin agent exposes to the LLM during a turn. The
+model calls them by name with JSON arguments; results are fed back into the loop.
+Some tools are only present when the corresponding feature is enabled in
+`server.yaml` (noted per tool). Defined in `internal/server/agent/tools.go`.
+
+Beyond these built-ins, two families of tools appear dynamically:
+- **Skill tools** — namespaced `<skill>.<tool>`, declared by a skill's frontmatter
+  and backed by sandboxed JS. Visible per the active hat/skill set.
+- **MCP tools** — namespaced `mcp__<server>__<tool>`, proxied from external MCP
+  servers (only when `mcp.enabled`).
+
+---
+
+## Memory
+
+### `memory_search`
+**Why:** recall durable facts/preferences about the user and their org before
+answering, so the agent stays consistent across sessions.
+**Example:** `memory_search({"query": "preferred currency"})`
+→ ranked hits, each with a composite id (`u.N`/`s.N`) and `slot_key` to use with
+`memory_change`/`memory_delete`.
+
+### `memory_write`
+**Why:** persist a new durable fact. `scope` is `user` (personal, default) or
+`shared` (org-wide, owner/admin only). An optional `slot_key` files the fact under
+an exact attribute (verbatim value, idempotent, no conflict check).
+**Examples:**
+- `memory_write({"content": "User prefers metric units"})`
+- `memory_write({"content": "EUR", "scope": "user", "slot_key": "user.preferred_currency"})`
+- `memory_write({"content": "The company name is WoodChucks Inc.", "scope": "shared"})`
+
+### `memory_change`
+**Why:** correct/update an existing fact in place (scope unchanged) instead of
+delete-then-add. Identify by `id` (preferred) or `slot_key`.
+**Example:** `memory_change({"id": "s.4", "content": "The company name is Acme Ltd."})`
+
+### `memory_delete`
+**Why:** drop a fact that no longer holds, when there's no replacement.
+**Example:** `memory_delete({"slot_key": "user.preferred_currency"})`
+
+---
+
+## Interaction
+
+### `ask_user`
+**Why:** get a decision from the user; the turn ends after the call and the user's
+next message is the answer (the model must not invent it). Optional `options`
+render as suggested choices.
+**Example:** `ask_user({"question": "Which deploy target?", "options": ["staging", "prod"]})`
+
+---
+
+## Skills
+
+### `list_skills`
+**Why:** discover available skills (name + description) before loading one.
+**Example:** `list_skills({})`
+
+### `load_skill`
+**Why:** pull a skill's full instructions and resource files into context, on
+demand, so they don't bloat every prompt.
+**Example:** `load_skill({"name": "web-extractor"})`
+
+---
+
+## Compute & code
+
+### `calculator`
+**Why:** do exact arithmetic instead of guessing; LLMs are unreliable at math.
+ES5 expression syntax, `Math` available.
+**Example:** `calculator({"expression": "(1500 * 1.08).toFixed(2)"})` → `"1620.00"`
+
+### `run_js`
+**Why:** general escape hatch — run ES5 JavaScript in a sandbox for logic, parsing,
+HTTP, and per-user file storage that the model can't do itself. ES5 only (`var`,
+no arrows/classes/async/template literals); emit output with `println()`/`print()`.
+Helpers: `fetch(url)`, `dom.parse/query/grep/json`, per-user `tmp.*`/`storage.*`
+stores, and `load(uri)`/`include(uri)` for `skill://`/`storage://`/`tmp://` scripts.
+**Examples:**
+- inline: `run_js({"code": "var r = fetch('https://example.com'); println(r.status);"})`
+- saved script + args: `run_js({"script": "skill://web-extractor/lib/check.js", "args": {"name": "fzoeu"}})`
+
+---
+
+## Web (only when `agent.web_fetch.enabled`)
+
+### `WebFetch`
+**Why:** read a web page and get an AI answer about it — fetches the URL, converts
+HTML→Markdown, and analyses it with a small model. Best for "what does this page
+say" questions. (15-min cache; reports cross-host redirects to call again.)
+**Example:** `WebFetch({"url": "https://example.com/pricing", "prompt": "What are the plan tiers and prices?"})`
+
+### `WebFetchDOM`
+**Why:** precise scraping, not summarisation — returns the page's HTML structure as
+JSON (with ready-to-use CSS selectors / candidate lists) so the agent can find the
+exact path to data, then re-query it with `run_js` (no AI per check). Use to set up
+a durable extractor/monitor.
+**Examples:**
+- discover: `WebFetchDOM({"url": "https://news.site/list"})`
+- locate: `WebFetchDOM({"url": "https://news.site/list", "grep": "Breaking:"})`
+- verify a selector: `WebFetchDOM({"url": "https://news.site/list", "selector": "li.headline"})`
+
+---
+
+## Documents (only when the document corpus is configured)
+
+### `search_docs`
+**Why:** retrieve passages from the organisation's RAG document corpus (uploaded
+PDFs/text) to ground answers in source material.
+**Example:** `search_docs({"query": "OTC derivatives reporting obligations"})`
+
+---
+
+## Scheduling (only when `cron` is enabled)
+
+### `cron_create`
+**Why:** set up recurring work for the user. `kind:"js"` runs a script with **no
+AI** each time (cheap periodic checks, e.g. watching a page); `kind:"skill"` runs a
+full agent turn. `spec` is a 5-field cron, a `@descriptor`, or `@every <dur>`.
+**Example:**
+`cron_create({"name": "fzoeu", "spec": "@every 30m", "kind": "js", "target": "skill://web-extractor/lib/check.js", "input": "{\"name\":\"fzoeu\"}"})`
+
+### `cron_list`
+**Why:** see the user's scheduled jobs and their last run status.
+**Example:** `cron_list({})`
+
+### `cron_update`
+**Why:** change a job's schedule/target or enable/disable it; only passed fields
+change.
+**Example:** `cron_update({"id": 3, "spec": "@daily", "enabled": false})`
+
+### `cron_run`
+**Why:** trigger a job immediately to test it or force a check (runs within a minute
+if enabled).
+**Example:** `cron_run({"id": 3})`
+
+### `cron_delete`
+**Why:** remove a job the user no longer wants.
+**Example:** `cron_delete({"id": 3})`
