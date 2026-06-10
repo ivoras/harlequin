@@ -77,6 +77,7 @@ type Model struct {
 	streamingThinking strings.Builder // in-flight reasoning text
 	streaming         strings.Builder // in-flight assistant response text
 	ppProgress        string          // in-flight prompt-processing progress label (cleared once tokens flow)
+	msgQueue          []string        // messages typed while a turn is in flight; sent in order as it frees up
 
 	conversationID int64
 	convTitle      string // current session's title, shown in the header (auto-titled)
@@ -260,6 +261,10 @@ func (m *Model) refreshViewport() {
 		sb.WriteString(m.renderThinkingIndicator())
 		sb.WriteString("\n")
 	}
+	if len(m.msgQueue) > 0 {
+		sb.WriteString(m.renderQueue())
+		sb.WriteString("\n")
+	}
 	atBottom := m.vp.AtBottom()
 	m.vp.SetContent(sb.String())
 	if atBottom {
@@ -323,6 +328,17 @@ func (m *Model) renderThinkingIndicator() string {
 	}
 	out += m.styles.Help.Render("   esc to cancel")
 	return out
+}
+
+// renderQueue shows messages typed while a turn is in flight; they are sent in
+// order as the agent frees up. Manage with /queue (list) and /queue del <n>.
+func (m *Model) renderQueue() string {
+	var sb strings.Builder
+	sb.WriteString(m.styles.Status.Render(fmt.Sprintf("⏳ queued (%d) — /queue del <n> to remove:", len(m.msgQueue))))
+	for i, q := range m.msgQueue {
+		sb.WriteString("\n" + m.styles.Help.Render(fmt.Sprintf("  %d. %s", i+1, truncate(q, m.contentWidth()-6))))
+	}
+	return sb.String()
 }
 
 func (m *Model) renderThinking(text string, streaming bool) string {

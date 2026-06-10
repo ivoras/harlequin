@@ -208,6 +208,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.pendingAsk) > 0 {
 			return m, m.enterAsk()
 		}
+		// Drain the next queued message, if any.
+		if len(m.msgQueue) > 0 {
+			next := m.msgQueue[0]
+			m.msgQueue = m.msgQueue[1:]
+			return m, m.sendMessage(next)
+		}
 		return m, nil
 
 	case askPulseMsg:
@@ -410,6 +416,13 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.input.Reset()
 			if strings.HasPrefix(text, "/") {
 				return m, m.handleSlash(text)
+			}
+			// A turn is already running: queue the message instead of starting a
+			// second concurrent stream. It's sent when the current turn finishes.
+			if m.loading {
+				m.msgQueue = append(m.msgQueue, text)
+				m.refreshViewport()
+				return m, nil
 			}
 			return m, m.sendMessage(text)
 		}
