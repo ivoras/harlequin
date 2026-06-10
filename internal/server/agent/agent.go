@@ -262,7 +262,22 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 		var toolCalls []llm.ToolCall
 		var lastProvider, lastModel string
 		var firstTokenAt, doneAt time.Time
+		lastPPPct := -1 // prompt-progress throttle (per LLM call)
 		for chunk := range stream {
+			if chunk.PromptProgress != nil {
+				// Live prefill progress (llama.cpp). Throttle to ~every 5% so the
+				// frequent (per-batch) events don't flood the stream.
+				pp := chunk.PromptProgress
+				total := pp.Total - pp.Cache
+				if total > 0 {
+					pct := pp.Processed * 100 / total
+					if pct >= lastPPPct+5 || pp.Processed >= total {
+						lastPPPct = pct
+						emit(types.StreamEvent{Type: types.SSEPromptProgress, PromptProcessed: pp.Processed, PromptTotal: total})
+					}
+				}
+				continue
+			}
 			if (chunk.ThinkingDelta != "" || chunk.TextDelta != "") && firstTokenAt.IsZero() {
 				firstTokenAt = time.Now()
 			}

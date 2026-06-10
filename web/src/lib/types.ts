@@ -58,6 +58,7 @@ export const SSE = {
   ToolResult: "tool_result",
   Error: "error",
   AskUser: "ask_user",
+  PromptProgress: "prompt_progress",
   Done: "done",
 } as const;
 
@@ -85,6 +86,8 @@ export interface StreamEvent {
   context_tokens?: number;
   context_max?: number;
   timing?: TurnTiming;
+  prompt_processed?: number;
+  prompt_total?: number;
 }
 
 export interface Notification {

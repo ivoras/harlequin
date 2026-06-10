@@ -298,13 +298,14 @@ type SendMessageRequest struct {
 
 // SSEEvent types streamed from the message endpoint.
 const (
-	SSEToken      = "token"
-	SSEThinking   = "thinking"
-	SSEToolCall   = "tool_call"
-	SSEToolResult = "tool_result"
-	SSEError      = "error"
-	SSEAskUser    = "ask_user"
-	SSEDone       = "done"
+	SSEToken          = "token"
+	SSEThinking       = "thinking"
+	SSEToolCall       = "tool_call"
+	SSEToolResult     = "tool_result"
+	SSEError          = "error"
+	SSEAskUser        = "ask_user"
+	SSEPromptProgress = "prompt_progress" // llama.cpp prefill progress, before first token
+	SSEDone           = "done"
 )
 
 // StreamEvent is a single SSE event payload (JSON-encoded in the `data:` field).
@@ -323,6 +324,10 @@ type StreamEvent struct {
 	Error string `json:"error,omitempty"`
 	// Options are suggested answers the user can choose from (for SSEAskUser).
 	Options []string `json:"options,omitempty"`
+	// Prompt-processing progress (SSEPromptProgress): tokens evaluated so far and
+	// the total to evaluate for this prefill (cache hits already excluded).
+	PromptProcessed int `json:"prompt_processed,omitempty"`
+	PromptTotal     int `json:"prompt_total,omitempty"`
 	// Context reporting (SSEDone): prompt/context size and model limit for the turn.
 	Model         string `json:"model,omitempty"`
 	ContextTokens int    `json:"context_tokens,omitempty"`
