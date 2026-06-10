@@ -27,7 +27,26 @@ func (m *Model) enterAsk() tea.Cmd {
 	m.askIndex, m.askSel, m.askFrame = 0, 0, 0
 	m.askAnswers = make([]string, 0, len(m.pendingAsk))
 	m.askOther = false
+	// A question with no preset options is free-text only — drop straight into
+	// the text box instead of making the user select an "Other" entry first.
+	if m.askCurrentFreeText() {
+		return tea.Batch(askPulseTick(), m.beginFreeTextAnswer())
+	}
 	return askPulseTick()
+}
+
+// askCurrentFreeText reports whether the current question offers no preset
+// options, so the only way to answer is free text.
+func (m *Model) askCurrentFreeText() bool {
+	return m.askIndex < len(m.pendingAsk) && len(m.pendingAsk[m.askIndex].options) == 0
+}
+
+// beginFreeTextAnswer enters free-text input mode for the current question.
+func (m *Model) beginFreeTextAnswer() tea.Cmd {
+	m.askOther = true
+	m.input.Reset()
+	m.input.Placeholder = "Type your answer, then Enter"
+	return m.input.Focus()
 }
 
 // handleAskKey processes keys while answering questions.
@@ -41,6 +60,10 @@ func (m *Model) handleAskKey(msg tea.KeyPressMsg, key string) (tea.Model, tea.Cm
 	if m.askOther {
 		switch key {
 		case "esc":
+			// No options to fall back to → esc dismisses the question entirely.
+			if m.askCurrentFreeText() {
+				return m.cancelAsk()
+			}
 			m.askOther = false
 			m.input.Reset()
 			return m, nil
@@ -87,8 +110,13 @@ func (m *Model) recordAnswer(ans string) (tea.Model, tea.Cmd) {
 	m.askAnswers = append(m.askAnswers, ans)
 	m.askIndex++
 	m.askSel = 0
+	m.askOther = false
 	if m.askIndex >= len(m.pendingAsk) {
 		return m.finalizeAsk()
+	}
+	// If the next question is free-text only, open its text box immediately.
+	if m.askCurrentFreeText() {
+		return m, m.beginFreeTextAnswer()
 	}
 	return m, nil
 }
@@ -157,22 +185,31 @@ func (m *Model) askView() string {
 	}
 	sb.WriteString(m.styles.Assistant.Bold(true).Render(wrapWidth(m.contentWidth(), cur.question)) + "\n\n")
 
-	marker := askMarkerFrames[m.askFrame%len(askMarkerFrames)]
-	rows := append(append([]string{}, cur.options...), askOtherLabel)
-	for i, opt := range rows {
-		text := truncate(opt, m.contentWidth()-4)
-		if i == m.askSel {
-			sel := m.styles.Accent.Render(marker+" ") + m.styles.Selected.Render(" "+text+" ")
-			sb.WriteString(sel + "\n")
-		} else {
-			sb.WriteString("  " + m.styles.Help.Render(text) + "\n")
+	// Free-text questions (no preset options) skip the option list and show only
+	// the text box.
+	freeText := len(cur.options) == 0
+	if !freeText {
+		marker := askMarkerFrames[m.askFrame%len(askMarkerFrames)]
+		rows := append(append([]string{}, cur.options...), askOtherLabel)
+		for i, opt := range rows {
+			text := truncate(opt, m.contentWidth()-4)
+			if i == m.askSel {
+				sel := m.styles.Accent.Render(marker+" ") + m.styles.Selected.Render(" "+text+" ")
+				sb.WriteString(sel + "\n")
+			} else {
+				sb.WriteString("  " + m.styles.Help.Render(text) + "\n")
+			}
 		}
 	}
 
 	sb.WriteString("\n")
 	if m.askOther {
 		sb.WriteString(m.styles.InputBox.Render(m.input.View()) + "\n")
-		sb.WriteString(m.styles.Help.Render("enter: submit · esc: back to options"))
+		hint := "enter: submit · esc: back to options"
+		if freeText {
+			hint = "enter: submit · esc: dismiss"
+		}
+		sb.WriteString(m.styles.Help.Render(hint))
 	} else {
 		sb.WriteString(m.styles.Help.Render("↑/↓: move · enter: select · esc: dismiss"))
 	}
