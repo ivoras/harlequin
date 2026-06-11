@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -54,9 +55,14 @@ type Agent struct {
 	Presence *presence.Tracker
 
 	// inFlight counts agent turns currently using the LLM (user chats and cron
-	// skill runs). The auto-titler only runs while it is zero, so it never
-	// competes with a live turn. Pointer-receiver only (never copied).
+	// skill runs). Background LLM jobs only start while it is zero, so they
+	// never compete with a live turn. Pointer-receiver only (never copied).
 	inFlight atomic.Int64
+	// bgSlot is the single-slot semaphore that serializes background LLM jobs
+	// (memory extraction, auto-titling); lazily created via bgOnce because the
+	// Agent is constructed as a struct literal. See runBackgroundLLM.
+	bgOnce sync.Once
+	bgSlot chan struct{}
 
 	MaxSteps      int
 	Temperature   float64
