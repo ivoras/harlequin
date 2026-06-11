@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/ivoras/harlequin/internal/server/jsrun"
-	"github.com/robertkrimen/otto"
 )
 
 const (
@@ -75,36 +74,27 @@ func renderBlock(runner *jsrun.Runner, code string, c Context, nowFn func() time
 		"__ctx_skill": c.Skill,
 		"__ctx_date":  nowFn().Format("2006-01-02"),
 	}
-	funcs := map[string]jsrun.HostFunc{}
-
-	toVal := func(call otto.FunctionCall, v any) otto.Value {
-		out, err := call.Otto.ToValue(v)
-		if err != nil {
-			return otto.UndefinedValue()
-		}
-		return out
-	}
-
-	funcs["__ctx_now"] = func(call otto.FunctionCall) otto.Value {
-		return toVal(call, nowFn().Format(time.RFC3339))
-	}
-	funcs["__ctx_memory_search"] = func(call otto.FunctionCall) otto.Value {
-		if c.MemorySearch == nil {
-			return toVal(call, []string{})
-		}
-		return toVal(call, c.MemorySearch(call.Argument(0).String()))
-	}
-	funcs["__ctx_search_docs"] = func(call otto.FunctionCall) otto.Value {
-		if c.SearchDocs == nil {
-			return toVal(call, []string{})
-		}
-		return toVal(call, c.SearchDocs(call.Argument(0).String()))
-	}
-	funcs["__ctx_memory_glob"] = func(call otto.FunctionCall) otto.Value {
-		if c.MemoryGlob == nil {
-			return toVal(call, []map[string]string{})
-		}
-		return toVal(call, c.MemoryGlob(call.Argument(0).String()))
+	// Plain Go funcs; goja marshals arguments and return values automatically.
+	funcs := map[string]any{
+		"__ctx_now": func() string { return nowFn().Format(time.RFC3339) },
+		"__ctx_memory_search": func(q string) []string {
+			if c.MemorySearch == nil {
+				return []string{}
+			}
+			return c.MemorySearch(q)
+		},
+		"__ctx_search_docs": func(q string) []string {
+			if c.SearchDocs == nil {
+				return []string{}
+			}
+			return c.SearchDocs(q)
+		},
+		"__ctx_memory_glob": func(g string) []map[string]string {
+			if c.MemoryGlob == nil {
+				return []map[string]string{}
+			}
+			return c.MemoryGlob(g)
+		},
 	}
 
 	// Build a ctx object in JS that wires the helpers together.

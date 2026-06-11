@@ -20,7 +20,7 @@ const cronUsage = `usage:
   /cron run <id>                     run now
   /cron rm <id>                      delete
 spec is a cron schedule: "min hour dom mon dow", @hourly/@daily, or "@every 30m".
-js target is a script URI (skill://… storage://… tmp://…) or inline ES5 code.
+js target is a script URI (skill://… storage://… tmp://…) or inline JS (ES5.1+).
 notify=<channel> delivers change alerts via inapp (default), email, or telegram.`
 
 func (m *Model) handleCronSub(args []string, raw string) tea.Cmd {

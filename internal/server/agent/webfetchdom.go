@@ -17,12 +17,11 @@ import (
 
 // webFetchDOMDescription is advertised to the model.
 const webFetchDOMDescription = `
-- Fetches a web page and returns its HTML structure as JSON so you can locate data precisely.
-- With NO grep/selector, returns "candidate lists" — repeating elements with a ready-to-use CSS selector, a count, and a sample of each. To monitor a list, pick the candidate whose sample is the data you want and use its selector. Also returns a page skeleton.
-- Use grep="<text that appears in an item>" to find the deepest element(s) containing that text — each result includes a CSS "path".
-- Use selector="<css>" to verify a selector returns the full list of items.
-- The full page HTML is saved to a tmp:// handle so you can re-query it with run_js (dom.parse(tmp.read(handle))) without re-fetching.
-- Workflow: use this to discover the path to the data once, then write a small run_js parser that reads that path on every future check — no AI needed after setup.
+- Fetches a web page and returns a JSON summary of its structure IN THIS TOOL RESULT (read it directly; it is the answer, not something to feed back into run_js).
+- With NO grep/selector, returns "candidate lists" — repeating elements with a ready-to-use CSS selector, a count, and a sample of each; plus a page skeleton.
+- To locate a specific value (e.g. a price), call again with grep="<text that appears on the page, e.g. 79,90>" — each match includes a CSS "path".
+- To confirm a selector, call again with selector="<css>" — it returns the matching element(s). Finding and confirming a selector needs ONLY this tool — you do NOT need run_js.
+- Separately, the page's RAW HTML (not JSON) is saved to a tmp:// handle. It is a DATA file, not a script. You only need it if you later write a run_js parser, and then ONLY via dom.parse(tmp.read(handle)) inside run_js 'code' — never pass the handle as run_js 'script' (that runs HTML as JS and fails).
 `
 
 // webFetchDOMResultCap bounds the JSON returned to the (small) model.
@@ -100,7 +99,7 @@ func (a *Agent) webFetchDOM(ctx context.Context, rc *runContext, args map[string
 		fmt.Fprintf(&sb, "Title: %s\n", title)
 	}
 	if handle != "" {
-		fmt.Fprintf(&sb, "Saved full HTML to tmp://%s (a DATA file, not a script). To re-query, pass this as run_js *code* (never as script): var h=dom.parse(tmp.read(%q)); println(dom.query(h, \"<css>\").length)\n", handle, handle)
+		fmt.Fprintf(&sb, "(The page's raw HTML is also saved to tmp://%s — data, NOT json and NOT a script. You don't need it to pick a selector: call WebFetchDOM again with grep= or selector=. Only if writing a run_js parser, read it in `code`: var h=dom.parse(tmp.read(%q)); println(dom.query(h, \"<css>\").length))\n", handle, handle)
 	}
 
 	switch {

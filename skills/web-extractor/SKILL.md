@@ -66,4 +66,5 @@ watched, on what schedule, where they'll be notified, and how many items are the
 - Re-check a saved watch by hand:
   `run_js({ script: "skill://web-extractor/lib/check.js", args: { name: "<slug>" } })`.
 - Helpers in `skill://web-extractor/lib/extract.js`: `fetchDoc`, `allTextAt`,
-  `attrAt`, `diffList`, `runWatch`. Sandbox JS is ES5 only.
+  `attrAt`, `diffList`, `runWatch`. Sandbox JS runs on goja (ES5.1-compatible;
+  common ES6 like let/const, arrow functions and template literals also works).

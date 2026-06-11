@@ -69,13 +69,15 @@ demand, so they don't bloat every prompt.
 
 ### `calculator`
 **Why:** do exact arithmetic instead of guessing; LLMs are unreliable at math.
-ES5 expression syntax, `Math` available.
+ES5.1+ expression syntax, `Math` available.
 **Example:** `calculator({"expression": "(1500 * 1.08).toFixed(2)"})` → `"1620.00"`
 
 ### `run_js`
-**Why:** general escape hatch — run ES5 JavaScript in a sandbox for logic, parsing,
-HTTP, and per-user file storage that the model can't do itself. ES5 only (`var`,
-no arrows/classes/async/template literals); emit output with `println()`/`print()`.
+**Why:** general escape hatch — run JavaScript in a sandbox for logic, parsing,
+HTTP, and per-user file storage that the model can't do itself. The engine (goja)
+is **ES5.1-compatible and supports much of ES6** (let/const, arrow functions,
+template literals, classes, destructuring, spread/rest, `for…of`, generators,
+Map/Set, Symbol, Promise, typed arrays, BigInt); emit output with `println()`/`print()`.
 Helpers: `fetch(url)`, `dom.parse/query/grep/json`, per-user `tmp.*`/`storage.*`
 stores, and `load(uri)`/`include(uri)` for `skill://`/`storage://`/`tmp://` scripts.
 **Examples:**
