@@ -100,7 +100,7 @@ func (a *Agent) webFetchDOM(ctx context.Context, rc *runContext, args map[string
 		fmt.Fprintf(&sb, "Title: %s\n", title)
 	}
 	if handle != "" {
-		fmt.Fprintf(&sb, "Saved full HTML to tmp://%s — re-query with run_js: var h=dom.parse(tmp.read(%q)); dom.query(h, \"<css>\")\n", handle, handle)
+		fmt.Fprintf(&sb, "Saved full HTML to tmp://%s (a DATA file, not a script). To re-query, pass this as run_js *code* (never as script): var h=dom.parse(tmp.read(%q)); println(dom.query(h, \"<css>\").length)\n", handle, handle)
 	}
 
 	switch {

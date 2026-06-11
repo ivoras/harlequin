@@ -5,9 +5,13 @@ description: Monitor a web page for changes or new items (e.g. "tell me when the
 
 # Watch a web page for changes
 
-Find the list of items ONCE with **WebFetchDOM**, then schedule a **cron** job that
-re-checks it with no AI. Do this in three tool calls. Do NOT explore the page with
-`run_js` — use `WebFetchDOM`.
+Find what to watch ONCE with **WebFetchDOM**, then schedule a **cron** job that
+re-checks it with no AI.
+
+**Use only `WebFetchDOM` to find and confirm the selector — never `run_js` for this.**
+WebFetchDOM saves the page to a `tmp://…​.html` handle; that file is **data, not a
+script**. Do NOT pass it to `run_js` as `script` (that runs HTML as JS and fails with
+"Unexpected token <"). You do not need `run_js` at all to set up a watch.
 
 ## Step 1 — Find the selector for the list
 

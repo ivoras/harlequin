@@ -268,11 +268,11 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 	reg["run_js"] = toolEntry{
 		def: fnTool("run_js", `Execute JavaScript in a sandbox and return its output; ES5 only (var, not let/const; no arrows, classes, async, or template literals). Emit output with println()/print().
 Available helpers: fetch(url) -> {status, body, finalUrl, contentType}; dom.parse(html) -> handle, then dom.query(handle, cssSelector), dom.grep(handle, text), dom.json(handle); per-user file stores tmp.* and storage.* (read/write/list/remove/exists); load(uri)/include(uri) for skill://<skill>/<path>, storage://<path>, tmp://<path> scripts.
-Pass code inline, OR set script=<uri> to run a saved script instead. An optional args object is exposed to the script as the global 'args'.`, map[string]any{
+Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NOT both). To parse a saved HTML page (e.g. a WebFetchDOM tmp:// handle), that page is DATA, not a script: put JS in 'code' and read it with tmp.read('<handle>'), e.g. code: "var h = dom.parse(tmp.read('page-x.html')); println(dom.query(h, 'div.price').length);". An optional args object is exposed to the script as the global 'args'.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"code":   map[string]any{"type": "string", "description": "Inline JS to run (ES5)."},
-				"script": map[string]any{"type": "string", "description": "URI of a saved script to run instead of code: skill://<skill>/<path>, storage://<path>, or tmp://<path>."},
+				"script": map[string]any{"type": "string", "description": "URI of a saved JavaScript file to run instead of code: skill://<skill>/<path>.js, storage://<path>.js, or tmp://<path>.js. NOT an HTML page — read those with tmp.read() inside code."},
 				"args":   map[string]any{"type": "object", "description": "Optional object exposed to the script as the global 'args'."},
 			},
 		}),
@@ -284,6 +284,12 @@ Pass code inline, OR set script=<uri> to run a saved script instead. An optional
 				rcx.Globals = map[string]any{"args": jsArgs}
 			}
 			if s := strings.TrimSpace(script); s != "" {
+				// `script` runs a saved JavaScript file. A saved HTML page (e.g. a
+				// WebFetchDOM tmp:// handle) is data, not a script — running it as JS
+				// fails with "Unexpected token <". Guide the model to the right call.
+				if low := strings.ToLower(s); strings.HasSuffix(low, ".html") || strings.HasSuffix(low, ".htm") {
+					return fmt.Sprintf("error: %q is an HTML page, not a script. Don't pass it as `script`. To parse it, put JS in `code` and read the file there, e.g. code: \"var h = dom.parse(tmp.read('%s')); println(dom.query(h, '<css>').length);\"", s, strings.TrimPrefix(strings.TrimPrefix(s, "tmp://"), "storage://")), nil
+				}
 				src, err := rcx.Resolve(s)
 				if err != nil {
 					return fmt.Sprintf("error: %v", err), nil
