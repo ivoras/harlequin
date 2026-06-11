@@ -46,6 +46,17 @@ func (r *RoutingProvider) ContextMax(model string) int {
 // Name identifies the router.
 func (r *RoutingProvider) Name() string { return "router" }
 
+// Local reports whether the default provider — the one that serves agent turns
+// and background jobs unless a model override routes elsewhere — runs on this
+// machine. Used to decide whether background LLM work must be serialized
+// behind live turns (see agent.RunBackgroundLLM).
+func (r *RoutingProvider) Local() bool {
+	if p, ok := r.providers[r.defaultProvider]; ok {
+		return p.Local()
+	}
+	return false
+}
+
 // order returns the provider names to try, in priority order, for a request.
 func (r *RoutingProvider) order(req ChatRequest) []string {
 	var first string
