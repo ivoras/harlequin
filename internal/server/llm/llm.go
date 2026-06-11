@@ -10,9 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 )
@@ -182,21 +180,14 @@ func (p *OpenAICompatible) Name() string { return p.name }
 // Model returns the provider's default model.
 func (p *OpenAICompatible) Model() string { return p.model }
 
-// Local reports whether the endpoint is served from this machine (loopback
-// host), meaning inference shares local compute and concurrent requests
-// degrade each other. Hosted APIs return false.
-func (p *OpenAICompatible) Local() bool {
-	u, err := url.Parse(p.baseURL)
-	if err != nil {
-		return false
-	}
-	host := u.Hostname()
-	if host == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
-}
+// Local reports whether this is the locally-served model: by convention, the
+// provider named "local" in server.yaml. Local inference shares this machine's
+// compute, so concurrent requests degrade each other; hosted APIs do not.
+func (p *OpenAICompatible) Local() bool { return p.name == LocalProviderName }
+
+// LocalProviderName is the server.yaml provider name that marks the
+// locally-served model (see Local).
+const LocalProviderName = "local"
 
 type streamRequest struct {
 	Model          string    `json:"model"`
