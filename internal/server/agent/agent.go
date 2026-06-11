@@ -60,9 +60,12 @@ type Agent struct {
 	inFlight atomic.Int64
 	// bgSlot is the single-slot semaphore that serializes background LLM jobs
 	// (memory extraction, auto-titling); lazily created via bgOnce because the
-	// Agent is constructed as a struct literal. See runBackgroundLLM.
-	bgOnce sync.Once
-	bgSlot chan struct{}
+	// Agent is constructed as a struct literal. bgCancel holds the in-flight
+	// background job's cancel func so a starting turn can preempt it
+	// immediately. See RunBackgroundLLM.
+	bgOnce   sync.Once
+	bgSlot   chan struct{}
+	bgCancel atomic.Pointer[context.CancelFunc]
 
 	MaxSteps      int
 	Temperature   float64
@@ -148,10 +151,11 @@ func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username,
 // turn runs the tool-calling loop for one user message and returns the final
 // assistant text. rc.userDB must be an open per-user database.
 func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (string, error) {
-	// Mark the LLM busy for the whole turn so the background auto-titler stays off
-	// it while a real turn is running.
+	// Mark the LLM busy for the whole turn so background jobs stay off it, and
+	// kick any in-flight background completion off the model right away.
 	a.inFlight.Add(1)
 	defer a.inFlight.Add(-1)
+	a.preemptBackgroundLLM()
 
 	conversationID := rc.conversationID
 	userID := rc.userID

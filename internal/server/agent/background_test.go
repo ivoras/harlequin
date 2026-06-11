@@ -17,7 +17,7 @@ func TestRunBackgroundLLMSerializes(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if !a.runBackgroundLLM(context.Background(), func() {
+			if !a.RunBackgroundLLM(context.Background(), func(context.Context) {
 				if n := running.Add(1); n > 1 {
 					t.Errorf("%d background jobs running concurrently", n)
 				}
@@ -38,7 +38,7 @@ func TestRunBackgroundLLMYieldsToLiveTurn(t *testing.T) {
 	a.inFlight.Add(1)
 	done := make(chan struct{})
 	go func() {
-		a.runBackgroundLLM(context.Background(), func() {})
+		a.RunBackgroundLLM(context.Background(), func(context.Context) {})
 		close(done)
 	}()
 	select {
@@ -61,7 +61,46 @@ func TestRunBackgroundLLMSkipsOnContextDone(t *testing.T) {
 	defer a.inFlight.Add(-1)
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	if a.runBackgroundLLM(ctx, func() { t.Error("job ran despite expired context") }) {
+	if a.RunBackgroundLLM(ctx, func(context.Context) { t.Error("job ran despite expired context") }) {
 		t.Error("runBackgroundLLM reported success for a skipped job")
+	}
+}
+
+// A live turn starting mid-job must cancel the job's context immediately, and
+// the job must be retried once the turn ends.
+func TestRunBackgroundLLMPreemptedByTurnAndRetried(t *testing.T) {
+	a := &Agent{}
+	var attempts atomic.Int64
+	started := make(chan struct{})
+	result := make(chan bool, 1)
+	go func() {
+		result <- a.RunBackgroundLLM(context.Background(), func(ctx context.Context) {
+			if attempts.Add(1) == 1 {
+				close(started)
+				// Simulate an in-flight completion: block until preempted.
+				select {
+				case <-ctx.Done():
+				case <-time.After(10 * time.Second):
+					t.Error("first attempt was never preempted")
+				}
+			}
+		})
+	}()
+	<-started
+	// A live turn begins: turn() bumps inFlight, then preempts background work.
+	a.inFlight.Add(1)
+	a.preemptBackgroundLLM()
+	time.Sleep(2 * bgPollInterval) // job should now be waiting for a free model
+	a.inFlight.Add(-1)
+	select {
+	case ok := <-result:
+		if !ok {
+			t.Error("preempted job did not eventually complete")
+		}
+	case <-time.After(10 * bgPollInterval):
+		t.Fatal("preempted job was not retried after the turn ended")
+	}
+	if n := attempts.Load(); n != 2 {
+		t.Errorf("job ran %d times, want 2 (preempted once, retried once)", n)
 	}
 }

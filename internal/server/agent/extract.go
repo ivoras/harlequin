@@ -55,31 +55,38 @@ func (a *Agent) ExtractMemoriesFromText(ctx context.Context, userID int64, sourc
 
 // distillAndStore runs the memory-extraction LLM over input, then stores each
 // accepted, non-redundant candidate (downgrading shared->user when the caller
-// can't write shared memory).
+// can't write shared memory). The whole distill+store sequence holds the
+// background-LLM slot: storing also makes LLM calls (the conflict judge and
+// slot canonicalization inside Memory.Add), so releasing the slot before
+// storage would put judge completions back in parallel with the titler or a
+// live turn. A live turn preempts the job; it restarts afterwards (IsRedundant
+// makes the re-run skip anything already stored).
 func (a *Agent) distillAndStore(ctx context.Context, userID int64, systemPrompt, input string, turnWritten []string, canShareMemory bool, timeout time.Duration) int {
-	// The extraction call shares the background-LLM slot with the auto-titler:
-	// one background completion at a time, started only while no live turn is
-	// on the model. The LLM call gets its own deadline; storage (embedding +
-	// insert) gets a separate one derived from the parent, so a slow extraction
-	// can't starve the store step of time (which previously made every embed
-	// time out).
-	var text string
-	var llmErr error
-	if !a.runBackgroundLLM(ctx, func() {
-		llmCtx, cancelLLM := context.WithTimeout(ctx, timeout)
-		defer cancelLLM()
-		text, _, llmErr = a.completeOnce(llmCtx, llm.ChatRequest{
-			Messages: []llm.Message{
-				{Role: llm.RoleSystem, Content: systemPrompt},
-				{Role: llm.RoleUser, Content: input},
-			},
-			Temperature: llm.Ptr(0.0),
-		})
+	stored := 0
+	if !a.RunBackgroundLLM(ctx, func(jobCtx context.Context) {
+		stored = a.distillAndStoreHoldingSlot(jobCtx, userID, systemPrompt, input, turnWritten, canShareMemory, timeout)
 	}) {
-		log.Printf("memextract: skipped, no background LLM slot within %v", bgStartTimeout)
-		return 0
+		log.Printf("memextract: skipped, background LLM slot unavailable")
 	}
-	if llmErr != nil {
+	return stored
+}
+
+// distillAndStoreHoldingSlot is the body of distillAndStore; the caller holds
+// the background-LLM slot.
+func (a *Agent) distillAndStoreHoldingSlot(ctx context.Context, userID int64, systemPrompt, input string, turnWritten []string, canShareMemory bool, timeout time.Duration) int {
+	// The extraction LLM call gets its own deadline. Storage (embedding + insert)
+	// gets a separate one derived from the parent, so a slow extraction can't
+	// starve the store step of time (which previously made every embed time out).
+	llmCtx, cancelLLM := context.WithTimeout(ctx, timeout)
+	text, _, err := a.completeOnce(llmCtx, llm.ChatRequest{
+		Messages: []llm.Message{
+			{Role: llm.RoleSystem, Content: systemPrompt},
+			{Role: llm.RoleUser, Content: input},
+		},
+		Temperature: llm.Ptr(0.0),
+	})
+	cancelLLM()
+	if err != nil {
 		return 0
 	}
 

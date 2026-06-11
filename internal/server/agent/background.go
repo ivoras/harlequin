@@ -2,31 +2,49 @@ package agent
 
 import (
 	"context"
+	"log"
 	"time"
 )
 
 // Background LLM gate: auto memory extraction, document distillation, and
 // auto-titling all borrow the chat model outside live turns. The gate makes
-// them run one at a time and only start while no live turn is using the LLM,
-// so an interactive turn never finds the model already busy with overlapping
-// background completions (noticeable on single-slot local servers).
+// them run one at a time, start only while no live turn is using the LLM, and
+// yield mid-flight — a live turn cancels the in-flight background completion
+// immediately (see preemptBackgroundLLM) and the job restarts once the model
+// is free again. Without this, a prompt sent right after a turn competes with
+// that turn's extraction for the model (visible as interleaved slots on
+// single-machine llama.cpp servers).
 
 const (
 	// bgPollInterval is how often a waiting background job re-checks whether the
 	// LLM is still busy with a live turn.
 	bgPollInterval = 500 * time.Millisecond
-	// bgStartTimeout caps how long a background job waits for its slot and a free
-	// LLM, so queued goroutines cannot accumulate without bound on a busy server.
+	// bgStartTimeout caps how long a background job waits (including preemption
+	// retries) before being dropped, so queued goroutines cannot accumulate
+	// without bound on a busy server.
 	bgStartTimeout = 10 * time.Minute
+	// bgMaxAttempts caps how many times a preempted job is restarted.
+	bgMaxAttempts = 3
 )
 
-// runBackgroundLLM runs job while holding the single background-LLM slot. It
-// first waits for the slot (one background job at a time), then for the LLM to
-// be free of live turns. A live turn that begins after job has started is not
-// interrupted; the overlap is bounded by one background completion. Returns
-// false if the slot or a free LLM did not materialize before ctx or
-// bgStartTimeout expired — the job is then skipped, not queued.
-func (a *Agent) runBackgroundLLM(ctx context.Context, job func()) bool {
+// preemptBackgroundLLM cancels the in-flight background LLM job, if any.
+// Called at the start of every live turn so background work yields the model
+// immediately rather than finishing its completion first.
+func (a *Agent) preemptBackgroundLLM() {
+	if c := a.bgCancel.Load(); c != nil {
+		(*c)()
+	}
+}
+
+// RunBackgroundLLM runs job while holding the single background-LLM slot.
+// Jobs are serialized, start only while no live turn is using the LLM, and are
+// cancelled (via job's ctx) the moment a live turn begins — the job is then
+// re-run from scratch once the model is free, so jobs must be restartable.
+// Returns false if the job never ran to completion: the slot or a free LLM did
+// not materialize before ctx or bgStartTimeout expired, or the job was
+// preempted bgMaxAttempts times. Exported so server-level background work that
+// borrows the chat model (e.g. the cross-scope memory sweep) shares the gate.
+func (a *Agent) RunBackgroundLLM(ctx context.Context, job func(ctx context.Context)) bool {
 	a.bgOnce.Do(func() { a.bgSlot = make(chan struct{}, 1) })
 	ctx, cancel := context.WithTimeout(ctx, bgStartTimeout)
 	defer cancel()
@@ -36,16 +54,33 @@ func (a *Agent) runBackgroundLLM(ctx context.Context, job func()) bool {
 		return false
 	}
 	defer func() { <-a.bgSlot }()
-	// Hold the slot but stay off the model until no live turn is using it. (A
-	// turn can still start between this check and the job's first request; that
-	// small race is inherent — turns are never made to wait on background work.)
-	for !a.llmFree() {
-		select {
-		case <-time.After(bgPollInterval):
-		case <-ctx.Done():
-			return false
+	for attempt := 0; attempt < bgMaxAttempts; attempt++ {
+		// Stay off the model until no live turn is using it.
+		for !a.llmFree() {
+			select {
+			case <-time.After(bgPollInterval):
+			case <-ctx.Done():
+				return false
+			}
 		}
+		jobCtx, cancelJob := context.WithCancel(ctx)
+		a.bgCancel.Store(&cancelJob)
+		// A turn may have begun between the llmFree check and publishing the
+		// cancel hook, and such a turn's preempt call can be missed — re-check.
+		if !a.llmFree() {
+			a.bgCancel.Store(nil)
+			cancelJob()
+			continue
+		}
+		job(jobCtx)
+		a.bgCancel.Store(nil)
+		preempted := jobCtx.Err() != nil && ctx.Err() == nil
+		cancelJob()
+		if !preempted {
+			// Completed, or the overall deadline expired mid-job (-> false).
+			return ctx.Err() == nil
+		}
+		log.Printf("background llm: job preempted by live turn (attempt %d/%d)", attempt+1, bgMaxAttempts)
 	}
-	job()
-	return true
+	return false
 }

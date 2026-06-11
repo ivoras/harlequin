@@ -48,12 +48,12 @@ func (a *Agent) RunAutoTitle(ctx context.Context, enabled bool) {
 }
 
 // llmFree reports whether no agent turn is currently using the LLM, so
-// background jobs (titling, extraction — see runBackgroundLLM) can borrow it
+// background jobs (titling, extraction — see RunBackgroundLLM) can borrow it
 // without competing with a live turn.
 func (a *Agent) llmFree() bool { return a.inFlight.Load() == 0 }
 
 // titlePass titles eligible sessions for every user. The per-title LLM call is
-// gated by runBackgroundLLM; the llmFree checks here are just cheap early
+// gated by RunBackgroundLLM; the llmFree checks here are just cheap early
 // bails so the pass doesn't scan databases while a turn is running.
 func (a *Agent) titlePass(ctx context.Context) {
 	if !a.llmFree() {
@@ -114,11 +114,12 @@ func (a *Agent) generateTitle(ctx context.Context, msgs []types.Message) (string
 	}
 	const sys = "You write a terse title for a chat conversation. Reply with ONLY the title: at most 6 words, no surrounding quotes, no trailing punctuation, no preamble."
 	// The completion shares the background-LLM slot with memory extraction: one
-	// background job at a time, started only while no live turn is on the model.
+	// background job at a time, started only while no live turn is on the model,
+	// preempted (and retried) if a live turn begins mid-completion.
 	var text string
 	var err error
-	if !a.runBackgroundLLM(ctx, func() {
-		text, _, err = a.completeOnce(ctx, llm.ChatRequest{
+	if !a.RunBackgroundLLM(ctx, func(jobCtx context.Context) {
+		text, _, err = a.completeOnce(jobCtx, llm.ChatRequest{
 			Messages: []llm.Message{
 				{Role: llm.RoleSystem, Content: sys},
 				{Role: llm.RoleUser, Content: "Conversation:\n" + transcript + "\n\nTitle:"},
