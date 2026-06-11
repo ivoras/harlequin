@@ -1,8 +1,9 @@
-// Package jsrun is a shared, sandboxed JavaScript runner built on otto. It backs
-// both the run_js agent tool and the <?js ?> skill templating engine, and gives
-// the same safety guarantees to both: a hard execution timeout and an output-size
-// cap. Beyond print/println it can expose, when configured per run: a network
-// fetch() (routed through an SSRF-guarded fetcher), an HTML dom helper, scoped
+// Package jsrun is a shared, sandboxed JavaScript runner built on goja
+// (github.com/dop251/goja, an ES5.1+ engine with much of ES6). It backs both the
+// run_js agent tool and the <?js ?> skill templating engine, and gives the same
+// safety guarantees to both: a hard execution timeout and an output-size cap.
+// Beyond print/println it can expose, when configured per run: a network fetch()
+// (routed through an SSRF-guarded fetcher), an HTML dom helper, scoped
 // tmp/storage filesystems, and load()/include() for pulling in skill scripts.
 package jsrun
 
@@ -16,9 +17,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dop251/goja"
 	"github.com/ivoras/harlequin/internal/server/dom"
 	"github.com/ivoras/harlequin/internal/server/sandboxfs"
-	"github.com/robertkrimen/otto"
 	"golang.org/x/net/html"
 )
 
@@ -79,15 +80,17 @@ type Result struct {
 	Value any
 }
 
-// HostFunc is a Go function exposed to JavaScript.
-type HostFunc func(call otto.FunctionCall) otto.Value
+// HostFunc is a native goja function exposed to JavaScript.
+type HostFunc func(call goja.FunctionCall) goja.Value
 
 // RunContext carries the host API to expose for a run.
 type RunContext struct {
 	// Globals are set as top-level JS bindings (e.g. "ctx", "args").
 	Globals map[string]any
-	// Funcs are set as top-level JS functions (e.g. custom helpers).
-	Funcs map[string]HostFunc
+	// Funcs are set as top-level JS functions. Each value may be a native
+	// goja func (func(goja.FunctionCall) goja.Value) or any plain Go func, which
+	// goja marshals automatically (args in, return value out).
+	Funcs map[string]any
 	// Ctx bounds host operations (fetch); defaults to context.Background().
 	Ctx context.Context
 	// Tmp and Storage, when set, expose tmp.* / storage.* scoped filesystems.
@@ -98,9 +101,14 @@ type RunContext struct {
 	Resolve func(uri string) (string, error)
 }
 
+// throwf panics with a JS Error (caught by goja and re-thrown into the script).
+func throwf(vm *goja.Runtime, format string, a ...any) {
+	panic(vm.NewGoError(fmt.Errorf(format, a...)))
+}
+
 // Run executes code, exposing the given host context, and returns its output and value.
 func (r *Runner) Run(code string, rc RunContext) (res Result, err error) {
-	vm := otto.New()
+	vm := goja.New()
 
 	var sb strings.Builder
 	capped := false
@@ -119,16 +127,14 @@ func (r *Runner) Run(code string, rc RunContext) (res Result, err error) {
 		sb.WriteString(s)
 	}
 
-	printFn := func(call otto.FunctionCall) otto.Value {
-		write(joinArgs(call.ArgumentList))
-		return otto.UndefinedValue()
-	}
-	printlnFn := func(call otto.FunctionCall) otto.Value {
-		write(joinArgs(call.ArgumentList) + "\n")
-		return otto.UndefinedValue()
-	}
-	_ = vm.Set("print", printFn)
-	_ = vm.Set("println", printlnFn)
+	_ = vm.Set("print", func(call goja.FunctionCall) goja.Value {
+		write(joinArgs(call.Arguments))
+		return goja.Undefined()
+	})
+	_ = vm.Set("println", func(call goja.FunctionCall) goja.Value {
+		write(joinArgs(call.Arguments) + "\n")
+		return goja.Undefined()
+	})
 
 	baseCtx := rc.Ctx
 	if baseCtx == nil {
@@ -138,71 +144,65 @@ func (r *Runner) Run(code string, rc RunContext) (res Result, err error) {
 	// fetch(): full fetcher when configured, else the legacy allow-listed GET.
 	if r.opts.Fetcher != nil {
 		fetchFn := r.makeFetchVia(vm, baseCtx, r.opts.Fetcher)
-		_ = vm.Set("fetch", func(call otto.FunctionCall) otto.Value { return fetchFn(call) })
+		_ = vm.Set("fetch", func(call goja.FunctionCall) goja.Value { return fetchFn(call) })
 	} else if len(r.opts.FetchAllowlist) > 0 {
 		fetchFn := r.makeFetch(vm)
-		_ = vm.Set("fetch", func(call otto.FunctionCall) otto.Value { return fetchFn(call) })
+		_ = vm.Set("fetch", func(call goja.FunctionCall) goja.Value { return fetchFn(call) })
 	}
 
 	// Host functions for the dom helper, scoped filesystems, and load/include.
 	for name, fn := range r.hostAPI(vm, rc) {
 		hf := fn
-		_ = vm.Set(name, func(call otto.FunctionCall) otto.Value { return hf(call) })
+		_ = vm.Set(name, func(call goja.FunctionCall) goja.Value { return hf(call) })
 	}
 
 	for k, v := range rc.Globals {
 		_ = vm.Set(k, v)
 	}
 	for k, fn := range rc.Funcs {
-		// Wrap in the literal func type otto special-cases; a named type
-		// (HostFunc) would otherwise be handled via reflection and demand args.
-		hf := fn
-		_ = vm.Set(k, func(call otto.FunctionCall) otto.Value { return hf(call) })
+		// goja marshals a native func (exact signature) as-is, and any other Go
+		// func via reflection; either works set directly.
+		_ = vm.Set(k, fn)
 	}
 
-	// Watchdog for the halting problem.
-	vm.Interrupt = make(chan func(), 1)
+	// Watchdog for the halting problem: interrupt the VM after the timeout.
 	done := make(chan struct{})
 	defer close(done)
 	go func() {
 		select {
 		case <-time.After(r.opts.Timeout):
-			vm.Interrupt <- func() { panic(ErrTimeout) }
+			vm.Interrupt(ErrTimeout)
 		case <-done:
 		}
 	}()
 
-	defer func() {
-		if caught := recover(); caught != nil {
-			if caught == ErrTimeout {
-				err = ErrTimeout
-				res = Result{Output: sb.String()}
-				return
-			}
-			panic(caught)
-		}
-	}()
-
 	// Build the dom/tmp/storage/load/include JS API on top of the host functions.
-	if _, runErr := vm.Run(bootstrapJS); runErr != nil {
+	if _, runErr := vm.RunString(bootstrapJS); runErr != nil {
 		return Result{Output: sb.String()}, runErr
 	}
 
 	// Wrap the code so a bare `return` at top level is legal and its value captured.
 	wrapped := "(function(){\n" + code + "\n})()"
-	val, runErr := vm.Run(wrapped)
+	val, runErr := vm.RunString(wrapped)
 	if runErr != nil {
+		var ie *goja.InterruptedError
+		if errors.As(runErr, &ie) {
+			return Result{Output: sb.String()}, ErrTimeout
+		}
 		return Result{Output: sb.String()}, runErr
 	}
 	if capped {
 		return Result{Output: sb.String()}, ErrOutputCap
 	}
 
-	exported, _ := val.Export()
+	var exported any
+	if val != nil && !goja.IsUndefined(val) && !goja.IsNull(val) {
+		exported = val.Export()
+	}
 	return Result{Output: sb.String(), Value: exported}, nil
 }
 
-func joinArgs(args []otto.Value) string {
+func joinArgs(args []goja.Value) string {
 	parts := make([]string, len(args))
 	for i, a := range args {
 		parts[i] = a.String()
@@ -212,7 +212,7 @@ func joinArgs(args []otto.Value) string {
 
 // makeFetch returns the legacy allow-listed HTTP GET helper (used only when no
 // full Fetcher is configured).
-func (r *Runner) makeFetch(vm *otto.Otto) HostFunc {
+func (r *Runner) makeFetch(vm *goja.Runtime) HostFunc {
 	client := &http.Client{Timeout: r.opts.Timeout}
 	allowed := func(host string) bool {
 		for _, h := range r.opts.FetchAllowlist {
@@ -222,52 +222,52 @@ func (r *Runner) makeFetch(vm *otto.Otto) HostFunc {
 		}
 		return false
 	}
-	return func(call otto.FunctionCall) otto.Value {
+	return func(call goja.FunctionCall) goja.Value {
 		url := call.Argument(0).String()
 		req, err := http.NewRequest(http.MethodGet, url, nil)
 		if err != nil {
-			panic(vm.MakeCustomError("FetchError", err.Error()))
+			throwf(vm, "FetchError: %s", err.Error())
 		}
 		if !allowed(req.URL.Hostname()) {
-			panic(vm.MakeCustomError("FetchError", fmt.Sprintf("host %q not in allowlist", req.URL.Hostname())))
+			throwf(vm, "FetchError: host %q not in allowlist", req.URL.Hostname())
 		}
 		resp, err := client.Do(req)
 		if err != nil {
-			panic(vm.MakeCustomError("FetchError", err.Error()))
+			throwf(vm, "FetchError: %s", err.Error())
 		}
 		defer resp.Body.Close()
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, int64(r.opts.OutputCap)))
-		obj, _ := vm.Object(`({})`)
+		obj := vm.NewObject()
 		_ = obj.Set("status", resp.StatusCode)
 		_ = obj.Set("body", string(body))
-		return obj.Value()
+		return obj
 	}
 }
 
 // makeFetchVia routes fetch() through the configured Fetcher (any public host,
 // SSRF-guarded). The network call is bounded by the run's timeout.
-func (r *Runner) makeFetchVia(vm *otto.Otto, ctx context.Context, f Fetcher) HostFunc {
-	return func(call otto.FunctionCall) otto.Value {
+func (r *Runner) makeFetchVia(vm *goja.Runtime, ctx context.Context, f Fetcher) HostFunc {
+	return func(call goja.FunctionCall) goja.Value {
 		url := strings.TrimSpace(call.Argument(0).String())
 		fctx, cancel := context.WithTimeout(ctx, r.opts.Timeout)
 		defer cancel()
 		res, err := f.FetchRaw(fctx, url)
 		if err != nil {
-			panic(vm.MakeCustomError("FetchError", err.Error()))
+			throwf(vm, "FetchError: %s", err.Error())
 		}
-		obj, _ := vm.Object(`({})`)
+		obj := vm.NewObject()
 		_ = obj.Set("status", res.Status)
 		_ = obj.Set("body", string(res.Body))
 		_ = obj.Set("finalUrl", res.FinalURL)
 		_ = obj.Set("contentType", res.ContentType)
-		return obj.Value()
+		return obj
 	}
 }
 
 // hostAPI returns the low-level host functions consumed by bootstrapJS: the dom
 // helper (with a per-run document registry), the scoped filesystems, and
 // load/include. Unconfigured capabilities return a JS error when used.
-func (r *Runner) hostAPI(vm *otto.Otto, rc RunContext) map[string]HostFunc {
+func (r *Runner) hostAPI(vm *goja.Runtime, rc RunContext) map[string]HostFunc {
 	docs := map[int64]*dom.Doc{}      // dom.parse handle -> doc (for json/lists)
 	nodeReg := map[int64]*html.Node{} // handle -> element/root node (for chainable query)
 	var nextHandle int64
@@ -277,46 +277,39 @@ func (r *Runner) hostAPI(vm *otto.Otto, rc RunContext) map[string]HostFunc {
 		return nextHandle
 	}
 
-	toJS := func(v any) otto.Value {
+	toJS := func(v any) goja.Value {
 		b, err := json.Marshal(v)
 		if err != nil {
-			panic(vm.MakeCustomError("DomError", err.Error()))
+			throwf(vm, "DomError: %s", err.Error())
 		}
 		var generic any
 		if err := json.Unmarshal(b, &generic); err != nil {
-			panic(vm.MakeCustomError("DomError", err.Error()))
+			throwf(vm, "DomError: %s", err.Error())
 		}
-		out, err := vm.ToValue(generic)
-		if err != nil {
-			panic(vm.MakeCustomError("DomError", err.Error()))
-		}
-		return out
+		return vm.ToValue(generic)
 	}
-	resolveDoc := func(call otto.FunctionCall) *dom.Doc {
-		h, _ := call.Argument(0).ToInteger()
+	resolveDoc := func(call goja.FunctionCall) *dom.Doc {
+		h := call.Argument(0).ToInteger()
 		d, ok := docs[h]
 		if !ok {
-			panic(vm.MakeCustomError("DomError", "dom.json/dom.lists need the handle returned by dom.parse"))
+			throwf(vm, "DomError: dom.json/dom.lists need the handle returned by dom.parse")
 		}
 		return d
 	}
 	// resolveCtx accepts a dom handle (number, from dom.parse) or a node object
 	// returned by a previous dom.query (it carries an _h field), so queries chain.
-	resolveCtx := func(v otto.Value) *html.Node {
-		if v.IsNumber() {
-			h, _ := v.ToInteger()
-			if n, ok := nodeReg[h]; ok {
-				return n
-			}
-		} else if v.IsObject() {
-			if hv, err := v.Object().Get("_h"); err == nil && hv.IsNumber() {
-				h, _ := hv.ToInteger()
-				if n, ok := nodeReg[h]; ok {
+	resolveCtx := func(v goja.Value) *html.Node {
+		if obj, ok := v.(*goja.Object); ok {
+			if hv := obj.Get("_h"); hv != nil && !goja.IsUndefined(hv) {
+				if n, ok := nodeReg[hv.ToInteger()]; ok {
 					return n
 				}
 			}
+		} else if n, ok := nodeReg[v.ToInteger()]; ok {
+			return n
 		}
-		panic(vm.MakeCustomError("DomError", "first argument must be a dom handle (from dom.parse) or a node returned by a previous dom.query"))
+		throwf(vm, "DomError: first argument must be a dom handle (from dom.parse) or a node returned by a previous dom.query")
+		return nil
 	}
 	makeNodeObj := func(n *html.Node) map[string]any {
 		s := dom.Summarize(n, 0)
@@ -339,35 +332,35 @@ func (r *Runner) hostAPI(vm *otto.Otto, rc RunContext) map[string]HostFunc {
 		switch area {
 		case "tmp":
 			if rc.Tmp == nil {
-				panic(vm.MakeCustomError("FSError", "tmp filesystem not available here"))
+				throwf(vm, "FSError: tmp filesystem not available here")
 			}
 			return rc.Tmp
 		case "storage":
 			if rc.Storage == nil {
-				panic(vm.MakeCustomError("FSError", "storage filesystem not available here"))
+				throwf(vm, "FSError: storage filesystem not available here")
 			}
 			return rc.Storage
 		}
-		panic(vm.MakeCustomError("FSError", "unknown filesystem "+area))
+		throwf(vm, "FSError: unknown filesystem %s", area)
+		return nil
 	}
 
 	api := map[string]HostFunc{}
 
-	api["__dom_parse"] = func(call otto.FunctionCall) otto.Value {
+	api["__dom_parse"] = func(call goja.FunctionCall) goja.Value {
 		d, err := dom.Parse([]byte(call.Argument(0).String()))
 		if err != nil {
-			panic(vm.MakeCustomError("DomError", err.Error()))
+			throwf(vm, "DomError: %s", err.Error())
 		}
 		h := register(d.RootNode())
 		docs[h] = d
-		v, _ := vm.ToValue(h)
-		return v
+		return vm.ToValue(h)
 	}
-	api["__dom_query"] = func(call otto.FunctionCall) otto.Value {
+	api["__dom_query"] = func(call goja.FunctionCall) goja.Value {
 		ctx := resolveCtx(call.Argument(0))
 		nodes, err := dom.QueryNode(ctx, call.Argument(1).String())
 		if err != nil {
-			panic(vm.MakeCustomError("DomError", err.Error()))
+			throwf(vm, "DomError: %s", err.Error())
 		}
 		out := make([]map[string]any, 0, len(nodes))
 		for _, n := range nodes {
@@ -375,7 +368,7 @@ func (r *Runner) hostAPI(vm *otto.Otto, rc RunContext) map[string]HostFunc {
 		}
 		return toJS(out)
 	}
-	api["__dom_grep"] = func(call otto.FunctionCall) otto.Value {
+	api["__dom_grep"] = func(call goja.FunctionCall) goja.Value {
 		ctx := resolveCtx(call.Argument(0))
 		opts := exportMap(call.Argument(2))
 		gopts := dom.GrepOptions{
@@ -387,14 +380,14 @@ func (r *Runner) hostAPI(vm *otto.Otto, rc RunContext) map[string]HostFunc {
 		}
 		nodes, err := dom.GrepNode(ctx, call.Argument(1).String(), gopts)
 		if err != nil {
-			panic(vm.MakeCustomError("DomError", err.Error()))
+			throwf(vm, "DomError: %s", err.Error())
 		}
 		return toJS(nodes)
 	}
-	api["__dom_lists"] = func(call otto.FunctionCall) otto.Value {
+	api["__dom_lists"] = func(call goja.FunctionCall) goja.Value {
 		return toJS(resolveDoc(call).RepeatingGroups(3, 20, 160))
 	}
-	api["__dom_json"] = func(call otto.FunctionCall) otto.Value {
+	api["__dom_json"] = func(call goja.FunctionCall) goja.Value {
 		opts := exportMap(call.Argument(1))
 		sk, err := resolveDoc(call).Skeleton(dom.SkelOptions{
 			Selector:    optString(opts, "selector"),
@@ -404,74 +397,70 @@ func (r *Runner) hostAPI(vm *otto.Otto, rc RunContext) map[string]HostFunc {
 			Paths:       optBool(opts, "paths", true),
 		})
 		if err != nil {
-			panic(vm.MakeCustomError("DomError", err.Error()))
+			throwf(vm, "DomError: %s", err.Error())
 		}
 		return toJS(sk)
 	}
 
-	api["__fs_read"] = func(call otto.FunctionCall) otto.Value {
+	api["__fs_read"] = func(call goja.FunctionCall) goja.Value {
 		b, err := fsRoot(call.Argument(0).String()).Read(call.Argument(1).String())
 		if err != nil {
-			panic(vm.MakeCustomError("FSError", err.Error()))
+			throwf(vm, "FSError: %s", err.Error())
 		}
-		v, _ := vm.ToValue(string(b))
-		return v
+		return vm.ToValue(string(b))
 	}
-	api["__fs_write"] = func(call otto.FunctionCall) otto.Value {
+	api["__fs_write"] = func(call goja.FunctionCall) goja.Value {
 		if err := fsRoot(call.Argument(0).String()).Write(call.Argument(1).String(), []byte(call.Argument(2).String())); err != nil {
-			panic(vm.MakeCustomError("FSError", err.Error()))
+			throwf(vm, "FSError: %s", err.Error())
 		}
-		return otto.UndefinedValue()
+		return goja.Undefined()
 	}
-	api["__fs_list"] = func(call otto.FunctionCall) otto.Value {
+	api["__fs_list"] = func(call goja.FunctionCall) goja.Value {
 		names, err := fsRoot(call.Argument(0).String()).List(call.Argument(1).String())
 		if err != nil {
-			panic(vm.MakeCustomError("FSError", err.Error()))
+			throwf(vm, "FSError: %s", err.Error())
 		}
-		v, _ := vm.ToValue(names)
-		return v
+		return vm.ToValue(names)
 	}
-	api["__fs_remove"] = func(call otto.FunctionCall) otto.Value {
+	api["__fs_remove"] = func(call goja.FunctionCall) goja.Value {
 		if err := fsRoot(call.Argument(0).String()).Remove(call.Argument(1).String()); err != nil {
-			panic(vm.MakeCustomError("FSError", err.Error()))
+			throwf(vm, "FSError: %s", err.Error())
 		}
-		return otto.UndefinedValue()
+		return goja.Undefined()
 	}
-	api["__fs_exists"] = func(call otto.FunctionCall) otto.Value {
+	api["__fs_exists"] = func(call goja.FunctionCall) goja.Value {
 		ok, err := fsRoot(call.Argument(0).String()).Exists(call.Argument(1).String())
 		if err != nil {
-			panic(vm.MakeCustomError("FSError", err.Error()))
+			throwf(vm, "FSError: %s", err.Error())
 		}
-		v, _ := vm.ToValue(ok)
-		return v
+		return vm.ToValue(ok)
 	}
 
-	api["__resolve_load"] = func(call otto.FunctionCall) otto.Value {
+	api["__resolve_load"] = func(call goja.FunctionCall) goja.Value {
 		if rc.Resolve == nil {
-			panic(vm.MakeCustomError("ResolveError", "load/include not available here"))
+			throwf(vm, "ResolveError: load/include not available here")
 		}
 		src, err := rc.Resolve(call.Argument(0).String())
 		if err != nil {
-			panic(vm.MakeCustomError("ResolveError", err.Error()))
+			throwf(vm, "ResolveError: %s", err.Error())
 		}
-		v, _ := vm.ToValue(src)
-		return v
+		return vm.ToValue(src)
 	}
-	api["__resolve_include"] = func(call otto.FunctionCall) otto.Value {
+	api["__resolve_include"] = func(call goja.FunctionCall) goja.Value {
 		if rc.Resolve == nil {
-			panic(vm.MakeCustomError("ResolveError", "load/include not available here"))
+			throwf(vm, "ResolveError: load/include not available here")
 		}
 		uri := call.Argument(0).String()
 		src, err := rc.Resolve(uri)
 		if err != nil {
-			panic(vm.MakeCustomError("ResolveError", err.Error()))
+			throwf(vm, "ResolveError: %s", err.Error())
 		}
 		// Run in the VM's global scope so the included script's functions/vars
 		// become available to the caller.
-		if _, err := vm.Run(src); err != nil {
-			panic(vm.MakeCustomError("ResolveError", fmt.Sprintf("include %s: %v", uri, err)))
+		if _, err := vm.RunString(src); err != nil {
+			throwf(vm, "ResolveError: include %s: %v", uri, err)
 		}
-		return otto.UndefinedValue()
+		return goja.Undefined()
 	}
 
 	return api
@@ -502,14 +491,13 @@ function load(uri){ return __resolve_load(uri); }
 function include(uri){ return __resolve_include(uri); }
 `
 
-// --- otto option-object helpers ---
+// --- option-object helpers ---
 
-func exportMap(v otto.Value) map[string]any {
-	exported, err := v.Export()
-	if err != nil {
+func exportMap(v goja.Value) map[string]any {
+	if v == nil || goja.IsUndefined(v) || goja.IsNull(v) {
 		return nil
 	}
-	m, _ := exported.(map[string]any)
+	m, _ := v.Export().(map[string]any)
 	return m
 }
 

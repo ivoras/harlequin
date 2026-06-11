@@ -1,5 +1,6 @@
-// Reusable helpers for the web-extractor skill. ES5 only (otto sandbox): var,
-// no let/const, no arrow functions, no template literals.
+// Reusable helpers for the web-extractor skill. Runs in the jsrun sandbox (goja,
+// ES5.1-compatible; common ES6 such as let/const, arrow functions and template
+// literals also works). These helpers stay in plain var-style for simplicity.
 //
 // Loaded with include("skill://web-extractor/lib/extract.js"), which runs this in
 // the global scope so these functions become available to the calling script.

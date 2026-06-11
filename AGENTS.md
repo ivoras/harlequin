@@ -10,7 +10,7 @@ Client-server AI agent system in Go. A REST/SSE **server** talks to LLMs, stores
 - Go 1.25. Router `go-chi/chi/v5`; streaming over SSE.
 - SQLite via `mattn/go-sqlite3` (CGO, `-tags sqlite_fts5`) + `asg017/sqlite-vec` (`vec0`). Build: `CGO_ENABLED=1 go build -tags sqlite_fts5 ./...` (or `make build`). Compile-time headers are vendored in `third_party/sqlite/`; no system `libsqlite3-dev` needed.
 - TUI: `charm.land/{bubbletea,bubbles,lipgloss}/v2`, `glamour` + `chroma` for rendering.
-- JS engine: `robertkrimen/otto` (ES5, sandboxed) for `<?js ?>` skill templating and the `run_js` tool.
+- JS engine: `dop251/goja` (ES5.1-compatible, much of ES6 incl. let/const, classes, Promise, BigInt; sandboxed) for `<?js ?>` skill templating and the `run_js` tool.
 - Config: YAML (structure) + `.env` (secrets); env overrides YAML.
 
 ## Layout

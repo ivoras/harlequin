@@ -255,8 +255,9 @@ third_party/sqlite     vendored sqlite3.h (compile-time; see third_party/sqlite/
 ## Security notes
 
 - All JavaScript (skill `<?js ?>` templating, the `run_js` tool, skill-defined tools) runs in a
-  sandboxed [otto](https://github.com/robertkrimen/otto) VM: no filesystem, no network (except an
-  allow-listed `fetch`), a hard execution timeout, and an output-size cap.
+  sandboxed [goja](https://github.com/dop251/goja) VM (ES5.1-compatible, with much of ES6): no
+  filesystem, no network (except an allow-listed `fetch`), a hard execution timeout, and an
+  output-size cap.
 - Session logs under `<data_dir>/sessions/` are plaintext and may contain sensitive conversation
   content. A background task deletes files older than `sessions.retention_days` (default **7**;
   set **0** to keep forever) every hour. Configure redaction in the `sessions:` config block.
