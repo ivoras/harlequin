@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -46,12 +47,14 @@ func (a *Agent) RunAutoTitle(ctx context.Context, enabled bool) {
 	}
 }
 
-// llmFree reports whether no agent turn is currently using the LLM, so the titler
-// can borrow it without competing with a live turn.
+// llmFree reports whether no agent turn is currently using the LLM, so
+// background jobs (titling, extraction — see runBackgroundLLM) can borrow it
+// without competing with a live turn.
 func (a *Agent) llmFree() bool { return a.inFlight.Load() == 0 }
 
-// titlePass titles eligible sessions for every user, but only while the LLM is
-// free — it bails the moment a turn starts so live turns keep priority.
+// titlePass titles eligible sessions for every user. The per-title LLM call is
+// gated by runBackgroundLLM; the llmFree checks here are just cheap early
+// bails so the pass doesn't scan databases while a turn is running.
 func (a *Agent) titlePass(ctx context.Context) {
 	if !a.llmFree() {
 		return
@@ -110,13 +113,21 @@ func (a *Agent) generateTitle(ctx context.Context, msgs []types.Message) (string
 		return "", nil
 	}
 	const sys = "You write a terse title for a chat conversation. Reply with ONLY the title: at most 6 words, no surrounding quotes, no trailing punctuation, no preamble."
-	text, _, err := a.completeOnce(ctx, llm.ChatRequest{
-		Messages: []llm.Message{
-			{Role: llm.RoleSystem, Content: sys},
-			{Role: llm.RoleUser, Content: "Conversation:\n" + transcript + "\n\nTitle:"},
-		},
-		Temperature: llm.Ptr(0.2),
-	})
+	// The completion shares the background-LLM slot with memory extraction: one
+	// background job at a time, started only while no live turn is on the model.
+	var text string
+	var err error
+	if !a.runBackgroundLLM(ctx, func() {
+		text, _, err = a.completeOnce(ctx, llm.ChatRequest{
+			Messages: []llm.Message{
+				{Role: llm.RoleSystem, Content: sys},
+				{Role: llm.RoleUser, Content: "Conversation:\n" + transcript + "\n\nTitle:"},
+			},
+			Temperature: llm.Ptr(0.2),
+		})
+	}) {
+		return "", errors.New("no background LLM slot")
+	}
 	if err != nil {
 		return "", err
 	}

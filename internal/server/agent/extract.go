@@ -57,30 +57,31 @@ func (a *Agent) ExtractMemoriesFromText(ctx context.Context, userID int64, sourc
 // accepted, non-redundant candidate (downgrading shared->user when the caller
 // can't write shared memory).
 func (a *Agent) distillAndStore(ctx context.Context, userID int64, systemPrompt, input string, turnWritten []string, canShareMemory bool, timeout time.Duration) int {
-	// The extraction LLM call gets its own deadline. Storage (embedding + insert)
-	// gets a separate one derived from the parent, so a slow extraction can't
-	// starve the store step of time (which previously made every embed time out).
-	llmCtx, cancelLLM := context.WithTimeout(ctx, timeout)
-	stream, err := a.Provider.Chat(llmCtx, llm.ChatRequest{
-		Messages: []llm.Message{
-			{Role: llm.RoleSystem, Content: systemPrompt},
-			{Role: llm.RoleUser, Content: input},
-		},
-		Temperature: llm.Ptr(0.0),
-	})
-	if err != nil {
-		cancelLLM()
+	// The extraction call shares the background-LLM slot with the auto-titler:
+	// one background completion at a time, started only while no live turn is
+	// on the model. The LLM call gets its own deadline; storage (embedding +
+	// insert) gets a separate one derived from the parent, so a slow extraction
+	// can't starve the store step of time (which previously made every embed
+	// time out).
+	var text string
+	var llmErr error
+	if !a.runBackgroundLLM(ctx, func() {
+		llmCtx, cancelLLM := context.WithTimeout(ctx, timeout)
+		defer cancelLLM()
+		text, _, llmErr = a.completeOnce(llmCtx, llm.ChatRequest{
+			Messages: []llm.Message{
+				{Role: llm.RoleSystem, Content: systemPrompt},
+				{Role: llm.RoleUser, Content: input},
+			},
+			Temperature: llm.Ptr(0.0),
+		})
+	}) {
+		log.Printf("memextract: skipped, no background LLM slot within %v", bgStartTimeout)
 		return 0
 	}
-	var text string
-	for chunk := range stream {
-		if chunk.Err != nil {
-			cancelLLM()
-			return 0
-		}
-		text += chunk.TextDelta
+	if llmErr != nil {
+		return 0
 	}
-	cancelLLM()
 
 	candidates, ok := memextract.ParseResponse(text)
 	if !ok {
