@@ -210,6 +210,7 @@ export interface CronJob {
   input?: string;
   enabled: boolean;
   notify: boolean;
+  notify_channel?: string;
   next_run_at?: string;
   last_run_at?: string;
   last_status?: string;
@@ -225,6 +226,7 @@ export interface CreateCronJobRequest {
   input?: string;
   notify?: boolean;
   enabled?: boolean;
+  notify_channel?: string; // "inapp" | "email" | "telegram"
 }
 export interface UpdateCronJobRequest {
   name?: string;

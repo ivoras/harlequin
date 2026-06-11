@@ -4,9 +4,19 @@
 // Loaded with include("skill://web-extractor/lib/extract.js"), which runs this in
 // the global scope so these functions become available to the calling script.
 
-// fetchDoc fetches a URL and returns a parsed DOM handle.
+// fetchDoc fetches a URL and returns a parsed DOM handle. It THROWS on a non-2xx
+// response so a transient failure (timeout, 403/anti-bot, 5xx) surfaces as a job
+// error rather than a fake "the page changed" — the scheduler does not notify on
+// errors and keeps the last good baseline.
 function fetchDoc(url) {
   var resp = fetch(url);
+  var st = resp.status || 0;
+  if (st < 200 || st >= 300) {
+    throw new Error("fetch " + url + " returned HTTP " + st);
+  }
+  if (!resp.body || !trim(resp.body)) {
+    throw new Error("fetch " + url + " returned an empty body");
+  }
   return dom.parse(resp.body);
 }
 
@@ -89,6 +99,12 @@ function runWatch(cfg) {
   }
   var doc = fetchDoc(r.url);
   var items = allTextAt(doc, r.selector);
+  // Anti-flap: an established watch suddenly matching nothing is almost always a
+  // broken fetch/selector or an anti-bot page, not a real "everything removed".
+  // Throw (job error, no alert, baseline kept) instead of reporting a huge change.
+  if (items.length === 0 && r.lastChecked && r.lastSeen.length > 0) {
+    throw new Error("selector '" + r.selector + "' matched no items (page/selector/anti-bot issue?)");
+  }
   var d = diffList(r.lastSeen, items);
   var label = r.label || name;
   if (!r.lastChecked) {

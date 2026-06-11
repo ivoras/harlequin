@@ -28,12 +28,14 @@ import (
 	"github.com/ivoras/harlequin/internal/server/mdtmpl"
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/notify"
+	"github.com/ivoras/harlequin/internal/server/notifyx"
 	"github.com/ivoras/harlequin/internal/server/pdfextract"
 	"github.com/ivoras/harlequin/internal/server/presence"
 	"github.com/ivoras/harlequin/internal/server/secrets"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/skills"
 	"github.com/ivoras/harlequin/internal/server/storage"
+	"github.com/ivoras/harlequin/internal/server/telegram"
 	"github.com/ivoras/harlequin/internal/server/usage"
 	"github.com/ivoras/harlequin/internal/server/userconfig"
 	"github.com/ivoras/harlequin/internal/server/webfetch"
@@ -174,6 +176,12 @@ func main() {
 	notifyStore := notify.NewStore()
 	cronStore := cron.NewStore()
 	presenceTracker := presence.New()
+	userCfgStore := userconfig.NewStore()
+
+	// Outbound notification delivery: in-app store + optional email/Telegram.
+	emailSender := email.New(cfg.Email)
+	tgClient := telegram.New(cfg.Telegram.BotToken, cfg.Telegram.APIBase)
+	dispatch := notifyx.NewDispatcher(notifyStore, emailSender, tgClient, userCfgStore)
 
 	ag := &agent.Agent{
 		Provider:            router,
@@ -196,6 +204,7 @@ func main() {
 		DataDir:             cfg.DataDir,
 		Cron:                cronStore,
 		Notify:              notifyStore,
+		NotifyDispatch:      dispatch,
 		Presence:            presenceTracker,
 		RecordUsage: func(ctx context.Context, userDB *sql.DB, userID int64, conversationID *int64, provider, model string, u llm.Usage) {
 			_ = usageStore.Record(ctx, userDB, conversationID, provider, model, u.PromptTokens, u.CompletionTokens)
@@ -218,10 +227,10 @@ func main() {
 		MCP:           mcpManager,
 		Notify:        notifyStore,
 		Cron:          cronStore,
-		CronSched:     cron.NewScheduler(store, cronStore, ag, notifyStore),
-		UserConfig:    userconfig.NewStore(),
+		CronSched:     cron.NewScheduler(store, cronStore, ag, dispatch),
+		UserConfig:    userCfgStore,
 		Presence:      presenceTracker,
-		Email:         email.New(cfg.Email),
+		Email:         emailSender,
 	}
 
 	// PDF text extraction for document uploads (PDFium via wasm; best-effort).

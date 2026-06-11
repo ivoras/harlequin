@@ -110,3 +110,10 @@ email:
   smtp_username: ""                 # SMTP auth username (omit for unauthenticated relays)
   smtp_password_env: SMTP_PASSWORD  # env var holding the SMTP password (like api_key_env; never put the secret in YAML)
   from: ""                          # From address (defaults to smtp_username)
+
+# Outbound Telegram notification delivery (a cron watch can deliver via telegram).
+# Active only when a bot token is set AND a user has registered their chat id
+# (per-user config key telegram.chat_id, e.g. via /config).
+telegram:
+  bot_token_env: TELEGRAM_BOT_TOKEN # env var holding the bot token (empty disables Telegram delivery)
+  api_base: ""                      # override the Bot API host (default https://api.telegram.org; for self-host/testing)

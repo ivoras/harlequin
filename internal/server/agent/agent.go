@@ -20,6 +20,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/mcp"
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/notify"
+	"github.com/ivoras/harlequin/internal/server/notifyx"
 	"github.com/ivoras/harlequin/internal/server/presence"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/skills"
@@ -45,6 +46,9 @@ type Agent struct {
 	// Notify, if set, lets background tasks (e.g. the auto-titler) raise
 	// notifications for the client.
 	Notify *notify.Store
+	// NotifyDispatch, if set, lets the agent report which delivery channels
+	// (in-app/email/telegram) are active for the user (the notify_channels tool).
+	NotifyDispatch *notifyx.Dispatcher
 	// Presence, if set, tells background tasks which (user, interface) pairs are
 	// live, so they only notify connected interfaces.
 	Presence *presence.Tracker

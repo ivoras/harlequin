@@ -22,30 +22,41 @@ items the user wants (e.g. the subsidy-call titles) and take its `selector`.
 
 The selector must match EVERY item (the repeating row), not just one.
 
-## Step 2 — Schedule the watch
+## Step 2 — Decide where to notify
 
-Call **cron_create** (kind `js`), pointing at the shipped checker and passing the watch
-config as `input` (a JSON string):
+A change can be delivered via **inapp** (the built-in TUI/web notification),
+**email**, or **telegram**. Pick the channel:
+- If the user already said where ("email me", "send it to Telegram"), use that.
+- Otherwise call **notify_channels** to see what's available for this user, then
+  **ask_user** which one they want (only offer the channels it returns — e.g. don't
+  offer Telegram if it isn't configured). Default is `inapp` if they don't care.
+
+## Step 3 — Schedule the watch
+
+Call **cron_create** (kind `js`), pointing at the shipped checker, passing the watch
+config as `input` (a JSON string) and the chosen `notify_channel`:
 
     cron_create(
-      name:   "<short-slug>",
-      spec:   "<schedule>",
-      kind:   "js",
-      target: "skill://web-extractor/lib/check.js",
-      input:  "{\"name\":\"<short-slug>\",\"url\":\"<url>\",\"selector\":\"<selector>\",\"label\":\"<what is watched>\"}"
+      name:           "<short-slug>",
+      spec:           "<schedule>",
+      kind:           "js",
+      target:         "skill://web-extractor/lib/check.js",
+      input:          "{\"name\":\"<short-slug>\",\"url\":\"<url>\",\"selector\":\"<selector>\",\"label\":\"<what is watched>\"}",
+      notify_channel: "<inapp|email|telegram>"
     )
 
 Schedules: 5-field cron, `@hourly`/`@daily`, or `@every <dur>`. **Every 12 hours →
 `"0 0,12 * * *"`** (00:00 and 12:00), or `"@every 12h"`.
 
 The first run saves the current items as the baseline; later runs report only
-additions/removals, and the user is notified when the list changes.
+additions/removals, and the user is notified (on the chosen channel) when the list
+changes. Transient fetch failures do not notify.
 
-## Step 3 — Baseline now (optional) and confirm
+## Step 4 — Baseline now (optional) and confirm
 
 Call **cron_run** with the new job's id to run it immediately and capture the baseline
 (otherwise it first runs at the next scheduled time). Then tell the user what is being
-watched, on what schedule, and how many items are there now.
+watched, on what schedule, where they'll be notified, and how many items are there now.
 
 ## Notes
 - Re-check a saved watch by hand:

@@ -14,13 +14,14 @@ import (
 const cronUsage = `usage:
   /cron                              list jobs
   /cron show <id>                    show a job
-  /cron add "<name>" "<spec>" js "<target>" ["<input-json>"]
-  /cron add "<name>" "<spec>" skill "<skill|->" "<prompt>"
+  /cron add "<name>" "<spec>" js "<target>" ["<input-json>"] [notify=<channel>]
+  /cron add "<name>" "<spec>" skill "<skill|->" "<prompt>" [notify=<channel>]
   /cron on <id> | /cron off <id>     enable / disable
   /cron run <id>                     run now
   /cron rm <id>                      delete
 spec is a cron schedule: "min hour dom mon dow", @hourly/@daily, or "@every 30m".
-js target is a script URI (skill://… storage://… tmp://…) or inline ES5 code.`
+js target is a script URI (skill://… storage://… tmp://…) or inline ES5 code.
+notify=<channel> delivers change alerts via inapp (default), email, or telegram.`
 
 func (m *Model) handleCronSub(args []string, raw string) tea.Cmd {
 	if len(args) == 0 || strings.ToLower(args[0]) == "list" {
@@ -96,13 +97,25 @@ func (m *Model) handleCronAdd(raw string) tea.Cmd {
 	// Drop the leading "/cron add" and tokenize the rest, honouring quotes.
 	rest := afterNFields(raw, 2)
 	toks := splitQuoted(rest)
+	// Pull out an optional notify=<channel> token (may appear anywhere).
+	var channel string
+	kept := toks[:0]
+	for _, t := range toks {
+		if low := strings.ToLower(t); strings.HasPrefix(low, "notify=") {
+			channel = strings.TrimPrefix(low, "notify=")
+			continue
+		}
+		kept = append(kept, t)
+	}
+	toks = kept
 	if len(toks) < 4 {
 		return infoCmd(cronUsage)
 	}
 	req := types.CreateCronJobRequest{
-		Name: toks[0],
-		Spec: toks[1],
-		Kind: strings.ToLower(toks[2]),
+		Name:          toks[0],
+		Spec:          toks[1],
+		Kind:          strings.ToLower(toks[2]),
+		NotifyChannel: channel,
 	}
 	switch req.Kind {
 	case types.CronKindJS:
@@ -208,7 +221,11 @@ func renderCronDetail(j types.CronJob) string {
 	if j.Input != "" {
 		fmt.Fprintf(&sb, "  input:    %s\n", j.Input)
 	}
-	fmt.Fprintf(&sb, "  notify:   %v\n", j.Notify)
+	channel := j.NotifyChannel
+	if channel == "" {
+		channel = "inapp"
+	}
+	fmt.Fprintf(&sb, "  notify:   %v (via %s)\n", j.Notify, channel)
 	fmt.Fprintf(&sb, "  next run: %s\n", cronTime(j.NextRunAt))
 	if j.LastRunAt != nil {
 		fmt.Fprintf(&sb, "  last run: %s (%s)\n", cronTime(j.LastRunAt), j.LastStatus)
