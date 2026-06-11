@@ -52,7 +52,7 @@ embeddings:
   api_key_env: "EMBED_API_KEY"
 
 agent:
-  max_steps: 8
+  max_steps: 50
   temperature: 0.2         # lower = less creative, fewer hallucinations (0–2)
   skill_render_timeout: "2s"
   js_tool_timeout: "10s"
