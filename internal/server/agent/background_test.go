@@ -6,7 +6,43 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/ivoras/harlequin/internal/server/llm"
 )
+
+// remoteProvider is a Provider stub whose model is not local: the background
+// gate must become a pass-through for it.
+type remoteProvider struct{}
+
+func (remoteProvider) Name() string { return "remote" }
+func (remoteProvider) Chat(ctx context.Context, req llm.ChatRequest) (<-chan llm.Chunk, error) {
+	ch := make(chan llm.Chunk)
+	close(ch)
+	return ch, nil
+}
+func (remoteProvider) Local() bool { return false }
+
+// With a remote (hosted) model there is no slot contention, so background jobs
+// run immediately — no serialization, no yielding to live turns.
+func TestRunBackgroundLLMBypassedForRemoteModel(t *testing.T) {
+	a := &Agent{Provider: remoteProvider{}}
+	a.inFlight.Add(1) // live turn in flight must not delay the job
+	defer a.inFlight.Add(-1)
+	ran := false
+	done := make(chan struct{})
+	go func() {
+		a.RunBackgroundLLM(context.Background(), func(context.Context) { ran = true })
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("background job was gated despite a remote model")
+	}
+	if !ran {
+		t.Error("job did not run")
+	}
+}
 
 // Background jobs must never run concurrently with each other.
 func TestRunBackgroundLLMSerializes(t *testing.T) {

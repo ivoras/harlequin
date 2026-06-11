@@ -24,8 +24,24 @@ const (
 	// without bound on a busy server.
 	bgStartTimeout = 10 * time.Minute
 	// bgMaxAttempts caps how many times a preempted job is restarted.
-	bgMaxAttempts = 3
+	bgMaxAttempts = 15
 )
+
+// localModeler is implemented by providers that can report whether the chat
+// model runs on this machine (llm.OpenAICompatible, llm.RoutingProvider).
+type localModeler interface{ Local() bool }
+
+// gateEnabled reports whether background gating/preemption applies. Only a
+// local model needs it: there, concurrent requests fight for the same GPU/CPU
+// and slots. Hosted APIs handle parallel requests fine, so background work
+// runs immediately. Providers that cannot say (tests, custom impls) are gated,
+// the safe default.
+func (a *Agent) gateEnabled() bool {
+	if lp, ok := a.Provider.(localModeler); ok {
+		return lp.Local()
+	}
+	return true
+}
 
 // preemptBackgroundLLM cancels the in-flight background LLM job, if any.
 // Called at the start of every live turn so background work yields the model
@@ -45,6 +61,10 @@ func (a *Agent) preemptBackgroundLLM() {
 // preempted bgMaxAttempts times. Exported so server-level background work that
 // borrows the chat model (e.g. the cross-scope memory sweep) shares the gate.
 func (a *Agent) RunBackgroundLLM(ctx context.Context, job func(ctx context.Context)) bool {
+	if !a.gateEnabled() {
+		job(ctx)
+		return true
+	}
 	a.bgOnce.Do(func() { a.bgSlot = make(chan struct{}, 1) })
 	ctx, cancel := context.WithTimeout(ctx, bgStartTimeout)
 	defer cancel()

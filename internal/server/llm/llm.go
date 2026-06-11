@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -179,6 +181,22 @@ func (p *OpenAICompatible) Name() string { return p.name }
 
 // Model returns the provider's default model.
 func (p *OpenAICompatible) Model() string { return p.model }
+
+// Local reports whether the endpoint is served from this machine (loopback
+// host), meaning inference shares local compute and concurrent requests
+// degrade each other. Hosted APIs return false.
+func (p *OpenAICompatible) Local() bool {
+	u, err := url.Parse(p.baseURL)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
 
 type streamRequest struct {
 	Model          string    `json:"model"`
