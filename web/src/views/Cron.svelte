@@ -6,7 +6,7 @@
 
   let jobs = $state<CronJob[]>([]);
   let showAdd = $state(false);
-  const blank = (): CreateCronJobRequest => ({ name: "", spec: "@every 12h", kind: "js", target: "", prompt: "", input: "" });
+  const blank = (): CreateCronJobRequest => ({ name: "", spec: "@every 12h", kind: "js", target: "", prompt: "", input: "", notify_channel: "inapp" });
   let f = $state<CreateCronJobRequest>(blank());
 
   async function load() {
@@ -72,6 +72,13 @@
         <input placeholder={f.kind === "js" ? "target: skill://… / storage://… or inline JS" : "target: skill name (optional)"} bind:value={f.target} />
         {#if f.kind === "skill"}<input placeholder="prompt for the agent" bind:value={f.prompt} />{/if}
         <input placeholder={'input JSON — e.g. {"name":"fzoeu"}'} bind:value={f.input} />
+        <label class="muted small">Notify via
+          <select bind:value={f.notify_channel}>
+            <option value="inapp">in-app</option>
+            <option value="email">email</option>
+            <option value="telegram">telegram</option>
+          </select>
+        </label>
         <button class="primary" onclick={add} disabled={!f.name.trim() || !f.spec.trim() || !f.target.trim()}>Create</button>
       </div>
     {/if}
@@ -80,6 +87,7 @@
         <div class="card col">
           <div class="row">
             <strong>{j.name}</strong><span class="pill">{j.kind}</span><span class="pill">{j.spec}</span>
+            {#if j.notify_channel && j.notify_channel !== "inapp"}<span class="pill">→ {j.notify_channel}</span>{/if}
             <span class="spacer"></span>{#if !j.enabled}<span class="muted small">disabled</span>{/if}
           </div>
           <div class="muted small wrap">{j.target}</div>

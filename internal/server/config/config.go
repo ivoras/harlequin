@@ -53,6 +53,7 @@ type Config struct {
 	MCP        MCPConfig        `yaml:"mcp"`
 	Auth       AuthConfig       `yaml:"auth"`
 	Email      email.Config     `yaml:"email"`
+	Telegram   TelegramConfig   `yaml:"telegram"`
 
 	// Secrets, populated from the environment (not YAML).
 	JWTSecret string `yaml:"-"`
@@ -61,6 +62,17 @@ type Config struct {
 	// rest (MCP header secrets and OAuth tokens), decoded from the base64
 	// HARLEQUIN_SECRET_KEY env var. Nil when unset; features needing it fail closed.
 	SecretKey []byte `yaml:"-"`
+}
+
+// TelegramConfig configures outbound Telegram notification delivery. The bot
+// token is read from the env var named by BotTokenEnv (like a provider api key);
+// empty disables Telegram delivery. APIBase overrides the Bot API host (tests).
+type TelegramConfig struct {
+	BotTokenEnv string `yaml:"bot_token_env"`
+	APIBase     string `yaml:"api_base"`
+
+	// BotToken is resolved from BotTokenEnv at load time.
+	BotToken string `yaml:"-"`
 }
 
 // AuthConfig controls authentication-related policy.
@@ -412,6 +424,10 @@ func (c *Config) resolveSecrets() {
 
 	if env := c.Email.PasswordEnv; env != "" {
 		c.Email.Password = os.Getenv(env)
+	}
+
+	if env := c.Telegram.BotTokenEnv; env != "" {
+		c.Telegram.BotToken = os.Getenv(env)
 	}
 }
 

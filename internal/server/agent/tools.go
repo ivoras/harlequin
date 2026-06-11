@@ -314,6 +314,18 @@ Pass code inline, OR set script=<uri> to run a saved script instead. An optional
 
 	reg["calculator"] = a.calculatorEntry()
 
+	if a.NotifyDispatch != nil {
+		reg["notify_channels"] = toolEntry{
+			def: fnTool("notify_channels", "List the notification delivery channels currently available to the user: 'inapp' (built-in TUI/web notification, always), 'email' (the account address), and 'telegram' (only if a bot is configured and the user registered a chat id). Use this before asking the user where to be notified.", map[string]any{
+				"type": "object", "properties": map[string]any{},
+			}),
+			handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+				chans := a.NotifyDispatch.ActiveChannels(ctx, rc.userDB)
+				return "available notification channels: " + strings.Join(chans, ", "), nil
+			},
+		}
+	}
+
 	if a.WebFetcher != nil {
 		reg["WebFetch"] = a.webFetchEntry()
 		reg["WebFetchDOM"] = a.webFetchDOMEntry()
@@ -354,17 +366,20 @@ Example (watch a saved web-extractor check every 30 min): cron_create(name="fzoe
 					"target": map[string]any{"type": "string", "description": "js: script URI or inline code; skill: skill name"},
 					"prompt": map[string]any{"type": "string", "description": "skill: message to send to the agent"},
 					"input":  map[string]any{"type": "string", "description": "JSON object of inputs (js: exposed as args)"},
+					"notify_channel": map[string]any{"type": "string", "enum": []string{"inapp", "email", "telegram"},
+						"description": "Where to deliver a change notification (default inapp). Check notify_channels and ask the user if unspecified."},
 				},
 				"required": []string{"name", "spec", "kind", "target"},
 			}),
 			handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 				req := types.CreateCronJobRequest{
-					Name:   argString(args, "name"),
-					Spec:   argString(args, "spec"),
-					Kind:   argString(args, "kind"),
-					Target: argString(args, "target"),
-					Prompt: argString(args, "prompt"),
-					Input:  argString(args, "input"),
+					Name:          argString(args, "name"),
+					Spec:          argString(args, "spec"),
+					Kind:          argString(args, "kind"),
+					Target:        argString(args, "target"),
+					Prompt:        argString(args, "prompt"),
+					Input:         argString(args, "input"),
+					NotifyChannel: argString(args, "notify_channel"),
 				}
 				job, err := a.Cron.Create(ctx, rc.userDB, req)
 				if err != nil {
@@ -430,14 +445,15 @@ Example (watch a saved web-extractor check every 30 min): cron_create(name="fzoe
 			def: fnTool("cron_update", "Edit an existing cron job by id: change its schedule/target/etc., or enable/disable it. Only the fields you pass are changed.", map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"id":      map[string]any{"type": "integer"},
-					"name":    map[string]any{"type": "string"},
-					"spec":    map[string]any{"type": "string", "description": "New cron schedule"},
-					"kind":    map[string]any{"type": "string", "enum": []string{"js", "skill"}},
-					"target":  map[string]any{"type": "string"},
-					"prompt":  map[string]any{"type": "string"},
-					"input":   map[string]any{"type": "string", "description": "JSON object of inputs"},
-					"enabled": map[string]any{"type": "boolean", "description": "Enable (true) or disable (false) the job"},
+					"id":             map[string]any{"type": "integer"},
+					"name":           map[string]any{"type": "string"},
+					"spec":           map[string]any{"type": "string", "description": "New cron schedule"},
+					"kind":           map[string]any{"type": "string", "enum": []string{"js", "skill"}},
+					"target":         map[string]any{"type": "string"},
+					"prompt":         map[string]any{"type": "string"},
+					"input":          map[string]any{"type": "string", "description": "JSON object of inputs"},
+					"enabled":        map[string]any{"type": "boolean", "description": "Enable (true) or disable (false) the job"},
+					"notify_channel": map[string]any{"type": "string", "enum": []string{"inapp", "email", "telegram"}, "description": "Delivery channel for change notifications"},
 				},
 				"required": []string{"id"},
 			}),
@@ -467,6 +483,9 @@ Example (watch a saved web-extractor check every 30 min): cron_create(name="fzoe
 				}
 				if v, ok := args["enabled"].(bool); ok {
 					req.Enabled = &v
+				}
+				if v, ok := args["notify_channel"].(string); ok {
+					req.NotifyChannel = &v
 				}
 				job, err := a.Cron.Update(ctx, rc.userDB, id, req)
 				if err != nil {

@@ -21,7 +21,7 @@ type Store struct{}
 func NewStore() *Store { return &Store{} }
 
 const selectCols = `id, name, spec, kind, target, prompt, input, enabled, notify,
-	next_run_at, last_run_at, last_status, last_output, created_at`
+	notify_channel, next_run_at, last_run_at, last_status, last_output, created_at`
 
 // Create validates and inserts a job, computing its first next_run_at.
 func (s *Store) Create(ctx context.Context, db *sql.DB, req types.CreateCronJobRequest) (types.CronJob, error) {
@@ -39,6 +39,7 @@ func (s *Store) Create(ctx context.Context, db *sql.DB, req types.CreateCronJobR
 	}
 	enabled := req.Enabled == nil || *req.Enabled
 	notify := req.Notify == nil || *req.Notify
+	channel := normalizeChannel(req.NotifyChannel)
 	var next any
 	if enabled {
 		if n, err := cronspec.Next(req.Spec, time.Now()); err == nil {
@@ -46,10 +47,10 @@ func (s *Store) Create(ctx context.Context, db *sql.DB, req types.CreateCronJobR
 		}
 	}
 	res, err := db.ExecContext(ctx,
-		`INSERT INTO cron_jobs(name, spec, kind, target, prompt, input, enabled, notify, next_run_at)
-		 VALUES (?,?,?,?,?,?,?,?,?)`,
+		`INSERT INTO cron_jobs(name, spec, kind, target, prompt, input, enabled, notify, notify_channel, next_run_at)
+		 VALUES (?,?,?,?,?,?,?,?,?,?)`,
 		req.Name, req.Spec, req.Kind, req.Target, req.Prompt, req.Input,
-		b2i(enabled), b2i(notify), next)
+		b2i(enabled), b2i(notify), channel, next)
 	if err != nil {
 		return types.CronJob{}, err
 	}
@@ -136,6 +137,9 @@ func (s *Store) Update(ctx context.Context, db *sql.DB, id int64, req types.Upda
 	if req.Notify != nil {
 		cur.Notify = *req.Notify
 	}
+	if req.NotifyChannel != nil {
+		cur.NotifyChannel = normalizeChannel(*req.NotifyChannel)
+	}
 	if req.Enabled != nil {
 		cur.Enabled = *req.Enabled
 	}
@@ -148,9 +152,9 @@ func (s *Store) Update(ctx context.Context, db *sql.DB, id int64, req types.Upda
 	}
 	_, err = db.ExecContext(ctx,
 		`UPDATE cron_jobs SET name=?, spec=?, kind=?, target=?, prompt=?, input=?,
-		 enabled=?, notify=?, next_run_at=? WHERE id=?`,
+		 enabled=?, notify=?, notify_channel=?, next_run_at=? WHERE id=?`,
 		cur.Name, cur.Spec, cur.Kind, cur.Target, cur.Prompt, cur.Input,
-		b2i(cur.Enabled), b2i(cur.Notify), next, id)
+		b2i(cur.Enabled), b2i(cur.Notify), normalizeChannel(cur.NotifyChannel), next, id)
 	if err != nil {
 		return types.CronJob{}, err
 	}
@@ -194,7 +198,7 @@ func scanJob(row scanner) (types.CronJob, error) {
 		next, last      sql.NullInt64
 	)
 	if err := row.Scan(&j.ID, &j.Name, &j.Spec, &j.Kind, &j.Target, &j.Prompt, &j.Input,
-		&enabled, &notify, &next, &last, &j.LastStatus, &j.LastOutput, &j.CreatedAt); err != nil {
+		&enabled, &notify, &j.NotifyChannel, &next, &last, &j.LastStatus, &j.LastOutput, &j.CreatedAt); err != nil {
 		return types.CronJob{}, err
 	}
 	j.Enabled = enabled != 0
@@ -210,6 +214,19 @@ func epochPtr(n sql.NullInt64) *time.Time {
 	}
 	t := time.Unix(n.Int64, 0)
 	return &t
+}
+
+// normalizeChannel validates a delivery channel, defaulting unknown/empty to
+// in-app. Kept in sync with notifyx channel constants (avoids importing it here).
+func normalizeChannel(c string) string {
+	switch strings.ToLower(strings.TrimSpace(c)) {
+	case "email":
+		return "email"
+	case "telegram":
+		return "telegram"
+	default:
+		return "inapp"
+	}
 }
 
 func b2i(b bool) int {

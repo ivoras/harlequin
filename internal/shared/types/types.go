@@ -196,9 +196,12 @@ type CronJob struct {
 	// Input is a JSON object of inputs: exposed to a JS job as the global `args`.
 	Input   string `json:"input,omitempty"`
 	Enabled bool   `json:"enabled"`
-	// Notify creates a user notification when the job's output changes (or errors).
-	Notify     bool       `json:"notify"`
-	NextRunAt  *time.Time `json:"next_run_at,omitempty"`
+	// Notify creates a user notification when the job's output changes.
+	Notify bool `json:"notify"`
+	// NotifyChannel is where that notification is delivered: "inapp" (default),
+	// "email", or "telegram".
+	NotifyChannel string     `json:"notify_channel,omitempty"`
+	NextRunAt     *time.Time `json:"next_run_at,omitempty"`
 	LastRunAt  *time.Time `json:"last_run_at,omitempty"`
 	LastStatus string     `json:"last_status,omitempty"` // "ok" | "error"
 	LastOutput string     `json:"last_output,omitempty"`
@@ -215,6 +218,8 @@ type CreateCronJobRequest struct {
 	Input   string `json:"input,omitempty"`
 	Notify  *bool  `json:"notify,omitempty"`  // default true
 	Enabled *bool  `json:"enabled,omitempty"` // default true
+	// NotifyChannel is the delivery channel: "inapp" (default), "email", "telegram".
+	NotifyChannel string `json:"notify_channel,omitempty"`
 }
 
 // UpdateCronJobRequest is the body of PATCH /cron/{id}; nil fields are unchanged.
@@ -224,9 +229,10 @@ type UpdateCronJobRequest struct {
 	Kind    *string `json:"kind,omitempty"`
 	Target  *string `json:"target,omitempty"`
 	Prompt  *string `json:"prompt,omitempty"`
-	Input   *string `json:"input,omitempty"`
-	Notify  *bool   `json:"notify,omitempty"`
-	Enabled *bool   `json:"enabled,omitempty"`
+	Input         *string `json:"input,omitempty"`
+	Notify        *bool   `json:"notify,omitempty"`
+	Enabled       *bool   `json:"enabled,omitempty"`
+	NotifyChannel *string `json:"notify_channel,omitempty"`
 }
 
 // MCPTool is a tool advertised by an MCP server.
