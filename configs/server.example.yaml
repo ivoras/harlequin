@@ -14,6 +14,9 @@ data_dir: "./data"
 
 # Ordered list of chat LLM providers. The router tries them according to `routing`
 # rules and falls back to the next on error/timeout.
+# The name "local" is special: it marks the locally-served model, for which the
+# server serializes background LLM work (memory extraction, auto-titling,
+# memory sweeps) behind live turns. Remote providers run such work in parallel.
 providers:
   - name: local
     base_url: "http://127.0.0.1:8081/v1"   # llama.cpp --server in OpenAI mode
