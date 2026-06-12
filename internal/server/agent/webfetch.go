@@ -171,17 +171,23 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, prompt string, r
 			if rc == nil || rc.emit == nil {
 				return
 			}
+			// `processed` already includes the cached prefix, so discount cache on
+			// both sides to measure real work 0→100% (see agent.go run loop).
 			total := pp.Total - pp.Cache
 			if total <= 0 {
 				return
 			}
-			pct := pp.Processed * 100 / total
-			if pct >= lastPPPct+5 || pp.Processed >= total {
+			done := pp.Processed - pp.Cache
+			if done < 0 {
+				done = 0
+			}
+			pct := done * 100 / total
+			if pct >= lastPPPct+5 || done >= total {
 				lastPPPct = pct
 				rc.emit(types.StreamEvent{
 					Type:            types.SSEPromptProgress,
 					Source:          "WebFetch",
-					PromptProcessed: pp.Processed,
+					PromptProcessed: done,
 					PromptTotal:     total,
 				})
 			}

@@ -280,14 +280,20 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 		for chunk := range stream {
 			if chunk.PromptProgress != nil {
 				// Live prefill progress (llama.cpp). Throttle to ~every 5% so the
-				// frequent (per-batch) events don't flood the stream.
+				// frequent (per-batch) events don't flood the stream. llama.cpp's
+				// `processed` is an absolute position that already includes the cached
+				// prefix, so subtract cache from both sides to measure real work 0→100%.
 				pp := chunk.PromptProgress
 				total := pp.Total - pp.Cache
+				done := pp.Processed - pp.Cache
+				if done < 0 {
+					done = 0
+				}
 				if total > 0 {
-					pct := pp.Processed * 100 / total
-					if pct >= lastPPPct+5 || pp.Processed >= total {
+					pct := done * 100 / total
+					if pct >= lastPPPct+5 || done >= total {
 						lastPPPct = pct
-						emit(types.StreamEvent{Type: types.SSEPromptProgress, PromptProcessed: pp.Processed, PromptTotal: total})
+						emit(types.StreamEvent{Type: types.SSEPromptProgress, PromptProcessed: done, PromptTotal: total})
 					}
 				}
 				continue
