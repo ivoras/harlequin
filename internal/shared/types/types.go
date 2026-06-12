@@ -334,6 +334,10 @@ type StreamEvent struct {
 	// the total to evaluate for this prefill (cache hits already excluded).
 	PromptProcessed int `json:"prompt_processed,omitempty"`
 	PromptTotal     int `json:"prompt_total,omitempty"`
+	// Source labels progress from a nested/delegated LLM call rather than the main
+	// turn (e.g. "WebFetch"), so the client can distinguish it from the user's own
+	// prompt processing. Empty means the main turn.
+	Source string `json:"source,omitempty"`
 	// Context reporting (SSEDone): prompt/context size and model limit for the turn.
 	Model         string `json:"model,omitempty"`
 	ContextTokens int    `json:"context_tokens,omitempty"`

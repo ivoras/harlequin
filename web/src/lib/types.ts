@@ -88,6 +88,7 @@ export interface StreamEvent {
   timing?: TurnTiming;
   prompt_processed?: number;
   prompt_total?: number;
+  source?: string;
 }
 
 export interface Notification {
