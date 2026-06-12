@@ -12,3 +12,4 @@ session_*.md
 *.swp
 *.tmp
 ~$*
+/.venv/
