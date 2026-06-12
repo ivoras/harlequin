@@ -240,7 +240,11 @@ func (m *Model) handleStreamEvent(ev types.StreamEvent) (tea.Model, tea.Cmd) {
 	case types.SSEPromptProgress:
 		if ev.PromptTotal > 0 {
 			pct := ev.PromptProcessed * 100 / ev.PromptTotal
-			m.ppProgress = fmt.Sprintf("Processing prompt %d%% (%d/%d tok)", pct, ev.PromptProcessed, ev.PromptTotal)
+			label := "Processing prompt"
+			if ev.Source != "" {
+				label = ev.Source + ": processing prompt"
+			}
+			m.ppProgress = fmt.Sprintf("%s %d%% (%d/%d tok)", label, pct, ev.PromptProcessed, ev.PromptTotal)
 			m.refreshViewport()
 		}
 	case types.SSEThinking:
@@ -259,6 +263,7 @@ func (m *Model) handleStreamEvent(ev types.StreamEvent) (tea.Model, tea.Cmd) {
 		m.flushStreaming()
 		m.appendBlock("tool", "⚙ "+ev.ToolName+"("+truncate(ev.ToolArgs, 120)+")")
 	case types.SSEToolResult:
+		m.ppProgress = "" // clear any delegated (e.g. WebFetch) prefill progress
 		m.appendBlock("tool", "  ↳ "+truncate(strings.TrimSpace(ev.Output), 200))
 	case types.SSEError:
 		m.appendBlock("error", ev.Error)

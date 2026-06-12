@@ -129,7 +129,8 @@
         const total = ev.prompt_total || 0;
         if (total > 0) {
           const pct = Math.floor(((ev.prompt_processed || 0) * 100) / total);
-          ppLabel = `Processing prompt ${pct}% (${ev.prompt_processed}/${total} tok)`;
+          const label = ev.source ? `${ev.source}: processing prompt` : "Processing prompt";
+          ppLabel = `${label} ${pct}% (${ev.prompt_processed}/${total} tok)`;
         }
         break;
       }
@@ -153,6 +154,7 @@
         items.push({ kind: "tool", name: ev.tool_name || "tool", args: ev.tool_args || "", output: "", ms: 0, done: false });
         break;
       case SSE.ToolResult:
+        ppLabel = ""; // clear any delegated (e.g. WebFetch) prefill progress
         for (let i = items.length - 1; i >= 0; i--) {
           const it = items[i];
           if (it.kind === "tool" && !it.done) {

@@ -11,6 +11,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/llm"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/webfetch"
+	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
 // webFetchDescription is the tool description advertised to the model.
@@ -162,12 +163,35 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, prompt string, r
 			"depth": depth, "delegate_step": step + 1,
 		})
 		callStart := time.Now()
-		text, toolCalls, err := a.completeOnce(ctx, llm.ChatRequest{
+		// Surface this delegated call's prefill progress to the client, labeled so
+		// it reads as the WebFetch sub-call rather than the user's own prompt.
+		// Throttle to ~every 5% (reset per call), mirroring the main turn loop.
+		lastPPPct := -1
+		onProgress := func(pp *llm.PromptProgress) {
+			if rc == nil || rc.emit == nil {
+				return
+			}
+			total := pp.Total - pp.Cache
+			if total <= 0 {
+				return
+			}
+			pct := pp.Processed * 100 / total
+			if pct >= lastPPPct+5 || pp.Processed >= total {
+				lastPPPct = pct
+				rc.emit(types.StreamEvent{
+					Type:            types.SSEPromptProgress,
+					Source:          "WebFetch",
+					PromptProcessed: pp.Processed,
+					PromptTotal:     total,
+				})
+			}
+		}
+		text, toolCalls, err := a.completeOnceProgress(ctx, llm.ChatRequest{
 			Model:       a.WebFetchModel,
 			Messages:    msgs,
 			Tools:       tools,
 			Temperature: llm.Ptr(a.WebFetchTemperature),
-		})
+		}, onProgress)
 		callDur := time.Since(callStart)
 		callMS := callDur.Milliseconds()
 		model := a.WebFetchModel
@@ -274,6 +298,13 @@ func fmtDur(d time.Duration) string {
 // completeOnce runs a single non-streaming-from-the-caller's-view completion,
 // draining the provider stream and returning the assistant text and tool calls.
 func (a *Agent) completeOnce(ctx context.Context, req llm.ChatRequest) (string, []llm.ToolCall, error) {
+	return a.completeOnceProgress(ctx, req, nil)
+}
+
+// completeOnceProgress is completeOnce with an optional callback for the
+// provider's live prompt-processing chunks (llama.cpp return_progress), letting
+// a delegated call (e.g. WebFetch analysis) surface its prefill progress.
+func (a *Agent) completeOnceProgress(ctx context.Context, req llm.ChatRequest, onProgress func(*llm.PromptProgress)) (string, []llm.ToolCall, error) {
 	stream, err := a.Provider.Chat(ctx, req)
 	if err != nil {
 		return "", nil, err
@@ -283,6 +314,12 @@ func (a *Agent) completeOnce(ctx context.Context, req llm.ChatRequest) (string, 
 	for chunk := range stream {
 		if chunk.Err != nil {
 			return "", nil, chunk.Err
+		}
+		if chunk.PromptProgress != nil {
+			if onProgress != nil {
+				onProgress(chunk.PromptProgress)
+			}
+			continue
 		}
 		text += chunk.TextDelta
 		if chunk.Done {
