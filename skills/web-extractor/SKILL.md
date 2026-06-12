@@ -68,3 +68,8 @@ watched, on what schedule, where they'll be notified, and how many items are the
 - Helpers in `skill://web-extractor/lib/extract.js`: `fetchDoc`, `allTextAt`,
   `attrAt`, `diffList`, `runWatch`. Sandbox JS runs on goja (ES5.1-compatible;
   common ES6 like let/const, arrow functions and template literals also works).
+- Prefer `target="skill://web-extractor/lib/check.js"` over hand-written inline JS.
+  If you ever do write inline JS for a cron job, it is the **body** of a function the
+  runtime wraps for you: write top-level statements (top-level `return` is fine) and
+  do **not** wrap it in `function(){...}` — an un-called function runs nothing, and
+  `function() {` is a syntax error.

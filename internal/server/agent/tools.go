@@ -268,6 +268,7 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 	reg["run_js"] = toolEntry{
 		def: fnTool("run_js", `Execute JavaScript in a sandbox and return its output. The engine (goja) is ES5.1-compatible, and also supports much of ES6: let/const, arrow functions, template literals, classes, destructuring, default/rest/spread, for…of, generators, Map/Set, Symbol, Promise, typed arrays, and BigInt. Emit output with println()/print().
 Available helpers: fetch(url) -> {status, body, finalUrl, contentType}; dom.parse(html) -> handle, then dom.query(handle, cssSelector), dom.grep(handle, text), dom.json(handle); per-user file stores tmp.* and storage.* (read/write/list/remove/exists); load(uri)/include(uri) for skill://<skill>/<path>, storage://<path>, tmp://<path> scripts.
+Your code is the body of a function the runtime already wraps for you: write top-level statements (a bare top-level 'return' is allowed and its value is captured) — do NOT wrap your code in 'function(){...}' (an un-called function runs nothing, and 'function() {' parses as a nameless declaration -> "Unexpected token (").
 Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NOT both). To parse a saved HTML page (e.g. a WebFetchDOM tmp:// handle), that page is DATA, not a script: put JS in 'code' and read it with tmp.read('<handle>'), e.g. code: "var h = dom.parse(tmp.read('page-x.html')); println(dom.query(h, 'div.price').length);". An optional args object is exposed to the script as the global 'args'.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -360,7 +361,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 	if a.Cron != nil {
 		reg["cron_create"] = toolEntry{
 			def: fnTool("cron_create", `Schedule a recurring job for the user.
-kind "js": run a JavaScript script with NO AI each time — best for cheap periodic checks like watching a website for changes. target is a script URI (skill://<skill>/<path>, storage://<path>, tmp://<path>) or inline JS (ES5.1+); input is a JSON object exposed to the script as the global 'args'.
+kind "js": run a JavaScript script with NO AI each time — best for cheap periodic checks like watching a website for changes. target is a script URI (skill://<skill>/<path>, storage://<path>, tmp://<path>) or inline JS (ES5.1+); input is a JSON object exposed to the script as the global 'args'. Inline JS is the body of a function the runtime wraps for you: write top-level statements (top-level 'return' is allowed) and do NOT wrap it in 'function(){...}' (an un-called function runs nothing, and 'function() {' is a syntax error). Prefer pointing target at a saved script URI over a long inline body.
 kind "skill": run an agent turn — target is an optional skill name to use, prompt is the message.
 spec is a cron schedule: 5-field "min hour dom mon dow", a @descriptor (@hourly, @daily), or "@every 30m".
 Example (watch a saved web-extractor check every 30 min): cron_create(name="fzoeu", spec="@every 30m", kind="js", target="skill://web-extractor/lib/check.js", input="{\"name\":\"fzoeu\"}").`, map[string]any{
