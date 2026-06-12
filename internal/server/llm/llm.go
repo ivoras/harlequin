@@ -103,8 +103,11 @@ type Timings struct {
 
 // PromptProgress is llama.cpp's live prompt-processing progress, emitted before
 // the first token when `return_progress` is requested. total = total prompt
-// tokens, cache = tokens reused from the KV cache, processed = tokens evaluated
-// so far. The work remaining is (total - cache); percent = processed/(total-cache).
+// tokens, cache = tokens reused from the KV cache, processed = absolute prefill
+// position, which already INCLUDES the cached prefix (it starts at cache and
+// climbs to total). So real work done = processed - cache, work to do =
+// total - cache, and percent = (processed - cache) / (total - cache). Dividing
+// raw processed by (total - cache) over-counts and can exceed 100%.
 type PromptProgress struct {
 	Total     int `json:"total"`
 	Cache     int `json:"cache"`
