@@ -120,6 +120,7 @@ func (s *Scheduler) RunNow(ctx context.Context, userID, jobID int64) error {
 
 // run executes one job, records the outcome, and notifies on change/error.
 func (s *Scheduler) run(ctx context.Context, userID int64, job types.CronJob) {
+	start := time.Now()
 	err := s.storage.WithUser(ctx, userID, func(udb *sql.DB) error {
 		username, role, _ := s.identity(ctx, userID)
 
@@ -162,7 +163,7 @@ func (s *Scheduler) run(ctx context.Context, userID int64, job types.CronJob) {
 				log.Printf("cron: notified user %d of change in job %d (%q) via %s", userID, job.ID, job.Name, job.NotifyChannel)
 			}
 		}
-		log.Printf("cron: ran job %d (%q) for user %d: status=%s, %d bytes", job.ID, job.Name, userID, status, len(output))
+		log.Printf("cron: ran job %d (%q) for user %d: status=%s, %d bytes in %s", job.ID, job.Name, userID, status, len(output), time.Since(start).Round(time.Millisecond))
 		return nil
 	})
 	if err != nil {
