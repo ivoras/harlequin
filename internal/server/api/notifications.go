@@ -62,7 +62,7 @@ func (s *Server) handleListNotifications(w http.ResponseWriter, r *http.Request)
 	}
 	out := []types.Notification{}
 	iface := reqInterface(r)
-	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+	err := s.Storage.WithUserReadOnly(r.Context(), u.ID, func(udb *sql.DB) error {
 		list, err := s.Notify.ListPending(r.Context(), udb, iface)
 		if err != nil {
 			return err

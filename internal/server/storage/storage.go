@@ -113,6 +113,26 @@ func (m *Manager) WithUser(ctx context.Context, userID int64, fn func(userDB *sq
 	return fn(udb)
 }
 
+// WithUserReadOnly opens the user's database read-only, runs fn with it, then
+// closes it. A read-only connection never checkpoints the WAL on close, so this
+// is the cheap, low-variance path for pure readers on hot endpoints. Because a
+// read-only connection cannot run migrations, the first call per process for a
+// user does a one-time read-write open to ensure the schema is present.
+func (m *Manager) WithUserReadOnly(ctx context.Context, userID int64, fn func(userDB *sql.DB) error) error {
+	if _, ok := m.inited.Load(userID); !ok {
+		// Ensure the schema exists/migrated once before opening read-only.
+		if err := m.WithUser(ctx, userID, func(*sql.DB) error { return nil }); err != nil {
+			return err
+		}
+	}
+	udb, err := db.OpenReadOnly(m.UserDBPath(userID))
+	if err != nil {
+		return err
+	}
+	defer udb.Close()
+	return fn(udb)
+}
+
 // EachUser opens every user's database in turn (newest user ids first is not
 // guaranteed) and invokes fn. Used for cross-user maintenance and admin
 // aggregation. Errors from fn stop the iteration.

@@ -92,6 +92,30 @@ func OpenInitialized(path string) (*sql.DB, error) {
 	return openConn(path)
 }
 
+// OpenReadOnly opens an already-initialized database read-only (mode=ro). A
+// read-only connection cannot write the main database, so closing it never
+// triggers a WAL checkpoint — which makes it cheap and predictable for hot
+// read-only request paths (e.g. polling notifications). The file must already
+// exist with its schema; read-only connections do not run migrations.
+func OpenReadOnly(path string) (*sql.DB, error) {
+	registerOnce.Do(func() {
+		sqlite_vec.Auto()
+	})
+
+	dsn := path + "?mode=ro&_foreign_keys=on&_busy_timeout=5000"
+	sqlDB, err := sql.Open("sqlite3", dsn)
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite (ro): %w", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+
+	if err := sqlDB.Ping(); err != nil {
+		sqlDB.Close()
+		return nil, fmt.Errorf("ping sqlite (ro): %w", err)
+	}
+	return sqlDB, nil
+}
+
 func runMigrations(sqlDB *sql.DB, role Role) error {
 	if _, err := sqlDB.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
 		name TEXT PRIMARY KEY,
