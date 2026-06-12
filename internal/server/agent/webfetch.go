@@ -22,14 +22,13 @@ const webFetchDescription = `
 - Returns the AI model’s response about the page content.
 - 15-minute cache for repeated URLs.
 - Redirects: tool tells you if URL changed; call again with new URL.
-- For GitHub, use the gh CLI via Bash if possible.
 `
 
 const (
 	// webFetchDefaultPrompt is used when the caller passes an empty prompt.
 	webFetchDefaultPrompt = "Extract raw facts from this scraped web page."
 	// webFetchSystemPrompt is the simplified system prompt for the analysis call.
-	webFetchSystemPrompt = "You extract information from scraped web pages. If the answer is not found in the page, decide if recursively fetching some of the links on the domain would be helpful. If so, call the WebFetch tool again with the new URL. If not, report that the answer is not found in the page. For any arithmetic, use the calculator tool rather than computing it yourself."
+	webFetchSystemPrompt = "You extract information from scraped web pages. Pages usually link to related pages: whenever a link looks like it would add to your understanding of the question — more detail, supporting context, a cited source, a linked document, the next page of a list, or a section the current page only summarizes — follow it by calling the WebFetch tool again with that URL, then fold what you learn into your answer. Be deliberate, not exhaustive: follow only links that are genuinely relevant, prefer links on the same site, and stop once you can answer the question well. If neither the page nor the worthwhile links it points to contain the answer, say so plainly. For any arithmetic, use the calculator tool rather than computing it yourself."
 	// webFetchMaxDepth bounds nested WebFetch calls made by the analysis model.
 	webFetchMaxDepth = 2
 	// webFetchMaxSteps bounds the analysis tool-calling loop per fetch.
