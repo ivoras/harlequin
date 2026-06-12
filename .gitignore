@@ -11,3 +11,4 @@ client.yaml
 session_*.md
 *.swp
 *.tmp
+~$*
