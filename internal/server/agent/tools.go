@@ -41,7 +41,14 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 		}),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 			q, _ := args["query"].(string)
-			res, err := a.Memory.Search(ctx, rc.userDB, q, rc.userID, "", 6)
+			var res []types.SearchResult
+			var err error
+			if rc.projectDB != nil {
+				// Project session: fuse user + shared + project memories.
+				res, err = a.Memory.SearchFused(ctx, rc.userDB, rc.projectDB, q, rc.userID, 6)
+			} else {
+				res, err = a.Memory.Search(ctx, rc.userDB, q, rc.userID, "", 6)
+			}
 			if err != nil {
 				return "", err
 			}
@@ -70,6 +77,17 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 			content, _ := args["content"].(string)
 			scope, _ := args["scope"].(string)
+			// In a project session, a fact with no explicit scope goes to the shared
+			// project memory (any member may write it). The model can still target
+			// "user"/"shared" explicitly.
+			if rc.projectDB != nil && scope == "" {
+				mem, err := a.Memory.ProjectAdd(ctx, rc.projectDB, content, "tool")
+				if err != nil {
+					return "", err
+				}
+				rc.memWritten = append(rc.memWritten, content)
+				return fmt.Sprintf("Stored as project memory %s.", mem.ID), nil
+			}
 			if scope == "" {
 				scope = "user"
 			}
@@ -182,6 +200,13 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 			id, errMsg := a.resolveMemoryRef(ctx, rc, args)
 			if errMsg != "" {
 				return errMsg, nil
+			}
+			// Project memories ("p.<n>") live in the project DB.
+			if rc.projectDB != nil && strings.HasPrefix(id, "p.") {
+				if err := a.Memory.ProjectDelete(ctx, rc.projectDB, id); err != nil {
+					return fmt.Sprintf("error: project memory %s not found", id), nil
+				}
+				return fmt.Sprintf("Deleted memory %s.", id), nil
 			}
 			if err := a.Memory.Delete(ctx, rc.userDB, id, rc.userID, rc.canShareMemory); err != nil {
 				if errors.Is(err, memory.ErrNotFound) {

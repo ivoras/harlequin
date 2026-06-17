@@ -28,13 +28,54 @@ const (
 // extractMemories asks the LLM to distill durable facts from a session turn
 // and stores them. See distillAndStore for the shared core.
 func (a *Agent) extractMemories(ctx context.Context, projectID, userID int64, userContent, assistantText string, turnWritten []string, canShareMemory bool) {
-	// Project-session extraction (into project memory) is wired in a later phase;
-	// until then, don't extract personal memory from a project turn.
+	sess := "User said: " + userContent + "\nAssistant said: " + assistantText
 	if projectID > 0 {
+		// Project session: distil into the shared project memory.
+		a.extractProjectMemories(ctx, projectID, sess, turnWritten)
 		return
 	}
-	sess := "User said: " + userContent + "\nAssistant said: " + assistantText
 	a.distillAndStore(ctx, userID, memextract.Prompt, sess, turnWritten, canShareMemory, sessMemoryTimeout)
+}
+
+// extractProjectMemories distils durable facts from a project turn and stores
+// them in the project's memory (no per-user scope/conflict handling — project
+// memory is a shared free-text store). Best-effort, on the background LLM slot.
+func (a *Agent) extractProjectMemories(ctx context.Context, projectID int64, input string, turnWritten []string) {
+	a.RunBackgroundLLM(ctx, func(jobCtx context.Context) {
+		llmCtx, cancelLLM := context.WithTimeout(jobCtx, sessMemoryTimeout)
+		text, _, err := a.completeOnce(llmCtx, llm.ChatRequest{
+			Messages: []llm.Message{
+				{Role: llm.RoleSystem, Content: memextract.Prompt},
+				{Role: llm.RoleUser, Content: input},
+			},
+			Temperature: llm.Ptr(0.0),
+		})
+		cancelLLM()
+		if err != nil {
+			return
+		}
+		candidates, ok := memextract.ParseResponse(text)
+		if !ok {
+			return
+		}
+		written := map[string]bool{}
+		for _, w := range turnWritten {
+			written[strings.TrimSpace(w)] = true
+		}
+		storeCtx, cancelStore := context.WithTimeout(jobCtx, 60*time.Second)
+		defer cancelStore()
+		_ = a.Storage.WithProject(storeCtx, projectID, func(projDB *sql.DB) error {
+			for _, c := range candidates {
+				if !memextract.ShouldStore(c) || written[strings.TrimSpace(c.Content)] {
+					continue
+				}
+				if _, err := a.Memory.ProjectAdd(storeCtx, projDB, c.Content, "auto"); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	})
 }
 
 // ExtractMemoriesFromText distills durable facts from a block of source text

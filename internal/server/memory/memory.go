@@ -322,7 +322,13 @@ func (s *Store) Find(ctx context.Context, userDB *sql.DB, query string, userID i
 // databases with hybrid FTS + vector search and RRF. scope ("user"|"shared"|"")
 // narrows which databases are consulted.
 func (s *Store) Search(ctx context.Context, userDB *sql.DB, query string, userID int64, scope string, limit int) ([]types.SearchResult, error) {
-	return s.searchTuned(ctx, userDB, query, userID, scope, limit, s.slotSearchWeight)
+	return s.searchTuned(ctx, userDB, nil, query, userID, scope, limit, s.slotSearchWeight)
+}
+
+// SearchFused searches the user + shared + project memories together (used in a
+// project session), so a member's results draw on all three scopes.
+func (s *Store) SearchFused(ctx context.Context, userDB, projDB *sql.DB, query string, userID int64, limit int) ([]types.SearchResult, error) {
+	return s.searchTuned(ctx, userDB, projDB, query, userID, "", limit, s.slotSearchWeight)
 }
 
 // SearchTuned is Search with an additional slot-key RRF leg, weighted by
@@ -330,10 +336,10 @@ func (s *Store) Search(ctx context.Context, userDB *sql.DB, query string, userID
 // embeddings contribute an attribute-match signal to ranking. Exposed for
 // tuning and evaluation.
 func (s *Store) SearchTuned(ctx context.Context, userDB *sql.DB, query string, userID int64, scope string, limit int, slotWeight float64) ([]types.SearchResult, error) {
-	return s.searchTuned(ctx, userDB, query, userID, scope, limit, slotWeight)
+	return s.searchTuned(ctx, userDB, nil, query, userID, scope, limit, slotWeight)
 }
 
-func (s *Store) searchTuned(ctx context.Context, userDB *sql.DB, query string, userID int64, scope string, limit int, slotWeight float64) ([]types.SearchResult, error) {
+func (s *Store) searchTuned(ctx context.Context, userDB, projDB *sql.DB, query string, userID int64, scope string, limit int, slotWeight float64) ([]types.SearchResult, error) {
 	if limit <= 0 {
 		limit = 8
 	}
@@ -344,22 +350,31 @@ func (s *Store) searchTuned(ctx context.Context, userDB *sql.DB, query string, u
 
 	ranks := map[string]float64{}
 	contents := map[string]string{}
-	for _, m := range s.scopes(scope, userDB) {
+	for _, m := range s.scopesWith(scope, userDB, projDB) {
 		m.search(ctx, query, blob, limit, slotWeight, s.searchMaxDist, ranks, contents)
 	}
 	out := topN(ranks, contents, limit)
-	s.attachSlotsToResults(ctx, userDB, out)
+	s.attachSlotsToResults(ctx, userDB, projDB, out)
 	return out, nil
 }
 
 // attachSlotsToResults fills SlotKey on search hits when indexed.
-func (s *Store) attachSlotsToResults(ctx context.Context, userDB *sql.DB, results []types.SearchResult) {
+func (s *Store) attachSlotsToResults(ctx context.Context, userDB, projDB *sql.DB, results []types.SearchResult) {
 	for i, r := range results {
 		scope, local, ok := decodeID(r.ID)
 		if !ok {
 			continue
 		}
-		if slot, ok := s.memFor(scope, userDB).slotForMemory(ctx, local); ok {
+		var m memDB
+		if scope == scopeProject {
+			if projDB == nil {
+				continue
+			}
+			m = s.projectMem(projDB)
+		} else {
+			m = s.memFor(scope, userDB)
+		}
+		if slot, ok := m.slotForMemory(ctx, local); ok {
 			results[i].SlotKey = slot.Key
 		}
 	}
@@ -367,12 +382,20 @@ func (s *Store) attachSlotsToResults(ctx context.Context, userDB *sql.DB, result
 
 // scopes returns the memDBs to consult for a scope filter.
 func (s *Store) scopes(scope string, userDB *sql.DB) []memDB {
+	return s.scopesWith(scope, userDB, nil)
+}
+
+// scopesWith is scopes plus the project memDB when projDB is set (project session).
+func (s *Store) scopesWith(scope string, userDB, projDB *sql.DB) []memDB {
 	var out []memDB
 	if scope != scopeShared {
 		out = append(out, s.userMem(userDB))
 	}
 	if scope != scopeUser {
 		out = append(out, s.sharedMem())
+	}
+	if projDB != nil && (scope == "" || scope == scopeProject) {
+		out = append(out, s.projectMem(projDB))
 	}
 	return out
 }
