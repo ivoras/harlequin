@@ -94,19 +94,17 @@ func (s *Server) handleBroadcastAlert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n := types.Notification{Kind: types.NotifyKindAlert, Title: strings.TrimSpace(req.Message)}
-	var sent int
-	err := s.Storage.EachUser(r.Context(), func(_ int64, udb *sql.DB) error {
-		if _, err := s.Notify.Create(r.Context(), udb, n); err != nil {
-			return err
-		}
-		sent++
-		return nil
-	})
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]int{"sent": sent})
+	// Fan out in the background: writing one notification per user (each opens that
+	// user's DB) can be slow for a large org, and the caller doesn't need to wait.
+	// Use a detached context so it isn't cancelled when the request returns.
+	go func() {
+		ctx := context.Background()
+		_ = s.Storage.EachUser(ctx, func(_ int64, udb *sql.DB) error {
+			_, _ = s.Notify.Create(ctx, udb, n)
+			return nil
+		})
+	}()
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
 }
 
 // handleAckNotification marks a notification delivered (handled by the client).
