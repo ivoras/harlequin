@@ -118,6 +118,13 @@ type Model struct {
 	// above the transcript (not part of the session); dismissed via /dismiss.
 	alerts []types.Notification
 
+	// Active project context. When activeProjectID != 0 the current session is a
+	// shared project session and the chatroom side-pane is shown.
+	activeProjectID   int64
+	activeProjectName string
+	chat              *apiclient.ProjectChat
+	chatMessages      []types.ChatMessage
+
 	// ask_user interaction (phaseAsk): questions collected during a turn and the
 	// answers being assembled.
 	pendingAsk []askItem
@@ -259,6 +266,24 @@ type sessionOpenedMsg struct {
 // server-side session keeps running, so an in-flight turn is resumed by
 // reconnecting with the last seen seq.
 type streamSocketClosedMsg struct{}
+
+// projectSwitchedMsg carries the result of entering a project: the project and a
+// session within it to open (created if the project had none).
+type projectSwitchedMsg struct {
+	id        int64
+	name      string
+	sessionID int64
+	err       error
+}
+
+// chatOpenedMsg carries the opened project chatroom socket.
+type chatOpenedMsg struct {
+	c   *apiclient.ProjectChat
+	err error
+}
+
+// chatRecvMsg is one chatroom message pushed from the project chat socket.
+type chatRecvMsg struct{ m types.ChatMessage }
 
 // registerSentMsg reports the result of starting registration (a magic code was
 // emailed when err is nil).

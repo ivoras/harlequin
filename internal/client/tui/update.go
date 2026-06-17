@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/ivoras/harlequin/internal/client/apiclient"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
@@ -193,6 +194,43 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.loading && m.sessionID != 0 {
 			return m, m.openSessionCmd()
 		}
+		return m, nil
+
+	case projectSwitchedMsg:
+		if msg.err != nil {
+			m.appendBlock("error", msg.err.Error())
+			m.refreshViewport()
+			return m, nil
+		}
+		m.activeProjectID = msg.id
+		m.activeProjectName = msg.name
+		m.switchSession(msg.sessionID) // resets the socket; keeps activeProjectID
+		m.phase = phaseChat
+		m.blocks = nil
+		m.chatMessages = nil
+		m.appendBlock("status", "switched to project "+msg.name+" — /say <msg> to chat, /project leave to exit")
+		m.layout()
+		m.refreshViewport()
+		return m, tea.Batch(m.input.Focus(), m.loadHistoryCmd(msg.sessionID), m.openChatCmd(msg.id))
+
+	case chatOpenedMsg:
+		if msg.err != nil {
+			m.appendBlock("error", "chatroom: "+msg.err.Error())
+			return m, nil
+		}
+		m.chat = msg.c
+		c := msg.c
+		go m.pumpChat(c)
+		return m, nil
+
+	case chatRecvMsg:
+		for _, x := range m.chatMessages {
+			if x.ID == msg.m.ID {
+				return m, nil // dedupe (history + live overlap on reconnect)
+			}
+		}
+		m.chatMessages = append(m.chatMessages, msg.m)
+		m.refreshViewport()
 		return m, nil
 
 	case historyLoadedMsg:
@@ -587,8 +625,15 @@ func (m *Model) switchSession(id int64) {
 func (m *Model) openSessionCmd() tea.Cmd {
 	sessionID := m.sessionID
 	haveSeq := m.lastSeq
+	projectID := m.activeProjectID
 	return func() tea.Msg {
-		s, err := m.client.OpenSession(context.Background(), sessionID, haveSeq)
+		var s *apiclient.Session
+		var err error
+		if projectID > 0 {
+			s, err = m.client.OpenProjectSession(context.Background(), projectID, sessionID, haveSeq)
+		} else {
+			s, err = m.client.OpenSession(context.Background(), sessionID, haveSeq)
+		}
 		return sessionOpenedMsg{s: s, err: err}
 	}
 }
@@ -604,10 +649,18 @@ func (m *Model) resumeSession(id int64) tea.Cmd {
 	return m.loadHistoryCmd(id)
 }
 
-// loadHistoryCmd fetches a session's committed messages for a resume.
+// loadHistoryCmd fetches a session's committed messages for a resume (from the
+// project corpus when in a project).
 func (m *Model) loadHistoryCmd(id int64) tea.Cmd {
+	projectID := m.activeProjectID
 	return func() tea.Msg {
-		msgs, err := m.client.Messages(context.Background(), id)
+		var msgs []types.Message
+		var err error
+		if projectID > 0 {
+			msgs, err = m.client.ProjectMessages(context.Background(), projectID, id)
+		} else {
+			msgs, err = m.client.Messages(context.Background(), id)
+		}
 		return historyLoadedMsg{sessionID: id, msgs: msgs, err: err}
 	}
 }

@@ -73,6 +73,10 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 	switch cmd {
 	case "/help":
 		return infoCmd(helpText)
+	case "/project":
+		return m.runProject(args)
+	case "/say":
+		return m.sayToChat(strings.Join(args, " "))
 	case "/dismiss":
 		return m.dismissAlert(args)
 	case "/run":
@@ -112,6 +116,7 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 			if err != nil {
 				return errMsg{err}
 			}
+			m.leaveProject() // a new personal session leaves any project context
 			m.switchSession(sess.ID)
 			m.sessTitle = ""
 			m.blocks = nil

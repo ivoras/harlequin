@@ -501,7 +501,33 @@ type Session struct {
 // cold resume: load committed history via Messages, then the server replays any
 // in-flight turn). The returned Session streams events on Events().
 func (c *Client) OpenSession(ctx context.Context, sessionID int64, haveSeq int) (*Session, error) {
-	wsURL := wsScheme(c.baseURL) + fmt.Sprintf("/api/v1/sessions/%d/ws", sessionID)
+	return c.openSession(ctx, fmt.Sprintf("/api/v1/sessions/%d/ws", sessionID), haveSeq)
+}
+
+// OpenProjectSession opens a shared project session (members share the live
+// session). Same protocol as OpenSession.
+func (c *Client) OpenProjectSession(ctx context.Context, projectID, sessionID int64, haveSeq int) (*Session, error) {
+	return c.openSession(ctx, fmt.Sprintf("/api/v1/projects/%d/sessions/%d/ws", projectID, sessionID), haveSeq)
+}
+
+func (c *Client) openSession(ctx context.Context, path string, haveSeq int) (*Session, error) {
+	conn, err := c.dialWS(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	conn.SetReadLimit(8 << 20) // tool outputs / long messages
+	if err := wsjson.Write(ctx, conn, types.WSClientMessage{Type: types.WSClientHello, HaveSeq: haveSeq}); err != nil {
+		conn.CloseNow()
+		return nil, err
+	}
+	rctx, cancel := context.WithCancel(context.Background())
+	s := &Session{c: conn, events: make(chan types.StreamEvent, 256), cancel: cancel}
+	go s.readLoop(rctx)
+	return s, nil
+}
+
+// dialWS opens an authenticated WebSocket to the given /api/v1 path.
+func (c *Client) dialWS(ctx context.Context, path string) (*websocket.Conn, error) {
 	hdr := http.Header{}
 	if c.token != "" {
 		hdr.Set("Authorization", "Bearer "+c.token)
@@ -509,24 +535,11 @@ func (c *Client) OpenSession(ctx context.Context, sessionID int64, haveSeq int) 
 	if c.iface != "" {
 		hdr.Set(types.HeaderInterface, c.iface)
 	}
-	conn, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
+	conn, _, err := websocket.Dial(ctx, wsScheme(c.baseURL)+path, &websocket.DialOptions{
 		HTTPHeader:   hdr,
 		Subprotocols: []string{"harlequin"},
 	})
-	if err != nil {
-		return nil, err
-	}
-	conn.SetReadLimit(8 << 20) // tool outputs / long messages
-	// The hello handshake announces our resume position.
-	if err := wsjson.Write(ctx, conn, types.WSClientMessage{Type: types.WSClientHello, HaveSeq: haveSeq}); err != nil {
-		conn.CloseNow()
-		return nil, err
-	}
-
-	rctx, cancel := context.WithCancel(context.Background())
-	s := &Session{c: conn, events: make(chan types.StreamEvent, 256), cancel: cancel}
-	go s.readLoop(rctx)
-	return s, nil
+	return conn, err
 }
 
 func (s *Session) readLoop(ctx context.Context) {
@@ -569,6 +582,60 @@ func (s *Session) write(m types.WSClientMessage) error {
 func (s *Session) Close() error {
 	s.cancel()
 	return s.c.Close(websocket.StatusNormalClosure, "")
+}
+
+// ProjectChat is a live connection to a project's chatroom: the server sends
+// recent history on connect, then broadcasts posted messages. Events carry
+// StreamEvent{Type: "chat", Chat: ...}.
+type ProjectChat struct {
+	c       *websocket.Conn
+	events  chan types.StreamEvent
+	cancel  context.CancelFunc
+	writeMu sync.Mutex
+}
+
+// OpenProjectChat connects to a project's chatroom WebSocket.
+func (c *Client) OpenProjectChat(ctx context.Context, projectID int64) (*ProjectChat, error) {
+	conn, err := c.dialWS(ctx, fmt.Sprintf("/api/v1/projects/%d/ws", projectID))
+	if err != nil {
+		return nil, err
+	}
+	conn.SetReadLimit(1 << 20)
+	rctx, cancel := context.WithCancel(context.Background())
+	pc := &ProjectChat{c: conn, events: make(chan types.StreamEvent, 128), cancel: cancel}
+	go func() {
+		defer close(pc.events)
+		for {
+			var ev types.StreamEvent
+			if err := wsjson.Read(rctx, pc.c, &ev); err != nil {
+				return
+			}
+			select {
+			case pc.events <- ev:
+			case <-rctx.Done():
+				return
+			}
+		}
+	}()
+	return pc, nil
+}
+
+// Events streams chatroom messages until the socket closes.
+func (p *ProjectChat) Events() <-chan types.StreamEvent { return p.events }
+
+// Post sends a message to the chatroom.
+func (p *ProjectChat) Post(content string) error {
+	p.writeMu.Lock()
+	defer p.writeMu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return wsjson.Write(ctx, p.c, types.WSClientMessage{Type: types.WSClientChat, Content: content})
+}
+
+// Close tears down the chatroom connection.
+func (p *ProjectChat) Close() error {
+	p.cancel()
+	return p.c.Close(websocket.StatusNormalClosure, "")
 }
 
 // wsScheme rewrites an http(s) base URL to its ws(s) equivalent.
