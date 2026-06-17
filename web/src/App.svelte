@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, getToken, setToken } from "./lib/api";
   import { user, view, session, toasts, toast, type View } from "./lib/stores";
+  import { sc } from "./lib/session.svelte";
   import type { Session } from "./lib/types";
   import Login from "./views/Login.svelte";
   import Chat from "./views/Chat.svelte";
@@ -45,16 +46,21 @@
       initSession();
     } else if (!u && started) {
       started = false;
+      sc.detach();
       session.set({ id: 0, title: "" });
       setSessionParam(0);
       view.set("chat");
     }
   });
 
-  // Keep the session id in the URL (?c=) so a refresh resumes the same session.
+  // Connect the live session at app scope (survives view switches) and keep the
+  // session id in the URL (?c=) so a refresh resumes the same session.
   $effect(() => {
     const id = $session.id;
-    if (id) setSessionParam(id);
+    if (id) {
+      setSessionParam(id);
+      sc.attach(id);
+    }
   });
 
   function sessionParam(): number {
@@ -167,6 +173,26 @@
       </button>
     {/each}
   </nav>
+
+  <!-- Persistent alert box: server-pushed notifications, visible on every view,
+       kept until dismissed. Not part of any session/transcript. -->
+  {#if sc.alerts.length}
+    <div class="alerts">
+      {#each sc.alerts as a (a.id)}
+        <div class="alert">
+          <span class="bell">🔔</span>
+          <div class="atext">
+            <strong>{a.title}</strong>
+            {#if a.description}<span class="small">{a.description}</span>{/if}
+          </div>
+          {#if a.prompt}
+            <button class="small" onclick={() => { view.set("chat"); sc.runAlert(a); }}>Run</button>
+          {/if}
+          <button class="ghost small" onclick={() => sc.dismissAlert(a)} aria-label="Dismiss">✕</button>
+        </div>
+      {/each}
+    </div>
+  {/if}
 
   <main class="app-main">
     {#if $view === "chat"}

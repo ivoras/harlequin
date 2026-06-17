@@ -73,6 +73,15 @@ hr { border: none; border-top: 1px solid var(--border); }
 .app-header .iconbtn { background: transparent; border: none; padding: 6px 8px; font-size: 18px; }
 
 .app-main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+/* Persistent alert box (server-pushed notifications), shown on every view. */
+.alerts { flex: none; display: flex; flex-direction: column; gap: 6px;
+  padding: 8px 12px; background: var(--surface); border-bottom: 1px solid var(--border);
+  max-height: 30dvh; overflow-y: auto; }
+.alert { display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+  border-radius: 10px; background: var(--surface-3); border: 1px solid var(--accent); }
+.alert .bell { flex: none; }
+.alert .atext { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; word-break: break-word; }
 .container { width: 100%; max-width: var(--maxw); margin: 0 auto; padding: 12px; }
 
 .row { display: flex; gap: 8px; align-items: center; }

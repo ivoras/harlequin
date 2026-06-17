@@ -1,0 +1,225 @@
+// SessionController owns the live session WebSocket and all chat + alert state at
+// app scope, so it survives view switches (no socket churn) and the alert box can
+// live in the app shell. Components (App, Chat) are thin views over this singleton.
+import { api } from "./api";
+import { SessionSocket } from "./ws";
+import { SSE, NOTIFY_SESSION_TITLE } from "./types";
+import type { Message, StreamEvent, Notification } from "./types";
+import { session, toast } from "./stores";
+
+export type Item =
+  | { kind: "msg"; role: "user" | "assistant"; content: string }
+  | { kind: "thinking"; text: string }
+  | { kind: "tool"; name: string; args: string; output: string; ms: number; done: boolean }
+  | { kind: "ask"; question: string; options: string[] };
+
+class SessionController {
+  // Chat state (reset per session).
+  items = $state<Item[]>([]);
+  loading = $state(false);
+  ppLabel = $state("");
+  queue = $state<string[]>([]);
+  ctx = $state<{ model: string; used: number; max: number } | null>(null);
+  reconnecting = $state(false);
+  // User-scoped alerts (persist across session switches, kept until dismissed).
+  alerts = $state<Notification[]>([]);
+
+  private socket: SessionSocket | null = null;
+  private currentId = 0;
+  private optimisticUser = 0; // user-message echoes to skip (rendered locally)
+  private coldHistory: Message[] | null = null; // committed history awaiting the synced cut
+  private streamingAssistant: Item | null = null;
+
+  // attach connects to session id (no-op if already attached). Loads committed
+  // history, then opens the socket so any in-flight turn replays and continues
+  // live. Alerts are not reset — they are user-scoped, not per-session.
+  async attach(id: number): Promise<void> {
+    if (id === this.currentId && this.socket) return;
+    this.currentId = id;
+    this.items = [];
+    this.ctx = null;
+    this.loading = false;
+    this.optimisticUser = 0;
+    this.streamingAssistant = null;
+    this.queue = [];
+    this.socket?.close();
+    this.socket = null;
+    try {
+      this.coldHistory = await api.getMessages(id);
+    } catch (e) {
+      this.coldHistory = [];
+      toast((e as Error).message, "error");
+    }
+    if (this.currentId !== id) return; // switched again while loading
+    this.socket = new SessionSocket(id, (ev) => this.onEvent(ev), (s) => (this.reconnecting = s === "reconnecting"));
+    this.socket.open();
+  }
+
+  // detach tears down the connection (e.g. on logout).
+  detach(): void {
+    this.socket?.close();
+    this.socket = null;
+    this.currentId = 0;
+    this.items = [];
+    this.alerts = [];
+    this.queue = [];
+    this.loading = false;
+  }
+
+  // send is the composer entry point: queue while a turn is in flight, else start.
+  send(text: string): void {
+    const t = text.trim();
+    if (!t || !this.currentId || !this.socket) return;
+    if (this.loading) {
+      this.queue.push(t);
+      return;
+    }
+    this.sendText(t);
+  }
+
+  removeQueued(i: number): void {
+    this.queue.splice(i, 1);
+  }
+
+  stop(): void {
+    this.socket?.interrupt();
+    this.loading = false;
+  }
+
+  dismissAlert(a: Notification): void {
+    this.alerts = this.alerts.filter((x) => x.id !== a.id);
+    api.ackNotification(a.id);
+  }
+
+  runAlert(a: Notification): void {
+    this.dismissAlert(a);
+    if (a.prompt && this.socket && !this.loading) this.sendText(a.prompt);
+  }
+
+  private sendText(text: string): void {
+    this.items.push({ kind: "msg", role: "user", content: text });
+    this.optimisticUser++; // skip the server's echo of this prompt
+    this.loading = true;
+    this.streamingAssistant = null;
+    this.socket?.submit(text);
+  }
+
+  private getAssistant(): Item {
+    if (!this.streamingAssistant) {
+      this.items.push({ kind: "msg", role: "assistant", content: "" });
+      this.streamingAssistant = this.items[this.items.length - 1];
+    }
+    return this.streamingAssistant;
+  }
+
+  private onEvent(ev: StreamEvent): void {
+    switch (ev.type) {
+      case SSE.Synced: {
+        // Cold resume: render committed history (trimmed to before the in-flight
+        // turn when running); the replayed buffer reconstructs that turn.
+        if (this.coldHistory) {
+          const through = ev.committed_through || 0;
+          const msgs = ev.running ? this.coldHistory.filter((m) => m.id <= through) : this.coldHistory;
+          this.items = msgs.flatMap(toItems);
+          this.loading = !!ev.running;
+          this.streamingAssistant = null;
+          this.coldHistory = null;
+        }
+        break;
+      }
+      case SSE.UserMessage: {
+        if (this.optimisticUser > 0) {
+          this.optimisticUser--;
+        } else {
+          this.items.push({ kind: "msg", role: "user", content: ev.text || "" });
+          this.loading = true;
+          this.streamingAssistant = null;
+        }
+        break;
+      }
+      case SSE.PromptProgress: {
+        const total = ev.prompt_total || 0;
+        if (total > 0) {
+          const pct = Math.floor(((ev.prompt_processed || 0) * 100) / total);
+          const label = ev.source ? `${ev.source}: processing prompt` : "Processing prompt";
+          this.ppLabel = `${label} ${pct}% (${ev.prompt_processed}/${total} tok)`;
+        }
+        break;
+      }
+      case SSE.Token: {
+        this.ppLabel = "";
+        const a = this.getAssistant();
+        if (a.kind === "msg") a.content += ev.text || "";
+        break;
+      }
+      case SSE.Thinking: {
+        this.ppLabel = "";
+        let last = this.items.at(-1);
+        if (!last || last.kind !== "thinking") {
+          this.items.push({ kind: "thinking", text: "" });
+          last = this.items.at(-1);
+        }
+        if (last && last.kind === "thinking") last.text += ev.thinking || "";
+        break;
+      }
+      case SSE.ToolCall:
+        this.streamingAssistant = null; // a fresh assistant bubble follows the tool
+        this.items.push({ kind: "tool", name: ev.tool_name || "tool", args: ev.tool_args || "", output: "", ms: 0, done: false });
+        break;
+      case SSE.ToolResult:
+        this.ppLabel = "";
+        for (let i = this.items.length - 1; i >= 0; i--) {
+          const it = this.items[i];
+          if (it.kind === "tool" && !it.done) {
+            it.output = ev.output || "";
+            it.ms = ev.duration_ms || 0;
+            it.done = true;
+            break;
+          }
+        }
+        break;
+      case SSE.AskUser:
+        this.items.push({ kind: "ask", question: ev.text || "", options: ev.options || [] });
+        break;
+      case SSE.Notification: {
+        const n = ev.notification;
+        if (!n) break;
+        if (n.kind === NOTIFY_SESSION_TITLE) {
+          if (n.session_id === this.currentId) session.update((s) => ({ ...s, title: n.title }));
+          api.ackNotification(n.id);
+        } else if (!n.auto_run) {
+          // Passive notification: persistent alert box (deduped), kept until dismissed.
+          if (!this.alerts.some((a) => a.id === n.id)) this.alerts.push(n);
+        }
+        // auto_run notifications are left for a client that runs them.
+        break;
+      }
+      case SSE.Error:
+        toast(ev.error || "error", "error");
+        break;
+      case SSE.Done:
+        if (ev.model) this.ctx = { model: ev.model, used: ev.context_tokens || 0, max: ev.context_max || 0 };
+        this.loading = false;
+        this.ppLabel = "";
+        this.streamingAssistant = null;
+        if (this.queue.length > 0) {
+          const next = this.queue.shift()!;
+          this.sendText(next);
+        }
+        break;
+    }
+  }
+}
+
+function toItems(m: Message): Item[] {
+  if (m.role === "user" || m.role === "assistant") {
+    return m.content ? [{ kind: "msg", role: m.role, content: m.content }] : [];
+  }
+  if (m.role === "tool") {
+    return [{ kind: "tool", name: m.name || "tool", args: "", output: m.content, ms: 0, done: true }];
+  }
+  return [];
+}
+
+// The app-wide singleton.
+export const sc = new SessionController();
