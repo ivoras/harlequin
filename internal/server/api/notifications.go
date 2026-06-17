@@ -85,7 +85,8 @@ func (s *Server) handleListNotifications(w http.ResponseWriter, r *http.Request)
 // their own database, which their connected clients pick up via push and show in
 // the alert box.
 func (s *Server) handleBroadcastAlert(w http.ResponseWriter, r *http.Request) {
-	if _, ok := requireElevated(w, r); !ok {
+	u, ok := requireElevated(w, r)
+	if !ok {
 		return
 	}
 	var req types.BroadcastAlertRequest
@@ -93,7 +94,12 @@ func (s *Server) handleBroadcastAlert(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "message required")
 		return
 	}
-	n := types.Notification{Kind: types.NotifyKindAlert, Title: strings.TrimSpace(req.Message)}
+	// Attribute the alert to its sender (shown under the message in the alert box).
+	n := types.Notification{
+		Kind:        types.NotifyKindAlert,
+		Title:       strings.TrimSpace(req.Message),
+		Description: "Sent by " + u.Email,
+	}
 	// Fan out in the background: writing one notification per user (each opens that
 	// user's DB) can be slow for a large org, and the caller doesn't need to wait.
 	// Use a detached context so it isn't cancelled when the request returns.

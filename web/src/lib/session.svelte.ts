@@ -96,6 +96,24 @@ class SessionController {
     if (a.prompt && this.socket && !this.loading) this.sendText(a.prompt);
   }
 
+  // exportTranscript downloads the current session transcript as Markdown.
+  exportTranscript(): void {
+    const parts: string[] = [];
+    for (const it of this.items) {
+      if (it.kind === "msg") parts.push(`## ${it.role === "user" ? "You" : "Assistant"}\n\n${it.content}`);
+      else if (it.kind === "tool") parts.push(`> **tool ${it.name}** — ${it.output}`);
+      else if (it.kind === "thinking") parts.push(`_thinking:_ ${it.text}`);
+      else if (it.kind === "ask") parts.push(`## Assistant asked\n\n${it.question}`);
+    }
+    const blob = new Blob([parts.join("\n\n") + "\n"], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `harlequin-session-${this.currentId || "x"}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   private sendText(text: string): void {
     this.items.push({ kind: "msg", role: "user", content: text });
     this.optimisticUser++; // skip the server's echo of this prompt
