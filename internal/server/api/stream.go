@@ -111,8 +111,17 @@ func (s *Server) handleSessionWS(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+	// Server-side notification push: a poller queries the user's pending
+	// notifications (the DB is the store) and feeds new ones to the writer, so
+	// clients no longer poll. Acks stay over REST (/notifications/{id}/ack).
+	notifCh := make(chan types.StreamEvent, 16)
+	if s.Notify != nil {
+		go s.pollNotifications(ctx, user.ID, sess.Interface, notifCh)
+	}
+
 	// Writer: send the synced control frame, replay the buffered tail, then pump
-	// live events. This goroutine is the connection's sole writer.
+	// live events and pushed notifications. This goroutine is the connection's
+	// sole writer.
 	synced, replay := sub.Resume(hello.HaveSeq)
 	if err := wsjson.Write(ctx, c, synced); err != nil {
 		return
@@ -135,6 +144,51 @@ func (s *Server) handleSessionWS(w http.ResponseWriter, r *http.Request) {
 			if err := wsjson.Write(ctx, c, ev); err != nil {
 				return
 			}
+		case ev := <-notifCh:
+			if err := wsjson.Write(ctx, c, ev); err != nil {
+				return
+			}
+		}
+	}
+}
+
+// notificationPollInterval is how often a connection re-checks the DB for new
+// pending notifications to push. (Also runs once immediately on connect.)
+const notificationPollInterval = 5 * time.Second
+
+// pollNotifications periodically reads the user's pending notifications targeting
+// iface and feeds ones not yet pushed on this connection to out, until ctx ends.
+func (s *Server) pollNotifications(ctx context.Context, userID int64, iface string, out chan<- types.StreamEvent) {
+	pushed := map[int64]bool{}
+	tick := func() {
+		var list []types.Notification
+		_ = s.Storage.WithUserReadOnly(ctx, userID, func(udb *sql.DB) error {
+			l, err := s.Notify.ListPending(ctx, udb, iface)
+			list = l
+			return err
+		})
+		for i := range list {
+			n := list[i]
+			if pushed[n.ID] {
+				continue
+			}
+			pushed[n.ID] = true
+			select {
+			case out <- types.StreamEvent{Type: types.SSENotification, Notification: &n}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}
+	tick() // deliver any backlog immediately on connect
+	t := time.NewTicker(notificationPollInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			tick()
 		}
 	}
 }

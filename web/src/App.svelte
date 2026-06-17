@@ -1,7 +1,6 @@
 <script lang="ts">
   import { api, getToken, setToken } from "./lib/api";
   import { user, view, session, toasts, toast, type View } from "./lib/stores";
-  import { NOTIFY_SESSION_TITLE } from "./lib/types";
   import type { Session } from "./lib/types";
   import Login from "./views/Login.svelte";
   import Chat from "./views/Chat.svelte";
@@ -20,7 +19,6 @@
   let sessions = $state<Session[]>([]);
 
   let started = false;
-  let notifTimer: ReturnType<typeof setInterval> | undefined;
   let creating = false;
 
   // Restore session from a stored token.
@@ -38,18 +36,15 @@
     })();
   });
 
-  // Boot/teardown when auth changes.
+  // Boot/teardown when auth changes. Notifications are pushed by the server over
+  // the session WebSocket (handled in Chat) — no client-side polling.
   $effect(() => {
     const u = $user;
     if (u && !started) {
       started = true;
       initSession();
-      pollNotifications();
-      notifTimer = setInterval(pollNotifications, 30000);
     } else if (!u && started) {
       started = false;
-      if (notifTimer) clearInterval(notifTimer);
-      notifTimer = undefined;
       session.set({ id: 0, title: "" });
       setSessionParam(0);
       view.set("chat");
@@ -105,24 +100,6 @@
       toast((e as Error).message, "error");
     } finally {
       creating = false;
-    }
-  }
-
-  async function pollNotifications() {
-    try {
-      const list = await api.listNotifications();
-      for (const n of list) {
-        if (n.kind === NOTIFY_SESSION_TITLE) {
-          if (n.session_id === $session.id) session.update((s) => ({ ...s, title: n.title }));
-          await api.ackNotification(n.id);
-        } else if (!n.auto_run) {
-          toast(n.description ? `${n.title} — ${n.description}` : n.title);
-          await api.ackNotification(n.id);
-        }
-        // auto_run notifications are left for a client that runs them.
-      }
-    } catch {
-      /* ignore transient poll errors */
     }
   }
 
