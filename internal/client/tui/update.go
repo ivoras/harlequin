@@ -131,8 +131,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.blocks = nil
 		m.appendConnectedStatus()
 		m.layout()
-		// Check for server notifications now, then once a minute.
-		return m, tea.Batch(m.input.Focus(), m.fetchNotificationsCmd(), notifyTick())
+		cmds := []tea.Cmd{m.input.Focus(), m.fetchNotificationsCmd(), notifyTick()}
+		// On resume, load committed history and reconnect to the live session.
+		if msg.resume {
+			cmds = append(cmds, m.loadHistoryCmd(msg.sessionID))
+		}
+		return m, tea.Batch(cmds...)
 
 	case notificationsTickMsg:
 		return m, tea.Batch(m.fetchNotificationsCmd(), notifyTick())
@@ -229,6 +233,36 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case historyLoadedMsg:
+		if msg.sessionID != m.sessionID {
+			return m, nil // switched away while loading
+		}
+		if msg.err != nil {
+			m.appendBlock("error", msg.err.Error())
+			m.refreshViewport()
+			return m, nil
+		}
+		// Hold the history; the synced frame decides where the in-flight turn (if
+		// any) begins. Open the socket to receive it.
+		m.coldHistory = msg.msgs
+		return m, m.openSessionCmd()
+
+	case sessionsLoadedMsg:
+		if msg.err != nil {
+			m.appendBlock("error", msg.err.Error())
+			m.refreshViewport()
+			return m, nil
+		}
+		if len(msg.list) == 0 {
+			m.appendBlock("info", "no sessions to resume")
+			m.refreshViewport()
+			return m, nil
+		}
+		m.sessionList = msg.list
+		m.sessionSel = 0
+		m.phase = phaseSessions
+		return m, nil
+
 	case askPulseMsg:
 		if m.phase == phaseAsk {
 			m.askFrame++
@@ -253,6 +287,20 @@ func (m *Model) handleStreamEvent(ev types.StreamEvent) (tea.Model, tea.Cmd) {
 		m.lastSeq = ev.Seq // resume watermark
 	}
 	switch ev.Type {
+	case types.SSESynced:
+		// Resume handshake. When we hold committed history (a cold resume), render
+		// it now — trimmed to before the in-flight turn when one is running — and the
+		// replayed buffer reconstructs that turn. Warm reconnects carry no history.
+		if m.coldHistory != nil {
+			msgs := m.coldHistory
+			if ev.Running {
+				msgs = trimHistory(msgs, ev.CommittedThrough)
+			}
+			m.renderHistory(msgs)
+			m.loading = ev.Running
+			m.coldHistory = nil
+			m.refreshViewport()
+		}
 	case types.SSEUserMessage:
 		// The server echoes the prompt as the first event of a turn. Skip the echo
 		// for prompts we already rendered locally; render it otherwise (cold resume
@@ -372,6 +420,8 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch m.phase {
 	case phaseAsk:
 		return m.handleAskKey(msg, key)
+	case phaseSessions:
+		return m.handleSessionsKey(key)
 	case phaseLoginUser:
 		if key == "enter" {
 			v := strings.TrimSpace(m.input.Value())
@@ -569,6 +619,61 @@ func (m *Model) openSessionCmd() tea.Cmd {
 		s, err := m.client.OpenSession(context.Background(), sessionID, haveSeq)
 		return sessionOpenedMsg{s: s, err: err}
 	}
+}
+
+// resumeSession switches to session id, loads its committed history, and
+// reconnects to its live server-side goroutine (so any in-flight turn streams in).
+func (m *Model) resumeSession(id int64) tea.Cmd {
+	m.switchSession(id)
+	m.phase = phaseChat
+	m.blocks = nil
+	m.appendBlock("status", fmt.Sprintf("resuming session #%d…", id))
+	m.refreshViewport()
+	return m.loadHistoryCmd(id)
+}
+
+// loadHistoryCmd fetches a session's committed messages for a resume.
+func (m *Model) loadHistoryCmd(id int64) tea.Cmd {
+	return func() tea.Msg {
+		msgs, err := m.client.Messages(context.Background(), id)
+		return historyLoadedMsg{sessionID: id, msgs: msgs, err: err}
+	}
+}
+
+// resumeListCmd loads the recent sessions for the interactive picker.
+func (m *Model) resumeListCmd(query string) tea.Cmd {
+	return func() tea.Msg {
+		list, err := m.client.ListSessions(context.Background(), query)
+		return sessionsLoadedMsg{list: list, err: err}
+	}
+}
+
+// renderHistory appends committed messages to the transcript as blocks.
+func (m *Model) renderHistory(msgs []types.Message) {
+	for _, msg := range msgs {
+		switch msg.Role {
+		case "user":
+			m.appendBlock("user", msg.Content)
+		case "assistant":
+			if strings.TrimSpace(msg.Content) != "" {
+				m.appendBlock("assistant", msg.Content)
+			}
+		case "tool":
+			m.appendBlock("tool", "  ↳ "+truncate(strings.TrimSpace(msg.Content), 200))
+		}
+	}
+}
+
+// trimHistory drops messages belonging to the in-flight turn (id > through); the
+// replayed event buffer reconstructs that turn instead.
+func trimHistory(msgs []types.Message, through int64) []types.Message {
+	out := msgs[:0:0]
+	for _, m := range msgs {
+		if m.ID <= through {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 func truncate(s string, n int) string {

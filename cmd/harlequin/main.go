@@ -14,6 +14,7 @@ import (
 
 func main() {
 	configPath := flag.String("config", "", "path to client config YAML (default ~/.config/harlequin/client.yaml)")
+	sessionID := flag.Int64("session", 0, "resume an existing session by id instead of starting a new one")
 	flag.Parse()
 
 	cfg, err := clientcfg.Load(*configPath)
@@ -23,6 +24,9 @@ func main() {
 	}
 
 	model := tui.New(cfg)
+	if *sessionID > 0 {
+		model.SetInitialSession(*sessionID)
+	}
 	prog := tea.NewProgram(model)
 	model.SetProgram(prog)
 

@@ -52,7 +52,8 @@ const helpText = `Commands:
   /memory resolve <id>  mark a conflict flag as resolved
   /docs <query>         search organisation documents
   /docs add <path>      upload a local file (e.g. a PDF) into the corpus
-  /resume               list recent sessions
+  /resume [query]       pick a session to resume (optionally filter by title)
+  /resume <id>          resume a specific session by id
   /usage                show your token/cost usage
   /export [raw]         save transcript to session_YYYYMMDD_HHMM.md (cwd); raw includes thinking/tools, else User+Assistant only
   /quit                 exit`
@@ -157,18 +158,14 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 			return infoMsg{strings.TrimRight(sb.String(), "\n")}
 		}
 	case "/resume":
-		return func() tea.Msg {
-			sessions, err := m.client.ListSessions(context.Background(), strings.Join(args, " "))
-			if err != nil {
-				return errMsg{err}
+		// "/resume <id>" jumps straight to that session; "/resume [query]" opens the
+		// interactive picker (optionally filtered by a title substring).
+		if len(args) == 1 {
+			if id, err := strconv.ParseInt(args[0], 10, 64); err == nil {
+				return m.resumeSession(id)
 			}
-			var sb strings.Builder
-			sb.WriteString("Sessions:\n")
-			for _, c := range sessions {
-				fmt.Fprintf(&sb, "  #%d %s (%s)\n", c.ID, c.Title, c.UpdatedAt.Format("2006-01-02 15:04"))
-			}
-			return infoMsg{strings.TrimRight(sb.String(), "\n")}
 		}
+		return m.resumeListCmd(strings.Join(args, " "))
 	case "/usage":
 		return func() tea.Msg {
 			rows, err := m.client.Usage(context.Background())
