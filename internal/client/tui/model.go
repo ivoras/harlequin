@@ -31,7 +31,8 @@ const (
 	phaseRegisterPass
 	phaseRegisterCode
 	phaseChat
-	phaseAsk // interactive ask_user answering
+	phaseAsk      // interactive ask_user answering
+	phaseSessions // interactive session picker (resume)
 )
 
 // loginPrompt is the placeholder shown at the email step of the login screen.
@@ -101,6 +102,15 @@ type Model struct {
 	lastSeq        int
 	optimisticUser int
 	pendingSubmit  []string
+	// initialSessionID, when non-zero, resumes that session on startup (the
+	// --session CLI flag) instead of creating a fresh one.
+	initialSessionID int64
+	// coldHistory holds committed messages loaded for a resume, awaiting the
+	// synced frame that says where the in-flight turn (if any) begins.
+	coldHistory []types.Message
+	// session picker (phaseSessions): the listed sessions and the highlighted row.
+	sessionList []types.Session
+	sessionSel  int
 
 	// ask_user interaction (phaseAsk): questions collected during a turn and the
 	// answers being assembled.
@@ -167,6 +177,10 @@ func New(cfg *clientcfg.Config) *Model {
 // SetProgram stores the program pointer for out-of-band streaming sends.
 func (m *Model) SetProgram(p *tea.Program) { m.prog = p }
 
+// SetInitialSession resumes session id on startup instead of opening a fresh one
+// (the --session CLI flag). Zero means create a new session as usual.
+func (m *Model) SetInitialSession(id int64) { m.initialSessionID = id }
+
 // Init implements tea.Model.
 func (m *Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{m.spin.Tick}
@@ -179,13 +193,17 @@ func (m *Model) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// bootstrapChat verifies the token and creates a session.
+// bootstrapChat verifies the token and either resumes the requested session
+// (--session) or creates a fresh one.
 func (m *Model) bootstrapChat() tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
 		u, err := m.client.Me(ctx)
 		if err != nil {
 			return loginNeededMsg{}
+		}
+		if m.initialSessionID != 0 {
+			return chatReadyMsg{user: u, sessionID: m.initialSessionID, resume: true}
 		}
 		sess, err := m.client.CreateSession(ctx, "Session", "")
 		if err != nil {
@@ -201,6 +219,21 @@ type loginNeededMsg struct{}
 type chatReadyMsg struct {
 	user      *types.User
 	sessionID int64
+	resume    bool // load committed history + reconnect (vs. a fresh session)
+}
+
+// historyLoadedMsg carries committed messages fetched for a resume; they are held
+// until the synced frame says where the in-flight turn begins.
+type historyLoadedMsg struct {
+	sessionID int64
+	msgs      []types.Message
+	err       error
+}
+
+// sessionsLoadedMsg carries the session list for the interactive picker.
+type sessionsLoadedMsg struct {
+	list []types.Session
+	err  error
 }
 type errMsg struct{ err error }
 type infoMsg struct{ text string }
