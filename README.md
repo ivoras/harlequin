@@ -212,10 +212,23 @@ empty to disable serving.
 server (set `VITE_API_BASE`, default `http://127.0.0.1:8890`).
 
 **Behind nginx (production):** serve the static build and reverse-proxy the API.
-The chat stream is a WebSocket (`…/sessions/{id}/ws`), so forward the upgrade
-headers and disable proxy buffering:
+The chat stream is a WebSocket (`…/api/v1/sessions/{id}/ws`) sharing the `/api/`
+prefix with ordinary REST calls, so the proxy must forward the upgrade headers —
+but only for requests that actually carry an `Upgrade` header. The standard idiom
+is a `map` (in the `http {}` context) that yields `Connection: upgrade` for
+WebSocket requests and `Connection: close` for the plain REST ones; sending a
+static `Connection: upgrade` on every `/api/` request is wrong and breaks regular
+requests on some setups.
 
 ```nginx
+# http {} context (alongside other top-level directives, not inside server{}):
+# pick the Connection header value based on whether the request is a WebSocket
+# upgrade. Referenced as $connection_upgrade below.
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
 server {
     listen 80;
     server_name harlequin.example.com;
@@ -228,21 +241,26 @@ server {
         try_files $uri /index.html;
     }
 
-    # API + WebSocket chat stream.
+    # API + WebSocket chat stream (same /api/ prefix; the map handles both).
     location /api/ {
         proxy_pass http://127.0.0.1:8890;
-        proxy_http_version 1.1;
+        proxy_http_version 1.1;                          # required for WebSockets
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header Upgrade $http_upgrade;        # WebSocket upgrade
-        proxy_set_header Connection "upgrade";
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;          # forward the WS upgrade
+        proxy_set_header Connection $connection_upgrade; # upgrade only for WS, else close
         proxy_buffering off;            # stream tokens immediately
-        proxy_read_timeout 1h;          # long-lived agent turns / idle sessions
+        proxy_read_timeout 1h;          # long-lived turns / idle sessions (keep the socket open)
+        proxy_send_timeout 1h;
     }
 }
 ```
 
-With nginx serving the static files, leave the server's `web.dir` empty.
+For TLS (`wss://`), terminate HTTPS on the same `server` block (the SPA uses the
+page's scheme, so an `https://` page automatically opens `wss://`); `proxy_pass`
+still targets the plaintext local server. With nginx serving the static files,
+leave the server's `web.dir` empty.
 
 ## Layout
 
