@@ -21,6 +21,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/notify"
 	"github.com/ivoras/harlequin/internal/server/pdfextract"
 	"github.com/ivoras/harlequin/internal/server/presence"
+	"github.com/ivoras/harlequin/internal/server/project"
 	"github.com/ivoras/harlequin/internal/server/session"
 	"github.com/ivoras/harlequin/internal/server/sessionhub"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
@@ -53,6 +54,7 @@ type Server struct {
 	Email      *email.Sender
 	PDFExtract *pdfextract.Extractor
 	Hub        *sessionhub.Hub
+	Projects   *project.Store
 }
 
 // Router builds the chi router.
@@ -141,6 +143,18 @@ func (s *Server) Router() http.Handler {
 			r.Post("/notifications/{id}/dismiss", s.handleDismissNotification)
 			// Owner/admin broadcast alert to all users (handler enforces the role).
 			r.Post("/alerts", s.handleBroadcastAlert)
+
+			if s.Projects != nil {
+				// Static "/projects/invites" is registered before "/projects/{id}"
+				// so it isn't captured by the id param.
+				r.Get("/projects", s.handleListProjects)
+				r.Post("/projects", s.handleCreateProject)
+				r.Get("/projects/invites", s.handleListProjectInvites)
+				r.Post("/projects/invites/{inviteID}/accept", s.handleAcceptInvite)
+				r.Post("/projects/invites/{inviteID}/decline", s.handleDeclineInvite)
+				r.Get("/projects/{id}", s.handleGetProject)
+				r.Post("/projects/{id}/invite", s.handleInviteProject)
+			}
 
 			if s.UserConfig != nil {
 				r.Get("/config", s.handleGetConfig)

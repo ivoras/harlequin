@@ -20,9 +20,10 @@ type Manager struct {
 	System *sql.DB // harlequin.db, kept open
 	Shared *sql.DB // shared.db, kept open
 
-	dataDir string
-	dim     int
-	inited  sync.Map // userID -> struct{}: user dbs whose migrations have run this process
+	dataDir       string
+	dim           int
+	inited        sync.Map // userID -> struct{}: user dbs whose migrations have run this process
+	initedProject sync.Map // projectID -> struct{}: project dbs migrated this process
 }
 
 // New opens the system and shared databases (kept open for the process
@@ -131,6 +132,101 @@ func (m *Manager) WithUserReadOnly(ctx context.Context, userID int64, fn func(us
 	}
 	defer udb.Close()
 	return fn(udb)
+}
+
+// --- per-project databases (4th tier; same open/close-per-request lifecycle as
+// per-user databases) ---
+
+// ProjectDir returns the directory holding a project's database and files.
+func ProjectDir(dataDir string, projectID int64) string {
+	return filepath.Join(dataDir, "projects", strconv.FormatInt(projectID, 10))
+}
+
+// ProjectDir returns the directory holding a project's database and files.
+func (m *Manager) ProjectDir(projectID int64) string {
+	return ProjectDir(m.dataDir, projectID)
+}
+
+// ProjectDBPath returns the path of a project's database file.
+func (m *Manager) ProjectDBPath(projectID int64) string {
+	return filepath.Join(m.ProjectDir(projectID), "project.db")
+}
+
+// ProjectFilesDir returns (and creates) the directory for a project's uploaded files.
+func (m *Manager) ProjectFilesDir(projectID int64) (string, error) {
+	dir := filepath.Join(m.ProjectDir(projectID), "files")
+	return dir, os.MkdirAll(dir, 0o755)
+}
+
+// openProject opens a project's database (first open per process migrates).
+func (m *Manager) openProject(projectID int64) (*sql.DB, error) {
+	path := m.ProjectDBPath(projectID)
+	if _, ok := m.initedProject.Load(projectID); ok {
+		pdb, err := db.OpenInitialized(path)
+		if err != nil {
+			return nil, fmt.Errorf("open project db %d: %w", projectID, err)
+		}
+		return pdb, nil
+	}
+	pdb, err := db.Open(path, db.Project, m.dim)
+	if err != nil {
+		return nil, fmt.Errorf("open project db %d: %w", projectID, err)
+	}
+	m.initedProject.Store(projectID, struct{}{})
+	return pdb, nil
+}
+
+// WithProject opens the project's database, runs fn with it, then closes it.
+func (m *Manager) WithProject(ctx context.Context, projectID int64, fn func(projDB *sql.DB) error) error {
+	pdb, err := m.openProject(projectID)
+	if err != nil {
+		return err
+	}
+	defer pdb.Close()
+	return fn(pdb)
+}
+
+// WithProjectReadOnly opens the project's database read-only (cheap reader path).
+func (m *Manager) WithProjectReadOnly(ctx context.Context, projectID int64, fn func(projDB *sql.DB) error) error {
+	if _, ok := m.initedProject.Load(projectID); !ok {
+		if err := m.WithProject(ctx, projectID, func(*sql.DB) error { return nil }); err != nil {
+			return err
+		}
+	}
+	pdb, err := db.OpenReadOnly(m.ProjectDBPath(projectID))
+	if err != nil {
+		return err
+	}
+	defer pdb.Close()
+	return fn(pdb)
+}
+
+// EachProject opens every project's database in turn and invokes fn (cross-project
+// maintenance). Errors from fn stop the iteration.
+func (m *Manager) EachProject(ctx context.Context, fn func(projectID int64, projDB *sql.DB) error) error {
+	rows, err := m.System.QueryContext(ctx, `SELECT id FROM projects ORDER BY id`)
+	if err != nil {
+		return err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if err := m.WithProject(ctx, id, func(pdb *sql.DB) error { return fn(id, pdb) }); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // EachUser opens every user's database in turn (newest user ids first is not

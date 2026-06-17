@@ -30,6 +30,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/notifyx"
 	"github.com/ivoras/harlequin/internal/server/pdfextract"
 	"github.com/ivoras/harlequin/internal/server/presence"
+	"github.com/ivoras/harlequin/internal/server/project"
 	"github.com/ivoras/harlequin/internal/server/secrets"
 	"github.com/ivoras/harlequin/internal/server/session"
 	"github.com/ivoras/harlequin/internal/server/sessionhub"
@@ -176,6 +177,7 @@ func main() {
 	}
 
 	notifyStore := notify.NewStore()
+	projectStore := project.NewStore(store.System)
 	cronStore := cron.NewStore()
 	presenceTracker := presence.New()
 	userCfgStore := userconfig.NewStore()
@@ -240,6 +242,7 @@ func main() {
 		Presence:   presenceTracker,
 		Email:      emailSender,
 		Hub:        hub,
+		Projects:   projectStore,
 	}
 
 	// PDF text extraction for document uploads (PDFium via wasm; best-effort).
