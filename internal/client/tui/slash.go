@@ -7,14 +7,16 @@ import (
 
 // slashCommands are the top-level commands offered by the autocomplete menu.
 var slashCommands = []string{
-	"/config", "/cron", "/docs", "/export", "/hat", "/help", "/mcp", "/memory", "/new",
-	"/queue", "/quit", "/reload", "/resume", "/skill", "/skills", "/usage",
+	"/config", "/cron", "/dismiss", "/docs", "/export", "/hat", "/help", "/mcp", "/memory",
+	"/new", "/queue", "/quit", "/reload", "/resume", "/run", "/skill", "/skills", "/usage",
 }
 
 var slashHelp = map[string]string{
-	"/config": "view / set per-user config (e.g. Telegram)",
-	"/cron":   "list / add / manage scheduled jobs",
-	"/docs":   "search org documents; '/docs add <path>' uploads a file (e.g. PDF)",
+	"/config":  "view / set per-user config (e.g. Telegram)",
+	"/cron":    "list / add / manage scheduled jobs",
+	"/dismiss": "dismiss an alert from the alert box (all by default)",
+	"/run":     "run the prompt carried by alert n",
+	"/docs":    "search org documents; '/docs add <path>' uploads a file (e.g. PDF)",
 	"/export": "save transcript (User+Assistant; add 'raw' for everything)",
 	"/hat":    "list / show / wear hats",
 	"/help":   "show help",
@@ -24,7 +26,7 @@ var slashHelp = map[string]string{
 	"/queue":  "list / del <n> / clear messages queued while busy",
 	"/quit":   "exit",
 	"/reload": "(admin) re-read skill/prompt/hat files",
-	"/resume": "list recent sessions",
+	"/resume": "resume a session (picker, or /resume <id>)",
 	"/skill":  "pull / push / reset / diff / new a skill",
 	"/skills": "list available skills",
 	"/usage":  "show token/cost usage",

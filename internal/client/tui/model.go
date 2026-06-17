@@ -114,6 +114,9 @@ type Model struct {
 	// pendingNotifs holds auto-run notifications pushed mid-turn, drained when the
 	// turn ends so they don't collide with an in-flight turn.
 	pendingNotifs []types.Notification
+	// alerts are the active server notifications shown in the persistent alert box
+	// above the transcript (not part of the session); dismissed via /dismiss.
+	alerts []types.Notification
 
 	// ask_user interaction (phaseAsk): questions collected during a turn and the
 	// answers being assembled.

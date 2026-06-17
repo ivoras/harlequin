@@ -35,25 +35,19 @@ func (m *Model) handlePushedNotification(n types.Notification) tea.Cmd {
 		return m.ackNotifyCmd(n.ID)
 	}
 	autoRun := n.AutoRun && strings.TrimSpace(n.Prompt) != ""
-	if autoRun && (m.loading || m.phase != phaseChat) {
-		m.pendingNotifs = append(m.pendingNotifs, n) // run after the current turn
-		return nil
-	}
-	m.appendBlock("notification", renderNotification(n))
-	m.refreshViewport()
-	cmds := []tea.Cmd{m.ackNotifyCmd(n.ID)}
 	if autoRun {
-		cmds = append(cmds, m.startTurn(n.Prompt))
+		// Auto-run prompts execute (deferred if a turn is in flight); they are a
+		// behaviour, not a passive alert, so they don't enter the alert box.
+		if m.loading || m.phase != phaseChat {
+			m.pendingNotifs = append(m.pendingNotifs, n)
+			return nil
+		}
+		return tea.Batch(m.ackNotifyCmd(n.ID), m.startTurn(n.Prompt))
 	}
-	return tea.Batch(cmds...)
-}
-
-// renderNotification formats a notification for the transcript.
-func renderNotification(n types.Notification) string {
-	if n.Description != "" {
-		return "🔔 " + n.Title + " — " + n.Description
-	}
-	return "🔔 " + n.Title
+	// Passive notification: show it in the persistent alert box (not the
+	// transcript), kept until the user dismisses it.
+	m.addAlert(n)
+	return nil
 }
 
 // Update implements tea.Model.
