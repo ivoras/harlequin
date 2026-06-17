@@ -63,6 +63,7 @@ export const SSE = {
   Done: "done",
   UserMessage: "user_message",
   Synced: "synced",
+  Notification: "notification",
 } as const;
 
 // Client→server frame types (WSClientMessage.type).
@@ -103,6 +104,8 @@ export interface StreamEvent {
   // SSE.Synced control frame fields.
   running?: boolean;
   committed_through?: number;
+  // SSE.Notification payload (server-pushed).
+  notification?: Notification;
 }
 
 export interface Notification {

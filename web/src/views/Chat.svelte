@@ -3,7 +3,7 @@
   import { api } from "../lib/api";
   import { SessionSocket } from "../lib/ws";
   import { renderMarkdown } from "../lib/markdown";
-  import { SSE } from "../lib/types";
+  import { SSE, NOTIFY_SESSION_TITLE } from "../lib/types";
   import type { Message, StreamEvent } from "../lib/types";
 
   type Item =
@@ -189,6 +189,19 @@
       case SSE.AskUser:
         items.push({ kind: "ask", question: ev.text || "", options: ev.options || [] });
         break;
+      case SSE.Notification: {
+        const n = ev.notification;
+        if (!n) break;
+        if (n.kind === NOTIFY_SESSION_TITLE) {
+          if (n.session_id === $session.id) session.update((s) => ({ ...s, title: n.title }));
+          api.ackNotification(n.id);
+        } else if (!n.auto_run) {
+          toast(n.description ? `${n.title} — ${n.description}` : n.title);
+          api.ackNotification(n.id);
+        }
+        // auto_run notifications are left for a client that runs them.
+        break;
+      }
       case SSE.Error:
         toast(ev.error || "error", "error");
         break;

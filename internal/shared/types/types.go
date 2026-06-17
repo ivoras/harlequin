@@ -322,6 +322,9 @@ const (
 	// SSESynced is the control frame the server sends right after a client's hello,
 	// describing the live session state before replay/live events begin.
 	SSESynced = "synced"
+	// SSENotification pushes a server→user notification to a connected client
+	// (replacing client-side polling). The payload is in StreamEvent.Notification.
+	SSENotification = "notification"
 )
 
 // WebSocket client→server frame types (WSClientMessage.Type).
@@ -386,6 +389,9 @@ type StreamEvent struct {
 	// in-flight turn from the replayed buffer (which re-emits it from its first
 	// event, including the SSEUserMessage echo).
 	CommittedThrough int64 `json:"committed_through,omitempty"`
+	// Notification (SSENotification) is a server→user notification pushed to the
+	// connected client.
+	Notification *Notification `json:"notification,omitempty"`
 }
 
 // TurnTiming reports model operation timing aggregated over a turn's LLM calls.

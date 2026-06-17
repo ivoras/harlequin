@@ -13,29 +13,6 @@ import (
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
-// notificationsInterval is how often the client polls the server for pending
-// notifications after the initial post-login check.
-const notificationsInterval = time.Minute
-
-type notificationsTickMsg struct{}
-type notificationsMsg struct{ list []types.Notification }
-
-// notifyTick re-arms the once-a-minute notification poll.
-func notifyTick() tea.Cmd {
-	return tea.Tick(notificationsInterval, func(time.Time) tea.Msg { return notificationsTickMsg{} })
-}
-
-// fetchNotificationsCmd loads pending notifications in the background.
-func (m *Model) fetchNotificationsCmd() tea.Cmd {
-	return func() tea.Msg {
-		list, err := m.client.ListNotifications(context.Background())
-		if err != nil {
-			return notificationsMsg{} // ignore transient poll errors
-		}
-		return notificationsMsg{list: list}
-	}
-}
-
 // ackNotifyCmd marks a notification handled (best-effort).
 func (m *Model) ackNotifyCmd(id int64) tea.Cmd {
 	return func() tea.Msg {
@@ -44,36 +21,29 @@ func (m *Model) ackNotifyCmd(id int64) tea.Cmd {
 	}
 }
 
-// handleNotifications renders pending notifications and auto-runs at most one
-// prompt per pass. It defers entirely while a turn is streaming so an auto-run
-// can't collide with an in-flight session; deferred ones stay pending and
-// are retried on the next tick.
-func (m *Model) handleNotifications(list []types.Notification) tea.Cmd {
-	if m.phase != phaseChat || m.loading || len(list) == 0 {
+// handlePushedNotification handles one server-pushed notification (notifications
+// are delivered over the session WebSocket, not polled). A session-title update
+// refreshes the header; other notifications are shown and acked. An auto-run
+// prompt that arrives mid-turn is queued and drained when the turn ends, so it
+// can't collide with an in-flight turn.
+func (m *Model) handlePushedNotification(n types.Notification) tea.Cmd {
+	if n.Kind == types.NotifyKindSessionTitle {
+		if n.SessionID != nil && *n.SessionID == m.sessionID {
+			m.sessTitle = n.Title
+			m.refreshViewport()
+		}
+		return m.ackNotifyCmd(n.ID)
+	}
+	autoRun := n.AutoRun && strings.TrimSpace(n.Prompt) != ""
+	if autoRun && (m.loading || m.phase != phaseChat) {
+		m.pendingNotifs = append(m.pendingNotifs, n) // run after the current turn
 		return nil
 	}
-	var cmds []tea.Cmd
-	ranOne := false
-	for _, n := range list {
-		// Control notifications: a session-title update refreshes the header for the
-		// matching session; it is acked but never shown as a chat message.
-		if n.Kind == types.NotifyKindSessionTitle {
-			if n.SessionID != nil && *n.SessionID == m.sessionID {
-				m.sessTitle = n.Title
-			}
-			cmds = append(cmds, m.ackNotifyCmd(n.ID))
-			continue
-		}
-		autoRun := n.AutoRun && strings.TrimSpace(n.Prompt) != ""
-		if autoRun && ranOne {
-			continue // run one prompt at a time; pick up the rest next tick
-		}
-		m.appendBlock("notification", renderNotification(n))
-		cmds = append(cmds, m.ackNotifyCmd(n.ID))
-		if autoRun {
-			cmds = append(cmds, m.startTurn(n.Prompt))
-			ranOne = true
-		}
+	m.appendBlock("notification", renderNotification(n))
+	m.refreshViewport()
+	cmds := []tea.Cmd{m.ackNotifyCmd(n.ID)}
+	if autoRun {
+		cmds = append(cmds, m.startTurn(n.Prompt))
 	}
 	return tea.Batch(cmds...)
 }
@@ -131,18 +101,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.blocks = nil
 		m.appendConnectedStatus()
 		m.layout()
-		cmds := []tea.Cmd{m.input.Focus(), m.fetchNotificationsCmd(), notifyTick()}
-		// On resume, load committed history and reconnect to the live session.
+		cmds := []tea.Cmd{m.input.Focus()}
+		// Connect the session socket now so the server can push notifications and
+		// stream any in-flight turn. On resume, load committed history first (which
+		// then opens the socket); otherwise open it directly.
 		if msg.resume {
 			cmds = append(cmds, m.loadHistoryCmd(msg.sessionID))
+		} else {
+			cmds = append(cmds, m.openSessionCmd())
 		}
 		return m, tea.Batch(cmds...)
-
-	case notificationsTickMsg:
-		return m, tea.Batch(m.fetchNotificationsCmd(), notifyTick())
-
-	case notificationsMsg:
-		return m, m.handleNotifications(msg.list)
 
 	case loginDoneMsg:
 		if msg.err != nil {
@@ -343,6 +311,10 @@ func (m *Model) handleStreamEvent(ev types.StreamEvent) (tea.Model, tea.Cmd) {
 		m.appendBlock("tool", "  ↳ "+truncate(strings.TrimSpace(ev.Output), 200))
 	case types.SSEError:
 		m.appendBlock("error", ev.Error)
+	case types.SSENotification:
+		if ev.Notification != nil {
+			return m, m.handlePushedNotification(*ev.Notification)
+		}
 	case types.SSEAskUser:
 		// Flush any partial reasoning/text first, then collect the question; it is
 		// presented interactively when the turn ends (handles multiple questions).
@@ -381,6 +353,12 @@ func (m *Model) finalizeTurn() tea.Cmd {
 		next := m.msgQueue[0]
 		m.msgQueue = m.msgQueue[1:]
 		return m.sendMessage(next)
+	}
+	// Drain one auto-run notification that arrived during the turn.
+	if len(m.pendingNotifs) > 0 {
+		n := m.pendingNotifs[0]
+		m.pendingNotifs = m.pendingNotifs[1:]
+		return m.handlePushedNotification(n)
 	}
 	return nil
 }

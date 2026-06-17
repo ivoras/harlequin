@@ -111,6 +111,9 @@ type Model struct {
 	// session picker (phaseSessions): the listed sessions and the highlighted row.
 	sessionList []types.Session
 	sessionSel  int
+	// pendingNotifs holds auto-run notifications pushed mid-turn, drained when the
+	// turn ends so they don't collide with an in-flight turn.
+	pendingNotifs []types.Notification
 
 	// ask_user interaction (phaseAsk): questions collected during a turn and the
 	// answers being assembled.
