@@ -16,6 +16,7 @@ type Styles struct {
 	Help            lipgloss.Style
 	Error           lipgloss.Style
 	Accent          lipgloss.Style
+	Alert           lipgloss.Style
 	ContextOK       lipgloss.Style
 	ContextWarn     lipgloss.Style
 	ContextCritical lipgloss.Style
@@ -39,6 +40,7 @@ func newStyles() Styles {
 		Help:            lipgloss.NewStyle().Foreground(colorMuted),
 		Error:           lipgloss.NewStyle().Foreground(colorError).Bold(true),
 		Accent:          lipgloss.NewStyle().Foreground(colorAccent),
+		Alert:           lipgloss.NewStyle().Foreground(colorBG).Background(colorWarmHi).Bold(true).Padding(0, 1),
 		ContextOK:       lipgloss.NewStyle().Foreground(colorAccentHi),
 		ContextWarn:     lipgloss.NewStyle().Foreground(colorWarm),
 		ContextCritical: lipgloss.NewStyle().Foreground(colorError),

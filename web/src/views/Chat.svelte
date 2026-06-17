@@ -4,7 +4,7 @@
   import { SessionSocket } from "../lib/ws";
   import { renderMarkdown } from "../lib/markdown";
   import { SSE, NOTIFY_SESSION_TITLE } from "../lib/types";
-  import type { Message, StreamEvent } from "../lib/types";
+  import type { Message, StreamEvent, Notification } from "../lib/types";
 
   type Item =
     | { kind: "msg"; role: "user" | "assistant"; content: string }
@@ -19,6 +19,9 @@
   let queue = $state<string[]>([]); // messages typed while a turn is in flight
   let ctx = $state<{ model: string; used: number; max: number } | null>(null);
   let reconnecting = $state(false);
+  // Active server alerts shown in a persistent box above the transcript (not part
+  // of the session); kept until dismissed.
+  let alerts = $state<Notification[]>([]);
   let loadedFor = 0;
   let scrollEl: HTMLDivElement | undefined;
   let inputEl: HTMLTextAreaElement | undefined;
@@ -196,8 +199,9 @@
           if (n.session_id === $session.id) session.update((s) => ({ ...s, title: n.title }));
           api.ackNotification(n.id);
         } else if (!n.auto_run) {
-          toast(n.description ? `${n.title} — ${n.description}` : n.title);
-          api.ackNotification(n.id);
+          // Passive notification: show it in the persistent alert box (deduped),
+          // kept until the user dismisses it.
+          if (!alerts.some((a) => a.id === n.id)) alerts.push(n);
         }
         // auto_run notifications are left for a client that runs them.
         break;
@@ -228,6 +232,14 @@
     socket?.interrupt();
     loading = false;
   }
+  function dismissAlert(a: Notification) {
+    alerts = alerts.filter((x) => x.id !== a.id);
+    api.ackNotification(a.id);
+  }
+  function runAlert(a: Notification) {
+    dismissAlert(a);
+    if (a.prompt && socket && !loading) sendText(a.prompt);
+  }
   function onKey(e: KeyboardEvent) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -238,6 +250,25 @@
 </script>
 
 <div class="chat">
+  {#if alerts.length}
+    <div class="alerts">
+      <div class="container col" style="gap:6px;">
+        {#each alerts as a (a.id)}
+          <div class="alert row">
+            <span class="bell">🔔</span>
+            <div class="col" style="flex:1; min-width:0; gap:2px;">
+              <strong class="wrap">{a.title}</strong>
+              {#if a.description}<span class="small wrap">{a.description}</span>{/if}
+            </div>
+            {#if a.prompt}
+              <button class="small" onclick={() => runAlert(a)}>Run</button>
+            {/if}
+            <button class="ghost small" onclick={() => dismissAlert(a)} aria-label="Dismiss">✕</button>
+          </div>
+        {/each}
+      </div>
+    </div>
+  {/if}
   <div class="messages" bind:this={scrollEl}>
     <div class="container col" style="gap:12px;">
       {#each items as it}
@@ -317,6 +348,13 @@
 
 <style>
   .chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  /* Persistent alert box: pinned above the transcript, does not scroll away. */
+  .alerts { flex: none; border-bottom: 1px solid var(--border); background: var(--surface);
+    padding: 6px 0; max-height: 30dvh; overflow-y: auto; }
+  .alert { align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px;
+    background: var(--surface-3); border: 1px solid var(--accent); }
+  .alert .bell { flex: none; }
+  .alert .wrap { word-break: break-word; }
   .messages { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px 0 12px; }
   .msg.user { display: flex; justify-content: flex-end; }
   .bubble { background: var(--surface-3); border: 1px solid var(--border); border-radius: 14px 14px 4px 14px;

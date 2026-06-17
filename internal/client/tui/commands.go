@@ -54,6 +54,8 @@ const helpText = `Commands:
   /docs add <path>      upload a local file (e.g. a PDF) into the corpus
   /resume [query]       pick a session to resume (optionally filter by title)
   /resume <id>          resume a specific session by id
+  /dismiss [n|all]      dismiss an alert from the alert box (all by default)
+  /run <n>              run the prompt carried by alert n
   /usage                show your token/cost usage
   /export [raw]         save transcript to session_YYYYMMDD_HHMM.md (cwd); raw includes thinking/tools, else User+Assistant only
   /quit                 exit`
@@ -70,6 +72,10 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 	switch cmd {
 	case "/help":
 		return infoCmd(helpText)
+	case "/dismiss":
+		return m.dismissAlert(args)
+	case "/run":
+		return m.runAlert(args)
 	case "/export":
 		raw := len(args) > 0 && strings.EqualFold(args[0], "raw")
 		return func() tea.Msg {
