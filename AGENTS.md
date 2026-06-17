@@ -14,10 +14,17 @@ Client-server AI agent system in Go. A REST + WebSocket **server** talks to LLMs
 - Config: YAML (structure) + `.env` (secrets); env overrides YAML.
 
 ## Layout
-- `internal/server/{config,db,auth,api,llm,embed,jsrun,agent,memory,documents,audit,sessionlog,usage,session,sessionhub,skills,userconfig,cron}` — `session` is the chat-session store (the `sessions` table + messages); `sessionhub` is the live-session runtime (one goroutine per active session; see Live sessions below).
+- `internal/server/{config,db,auth,api,llm,embed,jsrun,agent,memory,documents,audit,sessionlog,usage,session,sessionhub,project,projectchat,skills,userconfig,cron}` — `session` is the chat-session store (the `sessions` table + messages); `sessionhub` is the live-session runtime (one goroutine per active session; see Live sessions below); `project` is the project registry + chatroom store and `projectchat` the chatroom broadcast hub (see Projects below).
 - `internal/server/skills/jstmpl` — PHP-style `<?js ?>` templating (on `jsrun`).
 - `internal/client/{config,apiclient,tui,skills}`
 - `internal/shared/types` — REST DTOs. `migrations/{system,shared,user}/*.sql` and `skills/` embedded via `embed.FS`.
+
+## Projects (shared workspaces)
+- A **project** is a shared workspace grouping members, sessions, documents, and memories, plus a live chatroom. Registry (projects/members/invites) is in the **system** db (`migrations/system/0002_projects.sql`, `internal/server/project`); each project's own data lives in a **4th storage tier** — `data/projects/<id>/project.db` (`db.Project` role; `storage.WithProject`/`EachProject`), mirroring the per-user lifecycle. Any user can create a project (becoming a member); any member can invite others (by email; the invitee gets a notification and accepts) and **assign** a session.
+- **Assigning** a session *moves* it (and its messages) from the owner's `user.db` into the project db (`project.MoveSessionToProject`), so a session belongs to at most one project and every member sees it. Project sessions are a **shared live session**: the sessionhub keys them by `p/<projectID>/<sessionID>` (vs `u/<userID>/…`), so all members attach to the same live turn; `agent.Run` takes a `projectID` and runs the turn on the project db (`rc.sessDB`) while user-scoped tools (skills/MCP/cron/usage) stay on the acting user's db. WS: `GET /projects/{id}/sessions/{sid}/ws`.
+- **Project memory** uses composite-id scope `p.<localid>` in the project db; a project session fuses user+shared+project (`memory.SearchFused`) and `memory_write`/auto-extraction default to the project scope (any member may write it).
+- **Chatroom**: `internal/server/projectchat` (broadcast hub, no turn buffer) over `GET /projects/{id}/ws`; messages persist in the project db (`chat_messages`). Clients show a side-pane only while a project is active (web right-hand pane / TUI split; `/project` to manage, `/say` in the TUI to post). Hats stay orthogonal to projects.
+- *Deferred:* project-document search (the schema holds documents, but `search_docs` needs an embedder handle threaded in).
 
 ## Storage (three-tier SQLite, all WAL)
 - `internal/server/storage.Manager` owns the handles. `data/harlequin.db` (system: users, api_tokens) and `data/shared.db` (org: shared memories, documents, org skill overrides) are **kept open**. Each user has `data/users/<id>/user.db` (their memories, sessions, messages, usage, audit, user skill overrides, cron jobs, and a generic `config` key/value table), **opened and closed per request** via `WithUser`; `EachUser` fans out for admin aggregation and maintenance sweeps. Uploaded files go to `data/shared_files/` and `data/users/<id>/files/`.
