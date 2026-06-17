@@ -387,6 +387,9 @@ const (
 	// SSENotification pushes a server→user notification to a connected client
 	// (replacing client-side polling). The payload is in StreamEvent.Notification.
 	SSENotification = "notification"
+	// SSEChat is a project chatroom message broadcast to connected members
+	// (payload in StreamEvent.Chat).
+	SSEChat = "chat"
 )
 
 // WebSocket client→server frame types (WSClientMessage.Type).
@@ -394,6 +397,7 @@ const (
 	WSClientHello     = "hello"     // first frame: announce last seen seq for resume
 	WSClientPrompt    = "prompt"    // submit a prompt (Content) to the live session
 	WSClientInterrupt = "interrupt" // cancel the in-flight turn (keep the session alive)
+	WSClientChat      = "chat"      // post a message (Content) to a project chatroom
 )
 
 // WSClientMessage is a frame sent by a client to the server over the session
@@ -454,6 +458,8 @@ type StreamEvent struct {
 	// Notification (SSENotification) is a server→user notification pushed to the
 	// connected client.
 	Notification *Notification `json:"notification,omitempty"`
+	// Chat (SSEChat) is a project chatroom message.
+	Chat *ChatMessage `json:"chat,omitempty"`
 }
 
 // TurnTiming reports model operation timing aggregated over a turn's LLM calls.
