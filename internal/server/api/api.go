@@ -22,6 +22,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/pdfextract"
 	"github.com/ivoras/harlequin/internal/server/presence"
 	"github.com/ivoras/harlequin/internal/server/project"
+	"github.com/ivoras/harlequin/internal/server/projectchat"
 	"github.com/ivoras/harlequin/internal/server/session"
 	"github.com/ivoras/harlequin/internal/server/sessionhub"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
@@ -55,6 +56,7 @@ type Server struct {
 	PDFExtract *pdfextract.Extractor
 	Hub        *sessionhub.Hub
 	Projects   *project.Store
+	ChatHub    *projectchat.Hub
 }
 
 // Router builds the chi router.
@@ -86,6 +88,9 @@ func (s *Server) Router() http.Handler {
 			r.Get("/sessions/{id}/ws", s.handleSessionWS)
 			if s.Projects != nil {
 				r.Get("/projects/{id}/sessions/{sid}/ws", s.handleProjectSessionWS)
+				if s.ChatHub != nil {
+					r.Get("/projects/{id}/ws", s.handleProjectChatWS)
+				}
 			}
 		}
 
