@@ -1,0 +1,19 @@
+# Ignore everything in this directory by default, then re-allow only source,
+# data and document file types. Derived artifacts (*.sqlite, *.so, *.log,
+# __pycache__) stay out of the repo.
+*
+
+# Allow descending into subdirectories (e.g. data/, data/qsrc/)
+!*/
+
+# Allowed file types
+!*.py
+!*.txt
+!*.pdf
+!*.html
+!*.json
+!*.jsonl
+!*.h
+
+# Keep this file itself
+!.gitignore
