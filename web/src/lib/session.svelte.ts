@@ -30,12 +30,16 @@ class SessionController {
   private coldHistory: Message[] | null = null; // committed history awaiting the synced cut
   private streamingAssistant: Item | null = null;
 
-  // attach connects to session id (no-op if already attached). Loads committed
-  // history, then opens the socket so any in-flight turn replays and continues
-  // live. Alerts are not reset — they are user-scoped, not per-session.
-  async attach(id: number): Promise<void> {
-    if (id === this.currentId && this.socket) return;
+  private projectID = 0; // non-zero when the active session belongs to a project
+
+  // attach connects to session id (no-op if already attached). projectID > 0
+  // attaches to a shared project session (history + WS under the project). Loads
+  // committed history, then opens the socket so any in-flight turn replays and
+  // continues live. Alerts are not reset — they are user-scoped.
+  async attach(id: number, projectID = 0): Promise<void> {
+    if (id === this.currentId && projectID === this.projectID && this.socket) return;
     this.currentId = id;
+    this.projectID = projectID;
     this.items = [];
     this.ctx = null;
     this.loading = false;
@@ -45,13 +49,13 @@ class SessionController {
     this.socket?.close();
     this.socket = null;
     try {
-      this.coldHistory = await api.getMessages(id);
+      this.coldHistory = projectID > 0 ? await api.projectMessages(projectID, id) : await api.getMessages(id);
     } catch (e) {
       this.coldHistory = [];
       toast((e as Error).message, "error");
     }
     if (this.currentId !== id) return; // switched again while loading
-    this.socket = new SessionSocket(id, (ev) => this.onEvent(ev), (s) => (this.reconnecting = s === "reconnecting"));
+    this.socket = new SessionSocket(id, (ev) => this.onEvent(ev), (s) => (this.reconnecting = s === "reconnecting"), projectID);
     this.socket.open();
   }
 
@@ -60,6 +64,7 @@ class SessionController {
     this.socket?.close();
     this.socket = null;
     this.currentId = 0;
+    this.projectID = 0;
     this.items = [];
     this.alerts = [];
     this.queue = [];

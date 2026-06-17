@@ -31,6 +31,36 @@ export interface Session {
   interface: string;
   created_at: string;
   updated_at: string;
+  project_id?: number;
+  owner_email?: string;
+}
+
+export interface Project {
+  id: number;
+  name: string;
+  created_by: number;
+  created_at: string;
+  members?: ProjectMember[];
+}
+export interface ProjectMember {
+  user_id: number;
+  email: string;
+  joined_at: string;
+}
+export interface ProjectInvite {
+  id: number;
+  project_id: number;
+  project_name: string;
+  invited_by: string;
+  status: string;
+  created_at: string;
+}
+export interface ChatMessage {
+  id: number;
+  user_id: number;
+  email: string;
+  content: string;
+  created_at: string;
 }
 
 export interface ToolCall {
@@ -64,6 +94,7 @@ export const SSE = {
   UserMessage: "user_message",
   Synced: "synced",
   Notification: "notification",
+  Chat: "chat",
 } as const;
 
 // Client→server frame types (WSClientMessage.type).
@@ -71,6 +102,7 @@ export const WS = {
   Hello: "hello",
   Prompt: "prompt",
   Interrupt: "interrupt",
+  Chat: "chat",
 } as const;
 
 export interface TurnTiming {
@@ -106,6 +138,8 @@ export interface StreamEvent {
   committed_through?: number;
   // SSE.Notification payload (server-pushed).
   notification?: Notification;
+  // SSE.Chat payload (project chatroom).
+  chat?: ChatMessage;
 }
 
 export interface Notification {

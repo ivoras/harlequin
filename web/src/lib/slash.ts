@@ -5,7 +5,7 @@
 // box buttons for dismiss/run, the queue list) are intentionally not duplicated.
 import { api } from "./api";
 import { sc } from "./session.svelte";
-import { toast } from "./stores";
+import { toast, projectSheet } from "./stores";
 
 export interface SlashCommand {
   name: string; // e.g. "/alert"
@@ -18,6 +18,7 @@ export interface SlashCommand {
 
 const commands: SlashCommand[] = [
   { name: "/help", desc: "show available commands" },
+  { name: "/project", desc: "manage projects (create / invite / switch)", run: () => projectSheet.set(true) },
   { name: "/export", desc: "download the session transcript", run: () => sc.exportTranscript() },
   {
     name: "/alert",

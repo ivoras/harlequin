@@ -10,10 +10,22 @@ import { WS } from "./types";
 
 type StatusHandler = (s: "open" | "reconnecting" | "closed") => void;
 
-function wsUrl(sessionID: number): string {
-  const base = getBase() || location.origin;
-  const wsBase = base.replace(/^http/, "ws");
-  return `${wsBase}/api/v1/sessions/${sessionID}/ws`;
+function wsBase(): string {
+  return (getBase() || location.origin).replace(/^http/, "ws");
+}
+
+// wsUrl is the personal session WS, or the shared project session WS when
+// projectID is set.
+function wsUrl(sessionID: number, projectID?: number): string {
+  if (projectID) return `${wsBase()}/api/v1/projects/${projectID}/sessions/${sessionID}/ws`;
+  return `${wsBase()}/api/v1/sessions/${sessionID}/ws`;
+}
+
+function wsProtocols(): string[] {
+  const protocols = ["harlequin"];
+  const tok = getToken();
+  if (tok) protocols.push("bearer." + tok);
+  return protocols;
 }
 
 export class SessionSocket {
@@ -23,10 +35,13 @@ export class SessionSocket {
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   private pending: string[] = []; // prompts submitted before the socket was open
 
+  // projectID (optional) attaches to a shared project session instead of a
+  // personal one.
   constructor(
     private sessionID: number,
     private onEvent: (ev: StreamEvent) => void,
     private onStatus?: StatusHandler,
+    private projectID = 0,
   ) {}
 
   // open connects with have_seq 0 (cold resume); reconnects reuse the last seq.
@@ -35,10 +50,7 @@ export class SessionSocket {
   }
 
   private connect(haveSeq: number): void {
-    const protocols = ["harlequin"];
-    const tok = getToken();
-    if (tok) protocols.push("bearer." + tok);
-    const ws = new WebSocket(wsUrl(this.sessionID), protocols);
+    const ws = new WebSocket(wsUrl(this.sessionID, this.projectID), wsProtocols());
     this.ws = ws;
 
     ws.onopen = () => {
@@ -84,6 +96,63 @@ export class SessionSocket {
   interrupt(): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: WS.Interrupt }));
+    }
+  }
+
+  close(): void {
+    this.closedByUser = true;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.ws?.close();
+    this.ws = null;
+  }
+}
+
+// ProjectChatSocket is the live project chatroom: on connect the server sends
+// recent history, then broadcasts each posted message. Auto-reconnects.
+export class ProjectChatSocket {
+  private ws: WebSocket | null = null;
+  private closedByUser = false;
+  private reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+  private pending: string[] = [];
+
+  constructor(
+    private projectID: number,
+    private onEvent: (ev: StreamEvent) => void,
+    private onStatus?: StatusHandler,
+  ) {}
+
+  open(): void {
+    const ws = new WebSocket(`${wsBase()}/api/v1/projects/${this.projectID}/ws`, wsProtocols());
+    this.ws = ws;
+    ws.onopen = () => {
+      this.onStatus?.("open");
+      for (const c of this.pending) ws.send(JSON.stringify({ type: WS.Chat, content: c }));
+      this.pending = [];
+    };
+    ws.onmessage = (e) => {
+      try {
+        this.onEvent(JSON.parse(e.data));
+      } catch {
+        /* ignore */
+      }
+    };
+    ws.onclose = () => {
+      this.ws = null;
+      if (this.closedByUser) {
+        this.onStatus?.("closed");
+        return;
+      }
+      this.onStatus?.("reconnecting");
+      this.reconnectTimer = setTimeout(() => this.open(), 1000);
+    };
+    ws.onerror = () => {};
+  }
+
+  post(content: string): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: WS.Chat, content }));
+    } else {
+      this.pending.push(content);
     }
   }
 

@@ -72,7 +72,18 @@ hr { border: none; border-top: 1px solid var(--border); }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-header .iconbtn { background: transparent; border: none; padding: 6px 8px; font-size: 18px; }
 
+/* Workspace: the main view, plus the project chatroom side-pane when active. */
+.workspace { flex: 1; min-height: 0; display: flex; flex-direction: row; }
 .app-main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.chatpane { flex: none; width: 300px; max-width: 38vw; min-width: 0; display: flex; flex-direction: column;
+  border-left: 1px solid var(--border); background: var(--surface); }
+.chatpane-head { padding: 8px 12px; border-bottom: 1px solid var(--border); font-weight: 600; }
+.chatpane-msgs { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; }
+.chatmsg { display: flex; flex-direction: column; gap: 2px; }
+.chatpane-compose { padding: 8px; border-top: 1px solid var(--border); }
+.chatpane-compose input { flex: 1; min-width: 0; }
+.chip { background: var(--surface-3); border: 1px solid var(--accent); border-radius: 12px; padding: 2px 8px; font-size: 0.85em; }
+@media (max-width: 640px) { .chatpane { position: fixed; inset: auto 0 0 0; width: 100%; max-width: 100%; height: 50dvh; z-index: 30; border-top: 1px solid var(--border); } }
 
 /* Persistent alert box (server-pushed notifications), shown on every view. */
 .alerts { flex: none; display: flex; flex-direction: column; gap: 6px;

@@ -1,8 +1,15 @@
 import { writable } from "svelte/store";
-import type { User } from "./types";
+import type { User, Project } from "./types";
 
 // The signed-in user (null = logged out).
 export const user = writable<User | null>(null);
+
+// The active project (null = working on personal sessions). When set, the session
+// list shows the project's sessions and the chatroom side-pane appears.
+export const activeProject = writable<Project | null>(null);
+
+// Whether the /project management sheet is open.
+export const projectSheet = writable<boolean>(false);
 
 // Which top-level view is shown (chat + management panels).
 export type View =
