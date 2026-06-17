@@ -184,6 +184,53 @@ type Notification struct {
 	Interface string `json:"interface,omitempty"`
 }
 
+// Project is a shared workspace: a collection of members, sessions, documents,
+// memories, and a chatroom, each project backed by its own database.
+type Project struct {
+	ID        int64     `json:"id"`
+	Name      string    `json:"name"`
+	CreatedBy int64     `json:"created_by"`
+	CreatedAt time.Time `json:"created_at"`
+	// Members is populated on the single-project detail endpoint.
+	Members []ProjectMember `json:"members,omitempty"`
+}
+
+// ProjectMember is a user belonging to a project.
+type ProjectMember struct {
+	UserID   int64     `json:"user_id"`
+	Email    string    `json:"email"`
+	JoinedAt time.Time `json:"joined_at"`
+}
+
+// ProjectInvite is a pending invitation for a user to join a project.
+type ProjectInvite struct {
+	ID          int64     `json:"id"`
+	ProjectID   int64     `json:"project_id"`
+	ProjectName string    `json:"project_name"`
+	InvitedBy   string    `json:"invited_by"` // inviter's email
+	Status      string    `json:"status"`     // pending | accepted | declined
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// ChatMessage is one message in a project's chatroom.
+type ChatMessage struct {
+	ID        int64     `json:"id"`
+	UserID    int64     `json:"user_id"`
+	Email     string    `json:"email"` // author's email (resolved for display)
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// CreateProjectRequest is the body of POST /projects.
+type CreateProjectRequest struct {
+	Name string `json:"name"`
+}
+
+// InviteRequest is the body of POST /projects/{id}/invite: invite by email.
+type InviteRequest struct {
+	Email string `json:"email"`
+}
+
 // Cron job kinds.
 const (
 	CronKindJS    = "js"    // run a JavaScript script (LLM-free)

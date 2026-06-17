@@ -17,7 +17,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-//go:embed migrations/system/*.sql migrations/shared/*.sql migrations/user/*.sql
+//go:embed migrations/system/*.sql migrations/shared/*.sql migrations/user/*.sql migrations/project/*.sql
 var migrationsFS embed.FS
 
 var registerOnce sync.Once
@@ -32,6 +32,9 @@ const (
 	Shared Role = "shared"
 	// User is a per-user user.db: that user's memories, sessions, etc.
 	User Role = "user"
+	// Project is a per-project project.db: a project's shared memories, documents,
+	// assigned sessions, and chatroom.
+	Project Role = "project"
 )
 
 // openConn opens a WAL connection to the database file (registering sqlite-vec
@@ -174,6 +177,12 @@ func createVirtualTables(sqlDB *sql.DB, role Role, dim int) error {
 		stmts = []string{
 			`CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(content)`,
 		}
+	case Project:
+		// A project has both a memory store and a document corpus, like shared.
+		stmts = []string{
+			`CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(content)`,
+			`CREATE VIRTUAL TABLE IF NOT EXISTS doc_chunks_fts USING fts5(content)`,
+		}
 	case System:
 		return nil
 	}
@@ -193,6 +202,8 @@ func vectorTableNames(role Role) []string {
 		return []string{"memories_vec", "memory_slots_vec", "doc_chunks_vec"}
 	case User:
 		return []string{"memories_vec", "memory_slots_vec"}
+	case Project:
+		return []string{"memories_vec", "memory_slots_vec", "doc_chunks_vec"}
 	}
 	return nil
 }
