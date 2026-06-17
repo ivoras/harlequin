@@ -45,12 +45,12 @@ func (s *Server) handleGetHat(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h)
 }
 
-// handleSetConversationHat sets (or clears) the hat worn by a conversation. The
+// handleSetSessionHat sets (or clears) the hat worn by a session. The
 // hat must exist unless it is being cleared.
-func (s *Server) handleSetConversationHat(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleSetSessionHat(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	var req types.SetConversationHatRequest
+	var req types.SetSessionHatRequest
 	if err := decode(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
@@ -66,10 +66,10 @@ func (s *Server) handleSetConversationHat(w http.ResponseWriter, r *http.Request
 		}
 	}
 	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
-		if _, e := s.Conversations.Get(r.Context(), udb, id, u.ID); e != nil {
+		if _, e := s.Sessions.Get(r.Context(), udb, id, u.ID); e != nil {
 			return e
 		}
-		return s.Conversations.SetHat(r.Context(), udb, id, req.Hat)
+		return s.Sessions.SetHat(r.Context(), udb, id, req.Hat)
 	})
 	if err != nil {
 		writeErr(w, http.StatusNotFound, "not found")

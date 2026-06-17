@@ -1,7 +1,7 @@
 // Package userconfig is a generic per-user key/value config store backed by the
 // `config` table in each user's database. It holds small settings that don't
 // warrant a dedicated table — for example registering a Telegram connection. Like
-// the conversation/notify stores it is stateless: every method takes the user's
+// the session/notify stores it is stateless: every method takes the user's
 // DB handle.
 package userconfig
 

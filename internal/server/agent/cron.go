@@ -57,17 +57,17 @@ func (a *Agent) RunCronJS(ctx context.Context, userID int64, username string, us
 	return strings.TrimRight(out, "\n"), nil
 }
 
-// RunCronSkill runs one headless agent turn for a cron job in a fresh conversation
+// RunCronSkill runs one headless agent turn for a cron job in a fresh session
 // (so per-run context does not accumulate). job.Target optionally names a skill to
 // bias toward; job.Prompt is the message; job.Input is appended as context. Returns
 // the agent's final text.
 func (a *Agent) RunCronSkill(ctx context.Context, userID int64, username, role string, userDB *sql.DB, job types.CronJob) (string, error) {
-	conv, err := a.Conversations.Create(ctx, userDB, userID, "cron: "+job.Name, "", types.APICron, types.InterfaceCron)
+	sess, err := a.Sessions.Create(ctx, userDB, userID, "cron: "+job.Name, "", types.APICron, types.InterfaceCron)
 	if err != nil {
 		return "", err
 	}
 	rc := &runContext{
-		conversationID: conv.ID,
+		sessionID:      sess.ID,
 		userID:         userID,
 		username:       username,
 		canShareMemory: types.IsElevated(role),

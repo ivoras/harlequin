@@ -94,8 +94,8 @@ const (
 	APICron     = "Cron"
 )
 
-// Conversation is a chat session, tied to a single interface/API.
-type Conversation struct {
+// Session is a chat session, tied to a single interface/API.
+type Session struct {
 	ID     int64   `json:"id"`
 	UserID int64   `json:"user_id"`
 	Title  string  `json:"title"`
@@ -125,8 +125,8 @@ type Hat struct {
 	Skills       []string `json:"skills,omitempty"`
 }
 
-// SetConversationHatRequest is the body of POST /conversations/{id}/hat.
-type SetConversationHatRequest struct {
+// SetSessionHatRequest is the body of POST /sessions/{id}/hat.
+type SetSessionHatRequest struct {
 	Hat string `json:"hat"` // empty clears the hat
 }
 
@@ -152,7 +152,7 @@ type MCPServer struct {
 }
 
 // NotifyKindSessionTitle is a control notification telling the client a session's
-// title changed (e.g. by the auto-titler): re-read/apply it for ConversationID.
+// title changed (e.g. by the auto-titler): re-read/apply it for SessionID.
 // The new title is carried in Title. Not shown as a chat message.
 const NotifyKindSessionTitle = "session-title"
 
@@ -166,9 +166,9 @@ type Notification struct {
 	Prompt      string `json:"prompt,omitempty"`
 	AutoRun     bool   `json:"auto_run"`
 	Status      string `json:"status"`
-	// ConversationID targets a specific session (set for control kinds like
+	// SessionID targets a specific session (set for control kinds like
 	// session-title); nil for general notifications.
-	ConversationID *int64 `json:"conversation_id,omitempty"`
+	SessionID *int64 `json:"session_id,omitempty"`
 	// Interface targets a specific interface (e.g. "TUI"): only clients announcing
 	// it receive the notification. Empty = broadcast to any interface.
 	Interface string `json:"interface,omitempty"`
@@ -202,10 +202,10 @@ type CronJob struct {
 	// "email", or "telegram".
 	NotifyChannel string     `json:"notify_channel,omitempty"`
 	NextRunAt     *time.Time `json:"next_run_at,omitempty"`
-	LastRunAt  *time.Time `json:"last_run_at,omitempty"`
-	LastStatus string     `json:"last_status,omitempty"` // "ok" | "error"
-	LastOutput string     `json:"last_output,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
+	LastRunAt     *time.Time `json:"last_run_at,omitempty"`
+	LastStatus    string     `json:"last_status,omitempty"` // "ok" | "error"
+	LastOutput    string     `json:"last_output,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
 }
 
 // CreateCronJobRequest is the body of POST /cron (and the cron_create tool).
@@ -224,11 +224,11 @@ type CreateCronJobRequest struct {
 
 // UpdateCronJobRequest is the body of PATCH /cron/{id}; nil fields are unchanged.
 type UpdateCronJobRequest struct {
-	Name    *string `json:"name,omitempty"`
-	Spec    *string `json:"spec,omitempty"`
-	Kind    *string `json:"kind,omitempty"`
-	Target  *string `json:"target,omitempty"`
-	Prompt  *string `json:"prompt,omitempty"`
+	Name          *string `json:"name,omitempty"`
+	Spec          *string `json:"spec,omitempty"`
+	Kind          *string `json:"kind,omitempty"`
+	Target        *string `json:"target,omitempty"`
+	Prompt        *string `json:"prompt,omitempty"`
 	Input         *string `json:"input,omitempty"`
 	Notify        *bool   `json:"notify,omitempty"`
 	Enabled       *bool   `json:"enabled,omitempty"`
@@ -270,13 +270,13 @@ type MCPAuthStartResult struct {
 	AuthorizeURL string `json:"authorize_url"`
 }
 
-// Message is a single message in a conversation.
+// Message is a single message in a session.
 type Message struct {
-	ID             int64      `json:"id"`
-	ConversationID int64      `json:"conversation_id"`
-	Role           string     `json:"role"` // system | user | assistant | tool
-	Content        string     `json:"content"`
-	ToolCalls      []ToolCall `json:"tool_calls,omitempty"`
+	ID        int64      `json:"id"`
+	SessionID int64      `json:"session_id"`
+	Role      string     `json:"role"` // system | user | assistant | tool
+	Content   string     `json:"content"`
+	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 	// ToolCallID and Name link a tool-result message back to the assistant
 	// tool call it answers (required by OpenAI-compatible providers on replay).
 	ToolCallID string    `json:"tool_call_id,omitempty"`
@@ -291,18 +291,21 @@ type ToolCall struct {
 	Arguments string `json:"arguments"` // raw JSON string of arguments
 }
 
-// CreateConversationRequest is the body of POST /conversations.
-type CreateConversationRequest struct {
+// CreateSessionRequest is the body of POST /sessions.
+type CreateSessionRequest struct {
 	Title string `json:"title"`
 	Hat   string `json:"hat,omitempty"` // optional: wear this hat from the start
 }
 
-// SendMessageRequest is the body of POST /conversations/{id}/messages.
+// SendMessageRequest is the prompt a client submits over the session WebSocket
+// (the `content` of a WSClientPrompt frame).
 type SendMessageRequest struct {
 	Content string `json:"content"`
 }
 
-// SSEEvent types streamed from the message endpoint.
+// Server→client stream event types (carried in StreamEvent.Type) sent over the
+// session WebSocket. Streaming is WebSocket-only; the historical SSE prefix is
+// retained on the constants for continuity, but the wire values are stable.
 const (
 	SSEToken          = "token"
 	SSEThinking       = "thinking"
@@ -312,7 +315,33 @@ const (
 	SSEAskUser        = "ask_user"
 	SSEPromptProgress = "prompt_progress" // llama.cpp prefill progress, before first token
 	SSEDone           = "done"
+	// SSEUserMessage echoes the user's prompt as the first event of a turn, so a
+	// (re)connecting client renders it from the stream rather than optimistically
+	// — making resume a single source of truth.
+	SSEUserMessage = "user_message"
+	// SSESynced is the control frame the server sends right after a client's hello,
+	// describing the live session state before replay/live events begin.
+	SSESynced = "synced"
 )
+
+// WebSocket client→server frame types (WSClientMessage.Type).
+const (
+	WSClientHello     = "hello"     // first frame: announce last seen seq for resume
+	WSClientPrompt    = "prompt"    // submit a prompt (Content) to the live session
+	WSClientInterrupt = "interrupt" // cancel the in-flight turn (keep the session alive)
+)
+
+// WSClientMessage is a frame sent by a client to the server over the session
+// WebSocket.
+type WSClientMessage struct {
+	Type string `json:"type"`
+	// Content is the prompt text (WSClientPrompt).
+	Content string `json:"content,omitempty"`
+	// HaveSeq is the highest StreamEvent.Seq the client has already processed
+	// (WSClientHello): 0 = cold resume (load committed history + replay the
+	// in-flight turn), >0 = warm reconnect (replay only the tail seq > HaveSeq).
+	HaveSeq int `json:"have_seq,omitempty"`
+}
 
 // StreamEvent is a single SSE event payload (JSON-encoded in the `data:` field).
 type StreamEvent struct {
@@ -345,6 +374,18 @@ type StreamEvent struct {
 	// Timing (SSEDone), populated only when the server's timing report is enabled.
 	// Present indicates timing is available for this turn.
 	Timing *TurnTiming `json:"timing,omitempty"`
+	// Seq is the session-monotonic sequence number of this event, assigned by the
+	// session hub. Clients track the highest Seq they have processed and send it
+	// as HaveSeq on reconnect to replay only what they missed.
+	Seq int `json:"seq,omitempty"`
+	// Running (SSESynced) reports whether a turn is in flight on the server.
+	Running bool `json:"running,omitempty"`
+	// CommittedThrough (SSESynced) is the highest message id already durably
+	// committed before the in-flight turn began. On a cold resume the client
+	// renders committed messages with id <= CommittedThrough and reconstructs the
+	// in-flight turn from the replayed buffer (which re-emits it from its first
+	// event, including the SSEUserMessage echo).
+	CommittedThrough int64 `json:"committed_through,omitempty"`
 }
 
 // TurnTiming reports model operation timing aggregated over a turn's LLM calls.
@@ -444,7 +485,7 @@ type SearchResult struct {
 type UsageRecord struct {
 	ID               int64     `json:"id"`
 	UserID           int64     `json:"user_id"`
-	ConversationID   *int64    `json:"conversation_id,omitempty"`
+	SessionID        *int64    `json:"session_id,omitempty"`
 	Provider         string    `json:"provider"`
 	Model            string    `json:"model"`
 	PromptTokens     int       `json:"prompt_tokens"`

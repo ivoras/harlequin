@@ -1,8 +1,8 @@
-// Package apiclient is the client-side REST + SSE client for the Harlequin server.
+// Package apiclient is the client-side REST + WebSocket client for the Harlequin
+// server. Chat streaming runs over a per-session WebSocket; everything else is REST.
 package apiclient
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -14,8 +14,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
@@ -130,20 +133,20 @@ func (c *Client) Me(ctx context.Context) (*types.User, error) {
 	return &u, c.do(ctx, http.MethodGet, "/me", nil, &u)
 }
 
-// ListConversations returns conversations (optionally filtered).
-func (c *Client) ListConversations(ctx context.Context, q string) ([]types.Conversation, error) {
-	var out []types.Conversation
-	path := "/conversations"
+// ListSessions returns sessions (optionally filtered).
+func (c *Client) ListSessions(ctx context.Context, q string) ([]types.Session, error) {
+	var out []types.Session
+	path := "/sessions"
 	if q != "" {
 		path += "?q=" + q
 	}
 	return out, c.do(ctx, http.MethodGet, path, nil, &out)
 }
 
-// CreateConversation starts a conversation.
-func (c *Client) CreateConversation(ctx context.Context, title, hat string) (*types.Conversation, error) {
-	var conv types.Conversation
-	return &conv, c.do(ctx, http.MethodPost, "/conversations", types.CreateConversationRequest{Title: title, Hat: hat}, &conv)
+// CreateSession starts a session.
+func (c *Client) CreateSession(ctx context.Context, title, hat string) (*types.Session, error) {
+	var sess types.Session
+	return &sess, c.do(ctx, http.MethodPost, "/sessions", types.CreateSessionRequest{Title: title, Hat: hat}, &sess)
 }
 
 // Reload expires the server's .md source-file cache (skills, system prompts,
@@ -164,10 +167,10 @@ func (c *Client) GetHat(ctx context.Context, name string) (*types.Hat, error) {
 	return &out, c.do(ctx, http.MethodGet, "/hats/"+name, nil, &out)
 }
 
-// SetConversationHat sets (or clears, when hat is empty) the conversation's hat.
-func (c *Client) SetConversationHat(ctx context.Context, conversationID int64, hat string) error {
-	return c.do(ctx, http.MethodPost, fmt.Sprintf("/conversations/%d/hat", conversationID),
-		types.SetConversationHatRequest{Hat: hat}, nil)
+// SetSessionHat sets (or clears, when hat is empty) the session's hat.
+func (c *Client) SetSessionHat(ctx context.Context, sessionID int64, hat string) error {
+	return c.do(ctx, http.MethodPost, fmt.Sprintf("/sessions/%d/hat", sessionID),
+		types.SetSessionHatRequest{Hat: hat}, nil)
 }
 
 // ListMCP returns the visible MCP servers (shared + the user's own) with status.
@@ -279,10 +282,10 @@ func (c *Client) DeleteConfig(ctx context.Context, key string) error {
 	return c.do(ctx, http.MethodDelete, "/config/"+url.PathEscape(key), nil, nil)
 }
 
-// Messages returns a conversation's messages.
+// Messages returns a session's messages.
 func (c *Client) Messages(ctx context.Context, id int64) ([]types.Message, error) {
 	var out []types.Message
-	return out, c.do(ctx, http.MethodGet, fmt.Sprintf("/conversations/%d/messages", id), nil, &out)
+	return out, c.do(ctx, http.MethodGet, fmt.Sprintf("/sessions/%d/messages", id), nil, &out)
 }
 
 // ListSkills returns the skill catalogue.
@@ -417,49 +420,99 @@ func (c *Client) Usage(ctx context.Context) ([]types.UsageRecord, error) {
 	return out, c.do(ctx, http.MethodGet, "/usage", nil, &out)
 }
 
-// SendMessage streams the agent's response. Events are delivered to onEvent
-// until the stream ends or ctx is cancelled.
-func (c *Client) SendMessage(ctx context.Context, conversationID int64, content string, onEvent func(types.StreamEvent)) error {
-	b, _ := json.Marshal(types.SendMessageRequest{Content: content})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		fmt.Sprintf("%s/api/v1/conversations/%d/messages", c.baseURL, conversationID), bytes.NewReader(b))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "text/event-stream")
+// Session is a live WebSocket connection to a server-side session. The server
+// runs the turn independently of this connection, so dropping it does not cancel
+// the turn — reopen the Session (with HaveSeq) to resume. Events are delivered on
+// Events() until the socket closes.
+type Session struct {
+	c       *websocket.Conn
+	events  chan types.StreamEvent
+	cancel  context.CancelFunc
+	writeMu sync.Mutex
+}
+
+// OpenSession dials the session WebSocket and performs the resume handshake.
+// haveSeq is the highest StreamEvent.Seq already processed by the caller (0 for a
+// cold resume: load committed history via Messages, then the server replays any
+// in-flight turn). The returned Session streams events on Events().
+func (c *Client) OpenSession(ctx context.Context, sessionID int64, haveSeq int) (*Session, error) {
+	wsURL := wsScheme(c.baseURL) + fmt.Sprintf("/api/v1/sessions/%d/ws", sessionID)
+	hdr := http.Header{}
 	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
+		hdr.Set("Authorization", "Bearer "+c.token)
 	}
 	if c.iface != "" {
-		req.Header.Set(types.HeaderInterface, c.iface)
+		hdr.Set(types.HeaderInterface, c.iface)
 	}
-	resp, err := c.http.Do(req)
+	conn, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
+		HTTPHeader:   hdr,
+		Subprotocols: []string{"harlequin"},
+	})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		return fmt.Errorf("send: %s: %s", resp.Status, strings.TrimSpace(string(msg)))
+	conn.SetReadLimit(8 << 20) // tool outputs / long messages
+	// The hello handshake announces our resume position.
+	if err := wsjson.Write(ctx, conn, types.WSClientMessage{Type: types.WSClientHello, HaveSeq: haveSeq}); err != nil {
+		conn.CloseNow()
+		return nil, err
 	}
 
-	scanner := bufio.NewScanner(resp.Body)
-	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if !strings.HasPrefix(line, "data:") {
-			continue
-		}
-		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+	rctx, cancel := context.WithCancel(context.Background())
+	s := &Session{c: conn, events: make(chan types.StreamEvent, 256), cancel: cancel}
+	go s.readLoop(rctx)
+	return s, nil
+}
+
+func (s *Session) readLoop(ctx context.Context) {
+	defer close(s.events)
+	for {
 		var ev types.StreamEvent
-		if err := json.Unmarshal([]byte(data), &ev); err != nil {
-			continue
+		if err := wsjson.Read(ctx, s.c, &ev); err != nil {
+			return
 		}
-		onEvent(ev)
-		if ev.Type == types.SSEDone {
-			break
+		select {
+		case s.events <- ev:
+		case <-ctx.Done():
+			return
 		}
 	}
-	return scanner.Err()
+}
+
+// Events is the stream of server events; it is closed when the socket ends.
+func (s *Session) Events() <-chan types.StreamEvent { return s.events }
+
+// Submit sends a prompt to the live session (queued server-side if a turn runs).
+func (s *Session) Submit(content string) error {
+	return s.write(types.WSClientMessage{Type: types.WSClientPrompt, Content: content})
+}
+
+// Interrupt cancels the in-flight turn without ending the session.
+func (s *Session) Interrupt() error {
+	return s.write(types.WSClientMessage{Type: types.WSClientInterrupt})
+}
+
+func (s *Session) write(m types.WSClientMessage) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return wsjson.Write(ctx, s.c, m)
+}
+
+// Close tears down the connection (the server-side session keeps running).
+func (s *Session) Close() error {
+	s.cancel()
+	return s.c.Close(websocket.StatusNormalClosure, "")
+}
+
+// wsScheme rewrites an http(s) base URL to its ws(s) equivalent.
+func wsScheme(base string) string {
+	if strings.HasPrefix(base, "https://") {
+		return "wss://" + strings.TrimPrefix(base, "https://")
+	}
+	if strings.HasPrefix(base, "http://") {
+		return "ws://" + strings.TrimPrefix(base, "http://")
+	}
+	return base
 }

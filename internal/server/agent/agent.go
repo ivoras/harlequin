@@ -14,7 +14,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ivoras/harlequin/internal/server/conversation"
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/jsrun"
 	"github.com/ivoras/harlequin/internal/server/llm"
@@ -23,6 +22,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/notify"
 	"github.com/ivoras/harlequin/internal/server/notifyx"
 	"github.com/ivoras/harlequin/internal/server/presence"
+	"github.com/ivoras/harlequin/internal/server/session"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/skills"
 	"github.com/ivoras/harlequin/internal/server/storage"
@@ -32,16 +32,16 @@ import (
 
 // Agent runs the tool-calling loop.
 type Agent struct {
-	Provider      llm.Provider
-	Storage       *storage.Manager
-	Memory        *memory.Store
-	Docs          *documents.Store
-	Skills        *skills.Manager
-	Runner        *jsrun.Runner
-	Conversations *conversation.Store
-	Session       *sessionlog.Logger
-	WebFetcher    *webfetch.Client
-	MCP           *mcp.Manager
+	Provider   llm.Provider
+	Storage    *storage.Manager
+	Memory     *memory.Store
+	Docs       *documents.Store
+	Skills     *skills.Manager
+	Runner     *jsrun.Runner
+	Sessions   *session.Store
+	Session    *sessionlog.Logger
+	WebFetcher *webfetch.Client
+	MCP        *mcp.Manager
 	// Cron, if set, lets the agent schedule/list/delete the user's cron jobs.
 	Cron CronStore
 	// Notify, if set, lets background tasks (e.g. the auto-titler) raise
@@ -86,7 +86,7 @@ type Agent struct {
 
 	// RecordUsage, if set, is called with attributed token usage per completion.
 	// userDB is the caller's open per-user database.
-	RecordUsage func(ctx context.Context, userDB *sql.DB, userID int64, conversationID *int64, provider, model string, u llm.Usage)
+	RecordUsage func(ctx context.Context, userDB *sql.DB, userID int64, sessionID *int64, provider, model string, u llm.Usage)
 	// ContextMax, if set, returns the model's max context window in tokens.
 	ContextMax func(model string) int
 }
@@ -96,12 +96,12 @@ type EmitFunc func(types.StreamEvent)
 
 // runContext carries per-request state.
 type runContext struct {
-	conversationID int64
+	sessionID      int64
 	userID         int64
 	username       string
 	canShareMemory bool       // owner or admin: may create/delete shared memories
 	userDB         *sql.DB    // the caller's open per-user database for this request
-	hat            *types.Hat // the conversation's worn hat, or nil
+	hat            *types.Hat // the session's worn hat, or nil
 	api            string     // transport this session arrived over (e.g. "REST")
 	iface          string     // interface/medium this session uses (e.g. "TUI")
 	turn           int
@@ -121,14 +121,14 @@ const fallbackSystemPrompt = `You are Harlequin, a helpful AI assistant for an o
 // Run executes a full turn for the given user message, streaming events via
 // emit. It opens the caller's per-user database for the duration of the turn
 // and closes it before any background work.
-func (a *Agent) Run(ctx context.Context, conversationID, userID int64, username, role, api, iface, userContent string, emit EmitFunc) error {
+func (a *Agent) Run(ctx context.Context, sessionID, userID int64, username, role, api, iface, userContent string, emit EmitFunc) error {
 	if api == "" {
 		api = types.APIREST
 	}
 	if iface == "" {
 		iface = types.InterfaceTUI
 	}
-	rc := &runContext{conversationID: conversationID, userID: userID, username: username, canShareMemory: types.IsElevated(role), api: api, iface: iface, turn: 1, emit: emit}
+	rc := &runContext{sessionID: sessionID, userID: userID, username: username, canShareMemory: types.IsElevated(role), api: api, iface: iface, turn: 1, emit: emit}
 
 	var finalText string
 	if err := a.Storage.WithUser(ctx, userID, func(userDB *sql.DB) error {
@@ -157,7 +157,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	defer a.inFlight.Add(-1)
 	a.preemptBackgroundLLM()
 
-	conversationID := rc.conversationID
+	sessionID := rc.sessionID
 	userID := rc.userID
 	emit := rc.emit
 
@@ -170,11 +170,16 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	a.logEvent(ctx, rc, sessionlog.TypeUserMessage, map[string]any{"content": userContent})
 
 	// Persist the user message.
-	if _, err := a.Conversations.AddMessage(ctx, rc.userDB, conversationID, llm.RoleUser, userContent, nil); err != nil {
+	if _, err := a.Sessions.AddMessage(ctx, rc.userDB, sessionID, llm.RoleUser, userContent, nil); err != nil {
 		return "", err
 	}
 
-	// Resolve the conversation's worn hat up front: it governs the system prompt
+	// Echo the prompt as the first event of the turn so a (re)connecting client
+	// renders it from the stream rather than optimistically — the resume buffer is
+	// then a complete, self-contained record of the in-flight turn.
+	emit(types.StreamEvent{Type: types.SSEUserMessage, Text: userContent})
+
+	// Resolve the session's worn hat up front: it governs the system prompt
 	// and which skills are visible (so it must be set before tools are built).
 	a.loadHat(ctx, rc)
 
@@ -214,7 +219,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	}
 
 	// Compose messages: system + history.
-	history, err := a.Conversations.Messages(ctx, rc.userDB, conversationID)
+	history, err := a.Sessions.Messages(ctx, rc.userDB, sessionID)
 	if err != nil {
 		return "", err
 	}
@@ -238,7 +243,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	turnStart := time.Now()
 	// Fallback (wall-clock) accumulators, used when the provider reports no
 	// server-side timing. Prompt tokens are cache-discounted so PP is not
-	// inflated by KV-cached conversation history.
+	// inflated by KV-cached session history.
 	var timePromptTokens, timeCompletionTokens int
 	var timePrefill, timeDecode time.Duration
 	// Server-reported timing accumulators (preferred; prompt_n excludes cache).
@@ -359,7 +364,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 						"total_tokens":      chunk.Usage.TotalTokens,
 					})
 					if a.RecordUsage != nil {
-						cid := conversationID
+						cid := sessionID
 						a.RecordUsage(ctx, rc.userDB, userID, &cid, chunk.Provider, chunk.Model, *chunk.Usage)
 					}
 				}
@@ -386,7 +391,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 
 		if len(toolCalls) == 0 {
 			finalText = assistantText
-			if _, err := a.Conversations.AddMessage(ctx, rc.userDB, conversationID, llm.RoleAssistant, assistantText, nil); err != nil {
+			if _, err := a.Sessions.AddMessage(ctx, rc.userDB, sessionID, llm.RoleAssistant, assistantText, nil); err != nil {
 				return "", err
 			}
 			break
@@ -394,7 +399,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 
 		// Record the assistant message that requested tools.
 		msgs = append(msgs, llm.Message{Role: llm.RoleAssistant, Content: assistantText, ToolCalls: toolCalls})
-		_, _ = a.Conversations.AddMessage(ctx, rc.userDB, conversationID, llm.RoleAssistant, assistantText, fromLLMToolCalls(toolCalls))
+		_, _ = a.Sessions.AddMessage(ctx, rc.userDB, sessionID, llm.RoleAssistant, assistantText, fromLLMToolCalls(toolCalls))
 
 		// Dispatch each tool call.
 		askedUser := false
@@ -406,7 +411,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 				ToolCallID: tc.ID,
 				Name:       tc.Function.Name,
 			})
-			_, _ = a.Conversations.AddMessageFull(ctx, rc.userDB, conversationID, llm.RoleTool, result, nil, tc.ID, tc.Function.Name)
+			_, _ = a.Sessions.AddMessageFull(ctx, rc.userDB, sessionID, llm.RoleTool, result, nil, tc.ID, tc.Function.Name)
 			if tc.Function.Name == "ask_user" {
 				askedUser = true
 			}
@@ -584,14 +589,14 @@ func (a *Agent) composeSystemPrompt(ctx context.Context, rc *runContext) string 
 	return prompt
 }
 
-// loadHat sets rc.hat from the conversation's worn hat (if any), reading the
+// loadHat sets rc.hat from the session's worn hat (if any), reading the
 // hat definition from the deployed hats directory.
 func (a *Agent) loadHat(ctx context.Context, rc *runContext) {
-	conv, err := a.Conversations.Get(ctx, rc.userDB, rc.conversationID, rc.userID)
-	if err != nil || conv.Hat == nil || *conv.Hat == "" {
+	sess, err := a.Sessions.Get(ctx, rc.userDB, rc.sessionID, rc.userID)
+	if err != nil || sess.Hat == nil || *sess.Hat == "" {
 		return
 	}
-	if hat, err := a.Skills.GetHat(*conv.Hat); err == nil {
+	if hat, err := a.Skills.GetHat(*sess.Hat); err == nil {
 		rc.hat = hat
 	}
 }
@@ -616,12 +621,12 @@ func (a *Agent) logEvent(ctx context.Context, rc *runContext, typ string, data m
 		return
 	}
 	a.Session.Log(ctx, sessionlog.Event{
-		ConversationID: rc.conversationID,
-		UserID:         rc.userID,
-		Turn:           rc.turn,
-		Step:           rc.step,
-		Type:           typ,
-		Data:           data,
+		SessionID: rc.sessionID,
+		UserID:    rc.userID,
+		Turn:      rc.turn,
+		Step:      rc.step,
+		Type:      typ,
+		Data:      data,
 	})
 }
 

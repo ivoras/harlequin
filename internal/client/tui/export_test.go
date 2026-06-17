@@ -24,18 +24,18 @@ func TestFormatExportBlock_roles(t *testing.T) {
 func TestFormatSessionMarkdown_header(t *testing.T) {
 	t.Parallel()
 	m := &Model{
-		cfg:            &clientcfg.Config{ServerURL: "http://localhost:8080"},
-		user:           &types.User{Email: "alice"},
-		conversationID: 7,
-		blocks:         []roleBlock{{role: "user", text: "hi"}},
+		cfg:       &clientcfg.Config{ServerURL: "http://localhost:8080"},
+		user:      &types.User{Email: "alice"},
+		sessionID: 7,
+		blocks:    []roleBlock{{role: "user", text: "hi"}},
 	}
 	out := formatSessionMarkdown(m, m.blocks)
-	if !strings.Contains(out, "**User:** alice") || !strings.Contains(out, "**Conversation ID:** 7") {
+	if !strings.Contains(out, "**User:** alice") || !strings.Contains(out, "**Session ID:** 7") {
 		t.Fatalf("header missing fields:\n%s", out)
 	}
 }
 
-func TestOnlyConversationFiltersToUserAndAssistant(t *testing.T) {
+func TestOnlySessionFiltersToUserAndAssistant(t *testing.T) {
 	blocks := []roleBlock{
 		{role: "user", text: "hi"},
 		{role: "thinking", text: "hmm"},
@@ -44,12 +44,12 @@ func TestOnlyConversationFiltersToUserAndAssistant(t *testing.T) {
 		{role: "status", text: "connected"},
 		{role: "error", text: "boom"},
 	}
-	got := onlyConversation(blocks)
+	got := onlySession(blocks)
 	if len(got) != 2 || got[0].role != "user" || got[1].role != "assistant" {
 		t.Fatalf("got %+v", got)
 	}
-	// raw keeps everything; default keeps only the conversation.
-	if len(onlyConversation(blocks)) == len(blocks) {
-		t.Fatal("non-raw export should drop non-conversation blocks")
+	// raw keeps everything; default keeps only the session.
+	if len(onlySession(blocks)) == len(blocks) {
+		t.Fatal("non-raw export should drop non-session blocks")
 	}
 }

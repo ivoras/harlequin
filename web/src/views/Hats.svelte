@@ -13,9 +13,9 @@
     }
   });
   async function wear(h: Hat) {
-    if (!$session.id) return toast("no active conversation", "error");
+    if (!$session.id) return toast("no active session", "error");
     try {
-      await api.setConversationHat($session.id, h.name);
+      await api.setSessionHat($session.id, h.name);
       toast(`wearing the ${h.name} hat`);
     } catch (e) {
       toast((e as Error).message, "error");
@@ -24,7 +24,7 @@
   async function off() {
     if (!$session.id) return;
     try {
-      await api.setConversationHat($session.id, "");
+      await api.setSessionHat($session.id, "");
       toast("hat off");
     } catch (e) {
       toast((e as Error).message, "error");
@@ -35,7 +35,7 @@
 <section class="panel">
   <div class="container col">
     <div class="row"><h3>Hats</h3><span class="spacer"></span><button class="small" onclick={off}>No hat</button></div>
-    <div class="muted small">A hat sets the system prompt + visible skills for this conversation.</div>
+    <div class="muted small">A hat sets the system prompt + visible skills for this session.</div>
     <div class="list">
       {#each hats as h}
         <div class="card col">

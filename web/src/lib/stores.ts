@@ -10,7 +10,7 @@ export type View =
   | "mcp" | "cron" | "config" | "usage";
 export const view = writable<View>("chat");
 
-// The active conversation shown in the header (title is auto-updated by the
+// The active session shown in the header (title is auto-updated by the
 // server's auto-titler via a session-title notification).
 export const session = writable<{ id: number; title: string }>({ id: 0, title: "" });
 

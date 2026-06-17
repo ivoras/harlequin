@@ -3,7 +3,7 @@
 // can be overridden for a standalone/decoupled deployment.
 import { INTERFACE } from "./types";
 import type {
-  LoginResponse, User, Conversation, Message, Hat, SkillInfo, SkillFiles,
+  LoginResponse, User, Session, Message, Hat, SkillInfo, SkillFiles,
   Memory, MemoryConflict, SearchResult, MCPServer, RegisterMCPRequest,
   MCPTestResult, MCPAuthStartResult, CronJob, CreateCronJobRequest,
   UpdateCronJobRequest, UsageRecord, Notification, Document, CreateDocumentRequest,
@@ -99,15 +99,15 @@ export const api = {
   logout: () => req<void>("POST", "/auth/logout"),
   me: () => req<User>("GET", "/me"),
 
-  // conversations
-  listConversations: (query = "") =>
-    reqList<Conversation>("GET", "/conversations" + (query ? `?q=${q(query)}` : "")),
-  createConversation: (title: string, hat = "") =>
-    req<Conversation>("POST", "/conversations", { title, hat }),
-  getMessages: (id: number) => reqList<Message>("GET", `/conversations/${id}/messages`),
-  deleteConversation: (id: number) => req<void>("DELETE", `/conversations/${id}`),
-  setConversationHat: (id: number, hat: string) =>
-    req<void>("POST", `/conversations/${id}/hat`, { hat }),
+  // sessions
+  listSessions: (query = "") =>
+    reqList<Session>("GET", "/sessions" + (query ? `?q=${q(query)}` : "")),
+  createSession: (title: string, hat = "") =>
+    req<Session>("POST", "/sessions", { title, hat }),
+  getMessages: (id: number) => reqList<Message>("GET", `/sessions/${id}/messages`),
+  deleteSession: (id: number) => req<void>("DELETE", `/sessions/${id}`),
+  setSessionHat: (id: number, hat: string) =>
+    req<void>("POST", `/sessions/${id}/hat`, { hat }),
 
   // hats
   listHats: () => reqList<Hat>("GET", "/hats"),

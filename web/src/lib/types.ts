@@ -22,7 +22,7 @@ export interface LoginResponse {
   user: User;
 }
 
-export interface Conversation {
+export interface Session {
   id: number;
   user_id: number;
   title: string;
@@ -41,7 +41,7 @@ export interface ToolCall {
 
 export interface Message {
   id: number;
-  conversation_id: number;
+  session_id: number;
   role: string; // system | user | assistant | tool
   content: string;
   tool_calls?: ToolCall[];
@@ -50,7 +50,8 @@ export interface Message {
   created_at: string;
 }
 
-// --- streaming (SSE) ---
+// --- streaming (WebSocket) ---
+// Server→client event types (StreamEvent.type).
 export const SSE = {
   Token: "token",
   Thinking: "thinking",
@@ -60,6 +61,15 @@ export const SSE = {
   AskUser: "ask_user",
   PromptProgress: "prompt_progress",
   Done: "done",
+  UserMessage: "user_message",
+  Synced: "synced",
+} as const;
+
+// Client→server frame types (WSClientMessage.type).
+export const WS = {
+  Hello: "hello",
+  Prompt: "prompt",
+  Interrupt: "interrupt",
 } as const;
 
 export interface TurnTiming {
@@ -89,6 +99,10 @@ export interface StreamEvent {
   prompt_processed?: number;
   prompt_total?: number;
   source?: string;
+  seq?: number;
+  // SSE.Synced control frame fields.
+  running?: boolean;
+  committed_through?: number;
 }
 
 export interface Notification {
@@ -99,7 +113,7 @@ export interface Notification {
   prompt?: string;
   auto_run: boolean;
   status: string;
-  conversation_id?: number;
+  session_id?: number;
   interface?: string;
 }
 export const NOTIFY_SESSION_TITLE = "session-title";
@@ -258,7 +272,7 @@ export interface CreateDocumentRequest {
 export interface UsageRecord {
   id: number;
   user_id: number;
-  conversation_id?: number;
+  session_id?: number;
   provider: string;
   model: string;
   prompt_tokens: number;

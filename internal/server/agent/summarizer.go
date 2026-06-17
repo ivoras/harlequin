@@ -63,11 +63,11 @@ func (a *Agent) titlePass(ctx context.Context) {
 		if !a.llmFree() {
 			return context.Canceled // a turn started; resume next tick
 		}
-		convs, err := a.Conversations.UntitledWithUserMessage(ctx, udb)
+		sessions, err := a.Sessions.UntitledWithUserMessage(ctx, udb)
 		if err != nil {
 			return nil // skip this user on error
 		}
-		for _, c := range convs {
+		for _, c := range sessions {
 			if !a.llmFree() {
 				return context.Canceled
 			}
@@ -77,10 +77,10 @@ func (a *Agent) titlePass(ctx context.Context) {
 	})
 }
 
-// titleOne summarizes one conversation into a title, persists it, and notifies
+// titleOne summarizes one session into a title, persists it, and notifies
 // the client to refresh its header.
-func (a *Agent) titleOne(ctx context.Context, udb *sql.DB, userID, convID int64, iface string) {
-	msgs, err := a.Conversations.Messages(ctx, udb, convID)
+func (a *Agent) titleOne(ctx context.Context, udb *sql.DB, userID, sessID int64, iface string) {
+	msgs, err := a.Sessions.Messages(ctx, udb, sessID)
 	if err != nil || len(msgs) == 0 {
 		return
 	}
@@ -88,20 +88,20 @@ func (a *Agent) titleOne(ctx context.Context, udb *sql.DB, userID, convID int64,
 	if err != nil || title == "" {
 		return
 	}
-	if err := a.Conversations.SetTitle(ctx, udb, convID, title); err != nil {
-		log.Printf("auto-title: set title for conv %d (user %d): %v", convID, userID, err)
+	if err := a.Sessions.SetTitle(ctx, udb, sessID, title); err != nil {
+		log.Printf("auto-title: set title for sess %d (user %d): %v", sessID, userID, err)
 		return
 	}
-	log.Printf("auto-title: conv %d (user %d) -> %q", convID, userID, title)
+	log.Printf("auto-title: sess %d (user %d) -> %q", sessID, userID, title)
 	// Notify only the interface that owns this session, and only if it's live —
 	// no point telling clients that aren't listening.
 	if a.Notify != nil && a.Presence != nil && a.Presence.Alive(userID, iface, interfaceAliveWindow) {
-		cid := convID
+		cid := sessID
 		_, _ = a.Notify.Create(ctx, udb, types.Notification{
-			Kind:           types.NotifyKindSessionTitle,
-			Title:          title,
-			ConversationID: &cid,
-			Interface:      iface,
+			Kind:      types.NotifyKindSessionTitle,
+			Title:     title,
+			SessionID: &cid,
+			Interface: iface,
 		})
 	}
 }
@@ -112,7 +112,7 @@ func (a *Agent) generateTitle(ctx context.Context, msgs []types.Message) (string
 	if strings.TrimSpace(transcript) == "" {
 		return "", nil
 	}
-	const sys = "You write a terse title for a chat conversation. Reply with ONLY the title: at most 6 words, no surrounding quotes, no trailing punctuation, no preamble."
+	const sys = "You write a terse title for a chat session. Reply with ONLY the title: at most 6 words, no surrounding quotes, no trailing punctuation, no preamble."
 	// The completion shares the background-LLM slot with memory extraction: one
 	// background job at a time, started only while no live turn is on the model,
 	// preempted (and retried) if a live turn begins mid-completion.
@@ -122,7 +122,7 @@ func (a *Agent) generateTitle(ctx context.Context, msgs []types.Message) (string
 		text, _, err = a.completeOnce(jobCtx, llm.ChatRequest{
 			Messages: []llm.Message{
 				{Role: llm.RoleSystem, Content: sys},
-				{Role: llm.RoleUser, Content: "Conversation:\n" + transcript + "\n\nTitle:"},
+				{Role: llm.RoleUser, Content: "Session:\n" + transcript + "\n\nTitle:"},
 			},
 			Temperature: llm.Ptr(0.2),
 		})

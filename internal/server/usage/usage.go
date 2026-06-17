@@ -32,14 +32,14 @@ func (s *Store) EstimateCost(model string, promptTokens, completionTokens int) f
 }
 
 // Record stores a usage row in the user's database.
-func (s *Store) Record(ctx context.Context, db *sql.DB, conversationID *int64, provider, model string, promptTokens, completionTokens int) error {
+func (s *Store) Record(ctx context.Context, db *sql.DB, sessionID *int64, provider, model string, promptTokens, completionTokens int) error {
 	cost := s.EstimateCost(model, promptTokens, completionTokens)
 	var cid any
-	if conversationID != nil {
-		cid = *conversationID
+	if sessionID != nil {
+		cid = *sessionID
 	}
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO usage(conversation_id, provider, model, prompt_tokens, completion_tokens, est_cost_usd)
+		`INSERT INTO usage(session_id, provider, model, prompt_tokens, completion_tokens, est_cost_usd)
 		 VALUES (?, ?, ?, ?, ?, ?)`,
 		cid, provider, model, promptTokens, completionTokens, cost)
 	return err
@@ -48,7 +48,7 @@ func (s *Store) Record(ctx context.Context, db *sql.DB, conversationID *int64, p
 // Query returns usage rows for the user (the owner of db) within a time window
 // (zero times = unbounded).
 func (s *Store) Query(ctx context.Context, db *sql.DB, userID int64, from, to time.Time) ([]types.UsageRecord, error) {
-	q := `SELECT id, conversation_id, provider, model, prompt_tokens, completion_tokens, est_cost_usd, created_at
+	q := `SELECT id, session_id, provider, model, prompt_tokens, completion_tokens, est_cost_usd, created_at
 		FROM usage`
 	var args []any
 	var conds []string
@@ -81,7 +81,7 @@ func (s *Store) Query(ctx context.Context, db *sql.DB, userID int64, from, to ti
 			return nil, err
 		}
 		if cid.Valid {
-			r.ConversationID = &cid.Int64
+			r.SessionID = &cid.Int64
 		}
 		out = append(out, r)
 	}

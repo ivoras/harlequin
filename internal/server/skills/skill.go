@@ -12,8 +12,8 @@ import (
 
 // Frontmatter is the YAML header of a SKILL.md.
 type Frontmatter struct {
-	Name        string          `yaml:"name"`
-	Description string          `yaml:"description"`
+	Name        string           `yaml:"name"`
+	Description string           `yaml:"description"`
 	Tools       []ToolDefinition `yaml:"tools"`
 }
 

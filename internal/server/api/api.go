@@ -13,7 +13,6 @@ import (
 	"github.com/ivoras/harlequin/internal/server/audit"
 	"github.com/ivoras/harlequin/internal/server/auth"
 	"github.com/ivoras/harlequin/internal/server/config"
-	"github.com/ivoras/harlequin/internal/server/conversation"
 	"github.com/ivoras/harlequin/internal/server/cron"
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/email"
@@ -22,6 +21,8 @@ import (
 	"github.com/ivoras/harlequin/internal/server/notify"
 	"github.com/ivoras/harlequin/internal/server/pdfextract"
 	"github.com/ivoras/harlequin/internal/server/presence"
+	"github.com/ivoras/harlequin/internal/server/session"
+	"github.com/ivoras/harlequin/internal/server/sessionhub"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/skills"
 	"github.com/ivoras/harlequin/internal/server/storage"
@@ -32,25 +33,26 @@ import (
 
 // Server holds the dependencies for the HTTP handlers.
 type Server struct {
-	Cfg           *config.Config
-	Storage       *storage.Manager
-	Auth          *auth.Store
-	Conversations *conversation.Store
-	Memory        *memory.Store
-	Docs          *documents.Store
-	Skills        *skills.Manager
-	Usage         *usage.Store
-	Audit         *audit.Store
-	Session       *sessionlog.Logger
-	Agent         *agent.Agent
-	MCP           *mcp.Manager
-	Notify        *notify.Store
-	Cron          *cron.Store
-	CronSched     *cron.Scheduler
-	UserConfig    *userconfig.Store
-	Presence      *presence.Tracker
-	Email         *email.Sender
-	PDFExtract    *pdfextract.Extractor
+	Cfg        *config.Config
+	Storage    *storage.Manager
+	Auth       *auth.Store
+	Sessions   *session.Store
+	Memory     *memory.Store
+	Docs       *documents.Store
+	Skills     *skills.Manager
+	Usage      *usage.Store
+	Audit      *audit.Store
+	Session    *sessionlog.Logger
+	Agent      *agent.Agent
+	MCP        *mcp.Manager
+	Notify     *notify.Store
+	Cron       *cron.Store
+	CronSched  *cron.Scheduler
+	UserConfig *userconfig.Store
+	Presence   *presence.Tracker
+	Email      *email.Sender
+	PDFExtract *pdfextract.Extractor
+	Hub        *sessionhub.Hub
 }
 
 // Router builds the chi router.
@@ -74,6 +76,14 @@ func (s *Server) Router() http.Handler {
 			r.Get("/mcp/oauth/callback", s.handleMCPOAuthCallback)
 		}
 
+		// Live session WebSocket: streaming + prompt submission. Outside the bearer
+		// middleware group because browsers cannot set the Authorization header on a
+		// WebSocket; handleSessionWS authenticates from the header or the
+		// `bearer.<token>` subprotocol itself.
+		if s.Hub != nil {
+			r.Get("/sessions/{id}/ws", s.handleSessionWS)
+		}
+
 		// Authenticated routes.
 		r.Group(func(r chi.Router) {
 			r.Use(s.Auth.Middleware)
@@ -83,13 +93,12 @@ func (s *Server) Router() http.Handler {
 			r.Get("/me", s.handleMe)
 			r.Post("/users", s.handleCreateUser)
 
-			r.Get("/conversations", s.handleListConversations)
-			r.Post("/conversations", s.handleCreateConversation)
-			r.Get("/conversations/{id}/messages", s.handleListMessages)
-			r.Post("/conversations/{id}/messages", s.handleSendMessage)
-			r.Delete("/conversations/{id}", s.handleDeleteConversation)
-			r.Get("/conversations/{id}/log", s.handleConversationLog)
-			r.Post("/conversations/{id}/hat", s.handleSetConversationHat)
+			r.Get("/sessions", s.handleListSessions)
+			r.Post("/sessions", s.handleCreateSession)
+			r.Get("/sessions/{id}/messages", s.handleListMessages)
+			r.Delete("/sessions/{id}", s.handleDeleteSession)
+			r.Get("/sessions/{id}/log", s.handleSessionLog)
+			r.Post("/sessions/{id}/hat", s.handleSetSessionHat)
 
 			r.Get("/hats", s.handleListHats)
 			r.Get("/hats/{name}", s.handleGetHat)

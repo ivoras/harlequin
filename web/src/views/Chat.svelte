@@ -1,7 +1,7 @@
 <script lang="ts">
   import { session, toast } from "../lib/stores";
   import { api } from "../lib/api";
-  import { streamMessage } from "../lib/sse";
+  import { SessionSocket } from "../lib/ws";
   import { renderMarkdown } from "../lib/markdown";
   import { SSE } from "../lib/types";
   import type { Message, StreamEvent } from "../lib/types";
@@ -18,10 +18,16 @@
   let ppLabel = $state(""); // live prompt-processing progress, before the first token
   let queue = $state<string[]>([]); // messages typed while a turn is in flight
   let ctx = $state<{ model: string; used: number; max: number } | null>(null);
-  let abort: AbortController | null = null;
+  let reconnecting = $state(false);
   let loadedFor = 0;
   let scrollEl: HTMLDivElement | undefined;
   let inputEl: HTMLTextAreaElement | undefined;
+
+  // The live session socket and resume bookkeeping.
+  let socket: SessionSocket | null = null;
+  let optimisticUser = 0; // user-message echoes to skip (we rendered them locally)
+  let coldHistory: Message[] | null = null; // committed history awaiting the synced cut
+  let streamingAssistant: Item | null = null; // current in-flight assistant bubble
 
   // When the turn ends on a free-text question (no preset options), focus the
   // composer so the user can answer immediately — no extra click needed.
@@ -31,25 +37,35 @@
     if (last && last.kind === "ask" && last.options.length === 0) inputEl?.focus();
   });
 
-  // Load history whenever the active conversation changes (not on each message).
+  // (Re)attach whenever the active session changes: load committed history, then
+  // open the socket so any in-flight turn replays and continues live.
   $effect(() => {
     const id = $session.id;
     if (id && id !== loadedFor) {
       loadedFor = id;
-      loadHistory(id);
+      resume(id);
     }
   });
 
-  async function loadHistory(id: number) {
+  async function resume(id: number) {
     items = [];
     ctx = null;
+    loading = false;
+    optimisticUser = 0;
+    streamingAssistant = null;
+    queue = [];
+    socket?.close();
     try {
-      const msgs = await api.getMessages(id);
-      items = msgs.flatMap(toItems);
-      scrollToBottom();
+      // Load committed history first so it is in hand when the synced frame tells
+      // us where the in-flight turn (if any) begins.
+      coldHistory = await api.getMessages(id);
     } catch (e) {
+      coldHistory = [];
       toast((e as Error).message, "error");
     }
+    if ($session.id !== id) return; // switched again while loading
+    socket = new SessionSocket(id, handleEvent, (s) => (reconnecting = s === "reconnecting"));
+    socket.open();
   }
 
   function toItems(m: Message): Item[] {
@@ -73,7 +89,7 @@
   // the queue drains in order as each turn finishes.
   function send() {
     const text = input.trim();
-    if (!text || !$session.id) return;
+    if (!text || !$session.id || !socket) return;
     input = "";
     if (loading) {
       queue.push(text);
@@ -85,46 +101,50 @@
     queue.splice(i, 1);
   }
 
-  async function sendText(text: string) {
+  function sendText(text: string) {
     items.push({ kind: "msg", role: "user", content: text });
+    optimisticUser++; // skip the server's echo of this prompt
     loading = true;
-    let assistant: Item | null = null;
-    const getAssistant = (): Item => {
-      if (!assistant) {
-        items.push({ kind: "msg", role: "assistant", content: "" });
-        assistant = items[items.length - 1];
-      }
-      return assistant;
-    };
-    abort = new AbortController();
+    streamingAssistant = null;
+    socket?.submit(text);
     scrollToBottom();
-    try {
-      await streamMessage(
-        $session.id,
-        text,
-        (ev) => {
-          handleEvent(ev, getAssistant);
-          scrollToBottom();
-        },
-        abort.signal,
-      );
-    } catch (e) {
-      const err = e as Error;
-      if (err.name !== "AbortError") toast(err.message, "error");
-    } finally {
-      loading = false;
-      ppLabel = "";
-      abort = null;
-      // Drain the next queued message, if any.
-      if (queue.length > 0) {
-        const next = queue.shift()!;
-        sendText(next);
-      }
-    }
   }
 
-  function handleEvent(ev: StreamEvent, getAssistant: () => Item) {
+  function getAssistant(): Item {
+    if (!streamingAssistant) {
+      items.push({ kind: "msg", role: "assistant", content: "" });
+      streamingAssistant = items[items.length - 1];
+    }
+    return streamingAssistant;
+  }
+
+  function handleEvent(ev: StreamEvent) {
     switch (ev.type) {
+      case SSE.Synced: {
+        // Resume handshake. Cold (we hold coldHistory): render committed history —
+        // trimmed to before the in-flight turn when one is running — then the
+        // replayed buffer reconstructs that turn. Warm reconnects carry no history.
+        if (coldHistory) {
+          const through = ev.committed_through || 0;
+          const msgs = ev.running ? coldHistory.filter((m) => m.id <= through) : coldHistory;
+          items = msgs.flatMap(toItems);
+          loading = !!ev.running;
+          streamingAssistant = null;
+          coldHistory = null;
+          scrollToBottom();
+        }
+        break;
+      }
+      case SSE.UserMessage: {
+        if (optimisticUser > 0) {
+          optimisticUser--;
+        } else {
+          items.push({ kind: "msg", role: "user", content: ev.text || "" });
+          loading = true;
+          streamingAssistant = null;
+        }
+        break;
+      }
       case SSE.PromptProgress: {
         const total = ev.prompt_total || 0;
         if (total > 0) {
@@ -151,6 +171,7 @@
         break;
       }
       case SSE.ToolCall:
+        streamingAssistant = null; // a fresh assistant bubble follows the tool
         items.push({ kind: "tool", name: ev.tool_name || "tool", args: ev.tool_args || "", output: "", ms: 0, done: false });
         break;
       case SSE.ToolResult:
@@ -173,8 +194,17 @@
         break;
       case SSE.Done:
         if (ev.model) ctx = { model: ev.model, used: ev.context_tokens || 0, max: ev.context_max || 0 };
+        loading = false;
+        ppLabel = "";
+        streamingAssistant = null;
+        // Drain the next queued message, if any.
+        if (queue.length > 0) {
+          const next = queue.shift()!;
+          sendText(next);
+        }
         break;
     }
+    scrollToBottom();
   }
 
   function answerAsk(opt: string) {
@@ -182,7 +212,8 @@
     send();
   }
   function stop() {
-    abort?.abort();
+    socket?.interrupt();
+    loading = false;
   }
   function onKey(e: KeyboardEvent) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -234,7 +265,7 @@
         {/if}
       {/each}
       {#if items.length === 0}
-        <div class="muted" style="text-align:center; margin-top:18vh;">Start the conversation.</div>
+        <div class="muted" style="text-align:center; margin-top:18vh;">Start the session.</div>
       {/if}
     </div>
   </div>
@@ -259,7 +290,9 @@
         <button class="primary" onclick={send} disabled={!input.trim() || !$session.id}>Send</button>
       {/if}
     </div>
-    {#if loading && ppLabel}
+    {#if reconnecting}
+      <div class="container muted small" style="padding-top:2px;">Reconnecting…</div>
+    {:else if loading && ppLabel}
       <div class="container muted small" style="padding-top:2px;">{ppLabel}</div>
     {:else if ctx}
       <div class="container muted small" style="padding-top:2px;">

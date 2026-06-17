@@ -15,7 +15,7 @@ import (
 
 const helpText = `Commands:
   /help                 show this help
-  /new                  start a new conversation
+  /new                  start a new session
   /queue [del <n>|clear] messages typed while busy are queued; list/remove them
   /skills               list available skills
   /skill pull <name>    download a skill for local editing
@@ -25,7 +25,7 @@ const helpText = `Commands:
   /skill new <name>     scaffold a new skill locally
   /hat                  list hats (a hat = system prompt + visible skills)
   /hat show <name>      show a hat's details
-  /hat wear <name>      wear a hat in this conversation
+  /hat wear <name>      wear a hat in this session
   /hat off              remove the hat (use the default)
   /mcp                  list MCP servers (shared + your own) and status
   /mcp show <s/name>    show one MCP server (scope = shared|user)
@@ -52,7 +52,7 @@ const helpText = `Commands:
   /memory resolve <id>  mark a conflict flag as resolved
   /docs <query>         search organisation documents
   /docs add <path>      upload a local file (e.g. a PDF) into the corpus
-  /resume               list recent conversations
+  /resume               list recent sessions
   /usage                show your token/cost usage
   /export [raw]         save transcript to session_YYYYMMDD_HHMM.md (cwd); raw includes thinking/tools, else User+Assistant only
   /quit                 exit`
@@ -76,7 +76,7 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 			if err != nil {
 				return errMsg{err}
 			}
-			what := "conversation"
+			what := "session"
 			if raw {
 				what = "full transcript"
 			}
@@ -86,18 +86,18 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 		return tea.Quit
 	case "/new":
 		return func() tea.Msg {
-			conv, err := m.client.CreateConversation(context.Background(), "Session", m.currentHat)
+			sess, err := m.client.CreateSession(context.Background(), "Session", m.currentHat)
 			if err != nil {
 				return errMsg{err}
 			}
-			m.conversationID = conv.ID
-			m.convTitle = ""
+			m.switchSession(sess.ID)
+			m.sessTitle = ""
 			m.blocks = nil
 			m.appendConnectedStatus()
 			if m.currentHat != "" {
-				return infoMsg{"started a new conversation wearing the " + m.currentHat + " hat"}
+				return infoMsg{"started a new session wearing the " + m.currentHat + " hat"}
 			}
-			return infoMsg{"started a new conversation"}
+			return infoMsg{"started a new session"}
 		}
 	case "/hat":
 		return m.handleHatSub(args)
@@ -158,13 +158,13 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 		}
 	case "/resume":
 		return func() tea.Msg {
-			convos, err := m.client.ListConversations(context.Background(), strings.Join(args, " "))
+			sessions, err := m.client.ListSessions(context.Background(), strings.Join(args, " "))
 			if err != nil {
 				return errMsg{err}
 			}
 			var sb strings.Builder
-			sb.WriteString("Conversations:\n")
-			for _, c := range convos {
+			sb.WriteString("Sessions:\n")
+			for _, c := range sessions {
 				fmt.Fprintf(&sb, "  #%d %s (%s)\n", c.ID, c.Title, c.UpdatedAt.Format("2006-01-02 15:04"))
 			}
 			return infoMsg{strings.TrimRight(sb.String(), "\n")}
@@ -218,15 +218,15 @@ func (m *Model) handleHatSub(args []string) tea.Cmd {
 		}
 		name := args[1]
 		return func() tea.Msg {
-			if err := m.client.SetConversationHat(context.Background(), m.conversationID, name); err != nil {
+			if err := m.client.SetSessionHat(context.Background(), m.sessionID, name); err != nil {
 				return errMsg{err}
 			}
 			m.currentHat = name
-			return infoMsg{"now wearing the " + name + " hat in this conversation"}
+			return infoMsg{"now wearing the " + name + " hat in this session"}
 		}
 	case "off", "none", "remove":
 		return func() tea.Msg {
-			if err := m.client.SetConversationHat(context.Background(), m.conversationID, ""); err != nil {
+			if err := m.client.SetSessionHat(context.Background(), m.sessionID, ""); err != nil {
 				return errMsg{err}
 			}
 			m.currentHat = ""

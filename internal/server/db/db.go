@@ -30,7 +30,7 @@ const (
 	System Role = "system"
 	// Shared is the org-level shared.db: shared memories, documents, org skills.
 	Shared Role = "shared"
-	// User is a per-user user.db: that user's memories, conversations, etc.
+	// User is a per-user user.db: that user's memories, sessions, etc.
 	User Role = "user"
 )
 

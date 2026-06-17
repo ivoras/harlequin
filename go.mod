@@ -14,6 +14,7 @@ require (
 	github.com/asg017/sqlite-vec-go-bindings v0.1.6
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/x/ansi v0.11.7
+	github.com/coder/websocket v1.8.15
 	github.com/dop251/goja v0.0.0-20260607120635-348e6bea910d
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/joho/godotenv v1.5.1

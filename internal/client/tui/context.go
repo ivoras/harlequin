@@ -31,7 +31,7 @@ func (m *Model) renderHeaderLine() string {
 	bg := m.headerZoneBG()
 	// Show the session title (set by the server's auto-titler) next to the brand,
 	// budget-limited so the context meter on the right always fits.
-	if t := strings.TrimSpace(m.convTitle); t != "" {
+	if t := strings.TrimSpace(m.sessTitle); t != "" {
 		budget := m.width/2 - lipgloss.Width(left)
 		if budget > 4 {
 			label := " " + ansi.Truncate(t, budget, "…") + " "

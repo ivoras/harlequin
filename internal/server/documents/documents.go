@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	rrfK         = 60.0
+	rrfK = 60.0
 	// Chunk size in runes. Kept conservatively below the embedding server's
 	// physical batch (llama.cpp ubatch, often 512 tokens) so a single chunk of
 	// token-dense text (e.g. multilingual/legal) still embeds in one batch:

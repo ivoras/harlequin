@@ -91,7 +91,7 @@ func (u *Usage) CachedPromptTokens() int {
 
 // Timings holds server-reported model operation timing (llama.cpp `timings`
 // object). prompt_n counts tokens actually evaluated, excluding KV-cache hits,
-// so PP derived from it is accurate even when the conversation is cached.
+// so PP derived from it is accurate even when the session is cached.
 type Timings struct {
 	PromptN            int     `json:"prompt_n"`
 	PromptMS           float64 `json:"prompt_ms"`
@@ -264,8 +264,8 @@ func (p *OpenAICompatible) Chat(ctx context.Context, req ChatRequest) (<-chan Ch
 type sseChunk struct {
 	Model   string `json:"model"`
 	Choices []struct {
-		Delta jsonDelta `json:"delta"`
-		FinishReason *string `json:"finish_reason"`
+		Delta        jsonDelta `json:"delta"`
+		FinishReason *string   `json:"finish_reason"`
 	} `json:"choices"`
 	Usage          *Usage          `json:"usage"`
 	Timings        *Timings        `json:"timings"`

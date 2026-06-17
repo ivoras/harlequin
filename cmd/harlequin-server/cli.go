@@ -147,7 +147,7 @@ type cmdFlags struct {
 	password string
 	admin    bool
 	owner    bool
-	email string
+	email    string
 }
 
 func parseCmdFlags(args []string, allowAdmin bool) (cmdFlags, error) {

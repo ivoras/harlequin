@@ -46,7 +46,7 @@ func (m *Model) ackNotifyCmd(id int64) tea.Cmd {
 
 // handleNotifications renders pending notifications and auto-runs at most one
 // prompt per pass. It defers entirely while a turn is streaming so an auto-run
-// can't collide with an in-flight conversation; deferred ones stay pending and
+// can't collide with an in-flight session; deferred ones stay pending and
 // are retried on the next tick.
 func (m *Model) handleNotifications(list []types.Notification) tea.Cmd {
 	if m.phase != phaseChat || m.loading || len(list) == 0 {
@@ -56,10 +56,10 @@ func (m *Model) handleNotifications(list []types.Notification) tea.Cmd {
 	ranOne := false
 	for _, n := range list {
 		// Control notifications: a session-title update refreshes the header for the
-		// matching conversation; it is acked but never shown as a chat message.
+		// matching session; it is acked but never shown as a chat message.
 		if n.Kind == types.NotifyKindSessionTitle {
-			if n.ConversationID != nil && *n.ConversationID == m.conversationID {
-				m.convTitle = n.Title
+			if n.SessionID != nil && *n.SessionID == m.sessionID {
+				m.sessTitle = n.Title
 			}
 			cmds = append(cmds, m.ackNotifyCmd(n.ID))
 			continue
@@ -125,8 +125,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case chatReadyMsg:
 		m.phase = phaseChat
 		m.user = msg.user
-		m.conversationID = msg.conversationID
-		m.convTitle = ""
+		m.switchSession(msg.sessionID)
+		m.sessTitle = ""
 		m.input.Placeholder = "Type a message, or /help for commands"
 		m.blocks = nil
 		m.appendConnectedStatus()
@@ -193,26 +193,39 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case streamEventMsg:
 		return m.handleStreamEvent(msg.ev)
 
-	case streamEndMsg:
-		m.loading = false
-		m.ppProgress = ""
-		m.flushStreaming()
-		if m.pendingTiming != nil {
-			m.appendBlock("status", formatTiming(m.pendingTiming))
-			m.pendingTiming = nil
+	case sessionOpenedMsg:
+		if msg.err != nil {
+			m.loading = false
+			m.appendBlock("error", "connect: "+msg.err.Error())
+			m.refreshViewport()
+			return m, nil
 		}
-		if msg.err != nil && msg.err != context.Canceled {
-			m.appendBlock("error", msg.err.Error())
+		m.session = msg.s
+		s := msg.s
+		// Pump events into the program until the socket ends.
+		go func() {
+			for ev := range s.Events() {
+				if m.prog != nil {
+					m.prog.Send(streamEventMsg{ev})
+				}
+			}
+			if m.prog != nil {
+				m.prog.Send(streamSocketClosedMsg{})
+			}
+		}()
+		// Flush any prompts queued while (re)connecting.
+		for _, p := range m.pendingSubmit {
+			_ = m.session.Submit(p)
 		}
-		m.refreshViewport()
-		if len(m.pendingAsk) > 0 {
-			return m, m.enterAsk()
-		}
-		// Drain the next queued message, if any.
-		if len(m.msgQueue) > 0 {
-			next := m.msgQueue[0]
-			m.msgQueue = m.msgQueue[1:]
-			return m, m.sendMessage(next)
+		m.pendingSubmit = nil
+		return m, nil
+
+	case streamSocketClosedMsg:
+		m.session = nil
+		// The server keeps running the session; if a turn is in flight, reconnect
+		// and resume from the last seen seq.
+		if m.loading && m.sessionID != 0 {
+			return m, m.openSessionCmd()
 		}
 		return m, nil
 
@@ -236,7 +249,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleStreamEvent(ev types.StreamEvent) (tea.Model, tea.Cmd) {
+	if ev.Seq > 0 {
+		m.lastSeq = ev.Seq // resume watermark
+	}
 	switch ev.Type {
+	case types.SSEUserMessage:
+		// The server echoes the prompt as the first event of a turn. Skip the echo
+		// for prompts we already rendered locally; render it otherwise (cold resume
+		// / a prompt submitted from another client).
+		if m.optimisticUser > 0 {
+			m.optimisticUser--
+			break
+		}
+		m.flushStreaming()
+		m.appendBlock("user", ev.Text)
+		m.loading = true
+		m.refreshViewport()
 	case types.SSEPromptProgress:
 		if ev.PromptTotal > 0 {
 			pct := ev.PromptProcessed * 100 / ev.PromptTotal
@@ -281,8 +309,32 @@ func (m *Model) handleStreamEvent(ev types.StreamEvent) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.pendingTiming = ev.Timing
+		// The turn is complete (the socket stays open for the next one).
+		return m, m.finalizeTurn()
 	}
 	return m, nil
+}
+
+// finalizeTurn ends the current turn: commit streamed text, show timing, then
+// either enter the ask flow or drain the next queued message.
+func (m *Model) finalizeTurn() tea.Cmd {
+	m.loading = false
+	m.ppProgress = ""
+	m.flushStreaming()
+	if m.pendingTiming != nil {
+		m.appendBlock("status", formatTiming(m.pendingTiming))
+		m.pendingTiming = nil
+	}
+	m.refreshViewport()
+	if len(m.pendingAsk) > 0 {
+		return m.enterAsk()
+	}
+	if len(m.msgQueue) > 0 {
+		next := m.msgQueue[0]
+		m.msgQueue = m.msgQueue[1:]
+		return m.sendMessage(next)
+	}
+	return nil
 }
 
 // formatTiming renders a compact one-line model timing summary: prompt
@@ -308,10 +360,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 
-	// Cancel in-flight stream.
+	// Interrupt the in-flight turn (the session stays alive on the server).
 	if key == "esc" {
-		if m.loading && m.cancelStream != nil {
-			m.cancelStream()
+		if m.loading && m.session != nil {
+			_ = m.session.Interrupt()
 			m.loading = false
 			return m, nil
 		}
@@ -465,32 +517,58 @@ func (m *Model) doVerify(email, code string) tea.Cmd {
 func (m *Model) sendMessage(text string) tea.Cmd { return m.sendMessageAs(text, text) }
 
 // sendMessageAs shows display in the transcript but sends sendText to the
-// server (used by the ask flow to show concise answers but send full Q&A).
+// server (used by the ask flow to show concise answers but send full Q&A). Since
+// we render the prompt locally here, we skip the server's echo of it.
 func (m *Model) sendMessageAs(display, sendText string) tea.Cmd {
 	m.appendBlock("user", display)
+	m.optimisticUser++
 	return m.startTurn(sendText)
 }
 
-// startTurn sends text to the agent and streams the reply, without adding a user
-// block to the transcript (callers render their own context, e.g. a notification).
+// startTurn submits text to the live session over the WebSocket, opening (or
+// reopening) the socket first if needed. It does not render a user block — callers
+// that want one render it themselves (and bump optimisticUser); a prompt with no
+// local block is echoed back and rendered from the stream.
 func (m *Model) startTurn(text string) tea.Cmd {
 	m.loading = true
 	m.turnStart = time.Now()
 	m.refreshViewport() // show the thinking indicator immediately, before the first tick
-	ctx, cancel := context.WithCancel(context.Background())
-	m.cancelStream = cancel
 
-	go func() {
-		err := m.client.SendMessage(ctx, m.conversationID, text, func(ev types.StreamEvent) {
-			if m.prog != nil {
-				m.prog.Send(streamEventMsg{ev})
-			}
-		})
-		if m.prog != nil {
-			m.prog.Send(streamEndMsg{err: err})
-		}
-	}()
+	if m.session == nil {
+		m.pendingSubmit = append(m.pendingSubmit, text)
+		return tea.Batch(thinkPulseTick(), m.openSessionCmd())
+	}
+	if err := m.session.Submit(text); err != nil {
+		// Socket died between turns: reopen and resume, then send.
+		m.session = nil
+		m.pendingSubmit = append(m.pendingSubmit, text)
+		return tea.Batch(thinkPulseTick(), m.openSessionCmd())
+	}
 	return thinkPulseTick()
+}
+
+// switchSession points the client at session id, tearing down any open socket and
+// resetting resume bookkeeping (the next turn lazily opens a fresh socket).
+func (m *Model) switchSession(id int64) {
+	if m.session != nil {
+		_ = m.session.Close()
+		m.session = nil
+	}
+	m.sessionID = id
+	m.lastSeq = 0
+	m.optimisticUser = 0
+	m.pendingSubmit = nil
+	m.loading = false
+}
+
+// openSessionCmd (re)opens the session WebSocket, resuming from the last seen seq.
+func (m *Model) openSessionCmd() tea.Cmd {
+	sessionID := m.sessionID
+	haveSeq := m.lastSeq
+	return func() tea.Msg {
+		s, err := m.client.OpenSession(context.Background(), sessionID, haveSeq)
+		return sessionOpenedMsg{s: s, err: err}
+	}
 }
 
 func truncate(s string, n int) string {

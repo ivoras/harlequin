@@ -22,13 +22,13 @@ import (
 
 // Errors returned by the store.
 var (
-	ErrInvalidCredentials  = errors.New("invalid credentials")
-	ErrUserExists          = errors.New("user already exists")
-	ErrUserNotFound        = errors.New("user not found")
-	ErrUnauthorized        = errors.New("unauthorized")
+	ErrInvalidCredentials    = errors.New("invalid credentials")
+	ErrUserExists            = errors.New("user already exists")
+	ErrUserNotFound          = errors.New("user not found")
+	ErrUnauthorized          = errors.New("unauthorized")
 	ErrNoPendingRegistration = errors.New("no pending registration")
-	ErrCodeExpired         = errors.New("verification code expired")
-	ErrTooManyAttempts     = errors.New("too many verification attempts")
+	ErrCodeExpired           = errors.New("verification code expired")
+	ErrTooManyAttempts       = errors.New("too many verification attempts")
 )
 
 // Registration tuning.

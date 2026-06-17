@@ -86,6 +86,7 @@ sessions:
   log_tokens: false        # log per-token streaming deltas too (verbose); false logs only higher-level events
   retention_days: 7        # omit for default 7; 0 = keep forever
   redact: []               # event data field names whose values are replaced with "[redacted]" in the logs
+  idle_timeout: 30m        # live session goroutine exits after this long with no connected client and no running turn (default 30m)
 
 # MCP (Model Context Protocol) client: use external MCP servers as tool sources.
 # Servers are registered at "shared" (org-wide, admin-only) or "user" (per-user)
