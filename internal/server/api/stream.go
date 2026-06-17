@@ -46,7 +46,39 @@ func (s *Server) handleSessionWS(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "not found")
 		return
 	}
+	s.serveSessionWS(w, r, user, 0, sess)
+}
 
+// handleProjectSessionWS attaches to a shared project session. Any project member
+// may connect; all members share the one live session (keyed by project+session).
+func (s *Server) handleProjectSessionWS(w http.ResponseWriter, r *http.Request) {
+	user, err := s.Auth.UserForToken(r.Context(), wsToken(r))
+	if err != nil {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	projectID, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	sid, _ := strconv.ParseInt(chi.URLParam(r, "sid"), 10, 64)
+	if member, _ := s.Projects.IsMember(r.Context(), projectID, user.ID); !member {
+		writeErr(w, http.StatusForbidden, "not a project member")
+		return
+	}
+	var sess *types.Session
+	var getErr error
+	_ = s.Storage.WithProject(r.Context(), projectID, func(pdb *sql.DB) error {
+		sess, getErr = s.Sessions.Get(r.Context(), pdb, sid, user.ID)
+		return nil
+	})
+	if getErr != nil || sess == nil {
+		writeErr(w, http.StatusNotFound, "not found")
+		return
+	}
+	s.serveSessionWS(w, r, user, projectID, sess)
+}
+
+// serveSessionWS upgrades the connection and runs the resume/stream protocol for a
+// resolved session (projectID 0 = personal). It is the connection's sole writer.
+func (s *Server) serveSessionWS(w http.ResponseWriter, r *http.Request, user *types.User, projectID int64, sess *types.Session) {
 	c, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		Subprotocols: []string{"harlequin"},
 		// Auth is by bearer token (not cookies), so cross-site WebSocket hijacking
@@ -63,7 +95,7 @@ func (s *Server) handleSessionWS(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sub := s.Hub.Attach(user, sess)
+	sub := s.Hub.Attach(user, projectID, sess)
 	defer sub.Close()
 
 	if s.Presence != nil {

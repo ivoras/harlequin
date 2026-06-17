@@ -292,18 +292,21 @@ type sessionHubAgent struct {
 	sessions *session.Store
 }
 
-func (a sessionHubAgent) Run(ctx context.Context, sessionID, userID int64, username, role, api, iface, content string, emit func(types.StreamEvent)) error {
-	return a.ag.Run(ctx, sessionID, userID, username, role, api, iface, content, emit)
+func (a sessionHubAgent) Run(ctx context.Context, projectID, sessionID, userID int64, username, role, api, iface, content string, emit func(types.StreamEvent)) error {
+	return a.ag.Run(ctx, projectID, sessionID, userID, username, role, api, iface, content, emit)
 }
 
-func (a sessionHubAgent) LastMessageID(ctx context.Context, userID, sessionID int64) (int64, error) {
+func (a sessionHubAgent) LastMessageID(ctx context.Context, projectID, userID, sessionID int64) (int64, error) {
 	var id int64
-	err := a.store.WithUser(ctx, userID, func(db *sql.DB) error {
+	read := func(db *sql.DB) error {
 		var e error
 		id, e = a.sessions.LastMessageID(ctx, db, sessionID)
 		return e
-	})
-	return id, err
+	}
+	if projectID > 0 {
+		return id, a.store.WithProject(ctx, projectID, read)
+	}
+	return id, a.store.WithUser(ctx, userID, read)
 }
 
 // webFetchAdapter adapts the web fetcher to the jsrun.Fetcher interface so the

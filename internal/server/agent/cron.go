@@ -72,6 +72,7 @@ func (a *Agent) RunCronSkill(ctx context.Context, userID int64, username, role s
 		username:       username,
 		canShareMemory: types.IsElevated(role),
 		userDB:         userDB,
+		sessDB:         userDB, // cron sessions are personal (never project-scoped)
 		api:            types.APICron,
 		iface:          types.InterfaceCron,
 		turn:           1,

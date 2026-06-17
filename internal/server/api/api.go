@@ -84,6 +84,9 @@ func (s *Server) Router() http.Handler {
 		// `bearer.<token>` subprotocol itself.
 		if s.Hub != nil {
 			r.Get("/sessions/{id}/ws", s.handleSessionWS)
+			if s.Projects != nil {
+				r.Get("/projects/{id}/sessions/{sid}/ws", s.handleProjectSessionWS)
+			}
 		}
 
 		// Authenticated routes.
@@ -154,6 +157,9 @@ func (s *Server) Router() http.Handler {
 				r.Post("/projects/invites/{inviteID}/decline", s.handleDeclineInvite)
 				r.Get("/projects/{id}", s.handleGetProject)
 				r.Post("/projects/{id}/invite", s.handleInviteProject)
+				r.Get("/projects/{id}/sessions", s.handleListProjectSessions)
+				r.Post("/projects/{id}/sessions/{sid}", s.handleAssignSession)
+				r.Get("/projects/{id}/messages", s.handleProjectMessages)
 			}
 
 			if s.UserConfig != nil {

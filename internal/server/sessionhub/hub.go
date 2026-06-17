@@ -23,10 +23,10 @@ import (
 type Agent interface {
 	// Run executes one turn, streaming events to emit. The context is the
 	// session's (not a request's), so it survives client disconnects.
-	Run(ctx context.Context, sessionID, userID int64, username, role, api, iface, content string, emit func(types.StreamEvent)) error
+	Run(ctx context.Context, projectID, sessionID, userID int64, username, role, api, iface, content string, emit func(types.StreamEvent)) error
 	// LastMessageID returns the highest committed message id in the session: the
 	// watermark between durable history and the in-flight turn's replay buffer.
-	LastMessageID(ctx context.Context, userID, sessionID int64) (int64, error)
+	LastMessageID(ctx context.Context, projectID, userID, sessionID int64) (int64, error)
 }
 
 // subEventBuffer is the per-subscriber send queue depth. Token events are
@@ -70,31 +70,39 @@ func New(ag Agent, log *sessionlog.Logger, idle time.Duration) *Hub {
 // Stop signals all session goroutines to exit (best-effort; in-flight turns end).
 func (h *Hub) Stop() { h.cancel() }
 
-func sessionKey(userID, sessID int64) string {
-	return strconv.FormatInt(userID, 10) + "/" + strconv.FormatInt(sessID, 10)
+// sessionKey identifies a live session. Project sessions are keyed by project id
+// (shared across all members → one live session); personal sessions by user id.
+func sessionKey(projectID, userID, sessID int64) string {
+	if projectID > 0 {
+		return "p" + strconv.FormatInt(projectID, 10) + "/" + strconv.FormatInt(sessID, 10)
+	}
+	return "u" + strconv.FormatInt(userID, 10) + "/" + strconv.FormatInt(sessID, 10)
 }
 
 // Attach registers a new connection to the user's session, spawning the session
 // goroutine if needed, and returns a Subscription the WebSocket handler drives.
 // user provides identity (id/email/role); sess provides the medium/transport and
 // session id. The returned Subscription must be Closed when the connection ends.
-func (h *Hub) Attach(user *types.User, sess *types.Session) *Subscription {
-	k := sessionKey(user.ID, sess.ID)
+// projectID is 0 for a personal session, or the owning project for a shared
+// project session (members share one live session, keyed by project+session).
+func (h *Hub) Attach(user *types.User, projectID int64, sess *types.Session) *Subscription {
+	k := sessionKey(projectID, user.ID, sess.ID)
 	h.mu.Lock()
 	ls := h.sessions[k]
 	if ls == nil {
 		ls = &liveSession{
-			hub:      h,
-			key:      k,
-			userID:   user.ID,
-			sessID:   sess.ID,
-			username: user.Email,
-			role:     user.Role,
-			api:      sess.API,
-			iface:    sess.Interface,
-			prompts:  make(chan string, promptQueueDepth),
-			activity: make(chan struct{}, 1),
-			subs:     map[*subscriber]struct{}{},
+			hub:       h,
+			key:       k,
+			projectID: projectID,
+			userID:    user.ID,
+			sessID:    sess.ID,
+			username:  user.Email,
+			role:      user.Role,
+			api:       sess.API,
+			iface:     sess.Interface,
+			prompts:   make(chan string, promptQueueDepth),
+			activity:  make(chan struct{}, 1),
+			subs:      map[*subscriber]struct{}{},
 		}
 		h.sessions[k] = ls
 		go ls.loop()
@@ -115,14 +123,15 @@ type subscriber struct {
 
 // liveSession is one session's long-lived goroutine and shared state.
 type liveSession struct {
-	hub      *Hub
-	key      string
-	userID   int64
-	sessID   int64
-	username string
-	role     string
-	api      string
-	iface    string
+	hub       *Hub
+	key       string
+	projectID int64
+	userID    int64
+	sessID    int64
+	username  string
+	role      string
+	api       string
+	iface     string
 
 	prompts  chan string
 	activity chan struct{}
@@ -195,7 +204,7 @@ func stopTimer(t *time.Timer) {
 func (ls *liveSession) runTurn(content string) {
 	// Capture the durable-history watermark before the turn writes its first
 	// (user) message.
-	startID, _ := ls.hub.agent.LastMessageID(ls.hub.baseCtx, ls.userID, ls.sessID)
+	startID, _ := ls.hub.agent.LastMessageID(ls.hub.baseCtx, ls.projectID, ls.userID, ls.sessID)
 
 	turnCtx, cancel := context.WithCancel(ls.hub.baseCtx)
 	ls.mu.Lock()
@@ -205,7 +214,7 @@ func (ls *liveSession) runTurn(content string) {
 	ls.turnCancel = cancel
 	ls.mu.Unlock()
 
-	err := ls.hub.agent.Run(turnCtx, ls.sessID, ls.userID, ls.username, ls.role, ls.api, ls.iface, content, ls.emit)
+	err := ls.hub.agent.Run(turnCtx, ls.projectID, ls.sessID, ls.userID, ls.username, ls.role, ls.api, ls.iface, content, ls.emit)
 
 	ls.mu.Lock()
 	ls.running = false

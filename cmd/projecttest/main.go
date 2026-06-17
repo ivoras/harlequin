@@ -14,6 +14,7 @@ import (
 
 	"github.com/ivoras/harlequin/internal/server/auth"
 	"github.com/ivoras/harlequin/internal/server/project"
+	"github.com/ivoras/harlequin/internal/server/session"
 	"github.com/ivoras/harlequin/internal/server/storage"
 )
 
@@ -115,6 +116,59 @@ func main() {
 	// The project DB file exists on disk.
 	if _, err := os.Stat(store.ProjectDBPath(p.ID)); err != nil {
 		fail("project.db missing: %v", err)
+	}
+
+	// Assign a personal session (with messages) to the project: it should move into
+	// the project DB and vanish from the user DB.
+	sessStore := session.NewStore()
+	var userSessID int64
+	if err := store.WithUser(ctx, alice.ID, func(udb *sql.DB) error {
+		c, e := sessStore.Create(ctx, udb, alice.ID, "planning", "", "REST", "TUI")
+		if e != nil {
+			return e
+		}
+		userSessID = c.ID
+		_, _ = sessStore.AddMessage(ctx, udb, c.ID, "user", "kick off", nil)
+		_, _ = sessStore.AddMessage(ctx, udb, c.ID, "assistant", "on it", nil)
+		return nil
+	}); err != nil {
+		fail("create personal session: %v", err)
+	}
+
+	var projSessID int64
+	if err := store.WithUser(ctx, alice.ID, func(udb *sql.DB) error {
+		return store.WithProject(ctx, p.ID, func(pdb *sql.DB) error {
+			n, e := ps.MoveSessionToProject(ctx, udb, pdb, userSessID, alice.ID)
+			projSessID = n
+			return e
+		})
+	}); err != nil {
+		fail("assign session: %v", err)
+	}
+
+	// Gone from the user DB.
+	if err := store.WithUser(ctx, alice.ID, func(udb *sql.DB) error {
+		if _, e := sessStore.Get(ctx, udb, userSessID, alice.ID); e == nil {
+			return fmt.Errorf("session still present in user db")
+		}
+		return nil
+	}); err != nil {
+		fail("post-move user db: %v", err)
+	}
+	// Present in the project DB with its messages, visible to any member (bob reads it).
+	if err := store.WithProject(ctx, p.ID, func(pdb *sql.DB) error {
+		c, e := sessStore.Get(ctx, pdb, projSessID, bob.ID)
+		if e != nil {
+			return fmt.Errorf("project session missing: %w", e)
+		}
+		msgs, e := sessStore.Messages(ctx, pdb, projSessID)
+		if e != nil || len(msgs) != 2 {
+			return fmt.Errorf("project messages = %d (%v)", len(msgs), e)
+		}
+		fmt.Printf("[assign] session %q moved to project #%d (id %d, %d msgs)\n", c.Title, p.ID, projSessID, len(msgs))
+		return nil
+	}); err != nil {
+		fail("post-move project db: %v", err)
 	}
 
 	fmt.Println("OK")

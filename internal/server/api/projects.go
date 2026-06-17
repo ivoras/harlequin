@@ -161,6 +161,86 @@ func (s *Server) handleAcceptInvite(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]int64{"project_id": projectID})
 }
 
+// handleListProjectSessions lists the sessions assigned to the project (visible
+// to any member).
+func (s *Server) handleListProjectSessions(w http.ResponseWriter, r *http.Request) {
+	u, id, ok := s.projectMember(w, r)
+	if !ok {
+		return
+	}
+	var out []types.Session
+	err := s.Storage.WithProjectReadOnly(r.Context(), id, func(pdb *sql.DB) error {
+		list, e := s.Sessions.List(r.Context(), pdb, u.ID, r.URL.Query().Get("q"))
+		out = list
+		return e
+	})
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	pid := id
+	for i := range out {
+		out[i].ProjectID = &pid
+	}
+	if out == nil {
+		out = []types.Session{}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleAssignSession moves the caller's personal session into the project.
+func (s *Server) handleAssignSession(w http.ResponseWriter, r *http.Request) {
+	u, id, ok := s.projectMember(w, r)
+	if !ok {
+		return
+	}
+	sid, _ := strconv.ParseInt(chi.URLParam(r, "sid"), 10, 64)
+	var newID int64
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		return s.Storage.WithProject(r.Context(), id, func(pdb *sql.DB) error {
+			n, e := s.Projects.MoveSessionToProject(r.Context(), udb, pdb, sid, u.ID)
+			newID = n
+			return e
+		})
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		writeErr(w, http.StatusNotFound, "session not found")
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int64{"session_id": newID})
+}
+
+// handleProjectMessages returns a project session's messages (member-only). The
+// session id is the ?sid= query parameter.
+func (s *Server) handleProjectMessages(w http.ResponseWriter, r *http.Request) {
+	u, id, ok := s.projectMember(w, r)
+	if !ok {
+		return
+	}
+	sid, _ := strconv.ParseInt(r.URL.Query().Get("sid"), 10, 64)
+	var out []types.Message
+	err := s.Storage.WithProjectReadOnly(r.Context(), id, func(pdb *sql.DB) error {
+		if _, e := s.Sessions.Get(r.Context(), pdb, sid, u.ID); e != nil {
+			return e
+		}
+		msgs, e := s.Sessions.Messages(r.Context(), pdb, sid)
+		out = msgs
+		return e
+	})
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "not found")
+		return
+	}
+	if out == nil {
+		out = []types.Message{}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (s *Server) handleDeclineInvite(w http.ResponseWriter, r *http.Request) {
 	u, ok := auth.UserFromContext(r.Context())
 	if !ok {
