@@ -232,6 +232,11 @@ func (c *Client) AckNotification(ctx context.Context, id int64) error {
 	return c.do(ctx, http.MethodPost, fmt.Sprintf("/notifications/%d/ack", id), nil, nil)
 }
 
+// BroadcastAlert (owner/admin only) sends a text message as an alert to all users.
+func (c *Client) BroadcastAlert(ctx context.Context, message string) error {
+	return c.do(ctx, http.MethodPost, "/alerts", types.BroadcastAlertRequest{Message: message}, nil)
+}
+
 // ListCron returns the user's cron jobs.
 func (c *Client) ListCron(ctx context.Context) ([]types.CronJob, error) {
 	var out []types.CronJob

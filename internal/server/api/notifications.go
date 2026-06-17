@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ivoras/harlequin/internal/server/auth"
@@ -77,6 +78,35 @@ func (s *Server) handleListNotifications(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// handleBroadcastAlert (owner/admin only) delivers a text message as an alert to
+// every user — including the sender. Each user gets a pending notification in
+// their own database, which their connected clients pick up via push and show in
+// the alert box.
+func (s *Server) handleBroadcastAlert(w http.ResponseWriter, r *http.Request) {
+	if _, ok := requireElevated(w, r); !ok {
+		return
+	}
+	var req types.BroadcastAlertRequest
+	if err := decode(r, &req); err != nil || strings.TrimSpace(req.Message) == "" {
+		writeErr(w, http.StatusBadRequest, "message required")
+		return
+	}
+	n := types.Notification{Kind: types.NotifyKindAlert, Title: strings.TrimSpace(req.Message)}
+	var sent int
+	err := s.Storage.EachUser(r.Context(), func(_ int64, udb *sql.DB) error {
+		if _, err := s.Notify.Create(r.Context(), udb, n); err != nil {
+			return err
+		}
+		sent++
+		return nil
+	})
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"sent": sent})
 }
 
 // handleAckNotification marks a notification delivered (handled by the client).

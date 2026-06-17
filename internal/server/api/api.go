@@ -139,6 +139,8 @@ func (s *Server) Router() http.Handler {
 			r.Get("/notifications", s.handleListNotifications)
 			r.Post("/notifications/{id}/ack", s.handleAckNotification)
 			r.Post("/notifications/{id}/dismiss", s.handleDismissNotification)
+			// Owner/admin broadcast alert to all users (handler enforces the role).
+			r.Post("/alerts", s.handleBroadcastAlert)
 
 			if s.UserConfig != nil {
 				r.Get("/config", s.handleGetConfig)
