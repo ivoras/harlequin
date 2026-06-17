@@ -10,15 +10,19 @@ import (
 // database. Conflict-row ids reuse the same scheme to encode which database
 // holds the conflict record.
 const (
-	scopeUser   = "user"
-	scopeShared = "shared"
+	scopeUser    = "user"
+	scopeShared  = "shared"
+	scopeProject = "project"
 )
 
 // encodeID builds a composite id from a scope and a local rowid.
 func encodeID(scope string, local int64) string {
 	prefix := "u"
-	if scope == scopeShared {
+	switch scope {
+	case scopeShared:
 		prefix = "s"
+	case scopeProject:
+		prefix = "p"
 	}
 	return prefix + "." + strconv.FormatInt(local, 10)
 }
@@ -38,6 +42,8 @@ func decodeID(id string) (scope string, local int64, ok bool) {
 		return scopeUser, n, true
 	case "s":
 		return scopeShared, n, true
+	case "p":
+		return scopeProject, n, true
 	default:
 		return "", 0, false
 	}
