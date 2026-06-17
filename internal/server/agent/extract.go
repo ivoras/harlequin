@@ -18,23 +18,23 @@ import (
 // summaries, who/what/when and key clauses usually live up front).
 const docMemoryInputCap = 8000
 
-// Timeouts: conversational turns are small; a document prompt is much larger, so
+// Timeouts: sessional turns are small; a document prompt is much larger, so
 // it needs longer (prefill of several thousand tokens on a local model).
 const (
-	convMemoryTimeout = 60 * time.Second
+	sessMemoryTimeout = 60 * time.Second
 	docMemoryTimeout  = 3 * time.Minute
 )
 
-// extractMemories asks the LLM to distill durable facts from a conversation turn
+// extractMemories asks the LLM to distill durable facts from a session turn
 // and stores them. See distillAndStore for the shared core.
 func (a *Agent) extractMemories(ctx context.Context, userID int64, userContent, assistantText string, turnWritten []string, canShareMemory bool) {
-	convo := "User said: " + userContent + "\nAssistant said: " + assistantText
-	a.distillAndStore(ctx, userID, memextract.Prompt, convo, turnWritten, canShareMemory, convMemoryTimeout)
+	sess := "User said: " + userContent + "\nAssistant said: " + assistantText
+	a.distillAndStore(ctx, userID, memextract.Prompt, sess, turnWritten, canShareMemory, sessMemoryTimeout)
 }
 
 // ExtractMemoriesFromText distills durable facts from a block of source text
 // (e.g. an imported document) and stores them, reusing the same judge/dedup as
-// conversational auto-extraction. Best-effort; intended to run in a goroutine.
+// sessional auto-extraction. Best-effort; intended to run in a goroutine.
 // source is a short label (e.g. the document title) included for context.
 func (a *Agent) ExtractMemoriesFromText(ctx context.Context, userID int64, source, text string, canShareMemory bool) {
 	text = strings.TrimSpace(text)

@@ -162,29 +162,29 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, user)
 }
 
-func (s *Server) handleListConversations(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
-	var convos []types.Conversation
+	var sessions []types.Session
 	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
 		var e error
-		convos, e = s.Conversations.List(r.Context(), udb, u.ID, r.URL.Query().Get("q"))
+		sessions, e = s.Sessions.List(r.Context(), udb, u.ID, r.URL.Query().Get("q"))
 		return e
 	})
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, convos)
+	writeJSON(w, http.StatusOK, sessions)
 }
 
-func (s *Server) handleCreateConversation(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
-	var req types.CreateConversationRequest
+	var req types.CreateSessionRequest
 	_ = decode(r, &req)
-	var c *types.Conversation
+	var c *types.Session
 	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
 		var e error
-		c, e = s.Conversations.Create(r.Context(), udb, u.ID, req.Title, req.Hat, types.APIREST, reqInterface(r))
+		c, e = s.Sessions.Create(r.Context(), udb, u.ID, req.Title, req.Hat, types.APIREST, reqInterface(r))
 		return e
 	})
 	if err != nil {
@@ -199,11 +199,11 @@ func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	var msgs []types.Message
 	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
-		if _, e := s.Conversations.Get(r.Context(), udb, id, u.ID); e != nil {
+		if _, e := s.Sessions.Get(r.Context(), udb, id, u.ID); e != nil {
 			return e
 		}
 		var e error
-		msgs, e = s.Conversations.Messages(r.Context(), udb, id)
+		msgs, e = s.Sessions.Messages(r.Context(), udb, id)
 		return e
 	})
 	if err != nil {
@@ -213,11 +213,11 @@ func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, msgs)
 }
 
-func (s *Server) handleDeleteConversation(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
-		return s.Conversations.Delete(r.Context(), udb, id, u.ID)
+		return s.Sessions.Delete(r.Context(), udb, id, u.ID)
 	})
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
@@ -226,13 +226,13 @@ func (s *Server) handleDeleteConversation(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (s *Server) handleConversationLog(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleSessionLog(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	// Owners and admins may read the log.
 	var ownErr error
 	_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
-		_, ownErr = s.Conversations.Get(r.Context(), udb, id, u.ID)
+		_, ownErr = s.Sessions.Get(r.Context(), udb, id, u.ID)
 		return nil
 	})
 	if ownErr != nil && !types.IsElevated(u.Role) {

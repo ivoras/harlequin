@@ -1,9 +1,9 @@
 // Command agentprobe drives the Harlequin agent like a real client: it reads the
 // saved token/server URL from client.yaml (the same file the TUI uses), opens a
-// conversation, sends a message, and prints a compact trace of the agent's tool
+// session, sends a message, and prints a compact trace of the agent's tool
 // calls and results. It exists to debug what the (small) model actually does.
 //
-//	go run ./cmd/agentprobe [-conv N] [-thinking] "your message"
+//	go run ./cmd/agentprobe [-sess N] [-thinking] "your message"
 package main
 
 import (
@@ -20,12 +20,12 @@ import (
 
 func main() {
 	cfgPath := flag.String("config", "client.yaml", "client config path")
-	convID := flag.Int64("conv", 0, "reuse an existing conversation id (0 = create new)")
+	sessID := flag.Int64("sess", 0, "reuse an existing session id (0 = create new)")
 	showThinking := flag.Bool("thinking", false, "print model thinking")
 	flag.Parse()
 	msg := strings.Join(flag.Args(), " ")
 	if msg == "" {
-		fmt.Fprintln(os.Stderr, `usage: agentprobe [-conv N] [-thinking] "message"`)
+		fmt.Fprintln(os.Stderr, `usage: agentprobe [-sess N] [-thinking] "message"`)
 		os.Exit(2)
 	}
 
@@ -39,19 +39,29 @@ func main() {
 	client := apiclient.New(cfg.ServerURL, cfg.Token, types.InterfaceTUI)
 	ctx := context.Background()
 
-	id := *convID
+	id := *sessID
 	if id == 0 {
-		conv, err := client.CreateConversation(ctx, "probe", "")
+		sess, err := client.CreateSession(ctx, "probe", "")
 		if err != nil {
 			fatal(err)
 		}
-		id = conv.ID
+		id = sess.ID
 	}
-	fmt.Printf("== conversation #%d on %s ==\n> %s\n", id, cfg.ServerURL, msg)
+	fmt.Printf("== session #%d on %s ==\n> %s\n", id, cfg.ServerURL, msg)
+
+	// Cold resume (have_seq 0) and submit the prompt over the live session socket.
+	sess, err := client.OpenSession(ctx, id, 0)
+	if err != nil {
+		fatal(err)
+	}
+	defer sess.Close()
+	if err := sess.Submit(msg); err != nil {
+		fatal(err)
+	}
 
 	var final strings.Builder
 	step := 0
-	err = client.SendMessage(ctx, id, msg, func(ev types.StreamEvent) {
+	for ev := range sess.Events() {
 		switch ev.Type {
 		case types.SSEToolCall:
 			step++
@@ -70,13 +80,11 @@ func main() {
 			fmt.Printf("\n[ERROR] %s\n", ev.Error)
 		case types.SSEDone:
 			fmt.Printf("\n[done] model=%s ctx=%d/%d\n", ev.Model, ev.ContextTokens, ev.ContextMax)
+			if s := strings.TrimSpace(final.String()); s != "" {
+				fmt.Printf("\n=== final answer ===\n%s\n", s)
+			}
+			return
 		}
-	})
-	if err != nil {
-		fatal(err)
-	}
-	if s := strings.TrimSpace(final.String()); s != "" {
-		fmt.Printf("\n=== final answer ===\n%s\n", s)
 	}
 }
 

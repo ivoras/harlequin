@@ -40,20 +40,20 @@ func (d Duration) D() time.Duration { return time.Duration(d) }
 
 // Config is the full server configuration.
 type Config struct {
-	Server     ServerConfig     `yaml:"server"`
-	DataDir    string           `yaml:"data_dir"`
-	Providers  []ProviderConfig `yaml:"providers"`
-	Routing    RoutingConfig    `yaml:"routing"`
-	Prices          map[string]Price `yaml:"prices"`
-	ContextWindows  map[string]int   `yaml:"context_windows"` // model id -> max input tokens
-	Embeddings EmbeddingsConfig `yaml:"embeddings"`
-	Agent      AgentConfig      `yaml:"agent"`
-	Memory     MemoryConfig     `yaml:"memory"`
-	Sessions   SessionsConfig   `yaml:"sessions"`
-	MCP        MCPConfig        `yaml:"mcp"`
-	Auth       AuthConfig       `yaml:"auth"`
-	Email      email.Config     `yaml:"email"`
-	Telegram   TelegramConfig   `yaml:"telegram"`
+	Server         ServerConfig     `yaml:"server"`
+	DataDir        string           `yaml:"data_dir"`
+	Providers      []ProviderConfig `yaml:"providers"`
+	Routing        RoutingConfig    `yaml:"routing"`
+	Prices         map[string]Price `yaml:"prices"`
+	ContextWindows map[string]int   `yaml:"context_windows"` // model id -> max input tokens
+	Embeddings     EmbeddingsConfig `yaml:"embeddings"`
+	Agent          AgentConfig      `yaml:"agent"`
+	Memory         MemoryConfig     `yaml:"memory"`
+	Sessions       SessionsConfig   `yaml:"sessions"`
+	MCP            MCPConfig        `yaml:"mcp"`
+	Auth           AuthConfig       `yaml:"auth"`
+	Email          email.Config     `yaml:"email"`
+	Telegram       TelegramConfig   `yaml:"telegram"`
 
 	// Secrets, populated from the environment (not YAML).
 	JWTSecret string `yaml:"-"`
@@ -263,16 +263,28 @@ func (m MemoryConfig) SearchMaxDistanceValue() float64 {
 	return 0.2
 }
 
-// SessionsConfig controls JSONL trajectory (session) logging.
+// SessionsConfig controls JSONL trajectory (session) logging and the lifetime of
+// live (server-side) sessions.
 type SessionsConfig struct {
 	// Enabled turns trajectory JSONL logging on (default true when omitted).
-	Enabled       *bool    `yaml:"enabled"`
-	Dir           string   `yaml:"dir"`
-	LogTokens     bool     `yaml:"log_tokens"`
+	Enabled   *bool  `yaml:"enabled"`
+	Dir       string `yaml:"dir"`
+	LogTokens bool   `yaml:"log_tokens"`
 	// RetentionDays deletes trajectory JSONL files older than this many days.
 	// Unset defaults to 7; explicit 0 keeps files forever.
 	RetentionDays *int     `yaml:"retention_days"`
 	Redact        []string `yaml:"redact"`
+	// IdleTimeout is how long a live session goroutine may sit with no connected
+	// client and no running turn before it exits. Default 30m.
+	IdleTimeout Duration `yaml:"idle_timeout"`
+}
+
+// IdleTimeoutValue returns the live-session idle timeout (default 30m).
+func (s SessionsConfig) IdleTimeoutValue() time.Duration {
+	if s.IdleTimeout.D() <= 0 {
+		return 30 * time.Minute
+	}
+	return s.IdleTimeout.D()
 }
 
 // EnabledValue reports whether trajectory logs are written (default true).

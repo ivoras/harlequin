@@ -6,9 +6,11 @@ This repo is the answer to the questions I had: why all AI agent harnesses seem 
 
 **You probably don't want to use it**, at least not yet. It's a research project in very early development.
 
-A client-server AI agent system written in Go. A REST/SSE **server** communicates with LLMs,
+A client-server AI agent system written in Go. A REST + WebSocket **server** communicates with LLMs,
 stores data in SQLite (FTS5 + vector search), runs an agentic tool-calling loop, and manages
-skills. A beautiful Bubble Tea **TUI client** talks to it. Multi-user, organisation-aware.
+skills. Chat sessions live on the server (a goroutine per active session) and stream over a
+WebSocket, so a client can disconnect mid-turn and reconnect later to resume. A beautiful Bubble
+Tea **TUI client** talks to it. Multi-user, organisation-aware.
 
 See [AGENTS.md](AGENTS.md) for a thousand-mile architecture overview.
 
@@ -104,7 +106,7 @@ There are three roles, highest privilege first:
 |------|--------|
 | `owner` | Everything; the **only** role that can create/edit users. |
 | `admin` | All org-wide actions: create/delete **shared** memories, delete documents, read the audit log, publish skills, view other users' usage. |
-| `user` | Ordinary account: their own conversations and personal (user-scoped) memories only. |
+| `user` | Ordinary account: their own sessions and personal (user-scoped) memories only. |
 
 Create further users with `createuser` (`--owner`, `--admin`, or neither for a
 plain user), or — once a server is running — via the API as an owner. Only owners
@@ -161,7 +163,7 @@ older terminals get automatic downgrades to 256-color or 16-color via Lip Gloss 
 ## Interfaces
 
 An **interface** is the medium a user talks to the agent through. Each session (a
-conversation and its logged trajectory) is tied to exactly one interface, recorded
+chat and its logged trajectory) is tied to exactly one interface, recorded
 together with its **API** — the transport the request arrived over:
 
 | Interface | API | Notes |
@@ -170,7 +172,7 @@ together with its **API** — the transport the request arrived over:
 | `Telegram` | `Telegram` | planned: a Telegram chatbot bridge |
 | `Cron` | `Cron` | internal: scheduled jobs that start an agent turn |
 
-Because the REST/SSE API is shared by different clients, a REST client **announces
+Because the REST + WebSocket API is shared by different clients, a REST client **announces
 which interface it is** via the `X-Harlequin-Interface` header (the TUI sends
 `TUI`).
 
@@ -188,7 +190,7 @@ Manage it from the TUI:
 ## Web UI
 
 A static, mobile-first browser client lives in [`web/`](web/) (Svelte 5 + Vite). It
-uses the same REST/SSE API as the TUI and announces itself as the `Web` interface.
+uses the same REST + WebSocket API as the TUI and announces itself as the `Web` interface.
 
 Build it, then have the server serve it at `/` (same origin as the API — no CORS):
 
@@ -210,7 +212,8 @@ empty to disable serving.
 server (set `VITE_API_BASE`, default `http://127.0.0.1:8890`).
 
 **Behind nginx (production):** serve the static build and reverse-proxy the API.
-Disable proxy buffering so SSE streams arrive token-by-token:
+The chat stream is a WebSocket (`…/sessions/{id}/ws`), so forward the upgrade
+headers and disable proxy buffering:
 
 ```nginx
 server {
@@ -225,14 +228,16 @@ server {
         try_files $uri /index.html;
     }
 
-    # API + SSE chat stream.
+    # API + WebSocket chat stream.
     location /api/ {
         proxy_pass http://127.0.0.1:8890;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_buffering off;            # stream SSE immediately
-        proxy_read_timeout 1h;          # long-lived agent turns
+        proxy_set_header Upgrade $http_upgrade;        # WebSocket upgrade
+        proxy_set_header Connection "upgrade";
+        proxy_buffering off;            # stream tokens immediately
+        proxy_read_timeout 1h;          # long-lived agent turns / idle sessions
     }
 }
 ```

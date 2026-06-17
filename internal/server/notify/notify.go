@@ -1,5 +1,5 @@
 // Package notify stores server→user notifications in the owning user's per-user
-// database. Like the conversation store it is stateless: every method takes the
+// database. Like the session store it is stateless: every method takes the
 // user's database handle and ownership is implicit.
 package notify
 
@@ -29,14 +29,14 @@ func (s *Store) Create(ctx context.Context, db *sql.DB, n types.Notification) (i
 	if n.AutoRun {
 		auto = 1
 	}
-	var convID any
-	if n.ConversationID != nil {
-		convID = *n.ConversationID
+	var sessID any
+	if n.SessionID != nil {
+		sessID = *n.SessionID
 	}
 	res, err := db.ExecContext(ctx,
-		`INSERT INTO notifications(kind, title, description, prompt, auto_run, status, conversation_id, target_interface)
+		`INSERT INTO notifications(kind, title, description, prompt, auto_run, status, session_id, target_interface)
 		 VALUES (?,?,?,?,?,?,?,?)`,
-		nullIfEmpty(n.Kind), n.Title, n.Description, nullIfEmpty(n.Prompt), auto, StatusPending, convID, nullIfEmpty(n.Interface))
+		nullIfEmpty(n.Kind), n.Title, n.Description, nullIfEmpty(n.Prompt), auto, StatusPending, sessID, nullIfEmpty(n.Interface))
 	if err != nil {
 		return 0, err
 	}
@@ -48,7 +48,7 @@ func (s *Store) Create(ctx context.Context, db *sql.DB, n types.Notification) (i
 // only broadcasts.
 func (s *Store) ListPending(ctx context.Context, db *sql.DB, iface string) ([]types.Notification, error) {
 	rows, err := db.QueryContext(ctx,
-		`SELECT id, kind, title, description, prompt, auto_run, status, conversation_id, target_interface
+		`SELECT id, kind, title, description, prompt, auto_run, status, session_id, target_interface
 		 FROM notifications
 		 WHERE status = ? AND (target_interface IS NULL OR target_interface = ?)
 		 ORDER BY id`, StatusPending, iface)
@@ -62,15 +62,15 @@ func (s *Store) ListPending(ctx context.Context, db *sql.DB, iface string) ([]ty
 			n               types.Notification
 			kind, prompt    sql.NullString
 			auto            int
-			convID          sql.NullInt64
+			sessID          sql.NullInt64
 			targetInterface sql.NullString
 		)
-		if err := rows.Scan(&n.ID, &kind, &n.Title, &n.Description, &prompt, &auto, &n.Status, &convID, &targetInterface); err != nil {
+		if err := rows.Scan(&n.ID, &kind, &n.Title, &n.Description, &prompt, &auto, &n.Status, &sessID, &targetInterface); err != nil {
 			return nil, err
 		}
 		n.Kind, n.Prompt, n.AutoRun = kind.String, prompt.String, auto != 0
-		if convID.Valid {
-			n.ConversationID = &convID.Int64
+		if sessID.Valid {
+			n.SessionID = &sessID.Int64
 		}
 		n.Interface = targetInterface.String
 		out = append(out, n)

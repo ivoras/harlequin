@@ -17,7 +17,6 @@ import (
 	"github.com/ivoras/harlequin/internal/server/audit"
 	"github.com/ivoras/harlequin/internal/server/auth"
 	"github.com/ivoras/harlequin/internal/server/config"
-	"github.com/ivoras/harlequin/internal/server/conversation"
 	"github.com/ivoras/harlequin/internal/server/cron"
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/email"
@@ -32,6 +31,8 @@ import (
 	"github.com/ivoras/harlequin/internal/server/pdfextract"
 	"github.com/ivoras/harlequin/internal/server/presence"
 	"github.com/ivoras/harlequin/internal/server/secrets"
+	"github.com/ivoras/harlequin/internal/server/session"
+	"github.com/ivoras/harlequin/internal/server/sessionhub"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/skills"
 	"github.com/ivoras/harlequin/internal/server/storage"
@@ -39,6 +40,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/usage"
 	"github.com/ivoras/harlequin/internal/server/userconfig"
 	"github.com/ivoras/harlequin/internal/server/webfetch"
+	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
 func main() {
@@ -81,7 +83,7 @@ func main() {
 		prov.SetReturnProgress(p.ReturnProgress)
 		providers[p.Name] = prov
 	}
-	// Usage is recorded in the agent loop where the user/conversation are known,
+	// Usage is recorded in the agent loop where the user/session are known,
 	// so the routing provider's recorder is left nil to avoid double-counting.
 	ctxWindows := make(map[string]int, len(cfg.ContextWindows))
 	for model, n := range cfg.ContextWindows {
@@ -123,9 +125,9 @@ func main() {
 		memStore.SetConflictJudge(router, cfg.Memory.ConflictCandidates)
 	}
 	docStore := documents.NewStore(store.Shared, embedder)
-	convStore := conversation.NewStore()
+	sessStore := session.NewStore()
 	auditStore := audit.NewStore()
-	session := sessionlog.New(cfg.SessionsDir(), cfg.Sessions.EnabledValue(), cfg.Sessions.LogTokens, cfg.Sessions.Redact)
+	sessionLog := sessionlog.New(cfg.SessionsDir(), cfg.Sessions.EnabledValue(), cfg.Sessions.LogTokens, cfg.Sessions.Redact)
 
 	// The single JS-template context provider, used for every .md the server
 	// renders (skills, the system prompt, and hat prompts).
@@ -190,8 +192,8 @@ func main() {
 		Docs:                docStore,
 		Skills:              skillMgr,
 		Runner:              runner,
-		Conversations:       convStore,
-		Session:             session,
+		Sessions:            sessStore,
+		Session:             sessionLog,
 		WebFetcher:          webFetcher,
 		MCP:                 mcpManager,
 		WebFetchModel:       cfg.Agent.WebFetch.Model,
@@ -206,31 +208,38 @@ func main() {
 		Notify:              notifyStore,
 		NotifyDispatch:      dispatch,
 		Presence:            presenceTracker,
-		RecordUsage: func(ctx context.Context, userDB *sql.DB, userID int64, conversationID *int64, provider, model string, u llm.Usage) {
-			_ = usageStore.Record(ctx, userDB, conversationID, provider, model, u.PromptTokens, u.CompletionTokens)
+		RecordUsage: func(ctx context.Context, userDB *sql.DB, userID int64, sessionID *int64, provider, model string, u llm.Usage) {
+			_ = usageStore.Record(ctx, userDB, sessionID, provider, model, u.PromptTokens, u.CompletionTokens)
 		},
 		ContextMax: router.ContextMax,
 	}
 
+	// Live sessions: each active chat is a server-side goroutine that survives
+	// client disconnects and streams over WebSocket; it exits after idle_timeout
+	// with no connection and no running turn.
+	hub := sessionhub.New(sessionHubAgent{ag: ag, store: store, sessions: sessStore}, sessionLog, cfg.Sessions.IdleTimeoutValue())
+	defer hub.Stop()
+
 	srv := &api.Server{
-		Cfg:           cfg,
-		Storage:       store,
-		Auth:          authStore,
-		Conversations: convStore,
-		Memory:        memStore,
-		Docs:          docStore,
-		Skills:        skillMgr,
-		Usage:         usageStore,
-		Audit:         auditStore,
-		Session:       session,
-		Agent:         ag,
-		MCP:           mcpManager,
-		Notify:        notifyStore,
-		Cron:          cronStore,
-		CronSched:     cron.NewScheduler(store, cronStore, ag, dispatch),
-		UserConfig:    userCfgStore,
-		Presence:      presenceTracker,
-		Email:         emailSender,
+		Cfg:        cfg,
+		Storage:    store,
+		Auth:       authStore,
+		Sessions:   sessStore,
+		Memory:     memStore,
+		Docs:       docStore,
+		Skills:     skillMgr,
+		Usage:      usageStore,
+		Audit:      auditStore,
+		Session:    sessionLog,
+		Agent:      ag,
+		MCP:        mcpManager,
+		Notify:     notifyStore,
+		Cron:       cronStore,
+		CronSched:  cron.NewScheduler(store, cronStore, ag, dispatch),
+		UserConfig: userCfgStore,
+		Presence:   presenceTracker,
+		Email:      emailSender,
+		Hub:        hub,
 	}
 
 	// PDF text extraction for document uploads (PDFium via wasm; best-effort).
@@ -249,7 +258,7 @@ func main() {
 	go srv.SweepCrossScopeSlots(context.Background())
 
 	// Background maintenance: expire memories and sweep old session logs (hourly).
-	go maintenance(store, memStore, session, cfg.Sessions.RetentionDaysValue())
+	go maintenance(store, memStore, sessionLog, cfg.Sessions.RetentionDaysValue())
 
 	// Start the cron scheduler (1-minute granularity; each due job runs in its
 	// own goroutine).
@@ -271,6 +280,29 @@ func main() {
 	}
 }
 
+// sessionHubAgent adapts the concrete agent + storage to the sessionhub.Agent
+// interface, so the hub package itself stays free of the storage/sqlite link
+// chain (and unit-testable).
+type sessionHubAgent struct {
+	ag       *agent.Agent
+	store    *storage.Manager
+	sessions *session.Store
+}
+
+func (a sessionHubAgent) Run(ctx context.Context, sessionID, userID int64, username, role, api, iface, content string, emit func(types.StreamEvent)) error {
+	return a.ag.Run(ctx, sessionID, userID, username, role, api, iface, content, emit)
+}
+
+func (a sessionHubAgent) LastMessageID(ctx context.Context, userID, sessionID int64) (int64, error) {
+	var id int64
+	err := a.store.WithUser(ctx, userID, func(db *sql.DB) error {
+		var e error
+		id, e = a.sessions.LastMessageID(ctx, db, sessionID)
+		return e
+	})
+	return id, err
+}
+
 // webFetchAdapter adapts the web fetcher to the jsrun.Fetcher interface so the
 // sandbox fetch() reuses the same anti-bot headers, redirect handling, and SSRF
 // guard as the WebFetch tool.
@@ -284,7 +316,7 @@ func (a webFetchAdapter) FetchRaw(ctx context.Context, url string) (jsrun.FetchR
 	return jsrun.FetchResult{Status: r.Status, Body: r.Body, FinalURL: r.FinalURL, ContentType: r.ContentType}, nil
 }
 
-func maintenance(store *storage.Manager, mem *memory.Store, session *sessionlog.Logger, sessionRetentionDays int) {
+func maintenance(store *storage.Manager, mem *memory.Store, sessionLog *sessionlog.Logger, sessionRetentionDays int) {
 	const sweepInterval = time.Hour
 	ticker := time.NewTicker(sweepInterval)
 	defer ticker.Stop()
@@ -295,7 +327,7 @@ func maintenance(store *storage.Manager, mem *memory.Store, session *sessionlog.
 			_, _ = mem.SweepExpiredDB(ctx, udb)
 			return nil
 		})
-		session.SweepRetention(sessionRetentionDays)
+		sessionLog.SweepRetention(sessionRetentionDays)
 	}
 	sweep() // run once at startup, then every hour
 	for range ticker.C {

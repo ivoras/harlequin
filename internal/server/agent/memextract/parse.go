@@ -24,7 +24,7 @@ Other rules:
 - Do not explain your reasoning. Do not output placeholder or meta text like "no facts found".`
 
 // DocumentPrompt is the system prompt for distilling durable facts from an
-// imported document (rather than a conversation turn). It targets the document's
+// imported document (rather than a session turn). It targets the document's
 // salient, specific facts — what it is and the entities, dates, identifiers,
 // definitions, obligations or decisions it records — not personal/user facts.
 var DocumentPrompt = `You extract durable, factual knowledge worth remembering long-term from an imported document.

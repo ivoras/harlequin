@@ -30,7 +30,7 @@ func TestDelegatedLLMCallIsLogged(t *testing.T) {
 		Temperature:   0.2,
 		WebFetchModel: "small-model",
 	}
-	rc := &runContext{conversationID: 7, userID: 3, turn: 1, step: 2}
+	rc := &runContext{sessionID: 7, userID: 3, turn: 1, step: 2}
 	res := webfetch.Result{Markdown: "page md", FinalURL: "https://example.com/x", Title: "X"}
 
 	out, err := a.analyzeWeb(context.Background(), rc, "Summarize", res, "page md", 0, map[string]bool{})

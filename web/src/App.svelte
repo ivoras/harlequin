@@ -2,7 +2,7 @@
   import { api, getToken, setToken } from "./lib/api";
   import { user, view, session, toasts, toast, type View } from "./lib/stores";
   import { NOTIFY_SESSION_TITLE } from "./lib/types";
-  import type { Conversation } from "./lib/types";
+  import type { Session } from "./lib/types";
   import Login from "./views/Login.svelte";
   import Chat from "./views/Chat.svelte";
   import Skills from "./views/Skills.svelte";
@@ -15,9 +15,9 @@
   import Usage from "./views/Usage.svelte";
 
   let ready = $state(false);
-  let convDrawer = $state(false);
+  let sessionDrawer = $state(false);
   let menu = $state(false);
-  let convos = $state<Conversation[]>([]);
+  let sessions = $state<Session[]>([]);
 
   let started = false;
   let notifTimer: ReturnType<typeof setInterval> | undefined;
@@ -43,7 +43,7 @@
     const u = $user;
     if (u && !started) {
       started = true;
-      ensureConversation();
+      initSession();
       pollNotifications();
       notifTimer = setInterval(pollNotifications, 30000);
     } else if (!u && started) {
@@ -51,19 +51,55 @@
       if (notifTimer) clearInterval(notifTimer);
       notifTimer = undefined;
       session.set({ id: 0, title: "" });
+      setSessionParam(0);
       view.set("chat");
     }
   });
 
-  function cleanTitle(t: string): string {
-    return t === "Session" || t === "New conversation" ? "" : t;
+  // Keep the session id in the URL (?c=) so a refresh resumes the same session.
+  $effect(() => {
+    const id = $session.id;
+    if (id) setSessionParam(id);
+  });
+
+  function sessionParam(): number {
+    const v = new URLSearchParams(location.search).get("c");
+    const n = v ? parseInt(v, 10) : 0;
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+  function setSessionParam(id: number): void {
+    const url = new URL(location.href);
+    if (id) url.searchParams.set("c", String(id));
+    else url.searchParams.delete("c");
+    history.replaceState(null, "", url);
   }
 
-  async function ensureConversation() {
+  // On boot, resume the session named in the URL (?c=) if present; otherwise start
+  // a fresh one. Resuming reconnects to its live server-side goroutine.
+  async function initSession() {
+    const id = sessionParam();
+    if (id) {
+      try {
+        const list = await api.listSessions();
+        const found = list.find((c) => c.id === id);
+        session.set({ id, title: found ? cleanTitle(found.title) : "" });
+        return;
+      } catch {
+        /* fall through to a new session */
+      }
+    }
+    await ensureSession();
+  }
+
+  function cleanTitle(t: string): string {
+    return t === "Session" || t === "New session" || t === "New conversation" ? "" : t;
+  }
+
+  async function ensureSession() {
     if (creating) return;
     creating = true;
     try {
-      const c = await api.createConversation("Session", "");
+      const c = await api.createSession("Session", "");
       session.set({ id: c.id, title: cleanTitle(c.title) });
     } catch (e) {
       toast((e as Error).message, "error");
@@ -77,7 +113,7 @@
       const list = await api.listNotifications();
       for (const n of list) {
         if (n.kind === NOTIFY_SESSION_TITLE) {
-          if (n.conversation_id === $session.id) session.update((s) => ({ ...s, title: n.title }));
+          if (n.session_id === $session.id) session.update((s) => ({ ...s, title: n.title }));
           await api.ackNotification(n.id);
         } else if (!n.auto_run) {
           toast(n.description ? `${n.title} — ${n.description}` : n.title);
@@ -90,30 +126,30 @@
     }
   }
 
-  async function openConvos() {
-    convDrawer = true;
+  async function openSessions() {
+    sessionDrawer = true;
     try {
-      convos = await api.listConversations();
+      sessions = await api.listSessions();
     } catch (e) {
       toast((e as Error).message, "error");
     }
   }
-  async function newConversation() {
-    convDrawer = false;
-    await ensureConversation();
+  async function newSession() {
+    sessionDrawer = false;
+    await ensureSession();
     view.set("chat");
   }
-  function switchConversation(c: Conversation) {
-    convDrawer = false;
+  function switchSession(c: Session) {
+    sessionDrawer = false;
     view.set("chat");
     session.set({ id: c.id, title: cleanTitle(c.title) });
   }
-  async function deleteConversation(c: Conversation, e: Event) {
+  async function deleteSession(c: Session, e: Event) {
     e.stopPropagation();
     try {
-      await api.deleteConversation(c.id);
-      convos = convos.filter((x) => x.id !== c.id);
-      if (c.id === $session.id) await ensureConversation();
+      await api.deleteSession(c.id);
+      sessions = sessions.filter((x) => x.id !== c.id);
+      if (c.id === $session.id) await ensureSession();
     } catch (err) {
       toast((err as Error).message, "error");
     }
@@ -141,7 +177,7 @@
   <Login />
 {:else}
   <header class="app-header">
-    <button class="iconbtn" onclick={openConvos} aria-label="Conversations">☰</button>
+    <button class="iconbtn" onclick={openSessions} aria-label="Sessions">☰</button>
     <span class="brand">Harlequin</span>
     <span class="title">{$session.title || "New session"}</span>
     <button class="iconbtn" onclick={() => (menu = true)} aria-label="Menu">⋮</button>
@@ -177,25 +213,25 @@
     {/if}
   </main>
 
-  {#if convDrawer}
-    <div class="scrim" role="presentation" onclick={() => (convDrawer = false)}></div>
+  {#if sessionDrawer}
+    <div class="scrim" role="presentation" onclick={() => (sessionDrawer = false)}></div>
     <aside class="sheet left">
       <header>
-        <strong>Conversations</strong><span class="spacer"></span>
-        <button class="primary small" onclick={newConversation}>+ New</button>
+        <strong>Sessions</strong><span class="spacer"></span>
+        <button class="primary small" onclick={newSession}>+ New</button>
       </header>
       <div class="body list">
-        {#each convos as c}
-          <div class="card row" role="button" tabindex="0" onclick={() => switchConversation(c)}
-            onkeydown={(e) => e.key === "Enter" && switchConversation(c)} style="cursor:pointer;">
+        {#each sessions as c}
+          <div class="card row" role="button" tabindex="0" onclick={() => switchSession(c)}
+            onkeydown={(e) => e.key === "Enter" && switchSession(c)} style="cursor:pointer;">
             <div class="col" style="gap:2px; min-width:0; flex:1;">
               <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{c.title}</div>
               <div class="muted small">#{c.id} · {c.interface}</div>
             </div>
-            <button class="ghost danger small" onclick={(e) => deleteConversation(c, e)} aria-label="Delete">✕</button>
+            <button class="ghost danger small" onclick={(e) => deleteSession(c, e)} aria-label="Delete">✕</button>
           </div>
         {/each}
-        {#if convos.length === 0}<div class="muted small">No conversations.</div>{/if}
+        {#if sessions.length === 0}<div class="muted small">No sessions.</div>{/if}
       </div>
     </aside>
   {/if}

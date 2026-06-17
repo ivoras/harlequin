@@ -14,7 +14,7 @@ import (
 func (m *Model) exportSession(raw bool) (string, error) {
 	blocks := m.sessionBlocksForExport()
 	if !raw {
-		blocks = onlyConversation(blocks)
+		blocks = onlySession(blocks)
 	}
 	if len(blocks) == 0 {
 		return "", fmt.Errorf("nothing to export")
@@ -44,9 +44,9 @@ func (m *Model) sessionBlocksForExport() []roleBlock {
 	return out
 }
 
-// onlyConversation keeps just the User and Assistant blocks (drops thinking,
+// onlySession keeps just the User and Assistant blocks (drops thinking,
 // tool calls, status, info, errors) for the default, non-raw export.
-func onlyConversation(blocks []roleBlock) []roleBlock {
+func onlySession(blocks []roleBlock) []roleBlock {
 	out := make([]roleBlock, 0, len(blocks))
 	for _, b := range blocks {
 		if b.role == "user" || b.role == "assistant" {
@@ -64,8 +64,8 @@ func formatSessionMarkdown(m *Model, blocks []roleBlock) string {
 	if m.user != nil {
 		fmt.Fprintf(&sb, "- **User:** %s\n", m.user.Email)
 	}
-	if m.conversationID != 0 {
-		fmt.Fprintf(&sb, "- **Conversation ID:** %d\n", m.conversationID)
+	if m.sessionID != 0 {
+		fmt.Fprintf(&sb, "- **Session ID:** %d\n", m.sessionID)
 	}
 	if m.currentHat != "" {
 		fmt.Fprintf(&sb, "- **Hat:** %s\n", m.currentHat)

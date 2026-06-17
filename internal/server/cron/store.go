@@ -1,5 +1,5 @@
 // Package cron stores and runs per-user scheduled jobs. The Store is stateless
-// CRUD over a user's database (like the conversation/notify stores); the
+// CRUD over a user's database (like the session/notify stores); the
 // Scheduler ticks once a minute and dispatches due jobs to the agent.
 package cron
 

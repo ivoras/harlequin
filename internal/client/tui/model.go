@@ -79,21 +79,28 @@ type Model struct {
 	ppProgress        string          // in-flight prompt-processing progress label (cleared once tokens flow)
 	msgQueue          []string        // messages typed while a turn is in flight; sent in order as it frees up
 
-	conversationID int64
-	convTitle      string // current session's title, shown in the header (auto-titled)
-	currentHat     string // hat worn by new conversations / the active one
-	slashSel       int    // highlighted item in the slash-command autocomplete menu
-	user           *types.User
-	ctxMeter       contextMeterState
-	pendingTiming  *types.TurnTiming // timing from the latest SSEDone, shown after the turn
+	sessionID     int64
+	sessTitle     string // current session's title, shown in the header (auto-titled)
+	currentHat    string // hat worn by new sessions / the active one
+	slashSel      int    // highlighted item in the slash-command autocomplete menu
+	user          *types.User
+	ctxMeter      contextMeterState
+	pendingTiming *types.TurnTiming // timing from the latest SSEDone, shown after the turn
 
 	// Submitted input lines for up/down recall (messages and slash commands).
 	inputHistory []string
 	historyIndex int    // len(inputHistory) when editing a fresh line
 	historyDraft string // draft saved when browsing history
 
-	// cancel for the in-flight stream (Esc).
-	cancelStream context.CancelFunc
+	// Live session WebSocket and resume bookkeeping. session is the open socket
+	// (nil when disconnected); lastSeq is the highest event seq seen (sent as
+	// HaveSeq on reconnect to resume); optimisticUser counts user-message echoes
+	// to skip because we already rendered them locally; pendingSubmit holds prompts
+	// to send once the socket finishes (re)opening.
+	session        *apiclient.Session
+	lastSeq        int
+	optimisticUser int
+	pendingSubmit  []string
 
 	// ask_user interaction (phaseAsk): questions collected during a turn and the
 	// answers being assembled.
@@ -172,7 +179,7 @@ func (m *Model) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// bootstrapChat verifies the token and creates a conversation.
+// bootstrapChat verifies the token and creates a session.
 func (m *Model) bootstrapChat() tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
@@ -180,11 +187,11 @@ func (m *Model) bootstrapChat() tea.Cmd {
 		if err != nil {
 			return loginNeededMsg{}
 		}
-		conv, err := m.client.CreateConversation(ctx, "Session", "")
+		sess, err := m.client.CreateSession(ctx, "Session", "")
 		if err != nil {
 			return errMsg{err}
 		}
-		return chatReadyMsg{user: u, conversationID: conv.ID}
+		return chatReadyMsg{user: u, sessionID: sess.ID}
 	}
 }
 
@@ -192,8 +199,8 @@ func (m *Model) bootstrapChat() tea.Cmd {
 
 type loginNeededMsg struct{}
 type chatReadyMsg struct {
-	user           *types.User
-	conversationID int64
+	user      *types.User
+	sessionID int64
 }
 type errMsg struct{ err error }
 type infoMsg struct{ text string }
@@ -202,7 +209,17 @@ type loginDoneMsg struct {
 	err  error
 }
 type streamEventMsg struct{ ev types.StreamEvent }
-type streamEndMsg struct{ err error }
+
+// sessionOpenedMsg carries the result of (re)opening the session WebSocket.
+type sessionOpenedMsg struct {
+	s   *apiclient.Session
+	err error
+}
+
+// streamSocketClosedMsg signals the session socket ended (drop/close). The
+// server-side session keeps running, so an in-flight turn is resumed by
+// reconnecting with the last seen seq.
+type streamSocketClosedMsg struct{}
 
 // registerSentMsg reports the result of starting registration (a magic code was
 // emailed when err is nil).

@@ -1,4 +1,4 @@
-// Package sessionlog writes the full chat trajectory to per-conversation JSONL
+// Package sessionlog writes the full chat trajectory to per-session JSONL
 // files for reproducibility, debugging, and eval datasets. It is distinct from
 // the audit log: this captures everything needed to replay a run.
 package sessionlog
@@ -14,21 +14,21 @@ import (
 
 // Event types.
 const (
-	TypeSessionStart = "session_start"
-	TypeUserMessage  = "user_message"
-	TypeSystemPrompt = "system_prompt"
-	TypeLLMRequest   = "llm_request"
-	TypeLLMResponse  = "llm_response"
-	TypeLLMDelta      = "llm_delta"
-	TypeThinkingDelta = "thinking_delta"
-	TypeToolCall      = "tool_call"
-	TypeToolResult    = "tool_result"
+	TypeSessionStart    = "session_start"
+	TypeUserMessage     = "user_message"
+	TypeSystemPrompt    = "system_prompt"
+	TypeLLMRequest      = "llm_request"
+	TypeLLMResponse     = "llm_response"
+	TypeLLMDelta        = "llm_delta"
+	TypeThinkingDelta   = "thinking_delta"
+	TypeToolCall        = "tool_call"
+	TypeToolResult      = "tool_result"
 	TypeToolsAvailable  = "tools_available"
 	TypeSkillsAvailable = "skills_available"
 	TypeSkillLoaded     = "skill_loaded"
-	TypeUsage        = "usage"
-	TypeError        = "error"
-	TypeSessionEnd   = "session_end"
+	TypeUsage           = "usage"
+	TypeError           = "error"
+	TypeSessionEnd      = "session_end"
 	// WebFetch tool: the network fetch and the delegated (inner) LLM call that
 	// analyses the fetched page.
 	TypeWebFetch             = "web_fetch"
@@ -37,20 +37,26 @@ const (
 
 	// MCP (Model Context Protocol) external tool calls.
 	TypeMCPCall = "mcp_call"
+
+	// Live-session lifecycle (WebSocket sessions). TypeSessionResumed records a
+	// client (re)attaching to a live session (cold or warm). TypeSessionExpired
+	// records the idle reaper closing the session goroutine.
+	TypeSessionResumed = "session_resumed"
+	TypeSessionExpired = "session_expired"
 )
 
 // Event is one JSONL line. Fields beyond the envelope go into Data.
 type Event struct {
-	TS             string         `json:"ts"`
-	ConversationID int64          `json:"conversation_id"`
-	UserID         int64          `json:"user_id"`
-	Turn           int            `json:"turn"`
-	Step           int            `json:"step"`
-	Type           string         `json:"type"`
-	Data           map[string]any `json:"data,omitempty"`
+	TS        string         `json:"ts"`
+	SessionID int64          `json:"session_id"`
+	UserID    int64          `json:"user_id"`
+	Turn      int            `json:"turn"`
+	Step      int            `json:"step"`
+	Type      string         `json:"type"`
+	Data      map[string]any `json:"data,omitempty"`
 }
 
-// Logger appends events to per-conversation JSONL files.
+// Logger appends events to per-session JSONL files.
 type Logger struct {
 	dir       string
 	enabled   bool
@@ -93,8 +99,8 @@ func (l *Logger) fileMutex(path string) *sync.Mutex {
 	return m
 }
 
-func (l *Logger) path(userID, conversationID int64) string {
-	return TrajectoryPath(l.dir, userID, conversationID)
+func (l *Logger) path(userID, sessionID int64) string {
+	return TrajectoryPath(l.dir, userID, sessionID)
 }
 
 // Log appends an event. Errors are swallowed (logging must not break the loop).
@@ -111,7 +117,7 @@ func (l *Logger) Log(ctx context.Context, ev Event) {
 		}
 	}
 
-	path := l.path(ev.UserID, ev.ConversationID)
+	path := l.path(ev.UserID, ev.SessionID)
 	m := l.fileMutex(path)
 	m.Lock()
 	defer m.Unlock()
@@ -132,9 +138,9 @@ func (l *Logger) Log(ctx context.Context, ev Event) {
 	_, _ = f.Write(append(line, '\n'))
 }
 
-// ReadAll returns the raw JSONL bytes for a conversation (for GET .../log).
-func (l *Logger) ReadAll(userID, conversationID int64) ([]byte, error) {
-	return os.ReadFile(l.path(userID, conversationID))
+// ReadAll returns the raw JSONL bytes for a session (for GET .../log).
+func (l *Logger) ReadAll(userID, sessionID int64) ([]byte, error) {
+	return os.ReadFile(l.path(userID, sessionID))
 }
 
 // SweepRetention deletes session files older than retentionDays (0 = keep all).
