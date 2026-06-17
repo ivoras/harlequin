@@ -7,7 +7,7 @@ import type {
   Memory, MemoryConflict, SearchResult, MCPServer, RegisterMCPRequest,
   MCPTestResult, MCPAuthStartResult, CronJob, CreateCronJobRequest,
   UpdateCronJobRequest, UsageRecord, Notification, Document, CreateDocumentRequest,
-  CreateMemoryRequest,
+  CreateMemoryRequest, Project, ProjectInvite,
 } from "./types";
 
 const TOKEN_KEY = "harlequin.token";
@@ -169,6 +169,19 @@ export const api = {
   ackNotification: (id: number) => req<void>("POST", `/notifications/${id}/ack`),
   dismissNotification: (id: number) => req<void>("POST", `/notifications/${id}/dismiss`),
   broadcastAlert: (message: string) => req<void>("POST", "/alerts", { message }),
+
+  // projects
+  listProjects: () => reqList<Project>("GET", "/projects"),
+  createProject: (name: string) => req<Project>("POST", "/projects", { name }),
+  getProject: (id: number) => req<Project>("GET", `/projects/${id}`),
+  inviteToProject: (id: number, email: string) => req<void>("POST", `/projects/${id}/invite`, { email }),
+  listProjectInvites: () => reqList<ProjectInvite>("GET", "/projects/invites"),
+  acceptInvite: (inviteID: number) => req<{ project_id: number }>("POST", `/projects/invites/${inviteID}/accept`),
+  listProjectSessions: (id: number) => reqList<Session>("GET", `/projects/${id}/sessions`),
+  assignSession: (projectID: number, sessionID: number) =>
+    req<{ session_id: number }>("POST", `/projects/${projectID}/sessions/${sessionID}`),
+  projectMessages: (projectID: number, sessionID: number) =>
+    reqList<Message>("GET", `/projects/${projectID}/messages?sid=${sessionID}`),
 
   // misc
   usage: () => reqList<UsageRecord>("GET", "/usage"),

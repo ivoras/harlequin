@@ -237,6 +237,66 @@ func (c *Client) BroadcastAlert(ctx context.Context, message string) error {
 	return c.do(ctx, http.MethodPost, "/alerts", types.BroadcastAlertRequest{Message: message}, nil)
 }
 
+// --- projects ---
+
+// ListProjects returns the projects the user is a member of.
+func (c *Client) ListProjects(ctx context.Context) ([]types.Project, error) {
+	var out []types.Project
+	return out, c.do(ctx, http.MethodGet, "/projects", nil, &out)
+}
+
+// CreateProject creates a project (the caller becomes its first member).
+func (c *Client) CreateProject(ctx context.Context, name string) (*types.Project, error) {
+	var p types.Project
+	return &p, c.do(ctx, http.MethodPost, "/projects", types.CreateProjectRequest{Name: name}, &p)
+}
+
+// GetProject returns a project with its members.
+func (c *Client) GetProject(ctx context.Context, id int64) (*types.Project, error) {
+	var p types.Project
+	return &p, c.do(ctx, http.MethodGet, fmt.Sprintf("/projects/%d", id), nil, &p)
+}
+
+// InviteToProject invites a user (by email) to the project.
+func (c *Client) InviteToProject(ctx context.Context, id int64, email string) error {
+	return c.do(ctx, http.MethodPost, fmt.Sprintf("/projects/%d/invite", id), types.InviteRequest{Email: email}, nil)
+}
+
+// ListProjectInvites returns the caller's pending invitations.
+func (c *Client) ListProjectInvites(ctx context.Context) ([]types.ProjectInvite, error) {
+	var out []types.ProjectInvite
+	return out, c.do(ctx, http.MethodGet, "/projects/invites", nil, &out)
+}
+
+// AcceptInvite accepts an invitation, returning the joined project id.
+func (c *Client) AcceptInvite(ctx context.Context, inviteID int64) (int64, error) {
+	var out struct {
+		ProjectID int64 `json:"project_id"`
+	}
+	return out.ProjectID, c.do(ctx, http.MethodPost, fmt.Sprintf("/projects/invites/%d/accept", inviteID), nil, &out)
+}
+
+// ListProjectSessions returns the sessions assigned to a project.
+func (c *Client) ListProjectSessions(ctx context.Context, id int64) ([]types.Session, error) {
+	var out []types.Session
+	return out, c.do(ctx, http.MethodGet, fmt.Sprintf("/projects/%d/sessions", id), nil, &out)
+}
+
+// AssignSession moves the caller's personal session into the project, returning
+// the new project-session id.
+func (c *Client) AssignSession(ctx context.Context, projectID, sessionID int64) (int64, error) {
+	var out struct {
+		SessionID int64 `json:"session_id"`
+	}
+	return out.SessionID, c.do(ctx, http.MethodPost, fmt.Sprintf("/projects/%d/sessions/%d", projectID, sessionID), nil, &out)
+}
+
+// ProjectMessages returns a project session's messages.
+func (c *Client) ProjectMessages(ctx context.Context, projectID, sessionID int64) ([]types.Message, error) {
+	var out []types.Message
+	return out, c.do(ctx, http.MethodGet, fmt.Sprintf("/projects/%d/messages?sid=%d", projectID, sessionID), nil, &out)
+}
+
 // ListCron returns the user's cron jobs.
 func (c *Client) ListCron(ctx context.Context) ([]types.CronJob, error) {
 	var out []types.CronJob
