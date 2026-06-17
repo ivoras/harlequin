@@ -1,14 +1,25 @@
 <script lang="ts">
-  import { session } from "../lib/stores";
+  import { session, user } from "../lib/stores";
   import { sc } from "../lib/session.svelte";
   import { renderMarkdown } from "../lib/markdown";
+  import { matchSlash, runSlash, availableCommands } from "../lib/slash";
 
   // Chat is a thin view over the app-scoped session controller (sc), which owns
   // the WebSocket and chat state so it survives view switches. Only view-local
-  // concerns (composer text, scrolling, focus) live here.
+  // concerns (composer text, scrolling, focus, slash commands) live here.
   let input = $state("");
   let scrollEl: HTMLDivElement | undefined;
   let inputEl: HTMLTextAreaElement | undefined;
+
+  // Slash-command autocomplete + help, mirroring the TUI.
+  let slashSel = $state(0);
+  let showHelp = $state(false);
+  const admin = $derived(!!$user && ($user.role === "owner" || $user.role === "admin"));
+  const suggestions = $derived(matchSlash(input, admin));
+  // Keep the highlighted suggestion in range as the list narrows.
+  $effect(() => {
+    if (slashSel >= suggestions.length) slashSel = 0;
+  });
 
   function scrollToBottom() {
     requestAnimationFrame(() => {
@@ -30,20 +41,52 @@
     if (last && last.kind === "ask" && last.options.length === 0) inputEl?.focus();
   });
 
-  function send() {
+  // submit runs a slash command (lines starting with "/") or sends a message.
+  async function submit() {
     const text = input.trim();
-    if (!text || !$session.id) return;
+    if (!text) return;
+    if (text.startsWith("/")) {
+      input = "";
+      slashSel = 0;
+      if ((await runSlash(text, admin)) === "help") showHelp = true;
+      return;
+    }
+    if (!$session.id) return;
     input = "";
     sc.send(text);
   }
   function answerAsk(opt: string) {
     input = opt;
-    send();
+    submit();
+  }
+  function completeSlash() {
+    if (suggestions.length) {
+      input = suggestions[slashSel].name + " ";
+      slashSel = 0;
+      inputEl?.focus();
+    }
   }
   function onKey(e: KeyboardEvent) {
+    if (suggestions.length) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        slashSel = Math.min(slashSel + 1, suggestions.length - 1);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        slashSel = Math.max(slashSel - 1, 0);
+        return;
+      }
+      if (e.key === "Tab") {
+        e.preventDefault();
+        completeSlash();
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      send();
+      submit();
     }
   }
   const fmtk = (n: number) => (n >= 1000 ? Math.round(n / 1000) + "k" : "" + n);
@@ -95,6 +138,23 @@
     </div>
   </div>
 
+  {#if showHelp}
+    <div class="scrim" role="presentation" onclick={() => (showHelp = false)}></div>
+    <aside class="sheet bottom">
+      <header><strong>Commands</strong><span class="spacer"></span>
+        <button class="ghost" onclick={() => (showHelp = false)}>Close</button></header>
+      <div class="body list">
+        {#each availableCommands(admin) as c}
+          <div class="row" style="gap:8px; align-items:baseline;">
+            <code>{c.name}{#if c.args} {c.args}{/if}</code>
+            <span class="muted small">{c.desc}</span>
+          </div>
+        {/each}
+        <div class="muted small">Other actions are in the tabs and the ☰ sessions drawer.</div>
+      </div>
+    </aside>
+  {/if}
+
   <div class="composer">
     {#if sc.queue.length}
       <div class="container col" style="gap:4px; padding-bottom:6px;">
@@ -107,12 +167,23 @@
         {/each}
       </div>
     {/if}
+    {#if suggestions.length}
+      <div class="container col slashmenu" style="gap:2px; padding-bottom:6px;">
+        {#each suggestions as c, i}
+          <button class="slashitem row" class:sel={i === slashSel}
+            onmouseenter={() => (slashSel = i)} onclick={completeSlash}>
+            <code>{c.name}{#if c.args} {c.args}{/if}</code>
+            <span class="muted small">{c.desc}</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
     <div class="container row" style="align-items:flex-end; gap:8px;">
-      <textarea rows="1" placeholder={sc.loading ? "Message (will queue)…" : "Message…"} bind:value={input} bind:this={inputEl} onkeydown={onKey}></textarea>
+      <textarea rows="1" placeholder={sc.loading ? "Message (will queue)…" : "Message or /command…"} bind:value={input} bind:this={inputEl} onkeydown={onKey}></textarea>
       {#if sc.loading}
         <button class="danger" onclick={() => sc.stop()} title="Stop">■</button>
       {:else}
-        <button class="primary" onclick={send} disabled={!input.trim() || !$session.id}>Send</button>
+        <button class="primary" onclick={submit} disabled={!input.trim() || (!$session.id && !input.trim().startsWith("/"))}>Send</button>
       {/if}
     </div>
     {#if sc.reconnecting}
@@ -144,4 +215,8 @@
   .composer { border-top: 1px solid var(--border); background: var(--surface);
     padding: 8px 0 max(8px, env(safe-area-inset-bottom)); }
   textarea { resize: none; max-height: 40dvh; }
+  .slashmenu { max-height: 40dvh; overflow-y: auto; }
+  .slashitem { width: 100%; justify-content: flex-start; gap: 10px; text-align: left;
+    background: var(--surface-3); border: 1px solid transparent; }
+  .slashitem.sel { border-color: var(--accent); }
 </style>

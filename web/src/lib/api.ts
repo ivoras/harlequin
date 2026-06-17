@@ -168,6 +168,7 @@ export const api = {
   listNotifications: () => reqList<Notification>("GET", "/notifications"),
   ackNotification: (id: number) => req<void>("POST", `/notifications/${id}/ack`),
   dismissNotification: (id: number) => req<void>("POST", `/notifications/${id}/dismiss`),
+  broadcastAlert: (message: string) => req<void>("POST", "/alerts", { message }),
 
   // misc
   usage: () => reqList<UsageRecord>("GET", "/usage"),
