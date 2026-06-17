@@ -106,6 +106,11 @@ type Session struct {
 	Interface string    `json:"interface"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+	// ProjectID is set when the session belongs to a project (it then lives in the
+	// project's database and is visible to all members); nil for a personal session.
+	ProjectID *int64 `json:"project_id,omitempty"`
+	// OwnerEmail, populated for project sessions, is who originally created it.
+	OwnerEmail string `json:"owner_email,omitempty"`
 }
 
 // SetConfigRequest is the body of PUT /config/{key}.

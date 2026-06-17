@@ -27,7 +27,12 @@ const (
 
 // extractMemories asks the LLM to distill durable facts from a session turn
 // and stores them. See distillAndStore for the shared core.
-func (a *Agent) extractMemories(ctx context.Context, userID int64, userContent, assistantText string, turnWritten []string, canShareMemory bool) {
+func (a *Agent) extractMemories(ctx context.Context, projectID, userID int64, userContent, assistantText string, turnWritten []string, canShareMemory bool) {
+	// Project-session extraction (into project memory) is wired in a later phase;
+	// until then, don't extract personal memory from a project turn.
+	if projectID > 0 {
+		return
+	}
 	sess := "User said: " + userContent + "\nAssistant said: " + assistantText
 	a.distillAndStore(ctx, userID, memextract.Prompt, sess, turnWritten, canShareMemory, sessMemoryTimeout)
 }

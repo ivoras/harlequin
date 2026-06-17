@@ -99,15 +99,23 @@ type runContext struct {
 	sessionID      int64
 	userID         int64
 	username       string
-	canShareMemory bool       // owner or admin: may create/delete shared memories
-	userDB         *sql.DB    // the caller's open per-user database for this request
-	hat            *types.Hat // the session's worn hat, or nil
-	api            string     // transport this session arrived over (e.g. "REST")
-	iface          string     // interface/medium this session uses (e.g. "TUI")
-	turn           int
-	step           int
-	emit           EmitFunc
-	memWritten     []string // content stored/changed via memory_write or memory_change (auto-extract dedup)
+	canShareMemory bool    // owner or admin: may create/delete shared memories
+	userDB         *sql.DB // the acting user's per-user database (user-scoped:
+	// skills, MCP, cron, notify channels, usage, personal memory)
+	// sessDB holds this session's sessions/messages rows: the project database for
+	// a project session, otherwise == userDB.
+	sessDB *sql.DB
+	// projectID is non-zero for a project session; projectDB then holds the
+	// project's data (sessions/messages/memory). nil/zero for a personal session.
+	projectID  int64
+	projectDB  *sql.DB
+	hat        *types.Hat // the session's worn hat, or nil
+	api        string     // transport this session arrived over (e.g. "REST")
+	iface      string     // interface/medium this session uses (e.g. "TUI")
+	turn       int
+	step       int
+	emit       EmitFunc
+	memWritten []string // content stored/changed via memory_write or memory_change (auto-extract dedup)
 }
 
 // systemPromptFile is the deployed, JS-templated default system prompt
@@ -121,29 +129,44 @@ const fallbackSystemPrompt = `You are Harlequin, a helpful AI assistant for an o
 // Run executes a full turn for the given user message, streaming events via
 // emit. It opens the caller's per-user database for the duration of the turn
 // and closes it before any background work.
-func (a *Agent) Run(ctx context.Context, sessionID, userID int64, username, role, api, iface, userContent string, emit EmitFunc) error {
+// Run executes a full turn. projectID is non-zero for a project session, in which
+// case the session's messages live in the project database (and project members
+// share the session) while user-scoped tools (skills/MCP/cron) still use the
+// acting user's database.
+func (a *Agent) Run(ctx context.Context, projectID, sessionID, userID int64, username, role, api, iface, userContent string, emit EmitFunc) error {
 	if api == "" {
 		api = types.APIREST
 	}
 	if iface == "" {
 		iface = types.InterfaceTUI
 	}
-	rc := &runContext{sessionID: sessionID, userID: userID, username: username, canShareMemory: types.IsElevated(role), api: api, iface: iface, turn: 1, emit: emit}
+	rc := &runContext{sessionID: sessionID, userID: userID, username: username, canShareMemory: types.IsElevated(role), api: api, iface: iface, projectID: projectID, turn: 1, emit: emit}
 
 	var finalText string
-	if err := a.Storage.WithUser(ctx, userID, func(userDB *sql.DB) error {
+	run := func(userDB *sql.DB) error {
 		rc.userDB = userDB
+		rc.sessDB = userDB // overridden below for a project session
+		if projectID > 0 {
+			return a.Storage.WithProject(ctx, projectID, func(projDB *sql.DB) error {
+				rc.sessDB = projDB
+				rc.projectDB = projDB
+				ft, err := a.turn(ctx, rc, userContent)
+				finalText = ft
+				return err
+			})
+		}
 		ft, err := a.turn(ctx, rc, userContent)
 		finalText = ft
 		return err
-	}); err != nil {
+	}
+	if err := a.Storage.WithUser(ctx, userID, run); err != nil {
 		return err
 	}
 
-	// Background auto memory extraction (opens its own per-user database).
+	// Background auto memory extraction (opens its own databases).
 	if a.AutoExtract {
 		written := append([]string(nil), rc.memWritten...)
-		go a.extractMemories(context.Background(), userID, userContent, finalText, written, rc.canShareMemory)
+		go a.extractMemories(context.Background(), projectID, userID, userContent, finalText, written, rc.canShareMemory)
 	}
 	return nil
 }
@@ -170,7 +193,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	a.logEvent(ctx, rc, sessionlog.TypeUserMessage, map[string]any{"content": userContent})
 
 	// Persist the user message.
-	if _, err := a.Sessions.AddMessage(ctx, rc.userDB, sessionID, llm.RoleUser, userContent, nil); err != nil {
+	if _, err := a.Sessions.AddMessage(ctx, rc.sessDB, sessionID, llm.RoleUser, userContent, nil); err != nil {
 		return "", err
 	}
 
@@ -219,7 +242,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	}
 
 	// Compose messages: system + history.
-	history, err := a.Sessions.Messages(ctx, rc.userDB, sessionID)
+	history, err := a.Sessions.Messages(ctx, rc.sessDB, sessionID)
 	if err != nil {
 		return "", err
 	}
@@ -391,7 +414,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 
 		if len(toolCalls) == 0 {
 			finalText = assistantText
-			if _, err := a.Sessions.AddMessage(ctx, rc.userDB, sessionID, llm.RoleAssistant, assistantText, nil); err != nil {
+			if _, err := a.Sessions.AddMessage(ctx, rc.sessDB, sessionID, llm.RoleAssistant, assistantText, nil); err != nil {
 				return "", err
 			}
 			break
@@ -399,7 +422,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 
 		// Record the assistant message that requested tools.
 		msgs = append(msgs, llm.Message{Role: llm.RoleAssistant, Content: assistantText, ToolCalls: toolCalls})
-		_, _ = a.Sessions.AddMessage(ctx, rc.userDB, sessionID, llm.RoleAssistant, assistantText, fromLLMToolCalls(toolCalls))
+		_, _ = a.Sessions.AddMessage(ctx, rc.sessDB, sessionID, llm.RoleAssistant, assistantText, fromLLMToolCalls(toolCalls))
 
 		// Dispatch each tool call.
 		askedUser := false
@@ -411,7 +434,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 				ToolCallID: tc.ID,
 				Name:       tc.Function.Name,
 			})
-			_, _ = a.Sessions.AddMessageFull(ctx, rc.userDB, sessionID, llm.RoleTool, result, nil, tc.ID, tc.Function.Name)
+			_, _ = a.Sessions.AddMessageFull(ctx, rc.sessDB, sessionID, llm.RoleTool, result, nil, tc.ID, tc.Function.Name)
 			if tc.Function.Name == "ask_user" {
 				askedUser = true
 			}
@@ -592,7 +615,7 @@ func (a *Agent) composeSystemPrompt(ctx context.Context, rc *runContext) string 
 // loadHat sets rc.hat from the session's worn hat (if any), reading the
 // hat definition from the deployed hats directory.
 func (a *Agent) loadHat(ctx context.Context, rc *runContext) {
-	sess, err := a.Sessions.Get(ctx, rc.userDB, rc.sessionID, rc.userID)
+	sess, err := a.Sessions.Get(ctx, rc.sessDB, rc.sessionID, rc.userID)
 	if err != nil || sess.Hat == nil || *sess.Hat == "" {
 		return
 	}

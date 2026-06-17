@@ -215,6 +215,68 @@ func (s *Store) Decline(ctx context.Context, inviteID, userID int64) error {
 	return err
 }
 
+// MoveSessionToProject moves a personal session (and all its messages) from the
+// owner's user DB into the project DB, recording the original owner, and deletes
+// it from the user DB. Returns the new project-session id. The two writes aren't
+// one atomic transaction (separate sqlite files); the user-side delete runs last,
+// so a failure leaves the source intact rather than losing data.
+func (s *Store) MoveSessionToProject(ctx context.Context, userDB, projDB *sql.DB, userSessionID, ownerID int64) (int64, error) {
+	// Read the session header from the user DB.
+	var title, api, iface string
+	var hat sql.NullString
+	var createdAt sql.NullString
+	err := userDB.QueryRowContext(ctx,
+		`SELECT title, hat, api, interface, created_at FROM sessions WHERE id = ?`, userSessionID).
+		Scan(&title, &hat, &api, &iface, &createdAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, sql.ErrNoRows
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	// Insert into the project DB (new autoincrement id), preserving created_at.
+	res, err := projDB.ExecContext(ctx,
+		`INSERT INTO sessions(owner_user_id, title, hat, api, interface, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), CURRENT_TIMESTAMP)`,
+		ownerID, title, hat, api, iface, createdAt)
+	if err != nil {
+		return 0, err
+	}
+	newID, _ := res.LastInsertId()
+
+	// Copy messages in order.
+	rows, err := userDB.QueryContext(ctx,
+		`SELECT role, content, tool_calls, tool_call_id, name, created_at
+		 FROM messages WHERE session_id = ? ORDER BY id ASC`, userSessionID)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var role, content string
+		var toolCalls, toolCallID, name, createdAt sql.NullString
+		if err := rows.Scan(&role, &content, &toolCalls, &toolCallID, &name, &createdAt); err != nil {
+			return 0, err
+		}
+		if _, err := projDB.ExecContext(ctx,
+			`INSERT INTO messages(session_id, role, content, tool_calls, tool_call_id, name, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))`,
+			newID, role, content, toolCalls, toolCallID, name, createdAt); err != nil {
+			return 0, err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	// Remove from the user DB (messages cascade).
+	if _, err := userDB.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, userSessionID); err != nil {
+		return 0, err
+	}
+	return newID, nil
+}
+
 // --- chatroom (project DB) ---
 
 // AddChatMessage appends a chatroom message and returns it (with the author email

@@ -15,9 +15,9 @@ type fakeAgent struct {
 	release chan struct{}
 }
 
-func (f *fakeAgent) LastMessageID(context.Context, int64, int64) (int64, error) { return 0, nil }
+func (f *fakeAgent) LastMessageID(context.Context, int64, int64, int64) (int64, error) { return 0, nil }
 
-func (f *fakeAgent) Run(_ context.Context, _, _ int64, _, _, _, _, content string, emit func(types.StreamEvent)) error {
+func (f *fakeAgent) Run(_ context.Context, _, _, _ int64, _, _, _, _, content string, emit func(types.StreamEvent)) error {
 	emit(types.StreamEvent{Type: types.SSEUserMessage, Text: content})
 	emit(types.StreamEvent{Type: types.SSEToken, Text: "a"})
 	emit(types.StreamEvent{Type: types.SSEToken, Text: "b"})
@@ -38,7 +38,7 @@ func TestResumeReplaysInflightTurn(t *testing.T) {
 	defer hub.Stop()
 	user, sess := testUserSess()
 
-	a := hub.Attach(user, sess)
+	a := hub.Attach(user, 0, sess)
 	defer a.Close()
 	a.Resume(0)
 	a.Submit("hello")
@@ -51,7 +51,7 @@ func TestResumeReplaysInflightTurn(t *testing.T) {
 	}
 
 	// Cold resume: a fresh connection gets the whole in-flight turn.
-	b := hub.Attach(user, sess)
+	b := hub.Attach(user, 0, sess)
 	defer b.Close()
 	synced, replay := b.Resume(0)
 	if !synced.Running {
@@ -65,7 +65,7 @@ func TestResumeReplaysInflightTurn(t *testing.T) {
 	}
 
 	// Warm reconnect: only the tail beyond have_seq replays.
-	c := hub.Attach(user, sess)
+	c := hub.Attach(user, 0, sess)
 	defer c.Close()
 	_, tail := c.Resume(2)
 	if len(tail) != 1 || tail[0].Seq != 3 {
@@ -81,7 +81,7 @@ func TestIdleExpiry(t *testing.T) {
 	defer hub.Stop()
 	user, sess := testUserSess()
 
-	a := hub.Attach(user, sess)
+	a := hub.Attach(user, 0, sess)
 	a.Resume(0)
 	a.Close() // no turn, no connection: the reaper should expire it
 
