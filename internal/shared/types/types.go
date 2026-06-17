@@ -156,6 +156,16 @@ type MCPServer struct {
 // The new title is carried in Title. Not shown as a chat message.
 const NotifyKindSessionTitle = "session-title"
 
+// NotifyKindAlert is an admin/owner broadcast alert sent to every user (the
+// /alert command). Shown in the client alert box like any passive notification.
+const NotifyKindAlert = "alert"
+
+// BroadcastAlertRequest is the body of POST /alerts (owner/admin only): a text
+// message delivered as an alert to all users.
+type BroadcastAlertRequest struct {
+	Message string `json:"message"`
+}
+
 // Notification is a server→user message stored in the user's database. It may
 // carry a prompt the client can run, optionally automatically (AutoRun).
 type Notification struct {

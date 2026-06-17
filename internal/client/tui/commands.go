@@ -56,6 +56,7 @@ const helpText = `Commands:
   /resume <id>          resume a specific session by id
   /dismiss [n|all]      dismiss an alert from the alert box (all by default)
   /run <n>              run the prompt carried by alert n
+  /alert <message>      (owner/admin) broadcast an alert to all users
   /usage                show your token/cost usage
   /export [raw]         save transcript to session_YYYYMMDD_HHMM.md (cwd); raw includes thinking/tools, else User+Assistant only
   /quit                 exit`
@@ -76,6 +77,20 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 		return m.dismissAlert(args)
 	case "/run":
 		return m.runAlert(args)
+	case "/alert":
+		if m.user == nil || !types.IsElevated(m.user.Role) {
+			return infoCmd("/alert is for owners and admins only")
+		}
+		msg := strings.TrimSpace(strings.Join(args, " "))
+		if msg == "" {
+			return infoCmd("usage: /alert <message>")
+		}
+		return func() tea.Msg {
+			if err := m.client.BroadcastAlert(context.Background(), msg); err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{"alert sent to all users"}
+		}
 	case "/export":
 		raw := len(args) > 0 && strings.EqualFold(args[0], "raw")
 		return func() tea.Msg {
