@@ -91,7 +91,9 @@ def _eer(pos, neg):
 
 
 def evaluate(label, backend, variant, mode, qvecs, depth=50):
-    r = Retriever(backend, variant, embedder=qvecs["_emb"], with_bm25=(mode != "dense"))
+    r = Retriever(backend, variant, embedder=qvecs["_emb"],
+                  with_bm25=(mode in ("bm25", "hybrid")),
+                  with_fts=(mode in ("fts5", "fts5_hybrid")))
     by_id = r.by_id
     ranked_indoc, top1_indoc = [], []
     fhr, budget_hits = [], {b: [] for b in BUDGETS}
@@ -136,6 +138,10 @@ def _retrieve(r, q, qvecs, mode, depth):
         return r.lexical(q["q"], depth)
     if mode == "hybrid":
         return r.hybrid(qvecs[q["id"]], q["q"], k=depth, depth=depth)
+    if mode == "fts5":
+        return r.fts5(q["q"], depth)
+    if mode == "fts5_hybrid":
+        return r.hybrid_fts(qvecs[q["id"]], q["q"], k=depth, depth=depth)
     raise ValueError(mode)
 
 
@@ -164,6 +170,13 @@ def configs_for(group):
             c.append((f"granite/{v}/hybrid", "granite", v, "hybrid"))
             c.append((f"qwen4b/{v}/dense", "qwen4b", v, "dense"))
             c.append((f"qwen4b/{v}/hybrid", "qwen4b", v, "hybrid"))
+        return c
+    if group == "fts":
+        c = []
+        for v in CORE_VARIANTS:
+            c.append((f"granite/{v}/fts5", "granite", v, "fts5"))
+            c.append((f"granite/{v}/fts5_hybrid", "granite", v, "fts5_hybrid"))
+            c.append((f"qwen4b/{v}/fts5_hybrid", "qwen4b", v, "fts5_hybrid"))
         return c
     if group == "confound":
         idxdir = os.path.join(DATA, "idx", "granite")
