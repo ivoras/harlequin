@@ -228,3 +228,37 @@ def structure(sents: list[Sentence], max_tok: int = 1024) -> list[dict]:
 
 def per_sentence(sents: list[Sentence]) -> list[dict]:
     return [_mk_chunk(sents, [s.id]) for s in sents]
+
+
+# --- confound-control baselines: boundaries placed WITHOUT semantic info ------
+
+def fixed_nsent(sents: list[Sentence], n: int, max_tok: int = 1500) -> list[dict]:
+    """Exactly n sentences per chunk (size-controlled, content-blind), with a
+    hard token cap so oversized runs never exceed the model limit."""
+    chunks, cur, tok = [], [], 0
+    for s in sents:
+        if cur and (len(cur) >= n or tok + s.n_tok > max_tok):
+            chunks.append(_mk_chunk(sents, cur)); cur, tok = [], 0
+        cur.append(s.id); tok += s.n_tok
+    if cur:
+        chunks.append(_mk_chunk(sents, cur))
+    return chunks
+
+
+def random_cuts(sents: list[Sentence], n_chunks: int, seed: int = 0,
+                max_tok: int = 1500) -> list[dict]:
+    """Cut at `n_chunks-1` random sentence boundaries (the null control: same
+    granularity as a semantic chunker, but boundaries carry no information).
+    A token cap may add extra cuts, so realised count can exceed n_chunks."""
+    import random
+    rng = random.Random(seed)
+    n = len(sents)
+    cutset = set(rng.sample(range(1, n), min(n_chunks - 1, n - 1)))
+    chunks, cur, tok = [], [], 0
+    for i, s in enumerate(sents):
+        if cur and (i in cutset or tok + s.n_tok > max_tok):
+            chunks.append(_mk_chunk(sents, cur)); cur, tok = [], 0
+        cur.append(s.id); tok += s.n_tok
+    if cur:
+        chunks.append(_mk_chunk(sents, cur))
+    return chunks

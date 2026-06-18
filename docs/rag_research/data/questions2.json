@@ -1,0 +1,962 @@
+[
+ {
+  "id": 0,
+  "q": "What factor might lead to the complete disappearance of a rudimentary organ?",
+  "support_sent": 3811,
+  "page": 302,
+  "line": 32,
+  "expected_text": "The principle, also, of economy, explained in a former chapter, by which the materials forming any part or structure, if not useful to the possessor, will be saved as far as is possible, will probably"
+ },
+ {
+  "id": 1,
+  "q": "What does he do regarding the most vigorous males and the females?",
+  "support_sent": 918,
+  "page": 61,
+  "line": 18,
+  "expected_text": "He does not allow the most vigorous males to struggle for the females."
+ },
+ {
+  "id": 2,
+  "q": "What does Lyell's work reveal about the fossil record of the tertiary stages?",
+  "support_sent": 2702,
+  "page": 209,
+  "line": 42,
+  "expected_text": "Lyell has shown that it is hardly possible to resist the evidence on this head in the case of the several tertiary stages; and every year tends to fill up the blanks between them, and to make the perc"
+ },
+ {
+  "id": 3,
+  "q": "What remains of the book?",
+  "support_sent": 2686,
+  "page": 209,
+  "line": 9,
+  "expected_text": "Of this volume, only here and there a short chapter has been preserved; and of each page, only here and there a few lines."
+ },
+ {
+  "id": 4,
+  "q": "What is the origin of our Domestic Races of animals and plants?",
+  "support_sent": 552,
+  "page": 35,
+  "line": 0,
+  "expected_text": "To sum up on the origin of our Domestic Races of animals and plants."
+ },
+ {
+  "id": 5,
+  "q": "Why is the distinction between the two cases important?",
+  "support_sent": 2173,
+  "page": 167,
+  "line": 19,
+  "expected_text": "This distinction is important, when the cause of the sterility, which is common to the two cases, has to be considered."
+ },
+ {
+  "id": 6,
+  "q": "What are the conditions for distributing copies of this eBook without charging anything?",
+  "support_sent": 4673,
+  "page": 361,
+  "line": 15,
+  "expected_text": "If you do not charge anything for copies of this eBook, complying"
+ },
+ {
+  "id": 7,
+  "q": "What does natural selection do to the descendants from a common parent?",
+  "support_sent": 886,
+  "page": 59,
+  "line": 10,
+  "expected_text": "Action of Natural Selection, through Divergence of Character and Extinction, on the descendants from a common parent."
+ },
+ {
+  "id": 8,
+  "q": "Why does the author provide this specific case despite it not affecting an important character?",
+  "support_sent": 1529,
+  "page": 113,
+  "line": 14,
+  "expected_text": "I will, however, give one curious and complex case, not indeed as affecting any important character, but from occurring in several species of the same genus, partly under domestication and partly unde"
+ },
+ {
+  "id": 9,
+  "q": "What would be the consequence for the theory of evolution by natural selection if multiple related species appeared suddenly and simultaneously?",
+  "support_sent": 2623,
+  "page": 203,
+  "line": 38,
+  "expected_text": "If numerous species, belonging to the same genera or families, have really started into life all at once, the fact would be fatal to the theory of descent with slow modification through natural select"
+ },
+ {
+  "id": 10,
+  "q": "How many teats are typically present in the udders of the genus Bos?",
+  "support_sent": 3774,
+  "page": 300,
+  "line": 5,
+  "expected_text": "So again there are normally four developed and two rudimentary teats in the udders of the genus Bos, but in our domestic cows the two sometimes become developed and give milk."
+ },
+ {
+  "id": 11,
+  "q": "Which is considered more advanced, the butterfly or the caterpillar?",
+  "support_sent": 3699,
+  "page": 293,
+  "line": 20,
+  "expected_text": "But no one probably will dispute that the butterfly is higher than the caterpillar."
+ },
+ {
+  "id": 12,
+  "q": "Have you found any terrestrial animals that fertilize themselves?",
+  "support_sent": 1040,
+  "page": 72,
+  "line": 22,
+  "expected_text": "As yet I have not found a single case of a terrestrial animal which fertilises itself."
+ },
+ {
+  "id": 13,
+  "q": "What did the author do to the aphides on the dock-plant?",
+  "support_sent": 1907,
+  "page": 144,
+  "line": 29,
+  "expected_text": "I removed all the ants from a group of about a dozen aphides on a dock-plant, and prevented their attendance during several hours."
+ },
+ {
+  "id": 14,
+  "q": "Why do people marvel at the extinction of an organic being?",
+  "support_sent": 827,
+  "page": 55,
+  "line": 3,
+  "expected_text": "Nevertheless so profound is our ignorance, and so high our presumption, that we marvel when we hear of the extinction of an organic being; and as we do not see the cause, we invoke cataclysms to desol"
+ },
+ {
+  "id": 15,
+  "q": "Is sterility a specially acquired or endowed quality?",
+  "support_sent": 2168,
+  "page": 167,
+  "line": 1,
+  "expected_text": "I hope, however, to be able to show that sterility is not a specially acquired or endowed quality, but is incidental on other acquired differences."
+ },
+ {
+  "id": 16,
+  "q": "How does the variation among individuals of the same variety or sub-variety in cultivated plants and animals compare to that found in wild species?",
+  "support_sent": 253,
+  "page": 11,
+  "line": 18,
+  "expected_text": "When we look to the individuals of the same variety or sub-variety of our older cultivated plants and animals, one of the first points which strikes us, is, that they generally differ much more from e"
+ },
+ {
+  "id": 17,
+  "q": "What do slave ants do when their nest is disturbed?",
+  "support_sent": 1988,
+  "page": 150,
+  "line": 38,
+  "expected_text": "When the nest is slightly disturbed, the slaves occasionally come out, and like their masters are much agitated and defend the nest: when the nest is much disturbed and the larvæ and pupæ are exposed,"
+ },
+ {
+  "id": 18,
+  "q": "What is the relationship between the development of new forms from a species and the likelihood of its relatives being exterminated?",
+  "support_sent": 2766,
+  "page": 215,
+  "line": 19,
+  "expected_text": "Hence the improved and modified descendants of a species will generally cause the extermination of the parent-species; and if many new forms have been developed from any one species, the nearest allie"
+ },
+ {
+  "id": 19,
+  "q": "What would disprove Darwin's theory of natural selection?",
+  "support_sent": 1815,
+  "page": 137,
+  "line": 41,
+  "expected_text": "If it could be proved that any part of the structure of any one species had been formed for the exclusive good of another species, it would annihilate my theory, for such could not have been produced "
+ },
+ {
+  "id": 20,
+  "q": "What will happen to species that are only slightly valued?",
+  "support_sent": 529,
+  "page": 33,
+  "line": 10,
+  "expected_text": "But as yet they will hardly have a distinct name, and from being only slightly valued, their history will be disregarded."
+ },
+ {
+  "id": 21,
+  "q": "How can one fully realize what they have done?",
+  "support_sent": 450,
+  "page": 26,
+  "line": 43,
+  "expected_text": "In order fully to realise what they have done, it is almost necessary to read several of the many treatises devoted to this subject, and to inspect the animals."
+ },
+ {
+  "id": 22,
+  "q": "What can be plainer than that the webbed feet of ducks and geese are formed for swimming?",
+  "support_sent": 1704,
+  "page": 127,
+  "line": 29,
+  "expected_text": "What can be plainer than that the webbed feet of ducks and geese are formed for swimming? yet there are upland geese with webbed feet which rarely or never go near the water; and no one except Audubon"
+ },
+ {
+  "id": 23,
+  "q": "Can natural selection master tendencies that are currently present in a species?",
+  "support_sent": 1386,
+  "page": 100,
+  "line": 30,
+  "expected_text": "These tendencies, I do not doubt, may be mastered more or less completely by natural selection: thus a family of stags once existed with an antler only on one side; and if this had been of any great u"
+ },
+ {
+  "id": 24,
+  "q": "What does each geological formation signify according to this view?",
+  "support_sent": 2727,
+  "page": 211,
+  "line": 34,
+  "expected_text": "Each formation, on this view, does not mark a new and complete act of creation, but only an occasional scene, taken almost at hazard, in a slowly changing drama."
+ },
+ {
+  "id": 25,
+  "q": "What is the typical result of propagating mongrels and fertile hybrids for several generations, and are there exceptions?",
+  "support_sent": 2392,
+  "page": 184,
+  "line": 34,
+  "expected_text": "When mongrels and the more fertile hybrids are propagated for several generations an extreme amount of variability in their offspring is notorious; but some few cases both of hybrids and mongrels long"
+ },
+ {
+  "id": 26,
+  "q": "What is the distinction between the sterility of first crosses and of hybrids?",
+  "support_sent": 2155,
+  "page": 166,
+  "line": 24,
+  "expected_text": "Distinction between the sterility of first crosses and of hybrids."
+ },
+ {
+  "id": 27,
+  "q": "Why is the reproductive process in hermaphrodites less obvious than in animals and plants with separated sexes?",
+  "support_sent": 1007,
+  "page": 69,
+  "line": 21,
+  "expected_text": "In the case of animals and plants with separated sexes, it is of course obvious that two individuals must always unite for each birth; but in the case of hermaphrodites this is far from obvious."
+ },
+ {
+  "id": 28,
+  "q": "What evidence supports the view that all domestic pigeon breeds descend from the rock-pigeon?",
+  "support_sent": 422,
+  "page": 24,
+  "line": 27,
+  "expected_text": "In favour of this view, I may add, firstly, that C. livia, or the rock-pigeon, has been found capable of domestication in Europe and in India; and that it agrees in habits and in a great number of poi"
+ },
+ {
+  "id": 29,
+  "q": "Does this abstract apply to animals as well?",
+  "support_sent": 3191,
+  "page": 251,
+  "line": 14,
+  "expected_text": "This brief abstract applies to plants alone: some strictly analogous facts could be given on the distribution of terrestrial animals."
+ },
+ {
+  "id": 30,
+  "q": "How can the mother's anatomy influence the fetus during pregnancy?",
+  "support_sent": 1793,
+  "page": 136,
+  "line": 9,
+  "expected_text": "The shape, also, of the pelvis might affect by pressure the shape of the head of the young in the womb."
+ },
+ {
+  "id": 31,
+  "q": "How does natural selection account for changes in behavior when environmental conditions shift?",
+  "support_sent": 2146,
+  "page": 165,
+  "line": 28,
+  "expected_text": "Therefore I can see no difficulty, under changing conditions of life, in natural selection accumulating slight modifications of instinct to any extent, in any useful direction."
+ },
+ {
+  "id": 32,
+  "q": "Between which organisms does the struggle for existence often become very severe?",
+  "support_sent": 3912,
+  "page": 310,
+  "line": 25,
+  "expected_text": "But the struggle will often be very severe between beings most remote in the scale of nature."
+ },
+ {
+  "id": 33,
+  "q": "How does the water-ouzel subsist despite being a member of the strictly terrestrial thrush family?",
+  "support_sent": 1702,
+  "page": 127,
+  "line": 21,
+  "expected_text": "On the other hand, the acutest observer by examining the dead body of the water-ouzel would never have suspected its sub-aquatic habits; yet this anomalous member of the strictly terrestrial thrush fa"
+ },
+ {
+  "id": 34,
+  "q": "How does the nature of conflict among birds compare to that of other animals?",
+  "support_sent": 956,
+  "page": 64,
+  "line": 38,
+  "expected_text": "Amongst birds, the contest is often of a more peaceful character."
+ },
+ {
+  "id": 35,
+  "q": "Why are more recent biological forms considered \"higher\" than ancient ones according to this theory?",
+  "support_sent": 2881,
+  "page": 225,
+  "line": 40,
+  "expected_text": "But in one particular sense the more recent forms must, on my theory, be higher than the more ancient; for each new species is formed by having had some advantage in the struggle for life over other a"
+ },
+ {
+  "id": 36,
+  "q": "Can instincts be acquired and modified through natural selection?",
+  "support_sent": 1611,
+  "page": 118,
+  "line": 35,
+  "expected_text": "Thirdly, can instincts be acquired and modified through natural selection?"
+ },
+ {
+  "id": 37,
+  "q": "How do extinct forms relate to existing forms?",
+  "support_sent": 2944,
+  "page": 231,
+  "line": 2,
+  "expected_text": "Extinct forms are seldom directly intermediate between existing forms; but are intermediate only by a long and circuitous course through many extinct and very different forms."
+ },
+ {
+  "id": 38,
+  "q": "Is the stripe on each shoulder ever double?",
+  "support_sent": 1532,
+  "page": 113,
+  "line": 20,
+  "expected_text": "It has also been asserted that the stripe on each shoulder is sometimes double."
+ },
+ {
+  "id": 39,
+  "q": "What are the rules followed in classification and what difficulties arise from viewing it as revealing an unknown plan of creation or merely grouping similar forms?",
+  "support_sent": 3483,
+  "page": 275,
+  "line": 36,
+  "expected_text": "Let us now consider the rules followed in classification, and the difficulties which are encountered on the view that classification either gives some unknown plan of creation, or is simply a scheme f"
+ },
+ {
+  "id": 40,
+  "q": "What did Dr. Hooker think of the statements in the manuscript?",
+  "support_sent": 647,
+  "page": 41,
+  "line": 39,
+  "expected_text": "Dr. Hooker permits me to add, that after having carefully read my manuscript, and examined the tables, he thinks that the following statements are fairly well established."
+ },
+ {
+  "id": 41,
+  "q": "What do the author's tables show regarding the relationship between the formation of multiple species in a genus and the presence of varieties?",
+  "support_sent": 669,
+  "page": 43,
+  "line": 36,
+  "expected_text": "And this certainly is the case, if varieties be looked at as incipient species; for my tables clearly show as a general rule that, wherever many species of a genus have been formed, the species of tha"
+ },
+ {
+  "id": 42,
+  "q": "What is an example of the effect of use?",
+  "support_sent": 285,
+  "page": 14,
+  "line": 2,
+  "expected_text": "The great and inherited development of the udders in cows and goats in countries where they are habitually milked, in comparison with the state of these organs in other countries, is another instance "
+ },
+ {
+  "id": 43,
+  "q": "On what basis have many palæontologists founded their species?",
+  "support_sent": 2595,
+  "page": 200,
+  "line": 32,
+  "expected_text": "It is notorious on what excessively slight differences many palæontologists have founded their species; and they do this the more readily if the specimens come from different sub-stages of the same fo"
+ },
+ {
+  "id": 44,
+  "q": "How does the age of a biological form relate to its similarity with living organisms?",
+  "support_sent": 2821,
+  "page": 220,
+  "line": 43,
+  "expected_text": "The more ancient any form is, the more, as a general rule, it differs from living forms."
+ },
+ {
+  "id": 45,
+  "q": "What is the proportion of blood from a single ancestor after twelve generations?",
+  "support_sent": 1511,
+  "page": 111,
+  "line": 31,
+  "expected_text": "After twelve generations, the proportion of blood, to use a common expression, of any one ancestor, is only 1 in 2048; and yet, as we see, it is generally believed that a tendency to reversion is reta"
+ },
+ {
+  "id": 46,
+  "q": "Why is a high degree of variability considered favourable?",
+  "support_sent": 535,
+  "page": 33,
+  "line": 28,
+  "expected_text": "A high degree of variability is obviously favourable, as freely giving the materials for selection to work on; not that mere individual differences are not amply sufficient, with extreme care, to allo"
+ },
+ {
+  "id": 47,
+  "q": "How did the first pouter-pigeon likely inflate its crop compared to modern turbits?",
+  "support_sent": 521,
+  "page": 32,
+  "line": 28,
+  "expected_text": "Perhaps the first pouter-pigeon did not inflate its crop much more than the turbit now does the upper part of its oesophagus,—a habit which is disregarded by all fanciers, as it is not one of the poin"
+ },
+ {
+  "id": 48,
+  "q": "What distinction can be understood on these views?",
+  "support_sent": 3589,
+  "page": 284,
+  "line": 15,
+  "expected_text": "We can understand, on these views, the very important distinction between real affinities and analogical or adaptive resemblances."
+ },
+ {
+  "id": 49,
+  "q": "What are the likely consequences of altering an embryo or larva?",
+  "support_sent": 289,
+  "page": 14,
+  "line": 12,
+  "expected_text": "Any change in the embryo or larva will almost certainly entail changes in the mature animal."
+ },
+ {
+  "id": 50,
+  "q": "What explains the extraordinarily rapid increase and wide diffusion of naturalised productions in their new homes?",
+  "support_sent": 761,
+  "page": 49,
+  "line": 38,
+  "expected_text": "In such cases the geometrical ratio of increase, the result of which never fails to be surprising, simply explains the extraordinarily rapid increase and wide diffusion of naturalised productions in t"
+ },
+ {
+  "id": 51,
+  "q": "How is the natural arrangement depicted in the diagram?",
+  "support_sent": 3548,
+  "page": 281,
+  "line": 0,
+  "expected_text": "This natural arrangement is shown, as far as is possible on paper, in the diagram, but in much too simple a manner."
+ },
+ {
+  "id": 52,
+  "q": "What are the likely consequences of periods of subsidence and later periods on the forms of life?",
+  "support_sent": 3881,
+  "page": 308,
+  "line": 33,
+  "expected_text": "During these latter periods there will probably be more variability in the forms of life; during periods of subsidence, more extinction."
+ },
+ {
+  "id": 53,
+  "q": "What is the status of this genus despite being much isolated?",
+  "support_sent": 3547,
+  "page": 280,
+  "line": 41,
+  "expected_text": "But this genus, though much isolated, will still occupy its proper intermediate position; for F originally was intermediate in character between A and I, and the several genera descended from these tw"
+ },
+ {
+  "id": 54,
+  "q": "What do they believe about the purpose of many biological structures?",
+  "support_sent": 1800,
+  "page": 136,
+  "line": 39,
+  "expected_text": "They believe that very many structures have been created for beauty in the eyes of man, or for mere variety."
+ },
+ {
+  "id": 55,
+  "q": "Can you provide evidence that the importance of this principle was acknowledged in ancient works?",
+  "support_sent": 474,
+  "page": 28,
+  "line": 39,
+  "expected_text": "I could give several references to the full acknowledgment of the importance of the principle in works of high antiquity."
+ },
+ {
+  "id": 56,
+  "q": "What are the page numbers for the sections on the future progress and the imperfection of the geological record?",
+  "support_sent": 4311,
+  "page": 338,
+  "line": 30,
+  "expected_text": "Geology: future progress of, 487. imperfection of the record, 279."
+ },
+ {
+  "id": 57,
+  "q": "What topics related to birds are covered by Audubon and on which pages?",
+  "support_sent": 4132,
+  "page": 327,
+  "line": 10,
+  "expected_text": "Audubon: on habits of frigate-bird, 185. on variation in birds’-nests, 212. on heron eating seeds, 387."
+ },
+ {
+  "id": 58,
+  "q": "How do female birds of Paradise select their mates?",
+  "support_sent": 958,
+  "page": 64,
+  "line": 41,
+  "expected_text": "The rock-thrush of Guiana, birds of Paradise, and some others, congregate; and successive males display their gorgeous plumage and perform strange antics before the females, which standing by as spect"
+ },
+ {
+  "id": 59,
+  "q": "What happens when different mountain-varieties of sheep are kept together?",
+  "support_sent": 847,
+  "page": 56,
+  "line": 37,
+  "expected_text": "So again with the varieties of sheep: it has been asserted that certain mountain-varieties will starve out other mountain-varieties, so that they cannot be kept together."
+ },
+ {
+  "id": 60,
+  "q": "Why do embryos of air-breathing mammals and birds have structures resembling those of fish?",
+  "support_sent": 4004,
+  "page": 318,
+  "line": 10,
+  "expected_text": "We may cease marvelling at the embryo of an air-breathing mammal or bird having branchial slits and arteries running in loops, like those in a fish which has to breathe the air dissolved in water, by "
+ },
+ {
+  "id": 61,
+  "q": "Have things remained unchanged since eternity?",
+  "support_sent": 2675,
+  "page": 208,
+  "line": 12,
+  "expected_text": "But have we any right to assume that things have thus remained from eternity?"
+ },
+ {
+  "id": 62,
+  "q": "What is the tendency of larger biological groups over time?",
+  "support_sent": 3938,
+  "page": 312,
+  "line": 20,
+  "expected_text": "Dominant species belonging to the larger groups tend to give birth to new and dominant forms; so that each large group tends to become still larger, and at the same time more divergent in character."
+ },
+ {
+  "id": 63,
+  "q": "What effect does the laborious breathing necessary in high regions have on the size of the chest?",
+  "support_sent": 1794,
+  "page": 136,
+  "line": 10,
+  "expected_text": "The laborious breathing necessary in high regions would, we have some reason to believe, increase the size of the chest; and again correlation would come into play."
+ },
+ {
+  "id": 64,
+  "q": "Why do variable characters produced by man's selection sometimes become attached more to one sex than the other?",
+  "support_sent": 1463,
+  "page": 106,
+  "line": 39,
+  "expected_text": "It further deserves notice that these variable characters, produced by man’s selection, sometimes become attached, from causes quite unknown to us, more to one sex than to the other, generally to the "
+ },
+ {
+  "id": 65,
+  "q": "What happens when two species are crossed?",
+  "support_sent": 2404,
+  "page": 185,
+  "line": 34,
+  "expected_text": "When two species are crossed, one has sometimes a prepotent power of impressing its likeness on the hybrid; and so I believe it to be with varieties of plants."
+ },
+ {
+  "id": 66,
+  "q": "Has any variable ever ceased to be variable under cultivation?",
+  "support_sent": 257,
+  "page": 11,
+  "line": 35,
+  "expected_text": "No case is on record of a variable being ceasing to be variable under cultivation."
+ },
+ {
+  "id": 67,
+  "q": "How does a naturalist determine whether to classify two forms as separate species or as a species and its variety?",
+  "support_sent": 598,
+  "page": 37,
+  "line": 39,
+  "expected_text": "Practically, when a naturalist can unite two forms together by others having intermediate characters, he treats the one as a variety of the other, ranking the most common, but sometimes the one first "
+ },
+ {
+  "id": 68,
+  "q": "What causes the phenomenon where a flower's seed production is improved by foreign pollen?",
+  "support_sent": 1032,
+  "page": 71,
+  "line": 37,
+  "expected_text": "I suspect that it must arise from the pollen of a distinct _variety_ having a prepotent effect over a flower’s own pollen; and that this is part of the general law of good being derived from the inter"
+ },
+ {
+  "id": 69,
+  "q": "What can be concluded about the potential for native populations to resist foreign invaders?",
+  "support_sent": 911,
+  "page": 61,
+  "line": 0,
+  "expected_text": "And as foreigners have thus everywhere beaten some of the natives, we may safely conclude that the natives might have been modified with advantage, so as to have better resisted such intruders."
+ },
+ {
+  "id": 70,
+  "q": "What about monstrosities?",
+  "support_sent": 1482,
+  "page": 108,
+  "line": 13,
+  "expected_text": "Something of the same kind applies to monstrosities: at least Is."
+ },
+ {
+  "id": 71,
+  "q": "What are the two fairly well-marked varieties that species (A) is supposed to have produced after a thousand generations?",
+  "support_sent": 1182,
+  "page": 83,
+  "line": 40,
+  "expected_text": "After a thousand generations, species (A) is supposed to have produced two fairly well-marked varieties, namely _a_1 and _m_1."
+ },
+ {
+  "id": 72,
+  "q": "What observation have several authors made regarding the palæozoic formations of Russia, Western Europe, and North America?",
+  "support_sent": 2782,
+  "page": 216,
+  "line": 41,
+  "expected_text": "In the several successive palæozoic formations of Russia, Western Europe and North America, a similar parallelism in the forms of life has been observed by several authors: so it is, according to Lyel"
+ },
+ {
+  "id": 73,
+  "q": "What does the author believe about the scope of the process of modification?",
+  "support_sent": 1242,
+  "page": 88,
+  "line": 36,
+  "expected_text": "I see no reason to limit the process of modification, as now explained, to the formation of genera alone."
+ },
+ {
+  "id": 74,
+  "q": "How frequently do hybrids resemble one of their parents compared to mongrels?",
+  "support_sent": 2410,
+  "page": 186,
+  "line": 13,
+  "expected_text": "Much stress has been laid by some authors on the supposed fact, that mongrel animals alone are born closely like one of their parents; but it can be shown that this does sometimes occur with hybrids; "
+ },
+ {
+  "id": 75,
+  "q": "Are the breaks between species real or artificial?",
+  "support_sent": 1196,
+  "page": 84,
+  "line": 42,
+  "expected_text": "But these breaks are imaginary, and might have been inserted anywhere, after intervals long enough to have allowed the accumulation of a considerable amount of divergent variation."
+ },
+ {
+  "id": 76,
+  "q": "How do rudimentary structures compare to other parts of the organization?",
+  "support_sent": 3579,
+  "page": 283,
+  "line": 23,
+  "expected_text": "Rudimentary structures on this view are as good as, or even sometimes better than, other parts of the organisation."
+ },
+ {
+  "id": 77,
+  "q": "What are the causes and conditions that lead to sterility in hybrids and varieties?",
+  "support_sent": 4580,
+  "page": 355,
+  "line": 11,
+  "expected_text": "Sterility: from changed conditions of life, 9. of hybrids, 246. laws of, 254. causes of, 263. from unfavourable conditions, 265. of certain varieties, 269."
+ },
+ {
+  "id": 78,
+  "q": "Has the dog's affection for humans evolved into an innate behavior?",
+  "support_sent": 1943,
+  "page": 147,
+  "line": 28,
+  "expected_text": "It is scarcely possible to doubt that the love of man has become instinctive in the dog."
+ },
+ {
+  "id": 79,
+  "q": "How does the theory of creation account for these facts?",
+  "support_sent": 3995,
+  "page": 317,
+  "line": 20,
+  "expected_text": "It must be admitted that these facts receive no explanation on the theory of creation."
+ },
+ {
+  "id": 80,
+  "q": "Why will the degree of modification differ among different species?",
+  "support_sent": 2998,
+  "page": 235,
+  "line": 7,
+  "expected_text": "As the variability of each species is an independent property, and will be taken advantage of by natural selection, only so far as it profits the individual in its complex struggle for life, so the de"
+ },
+ {
+  "id": 81,
+  "q": "What separates the sub-arctic and northern temperate productions of the Old and New Worlds?",
+  "support_sent": 3136,
+  "page": 247,
+  "line": 9,
+  "expected_text": "At the present day, the sub-arctic and northern temperate productions of the Old and New Worlds are separated from each other by the Atlantic Ocean and by the extreme northern part of the Pacific."
+ },
+ {
+  "id": 82,
+  "q": "Why would a group of animals with less diverse organization struggle against one with greater structural diversity?",
+  "support_sent": 1166,
+  "page": 82,
+  "line": 37,
+  "expected_text": "A set of animals, with their organisation but little diversified, could hardly compete with a set more perfectly diversified in structure."
+ },
+ {
+  "id": 83,
+  "q": "What is needed to lessen the difficulty in understanding the case of the bat?",
+  "support_sent": 1669,
+  "page": 124,
+  "line": 10,
+  "expected_text": "And it seems to me that nothing less than a long list of such cases is sufficient to lessen the difficulty in any particular case like that of the bat."
+ },
+ {
+  "id": 84,
+  "q": "What are the two possibilities for the supposed aboriginal stocks of domesticated birds?",
+  "support_sent": 397,
+  "page": 22,
+  "line": 8,
+  "expected_text": "Hence the supposed aboriginal stocks must either still exist in the countries where they were originally domesticated, and yet be unknown to ornithologists; and this, considering their size, habits, a"
+ },
+ {
+  "id": 85,
+  "q": "Who in England typically leaves the nest to gather building materials and food?",
+  "support_sent": 2016,
+  "page": 152,
+  "line": 39,
+  "expected_text": "In England the masters alone usually leave the nest to collect building materials and food for themselves, their slaves and larvæ."
+ },
+ {
+  "id": 86,
+  "q": "How have all those exquisite adaptations of one part of the organisation to another part, and to the conditions of life, and of one distinct organic being to another being, been perfected?",
+  "support_sent": 722,
+  "page": 46,
+  "line": 37,
+  "expected_text": "How have all those exquisite adaptations of one part of the organisation to another part, and to the conditions of life, and of one distinct organic being to another being, been perfected?"
+ },
+ {
+  "id": 87,
+  "q": "How would this case be represented in the diagram?",
+  "support_sent": 1200,
+  "page": 85,
+  "line": 16,
+  "expected_text": "This case would be represented in the diagram, if all the lines proceeding from (A) were removed, excepting that from _a_1 to _a_10."
+ },
+ {
+  "id": 88,
+  "q": "What biological aspects of pigeons warrant attention?",
+  "support_sent": 405,
+  "page": 23,
+  "line": 2,
+  "expected_text": "Some facts in regard to the colouring of pigeons well deserve consideration."
+ },
+ {
+  "id": 89,
+  "q": "How quickly would the spreading and knowledge of any new sub-breed occur in semi-civilised countries?",
+  "support_sent": 531,
+  "page": 33,
+  "line": 15,
+  "expected_text": "In semi-civilised countries, with little free communication, the spreading and knowledge of any new sub-breed will be a slow process."
+ },
+ {
+  "id": 90,
+  "q": "How does the sterility of hybrids differ from that of first crosses?",
+  "support_sent": 3843,
+  "page": 306,
+  "line": 3,
+  "expected_text": "The sterility of hybrids is a very different case from that of first crosses, for their reproductive organs are more or less functionally impotent; whereas in first crosses the organs on both sides ar"
+ },
+ {
+  "id": 91,
+  "q": "What does the text discuss regarding biological changes?",
+  "support_sent": 2695,
+  "page": 209,
+  "line": 29,
+  "expected_text": "On simultaneous changes in the forms of life throughout the world."
+ },
+ {
+  "id": 92,
+  "q": "How do lower and higher members of a class compare in their rate of change?",
+  "support_sent": 3444,
+  "page": 273,
+  "line": 17,
+  "expected_text": "In both time and space the lower members of each class generally change less than the higher; but there are in both cases marked exceptions to the rule."
+ },
+ {
+  "id": 93,
+  "q": "How do insects contribute to the pollination process?",
+  "support_sent": 981,
+  "page": 66,
+  "line": 41,
+  "expected_text": "In this case insects in seeking the nectar would get dusted with pollen, and would certainly often transport the pollen from one flower to the stigma of another flower."
+ },
+ {
+  "id": 94,
+  "q": "What did the narrator discover when looking closely between the stems of the heath?",
+  "support_sent": 816,
+  "page": 54,
+  "line": 14,
+  "expected_text": "But on looking closely between the stems of the heath, I found a multitude of seedlings and little trees, which had been perpetually browsed down by the cattle."
+ },
+ {
+  "id": 95,
+  "q": "What are the characteristics and types of selection described in this text?",
+  "support_sent": 4553,
+  "page": 353,
+  "line": 22,
+  "expected_text": "Selection: of domestic products, 29. principle not of recent origin, 33. unconscious, 34. natural, 80. sexual, 87. natural, circumstances favourable to, 101."
+ },
+ {
+  "id": 96,
+  "q": "Is there a single, universally accepted definition of a species?",
+  "support_sent": 575,
+  "page": 36,
+  "line": 3,
+  "expected_text": "No one definition has as yet satisfied all naturalists; yet every naturalist knows vaguely what he means when he speaks of a species."
+ },
+ {
+  "id": 97,
+  "q": "How important are instincts compared to physical structure for a species' survival?",
+  "support_sent": 1894,
+  "page": 143,
+  "line": 29,
+  "expected_text": "It will be universally admitted that instincts are as important as corporeal structure for the welfare of each species, under its present conditions of life."
+ },
+ {
+  "id": 98,
+  "q": "What evidence supports former glacial action south of the equator?",
+  "support_sent": 3161,
+  "page": 249,
+  "line": 19,
+  "expected_text": "South of the equator, we have some direct evidence of former glacial action in New Zealand; and the same plants, found on widely separated mountains in this island, tell the same story."
+ },
+ {
+  "id": 99,
+  "q": "What recent discovery has this philosophical naturalist made regarding insect larvae?",
+  "support_sent": 588,
+  "page": 37,
+  "line": 4,
+  "expected_text": "This philosophical naturalist, I may add, has also quite recently shown that the muscles in the larvæ of certain insects are very far from uniform."
+ },
+ {
+  "id": 100,
+  "q": "What is the status of a horse without stripes in the Kattywar breed?",
+  "support_sent": 1540,
+  "page": 114,
+  "line": 1,
+  "expected_text": "In the north-west part of India the Kattywar breed of horses is so generally striped, that, as I hear from Colonel Poole, who examined the breed for the Indian Government, a horse without stripes is n"
+ },
+ {
+  "id": 101,
+  "q": "What effect did grafting have on the fertility of Robinia species?",
+  "support_sent": 2307,
+  "page": 178,
+  "line": 0,
+  "expected_text": "Something analogous occurs in grafting; for Thouin found that three species of Robinia, which seeded freely on their own roots, and which could be grafted with no great difficulty on another species, "
+ },
+ {
+  "id": 102,
+  "q": "Which forms will naturally suffer most?",
+  "support_sent": 1117,
+  "page": 79,
+  "line": 7,
+  "expected_text": "The forms which stand in closest competition with those undergoing modification and improvement, will naturally suffer most."
+ },
+ {
+  "id": 103,
+  "q": "How can a flower and a bee become mutually adapted?",
+  "support_sent": 1004,
+  "page": 68,
+  "line": 43,
+  "expected_text": "Thus I can understand how a flower and a bee might slowly become, either simultaneously or one after the other, modified and adapted in the most perfect manner to each other, by the continued preserva"
+ },
+ {
+  "id": 104,
+  "q": "Are there any examples of birds that lay their eggs in other birds' nests?",
+  "support_sent": 1958,
+  "page": 148,
+  "line": 40,
+  "expected_text": "Nevertheless, I could give several instances of various birds which have been known occasionally to lay their eggs in other birds’ nests."
+ },
+ {
+  "id": 105,
+  "q": "How does the flight capability of the logger-headed duck compare to that of a domestic Aylesbury duck?",
+  "support_sent": 1326,
+  "page": 94,
+  "line": 38,
+  "expected_text": "The logger-headed duck of South America can only flap along the surface of the water, and has its wings in nearly the same condition as the domestic Aylesbury duck."
+ },
+ {
+  "id": 106,
+  "q": "What evidence suggests that certain feather variations in different pigeon breeds are analogous rather than inherited from a common ancestor?",
+  "support_sent": 1501,
+  "page": 110,
+  "line": 33,
+  "expected_text": "The most distinct breeds of pigeons, in countries most widely apart, present sub-varieties with reversed feathers on the head and feathers on the feet,—characters not possessed by the aboriginal rock-"
+ },
+ {
+  "id": 107,
+  "q": "What topics does Mr. Woodward discuss in his work and on which pages can they be found?",
+  "support_sent": 4665,
+  "page": 360,
+  "line": 24,
+  "expected_text": "Woodward, Mr.: on the duration of specific forms, 293. on the continuous succession of genera, 316. on the succession of types, 339."
+ },
+ {
+  "id": 108,
+  "q": "What does divergence of character relate to?",
+  "support_sent": 885,
+  "page": 59,
+  "line": 9,
+  "expected_text": "Divergence of Character, related to the diversity of inhabitants of any small area, and to naturalisation."
+ },
+ {
+  "id": 109,
+  "q": "Why does the author argue that one should not attribute the close resemblance between distinct species in consecutive geological formations to unchanged physical conditions?",
+  "support_sent": 2874,
+  "page": 225,
+  "line": 9,
+  "expected_text": "He who is acquainted with the distribution of existing species over the globe, will not attempt to account for the close resemblance of the distinct species in closely consecutive formations, by the p"
+ },
+ {
+  "id": 110,
+  "q": "What about the inhabitants of the sea?",
+  "support_sent": 2967,
+  "page": 232,
+  "line": 34,
+  "expected_text": "Analogous facts could be given with respect to the inhabitants of the sea."
+ },
+ {
+  "id": 111,
+  "q": "Do the difficulties you mentioned disprove the theory of descent with modification?",
+  "support_sent": 3890,
+  "page": 309,
+  "line": 14,
+  "expected_text": "Grave as these several difficulties are, in my judgment they do not overthrow the theory of descent with modification."
+ },
+ {
+  "id": 112,
+  "q": "How are fossils classified?",
+  "support_sent": 2822,
+  "page": 221,
+  "line": 0,
+  "expected_text": "But, as Buckland long ago remarked, all fossils can be classed either in still existing groups, or between them."
+ },
+ {
+  "id": 113,
+  "q": "Why is it not difficult for bees to stop working on a strip of wax once it reaches the proper thinness?",
+  "support_sent": 2057,
+  "page": 156,
+  "line": 35,
+  "expected_text": "Considering how flexible thin wax is, I do not see that there is any difficulty in the bees, whilst at work on the two sides of a strip of wax, perceiving when they have gnawed the wax away to the pro"
+ },
+ {
+  "id": 114,
+  "q": "How did the gardeners of the classical period contribute to the quality of modern pears?",
+  "support_sent": 506,
+  "page": 31,
+  "line": 16,
+  "expected_text": "But the gardeners of the classical period, who cultivated the best pear they could procure, never thought what splendid fruit we should eat; though we owe our excellent fruit, in some small degree, to"
+ },
+ {
+  "id": 115,
+  "q": "What are the different types of Merino sheep mentioned in the text?",
+  "support_sent": 4556,
+  "page": 353,
+  "line": 36,
+  "expected_text": "Sheep: Merino, their selection, 31. two sub-breeds unintentionally produced, 36. mountain, varieties of, 76."
+ },
+ {
+  "id": 116,
+  "q": "How did you gain access to pigeon breeding circles in London?",
+  "support_sent": 367,
+  "page": 20,
+  "line": 14,
+  "expected_text": "I have associated with several eminent fanciers, and have been permitted to join two of the London Pigeon Clubs."
+ },
+ {
+  "id": 117,
+  "q": "How does this case illustrate the basis of biological classifications?",
+  "support_sent": 3512,
+  "page": 278,
+  "line": 12,
+  "expected_text": "This case seems to me well to illustrate the spirit with which our classifications are sometimes necessarily founded."
+ },
+ {
+  "id": 118,
+  "q": "Is it correct to say that pigeons try to develop fantails?",
+  "support_sent": 518,
+  "page": 32,
+  "line": 20,
+  "expected_text": "But to use such an expression as trying to make a fantail, is, I have no doubt, in most cases, utterly incorrect."
+ },
+ {
+  "id": 119,
+  "q": "Why is it difficult to fill in the gaps between different biological families or orders?",
+  "support_sent": 2856,
+  "page": 223,
+  "line": 26,
+  "expected_text": "As we possess only the last volume of the geological record, and that in a very broken condition, we have no right to expect, except in very rare cases, to fill up wide intervals in the natural system"
+ }
+]

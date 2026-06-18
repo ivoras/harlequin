@@ -235,14 +235,6 @@ def _cache_conn() -> sqlite3.Connection:
     return c
 
 
-def _key(text: str) -> str:
-    h = hashlib.sha256()
-    h.update(EMBED_MODEL.encode())
-    h.update(b"\x00")
-    h.update(text.encode("utf-8"))
-    return h.hexdigest()
-
-
 def pack(vec: np.ndarray) -> bytes:
     return np.asarray(vec, dtype=np.float32).tobytes()
 
@@ -251,10 +243,42 @@ def unpack(blob: bytes) -> np.ndarray:
     return np.frombuffer(blob, dtype=np.float32)
 
 
-class Embedder:
-    """Batched, cached embedding client."""
+# Registry of embedding backends. Each entry: url, model id, dim, and the
+# instruction prefixes the model expects for queries vs documents. granite has
+# no prefixes; Qwen3-Embedding uses an "Instruct:/Query:" prefix for queries.
+EMBEDDERS = {
+    "granite": dict(
+        url="http://localhost:2235/v1/embeddings",
+        model="granite-embedding-311M-multilingual-r2-Q8_0.gguf",
+        dim=768, query_prefix="", doc_prefix="", max_batch_tokens=None),
+    "qwen4b": dict(
+        url="http://localhost:2236/v1/embeddings",
+        model="qwen3-embedding-4b",
+        dim=2560,
+        query_prefix="Instruct: Given a question, retrieve passages that answer it\nQuery: ",
+        doc_prefix="",
+        max_batch_tokens=1700),    # server runs at -c/-ub 2048; keep headroom
+}
 
-    def __init__(self, batch_size: int = 32, verbose: bool = True):
+
+class Embedder:
+    """Batched, cached embedding client. Multi-model + instruction prefixes.
+
+    `embed(texts, role=...)` applies the query or document prefix for the chosen
+    backend; the cache is keyed by (model, prefixed-text) so different models and
+    roles never collide. Defaults reproduce the original granite behaviour.
+    """
+
+    def __init__(self, backend: str = "granite", batch_size: int = 32,
+                 verbose: bool = True):
+        cfg = EMBEDDERS[backend]
+        self.backend = backend
+        self.url = cfg["url"]
+        self.model = cfg["model"]
+        self.dim = cfg["dim"]
+        self.query_prefix = cfg["query_prefix"]
+        self.doc_prefix = cfg["doc_prefix"]
+        self.max_batch_tokens = cfg.get("max_batch_tokens")
         self.batch_size = batch_size
         self.verbose = verbose
         self.conn = _cache_conn()
@@ -262,13 +286,20 @@ class Embedder:
         self.cache_hits = 0
         self.tokens = 0
 
+    def _key(self, text: str) -> str:
+        h = hashlib.sha256()
+        h.update(self.model.encode())
+        h.update(b"\x00")
+        h.update(text.encode("utf-8"))
+        return h.hexdigest()
+
     def _post(self, inputs: list[str]) -> list[np.ndarray]:
         for attempt in range(5):
             try:
                 r = requests.post(
-                    EMBED_URL,
-                    json={"model": EMBED_MODEL, "input": inputs},
-                    timeout=120,
+                    self.url,
+                    json={"model": self.model, "input": inputs},
+                    timeout=300,
                 )
                 r.raise_for_status()
                 d = r.json()
@@ -283,11 +314,16 @@ class Embedder:
                 time.sleep(1.5 * (attempt + 1))
         raise RuntimeError("unreachable")
 
-    def embed(self, texts: list[str]) -> np.ndarray:
-        """Return (len(texts), EMBED_DIM) float32 array, using cache."""
+    def embed(self, texts: list[str], role: str = "doc") -> np.ndarray:
+        """Return (len(texts), dim) float32 array, using cache.
+
+        role: "doc" or "query" — selects the instruction prefix.
+        """
+        prefix = self.query_prefix if role == "query" else self.doc_prefix
+        texts = [prefix + t for t in texts]
         out: list[np.ndarray | None] = [None] * len(texts)
         todo: list[int] = []
-        keys = [_key(t) for t in texts]
+        keys = [self._key(t) for t in texts]
         cur = self.conn.cursor()
         for i, k in enumerate(keys):
             row = cur.execute("SELECT v FROM emb WHERE k=?", (k,)).fetchone()
@@ -296,9 +332,13 @@ class Embedder:
                 self.cache_hits += 1
             else:
                 todo.append(i)
-        # batch the misses
-        for b in range(0, len(todo), self.batch_size):
-            idxs = todo[b:b + self.batch_size]
+        # batch the misses. If max_batch_tokens is set (small-context embedding
+        # servers), pack each request by estimated token budget so a batch of
+        # large chunks never overflows the server micro-batch (large chunks go
+        # solo). Otherwise batch by fixed count.
+        batches = self._make_batches(todo, texts)
+        done = 0
+        for idxs in batches:
             vecs = self._post([texts[i] for i in idxs])
             for i, v in zip(idxs, vecs):
                 out[i] = v
@@ -307,10 +347,28 @@ class Embedder:
                     (keys[i], pack(v)),
                 )
             self.conn.commit()
+            done += len(idxs)
             if self.verbose and todo:
-                done = min(b + self.batch_size, len(todo))
                 print(f"    embedded {done}/{len(todo)} new", file=sys.stderr)
         return np.vstack([o for o in out])  # type: ignore[arg-type]
+
+    @staticmethod
+    def _est_tokens(text: str) -> int:
+        return len(text) // 3 + 1          # conservative chars->tokens proxy
+
+    def _make_batches(self, todo: list[int], texts: list[str]) -> list[list[int]]:
+        if not self.max_batch_tokens:
+            return [todo[b:b + self.batch_size]
+                    for b in range(0, len(todo), self.batch_size)]
+        batches, cur, cur_tok = [], [], 0
+        for i in todo:
+            t = self._est_tokens(texts[i])
+            if cur and (len(cur) >= self.batch_size or cur_tok + t > self.max_batch_tokens):
+                batches.append(cur); cur, cur_tok = [], 0
+            cur.append(i); cur_tok += t
+        if cur:
+            batches.append(cur)
+        return batches
 
     def embed_one(self, text: str) -> np.ndarray:
         return self.embed([text])[0]
@@ -318,6 +376,78 @@ class Embedder:
 
 def cosine(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-12))
+
+
+# --------------------------------------------------------------------------
+# Chat LLM client (Qwen3.6-35B via llama.cpp), cached, reasoning disabled
+# --------------------------------------------------------------------------
+
+CHAT_URL = os.environ.get("CHAT_URL", "http://localhost:2234/v1/chat/completions")
+# The chat server (started via ~/LLM/llm_for_hermes_qwen.sh) serves
+# Qwen3.6-35B-A3B. llama-server ignores the request "model" field, so this only
+# namespaces the response cache.
+CHAT_MODEL = os.environ.get("CHAT_MODEL", "qwen3.6-35b-hermes")
+
+
+class ChatLLM:
+    """Cached chat client. Thinking/reasoning is disabled for speed and
+    determinism (Qwen3 emits reasoning tokens otherwise). Responses are cached
+    in the shared sqlite db keyed by (model, prompt, system, temperature)."""
+
+    def __init__(self, temperature: float = 0.0, verbose: bool = False):
+        self.temperature = temperature
+        self.verbose = verbose
+        self.conn = _cache_conn()
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS chat (k TEXT PRIMARY KEY, v TEXT NOT NULL)"
+        )
+        self.calls = 0
+        self.cache_hits = 0
+
+    def _key(self, system: str, prompt: str, max_tokens: int) -> str:
+        h = hashlib.sha256()
+        for p in (CHAT_MODEL, str(self.temperature), str(max_tokens), system, prompt):
+            h.update(p.encode("utf-8"))
+            h.update(b"\x00")
+        return h.hexdigest()
+
+    def ask(self, prompt: str, system: str = "", max_tokens: int = 512) -> str:
+        k = self._key(system, prompt, max_tokens)
+        row = self.conn.execute("SELECT v FROM chat WHERE k=?", (k,)).fetchone()
+        if row is not None:
+            self.cache_hits += 1
+            return row[0]
+        msgs = []
+        if system:
+            msgs.append({"role": "system", "content": system})
+        msgs.append({"role": "user", "content": prompt + " /no_think"})
+        # Disable reasoning per-request (Qwen3): chain-of-thought would be far
+        # too slow on CPU for thousands of calls and we don't need it for these
+        # extraction/judgement tasks. The final answer is in message.content.
+        body = {
+            "model": CHAT_MODEL, "messages": msgs,
+            "max_tokens": max_tokens, "temperature": self.temperature,
+            "chat_template_kwargs": {"enable_thinking": False},
+        }
+        for attempt in range(5):
+            try:
+                r = requests.post(CHAT_URL, json=body, timeout=600)
+                r.raise_for_status()
+                txt = (r.json()["choices"][0]["message"]["content"] or "").strip()
+                # strip any stray <think></think> remnants
+                txt = re.sub(r"<think>.*?</think>", "", txt, flags=re.DOTALL).strip()
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO chat (k,v) VALUES (?,?)", (k, txt))
+                self.conn.commit()
+                self.calls += 1
+                return txt
+            except Exception as ex:  # noqa: BLE001
+                if attempt == 4:
+                    raise
+                if self.verbose:
+                    print(f"  chat retry {attempt+1}: {ex}", file=sys.stderr)
+                time.sleep(2.0 * (attempt + 1))
+        raise RuntimeError("unreachable")
 
 
 # --------------------------------------------------------------------------
@@ -346,8 +476,9 @@ class VectorStore:
     table holds the text + sentence-span provenance, joined on rowid==id.
     """
 
-    def __init__(self, path: str):
+    def __init__(self, path: str, dim: int = EMBED_DIM):
         self.path = path
+        self.dim = dim
         self.conn = open_db(path)
         self.conn.execute(
             """CREATE TABLE IF NOT EXISTS chunks (
@@ -365,7 +496,7 @@ class VectorStore:
         )
         self.conn.execute(
             f"CREATE VIRTUAL TABLE IF NOT EXISTS vec_idx USING "
-            f"vec0(embedding float[{EMBED_DIM}] distance_metric=cosine)"
+            f"vec0(embedding float[{dim}] distance_metric=cosine)"
         )
         self.conn.execute(
             "CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT)"
