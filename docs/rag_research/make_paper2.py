@@ -19,6 +19,8 @@ def load(name, default=None):
 
 CORE = {r["variant"]: r for r in (load("r2_results_core.json", {"results": []})["results"])}
 ABL = {r["label"]: r for r in (load("r2_results_ablation.json", {"results": []})["results"])}
+FTS = {r["label"]: r for r in (load("r2_results_fts.json", {"results": []})["results"])}
+ABL.update(FTS)   # fold FTS5 configs into the grid/appendix
 CONF = load("confound_curve.json", [])
 HYDE = load("r2_llm_hyde.json", {}).get("hyde")
 CTX = load("r2_llm_contextual.json", {}).get("contextual")
@@ -299,6 +301,28 @@ def _full_ablation_table():
     return "\n".join(h)
 
 
+def fts_table():
+    if not FTS:
+        return ""
+    variants = ["per_sentence", "sem_adjacent_g0.12", "structure_1024", "mech_256",
+                "mech_512", "mech_1024", "mech_1500", "overlap_1024"]
+    def g(v, mode, m):
+        return ABL.get(f"granite/{v}/{mode}", {}).get(m)
+    h = ['<table><caption>Table 7. Lexical backend: custom numpy BM25 vs SQLite FTS5 '
+         '(built-in BM25), granite. Lexical-only and dense+lexical RRF hybrids. '
+         'The two backends are within noise.</caption>',
+         '<thead><tr><th>variant</th><th>BM25 R@1</th><th>FTS5 R@1</th>'
+         '<th>BM25-hyb R@5</th><th>FTS5-hyb R@5</th></tr></thead><tbody>']
+    for v in variants:
+        h.append(f'<tr><td class="m">{v}</td>'
+                 f'<td>{(g(v,"bm25","recall@1") or 0):.3f}</td>'
+                 f'<td>{(g(v,"fts5","recall@1") or 0):.3f}</td>'
+                 f'<td>{(g(v,"hybrid","recall@5") or 0):.3f}</td>'
+                 f'<td>{(g(v,"fts5_hybrid","recall@5") or 0):.3f}</td></tr>')
+    h.append("</tbody></table>")
+    return "\n".join(h)
+
+
 conf_fig, conf_tbl = confound_figure()
 bl = ABL.get("granite/mech_1024/dense", {}).get("recall@1")
 bs_label, bs_r1 = best_static()
@@ -403,7 +427,12 @@ disabled for tractability) actively <i>degraded</i> a strong bi-encoder ordering
 a dedicated cross-encoder, not a prompted generator, is the right tool. The lesson: spend
 effort on the embedder and lexical hybrid, not on bolt-on LLM stages.</p>
 {llm_tables()}
-{('<h3>5.2 End-to-end answer correctness</h3><p>An LLM judge scored whether the top-5 '
+{('<h3>5.2 Lexical backend: SQLite FTS5 vs custom BM25</h3><p>We compare two lexical arms: '
+  'a custom numpy BM25 and SQLite&rsquo;s built-in FTS5 (its own BM25 and tokenizer). They are '
+  'within noise on recall@1/@5 both standalone and inside the dense hybrid (FTS5 is marginally '
+  'lower on large chunks, where its default tokenizer keeps stopwords), so FTS5 is a '
+  'dependency-free drop-in lexical backend.</p>' + fts_table()) if FTS else ''}
+{('<h3>5.3 End-to-end answer correctness</h3><p>An LLM judge scored whether the top-5 '
   'retrieved context answers the question. The best static pipeline reaches '
   + ("%.2f" % max((r["gen_correct@5"] for r in GEN), default=0)) + ' vs '
   + ("%.2f" % min((r["gen_correct@5"] for r in GEN), default=0)) + ' for the fixed-cap '
