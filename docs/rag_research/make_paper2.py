@@ -80,8 +80,12 @@ def curve(series, title, xlabel, ylabel, w=620, h=340, logx=True):
         o.append(f'<polyline points="{poly}" fill="none" stroke="{col}" stroke-width="2"/>')
         for x, y in pts:
             o.append(f'<circle cx="{X(x):.1f}" cy="{Y(y):.1f}" r="2.6" fill="{col}"/>')
-        lx, ly = pts[-1]
-        o.append(f'<text x="{pad_l+pw+6:.0f}" y="{Y(ly)+3:.0f}" class="leg" fill="{col}">{esc(name)}</text>')
+    # stacked legend in the right margin (avoids labels colliding where lines converge)
+    lx = pad_l + pw + 10
+    for i, (name, col, _pts) in enumerate(series):
+        ly = pad_t + 4 + i * 16
+        o.append(f'<rect x="{lx}" y="{ly}" width="10" height="10" fill="{col}"/>')
+        o.append(f'<text x="{lx+14}" y="{ly+9}" class="leg">{esc(name)}</text>')
     o.append("</svg>")
     return "\n".join(o)
 
