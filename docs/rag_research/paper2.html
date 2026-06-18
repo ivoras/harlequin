@@ -97,7 +97,6 @@ real but small and concentrated in small chunks.</p>
 <circle cx="293.5" cy="169.8" r="2.6" fill="#c0392b"/>
 <circle cx="342.2" cy="232.1" r="2.6" fill="#c0392b"/>
 <circle cx="425.4" cy="281.0" r="2.6" fill="#c0392b"/>
-<text x="506" y="284" class="leg" fill="#c0392b">semantic (adjacent)</text>
 <polyline points="50.0,54.1 153.3,77.8 213.7,107.5 289.6,146.0 359.2,177.2 430.7,169.8 500.0,267.7" fill="none" stroke="#27ae60" stroke-width="2"/>
 <circle cx="50.0" cy="54.1" r="2.6" fill="#27ae60"/>
 <circle cx="153.3" cy="77.8" r="2.6" fill="#27ae60"/>
@@ -106,7 +105,6 @@ real but small and concentrated in small chunks.</p>
 <circle cx="359.2" cy="177.2" r="2.6" fill="#27ae60"/>
 <circle cx="430.7" cy="169.8" r="2.6" fill="#27ae60"/>
 <circle cx="500.0" cy="267.7" r="2.6" fill="#27ae60"/>
-<text x="506" y="271" class="leg" fill="#27ae60">fixed (regular)</text>
 <polyline points="152.8,115.4 213.2,139.1 289.3,220.7 354.5,231.3 359.3,235.0 419.7,249.9 422.8,267.7" fill="none" stroke="#e67e22" stroke-width="2"/>
 <circle cx="152.8" cy="115.4" r="2.6" fill="#e67e22"/>
 <circle cx="213.2" cy="139.1" r="2.6" fill="#e67e22"/>
@@ -115,7 +113,12 @@ real but small and concentrated in small chunks.</p>
 <circle cx="359.3" cy="235.0" r="2.6" fill="#e67e22"/>
 <circle cx="419.7" cy="249.9" r="2.6" fill="#e67e22"/>
 <circle cx="422.8" cy="267.7" r="2.6" fill="#e67e22"/>
-<text x="506" y="271" class="leg" fill="#e67e22">random</text>
+<rect x="510" y="32" width="10" height="10" fill="#c0392b"/>
+<text x="524" y="41" class="leg">semantic (adjacent)</text>
+<rect x="510" y="48" width="10" height="10" fill="#27ae60"/>
+<text x="524" y="57" class="leg">fixed (regular)</text>
+<rect x="510" y="64" width="10" height="10" fill="#e67e22"/>
+<text x="524" y="73" class="leg">random</text>
 </svg><figcaption>Each rule swept across sizes; random averaged over 3 seeds. The families overlap — size dominates — with semantic slightly above random at small sizes.</figcaption></figure>
 <table><caption>Table 1. Semantic vs random boundaries at matched chunk size (random interpolated to the semantic variant’s size).</caption>
 <thead><tr><th>semantic variant</th><th>mean tok</th><th>semantic R@1</th><th>random R@1 (same size)</th><th>&Delta;</th></tr></thead><tbody>
@@ -392,21 +395,24 @@ effort on the embedder and lexical hybrid, not on bolt-on LLM stages.</p>
 <circle cx="252.3" cy="252.6" r="2.6" fill="#c0392b"/>
 <circle cx="429.5" cy="260.0" r="2.6" fill="#c0392b"/>
 <circle cx="500.0" cy="230.5" r="2.6" fill="#c0392b"/>
-<text x="506" y="234" class="leg" fill="#c0392b">semantic</text>
 <polyline points="50.0,46.3 123.0,134.7 215.0,230.5 299.4,289.5 386.8,267.3" fill="none" stroke="#27ae60" stroke-width="2"/>
 <circle cx="50.0" cy="46.3" r="2.6" fill="#27ae60"/>
 <circle cx="123.0" cy="134.7" r="2.6" fill="#27ae60"/>
 <circle cx="215.0" cy="230.5" r="2.6" fill="#27ae60"/>
 <circle cx="299.4" cy="289.5" r="2.6" fill="#27ae60"/>
 <circle cx="386.8" cy="267.3" r="2.6" fill="#27ae60"/>
-<text x="506" y="270" class="leg" fill="#27ae60">fixed</text>
 <polyline points="50.0,112.6 123.0,171.5 214.6,230.5 297.2,252.6 372.9,260.0" fill="none" stroke="#e67e22" stroke-width="2"/>
 <circle cx="50.0" cy="112.6" r="2.6" fill="#e67e22"/>
 <circle cx="123.0" cy="171.5" r="2.6" fill="#e67e22"/>
 <circle cx="214.6" cy="230.5" r="2.6" fill="#e67e22"/>
 <circle cx="297.2" cy="252.6" r="2.6" fill="#e67e22"/>
 <circle cx="372.9" cy="260.0" r="2.6" fill="#e67e22"/>
-<text x="506" y="263" class="leg" fill="#e67e22">random</text>
+<rect x="510" y="32" width="10" height="10" fill="#c0392b"/>
+<text x="524" y="41" class="leg">semantic</text>
+<rect x="510" y="48" width="10" height="10" fill="#27ae60"/>
+<text x="524" y="57" class="leg">fixed</text>
+<rect x="510" y="64" width="10" height="10" fill="#e67e22"/>
+<text x="524" y="73" class="leg">random</text>
 </svg><figcaption>The size law generalizes; semantic boundaries again sit at or above random at matched size.</figcaption></figure>
 
 <h2>7. Discussion</h2>
