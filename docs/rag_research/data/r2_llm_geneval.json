@@ -1,0 +1,16 @@
+{
+ "geneval": [
+  {
+   "label": "granite/mech_1024/dense",
+   "gen_correct@5": 0.6083333333333333
+  },
+  {
+   "label": "qwen4b/structure_1024/dense",
+   "gen_correct@5": 0.6833333333333333
+  },
+  {
+   "label": "granite/structure_1024/hybrid",
+   "gen_correct@5": 0.6416666666666667
+  }
+ ]
+}

@@ -1,0 +1,22 @@
+{
+ "rerank": [
+  {
+   "label": "qwen4b/structure_1024/dense",
+   "n": 160,
+   "base_recall@1": 0.65,
+   "base_recall@5": 0.86875,
+   "rerank_recall@1": 0.46875,
+   "rerank_recall@5": 0.7125,
+   "rerank_mrr@10": 0.5917311507936508
+  },
+  {
+   "label": "granite/mech_1024/dense",
+   "n": 160,
+   "base_recall@1": 0.4,
+   "base_recall@5": 0.775,
+   "rerank_recall@1": 0.1875,
+   "rerank_recall@5": 0.63125,
+   "rerank_mrr@10": 0.36904513888888885
+  }
+ ]
+}
