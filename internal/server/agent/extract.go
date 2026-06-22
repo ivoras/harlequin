@@ -23,10 +23,22 @@ const docMemoryInputCap = 8000
 const (
 	sessMemoryTimeout = 60 * time.Second
 	docMemoryTimeout  = 3 * time.Minute
+	// storeTimeout bounds the whole store phase — embedding(s) plus the slot/
+	// conflict-judge LLM calls — across all extracted candidates (not per item).
+	storeTimeout = 120 * time.Second
 )
 
 // extractMemories asks the LLM to distill durable facts from a session turn
 // and stores them. See distillAndStore for the shared core.
+// truncateFact shortens a fact for one-line failure logs.
+func truncateFact(s string) string {
+	s = strings.TrimSpace(strings.ReplaceAll(s, "\n", " "))
+	if len(s) > 60 {
+		return s[:60] + "…"
+	}
+	return s
+}
+
 func (a *Agent) extractMemories(ctx context.Context, projectID, userID int64, userContent, assistantText string, turnWritten []string, canShareMemory bool) {
 	sess := "User said: " + userContent + "\nAssistant said: " + assistantText
 	if projectID > 0 {
@@ -62,7 +74,7 @@ func (a *Agent) extractProjectMemories(ctx context.Context, projectID int64, inp
 		for _, w := range turnWritten {
 			written[strings.TrimSpace(w)] = true
 		}
-		storeCtx, cancelStore := context.WithTimeout(jobCtx, 60*time.Second)
+		storeCtx, cancelStore := context.WithTimeout(jobCtx, storeTimeout)
 		defer cancelStore()
 		_ = a.Storage.WithProject(storeCtx, projectID, func(projDB *sql.DB) error {
 			for _, c := range candidates {
@@ -70,6 +82,7 @@ func (a *Agent) extractProjectMemories(ctx context.Context, projectID int64, inp
 					continue
 				}
 				if _, err := a.Memory.ProjectAdd(storeCtx, projDB, c.Content, "auto"); err != nil {
+					log.Printf("memextract: store project memory failed (%q): %v", truncateFact(c.Content), err)
 					return err
 				}
 			}
@@ -147,7 +160,7 @@ func (a *Agent) distillAndStoreHoldingSlot(ctx context.Context, userID int64, sy
 		ttl = &t
 	}
 
-	storeCtx, cancelStore := context.WithTimeout(ctx, 60*time.Second)
+	storeCtx, cancelStore := context.WithTimeout(ctx, storeTimeout)
 	defer cancelStore()
 
 	// Auto-extraction runs after the request, so open the user's database here.
@@ -170,7 +183,9 @@ func (a *Agent) distillAndStoreHoldingSlot(ctx context.Context, userID int64, sy
 			if _, err := a.Memory.Add(storeCtx, userDB, types.CreateMemoryRequest{
 				Scope: scope, Content: fact, Source: "auto", ExpiresAt: ttl,
 			}, userID); err != nil {
-				log.Printf("memextract: store memory failed: %v", err)
+				// The wrapped error names the failing step (e.g. "embed memory
+				// content", "insert memory row", "embed slot vector").
+				log.Printf("memextract: store memory failed (%q): %v", truncateFact(fact), err)
 			} else {
 				stored++
 			}

@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/ivoras/harlequin/internal/shared/types"
@@ -23,11 +24,11 @@ func (s *Store) ProjectAdd(ctx context.Context, projDB *sql.DB, content, source 
 	}
 	blob, err := s.embed(ctx, content)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("embed memory content: %w", err)
 	}
 	id, err := s.projectMem(projDB).insert(ctx, content, source, nil, blob)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("insert memory row: %w", err)
 	}
 	return &types.Memory{
 		ID: encodeID(scopeProject, id), Scope: scopeProject, Content: content,
