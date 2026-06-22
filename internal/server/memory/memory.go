@@ -123,7 +123,7 @@ func (s *Store) ChangeWithConflicts(ctx context.Context, userDB *sql.DB, id, con
 
 	blob, err := s.embed(ctx, content)
 	if err != nil {
-		return nil, nil, fmt.Errorf("embed memory: %w", err)
+		return nil, nil, fmt.Errorf("embed memory content: %w", err)
 	}
 	m := s.memFor(scope, userDB)
 	updated, err := m.updateContent(ctx, local, content, blob)
@@ -158,12 +158,12 @@ func (s *Store) add(ctx context.Context, userDB *sql.DB, m types.CreateMemoryReq
 
 	blob, err := s.embed(ctx, m.Content)
 	if err != nil {
-		return nil, fmt.Errorf("embed memory: %w", err)
+		return nil, fmt.Errorf("embed memory content: %w", err)
 	}
 
 	id, err := s.memFor(scope, userDB).insert(ctx, m.Content, source, nullableTime(m.ExpiresAt), blob)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("insert memory row: %w", err)
 	}
 
 	mem := &types.Memory{

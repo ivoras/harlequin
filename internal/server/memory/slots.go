@@ -132,7 +132,7 @@ func (s *Store) AddSlotEmbed(ctx context.Context, userDB *sql.DB, memID, key, va
 	}
 	blob, err := s.embed(ctx, embedText)
 	if err != nil {
-		return err
+		return fmt.Errorf("embed slot vector: %w", err)
 	}
 	return s.memFor(scope, userDB).insertSlot(ctx, local, key, value, blob)
 }
