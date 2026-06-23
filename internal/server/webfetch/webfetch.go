@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math/rand"
 	"net"
 	"net/http"
@@ -173,7 +174,7 @@ func (c *Client) FetchRaw(ctx context.Context, url string) (RawResult, error) {
 	// fetch 4xx'd and Zyte succeeded), skip the normal path entirely.
 	host := hostOf(url)
 	if c.zyteEnabled() && c.domainNeedsZyte(host) {
-		raw, err := c.fetchViaZyte(ctx, url)
+		raw, err := c.fetchViaZyte(ctx, url, "domain previously needed Zyte")
 		if err != nil {
 			return RawResult{}, err
 		}
@@ -200,7 +201,7 @@ func (c *Client) FetchRaw(ctx context.Context, url string) (RawResult, error) {
 		// If Zyte is configured, retry through its browser API and remember that
 		// this domain needs Zyte so future fetches skip straight to it.
 		if c.zyteEnabled() && resp.StatusCode < 500 {
-			raw, zerr := c.fetchViaZyte(ctx, url)
+			raw, zerr := c.fetchViaZyte(ctx, url, fmt.Sprintf("direct fetch returned %s", resp.Status))
 			if zerr == nil {
 				c.markDomainNeedsZyte(host)
 				c.cachePut(url, raw)
@@ -263,7 +264,9 @@ func (c *Client) markDomainNeedsZyte(host string) {
 
 // fetchViaZyte retrieves url through the Zyte browserHtml API and returns it as a
 // RawResult (status 200, text/html). The API key is the HTTP Basic username.
-func (c *Client) fetchViaZyte(ctx context.Context, url string) (RawResult, error) {
+// reason explains what triggered the call (logged to the server console).
+func (c *Client) fetchViaZyte(ctx context.Context, url, reason string) (RawResult, error) {
+	log.Printf("webfetch: zyte: fetching %s (%s)", url, reason)
 	reqBody, _ := json.Marshal(map[string]any{"url": url, "browserHtml": true})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, zyteEndpoint, bytes.NewReader(reqBody))
 	if err != nil {
@@ -273,8 +276,10 @@ func (c *Client) fetchViaZyte(ctx context.Context, url string) (RawResult, error
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
+	start := time.Now()
 	resp, err := c.zyteHTTP.Do(req)
 	if err != nil {
+		log.Printf("webfetch: zyte: request failed for %s: %v", url, err)
 		return RawResult{}, fmt.Errorf("zyte request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -283,6 +288,7 @@ func (c *Client) fetchViaZyte(ctx context.Context, url string) (RawResult, error
 		return RawResult{}, fmt.Errorf("zyte read: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
+		log.Printf("webfetch: zyte: %s returned %s: %s", url, resp.Status, snippet(respBody))
 		return RawResult{}, fmt.Errorf("zyte returned %s: %s", resp.Status, snippet(respBody))
 	}
 
@@ -300,6 +306,7 @@ func (c *Client) fetchViaZyte(ctx context.Context, url string) (RawResult, error
 	if out.URL != "" {
 		final = out.URL
 	}
+	log.Printf("webfetch: zyte: ok %s (%d bytes, %s)", final, len(out.BrowserHTML), time.Since(start).Round(time.Millisecond))
 	return RawResult{
 		Body:        []byte(out.BrowserHTML),
 		ContentType: "text/html",
