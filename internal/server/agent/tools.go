@@ -52,7 +52,46 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 			if err != nil {
 				return "", err
 			}
+			// Record which memories were surfaced this turn (the candidate set the
+			// model may later cite via memory_useful).
+			for _, r := range res {
+				rc.memRecalled = appendUnique(rc.memRecalled, r.ID)
+			}
 			return renderResults(res), nil
+		},
+	}
+
+	reg["memory_useful"] = toolEntry{
+		def: fnTool("memory_useful", `When memory_search results inform your reply, call this (just before giving your final answer) with the composite ids (e.g. u.4, s.7, p.2) of the memories you actually relied on. Cite only those — not every result, and not facts you judged irrelevant. This records which remembered facts were helpful so memory improves over time; it does not change your answer.`, map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"ids":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Composite memory ids that informed the answer, e.g. [\"u.4\",\"s.7\"]"},
+				"reason": map[string]any{"type": "string", "description": "Optional: brief note on how they were used."},
+			},
+			"required": []string{"ids"},
+		}),
+		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+			rc.memUsefulCalled = true
+			cited := coerceStringSlice(args["ids"])
+			accepted := 0
+			for _, id := range cited {
+				id = strings.TrimSpace(id)
+				if id == "" {
+					continue
+				}
+				// Only credit ids that were actually surfaced this turn; ignore
+				// hallucinated/stale ones (counted for compliance measurement).
+				if containsStr(rc.memRecalled, id) {
+					rc.memUseful = appendUnique(rc.memUseful, id)
+					accepted++
+				} else {
+					rc.memUsefulInvalid++
+				}
+			}
+			if accepted == 0 {
+				return "Noted (no cited id matched this turn's search results).", nil
+			}
+			return fmt.Sprintf("Noted %d useful memory(ies).", accepted), nil
 		},
 	}
 
@@ -677,6 +716,44 @@ func fnTool(name, desc string, params map[string]any) llm.Tool {
 		Type:     "function",
 		Function: llm.FunctionDefinition{Name: name, Description: desc, Parameters: params},
 	}
+}
+
+// containsStr reports whether s is in xs.
+func containsStr(xs []string, s string) bool {
+	for _, x := range xs {
+		if x == s {
+			return true
+		}
+	}
+	return false
+}
+
+// appendUnique appends s to xs only if not already present.
+func appendUnique(xs []string, s string) []string {
+	if containsStr(xs, s) {
+		return xs
+	}
+	return append(xs, s)
+}
+
+// coerceStringSlice extracts a []string from a JSON-decoded tool argument, which
+// may arrive as []any of strings (object args) or a single string.
+func coerceStringSlice(v any) []string {
+	switch t := v.(type) {
+	case []string:
+		return t
+	case string:
+		return []string{t}
+	case []any:
+		out := make([]string, 0, len(t))
+		for _, e := range t {
+			if s, ok := e.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return nil
 }
 
 func renderResults(res []types.SearchResult) string {

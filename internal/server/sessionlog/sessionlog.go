@@ -43,6 +43,12 @@ const (
 	// records the idle reaper closing the session goroutine.
 	TypeSessionResumed = "session_resumed"
 	TypeSessionExpired = "session_expired"
+
+	// TypeMemoryFeedback records, per turn, which memories were recalled by
+	// memory_search and which the model explicitly cited via memory_useful —
+	// instrumentation for measuring how reliably the model reports useful memories
+	// (no learning is driven from it yet).
+	TypeMemoryFeedback = "memory_feedback"
 )
 
 // Event is one JSONL line. Fields beyond the envelope go into Data.
