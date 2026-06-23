@@ -421,6 +421,32 @@ func runReindexVectors(args []string) {
 	}); err != nil {
 		log.Fatalf("reindex-vectors: %v", err)
 	}
+
+	// Each project: memories, slot keys, and document chunks (its own database).
+	if err := store.EachProject(ctx, func(pid int64, pdb *sql.DB) error {
+		if err := db.RecreateVectorTables(pdb, db.Project, cfg.Embeddings.Dim); err != nil {
+			return fmt.Errorf("project %d tables: %w", pid, err)
+		}
+		pmem, err := mem.ReindexMemoryVectors(ctx, pdb)
+		if err != nil {
+			return fmt.Errorf("project %d memories: %w", pid, err)
+		}
+		pslot, err := mem.BackfillSlotKeyEmbeddings(ctx, pdb)
+		if err != nil {
+			return fmt.Errorf("project %d slots: %w", pid, err)
+		}
+		pdoc, err := documents.NewStore(pdb, embedder).ReindexChunkVectors(ctx)
+		if err != nil {
+			return fmt.Errorf("project %d doc chunks: %w", pid, err)
+		}
+		if pmem > 0 || pslot > 0 || pdoc > 0 {
+			fmt.Printf("project %d: %d memory(ies), %d slot(s), %d doc chunk(s)\n", pid, pmem, pslot, pdoc)
+		}
+		return nil
+	}); err != nil {
+		log.Fatalf("reindex-vectors (projects): %v", err)
+	}
+
 	fmt.Println("done")
 }
 
