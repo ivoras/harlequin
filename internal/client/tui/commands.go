@@ -54,7 +54,7 @@ const helpText = `Commands:
   /docs add <path>      upload a local file (e.g. a PDF) into the corpus
   /resume [query]       pick a session to resume (optionally filter by title)
   /resume <id>          resume a specific session by id
-  /dismiss [n|all]      dismiss an alert from the alert box (all by default)
+  /dismiss [n ...|all]  dismiss alert(s) by number, or all (default)
   /run <n>              run the prompt carried by alert n
   /alert <message>      (owner/admin) broadcast an alert to all users
   /usage                show your token/cost usage

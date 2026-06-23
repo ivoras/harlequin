@@ -65,12 +65,13 @@ func (m *Model) renderAlerts() string {
 }
 
 // dismissAlert handles "/dismiss [n|all]": ack the alert(s) server-side and remove
-// them from the box. With no argument it dismisses all.
+// them from the box. With no argument (or "all") it dismisses all; otherwise it
+// accepts one or more 1-based alert numbers (e.g. "/dismiss 1 3").
 func (m *Model) dismissAlert(args []string) tea.Cmd {
 	if len(m.alerts) == 0 {
 		return infoCmd("no alerts to dismiss")
 	}
-	if len(args) == 0 || args[0] == "all" {
+	if len(args) == 0 || (len(args) == 1 && args[0] == "all") {
 		ids := make([]int64, len(m.alerts))
 		for i, a := range m.alerts {
 			ids[i] = a.ID
@@ -80,15 +81,32 @@ func (m *Model) dismissAlert(args []string) tea.Cmd {
 		m.refreshViewport()
 		return m.ackAlertsCmd(ids)
 	}
-	idx, err := strconv.Atoi(args[0])
-	if err != nil || idx < 1 || idx > len(m.alerts) {
-		return infoCmd("usage: /dismiss [n|all]")
+	// Resolve every requested number to its notification id up front, so removals
+	// don't shift the positions of later targets. Reject the whole command if any
+	// number is invalid (dismiss nothing) so the result is predictable.
+	remove := map[int64]bool{}
+	var ids []int64
+	for _, a := range args {
+		idx, err := strconv.Atoi(a)
+		if err != nil || idx < 1 || idx > len(m.alerts) {
+			return infoCmd("usage: /dismiss [n ...|all]")
+		}
+		id := m.alerts[idx-1].ID
+		if !remove[id] {
+			remove[id] = true
+			ids = append(ids, id)
+		}
 	}
-	id := m.alerts[idx-1].ID
-	m.alerts = append(m.alerts[:idx-1], m.alerts[idx:]...)
+	kept := m.alerts[:0:0]
+	for _, a := range m.alerts {
+		if !remove[a.ID] {
+			kept = append(kept, a)
+		}
+	}
+	m.alerts = kept
 	m.layout()
 	m.refreshViewport()
-	return m.ackAlertsCmd([]int64{id})
+	return m.ackAlertsCmd(ids)
 }
 
 // runAlert handles "/run <n>": send the alert's prompt as a message, then dismiss it.
