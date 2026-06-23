@@ -16,7 +16,7 @@ var slashHelp = map[string]string{
 	"/alert":   "(owner/admin) broadcast an alert to all users",
 	"/config":  "view / set per-user config (e.g. Telegram)",
 	"/cron":    "list / add / manage scheduled jobs",
-	"/dismiss": "dismiss an alert from the alert box (all by default)",
+	"/dismiss": "dismiss alert(s) by number (e.g. /dismiss 1 3), or all",
 	"/run":     "run the prompt carried by alert n",
 	"/docs":    "search org documents; '/docs add <path>' uploads a file (e.g. PDF)",
 	"/export":  "save transcript (User+Assistant; add 'raw' for everything)",
