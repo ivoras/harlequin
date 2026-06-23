@@ -181,6 +181,15 @@ func (s *Store) RecordRun(ctx context.Context, db *sql.DB, id int64, ranAt time.
 	return err
 }
 
+// RecordRunStatus marks a run without changing last_output — used for "no result"
+// runs so the previous meaningful output stays as the change-detection baseline.
+func (s *Store) RecordRunStatus(ctx context.Context, db *sql.DB, id int64, ranAt time.Time, status string) error {
+	_, err := db.ExecContext(ctx,
+		`UPDATE cron_jobs SET last_run_at=?, last_status=? WHERE id=?`,
+		ranAt.Unix(), status, id)
+	return err
+}
+
 // Delete removes a job.
 func (s *Store) Delete(ctx context.Context, db *sql.DB, id int64) error {
 	_, err := db.ExecContext(ctx, `DELETE FROM cron_jobs WHERE id=?`, id)

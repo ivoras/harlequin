@@ -85,6 +85,12 @@ func (a *Agent) RunCronSkill(ctx context.Context, userID int64, username, role s
 	if in := strings.TrimSpace(job.Input); in != "" {
 		content += "\n\nInputs (JSON): " + in
 	}
+	// Notify-enabled watch jobs alert on changes; give the model a clean way to
+	// signal a non-result so "nothing new" doesn't read as a change and notify.
+	if job.Notify {
+		content += "\n\nIf there is nothing new or relevant to report, reply with exactly: " +
+			types.CronNoUpdateSentinel + " (and nothing else)."
+	}
 	return a.turn(ctx, rc, content)
 }
 
