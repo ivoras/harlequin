@@ -62,6 +62,9 @@ type Config struct {
 	// rest (MCP header secrets and OAuth tokens), decoded from the base64
 	// HARLEQUIN_SECRET_KEY env var. Nil when unset; features needing it fail closed.
 	SecretKey []byte `yaml:"-"`
+	// ZyteAPIKey enables the Zyte API fallback for WebFetch (and the sandbox
+	// fetch()), from the ZYTE_API_KEY env var. Empty disables it.
+	ZyteAPIKey string `yaml:"-"`
 }
 
 // TelegramConfig configures outbound Telegram notification delivery. The bot
@@ -403,6 +406,7 @@ func (c *Config) applyDefaults() {
 
 func (c *Config) resolveSecrets() {
 	c.JWTSecret = os.Getenv("JWT_SECRET")
+	c.ZyteAPIKey = os.Getenv("ZYTE_API_KEY")
 
 	c.DBPath = os.Getenv("HARLEQUIN_DB_PATH")
 	if c.DBPath == "" {

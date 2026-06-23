@@ -138,7 +138,7 @@ func main() {
 
 	var webFetcher *webfetch.Client
 	if cfg.Agent.WebFetch.EnabledValue() {
-		webFetcher = webfetch.New(webfetch.Options{AllowPrivate: cfg.Agent.WebFetch.AllowPrivate})
+		webFetcher = webfetch.New(webfetch.Options{AllowPrivate: cfg.Agent.WebFetch.AllowPrivate, ZyteAPIKey: cfg.ZyteAPIKey})
 	}
 
 	// The run_js / skill-tool runner. fetch() is routed through the web fetcher

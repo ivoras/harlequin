@@ -102,7 +102,7 @@ func (a *Agent) webFetch(ctx context.Context, rc *runContext, args map[string]an
 	}
 	a.logEvent(ctx, rc, sessionlog.TypeWebFetch, map[string]any{
 		"url": rawURL, "final_url": res.FinalURL, "depth": depth, "ok": true,
-		"cached": res.Cached, "fetch_ms": fetchMS,
+		"cached": res.Cached, "fetch_ms": fetchMS, "via_zyte": res.ViaZyte,
 		"bytes": len(res.Markdown), "title": res.Title,
 	})
 	target := rawURL

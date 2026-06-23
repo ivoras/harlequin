@@ -10,6 +10,7 @@ import (
 	"compress/flate"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +33,13 @@ const (
 	maxBodyBytes = 5 << 20 // 5 MiB
 	// requestTimeout bounds a single Fetch (including redirects).
 	requestTimeout = 30 * time.Second
+	// zyteEndpoint is the Zyte API extract endpoint.
+	zyteEndpoint = "https://api.zyte.com/v1/extract"
+	// zyteTimeout bounds a Zyte call (browser rendering is slower than a GET).
+	zyteTimeout = 90 * time.Second
+	// maxZyteResponse caps the JSON response read from Zyte (rendered HTML can be
+	// large; allow more than maxBodyBytes for the JSON envelope + HTML).
+	maxZyteResponse = 16 << 20 // 16 MiB
 )
 
 // Result is a fetched, converted page.
@@ -43,6 +52,8 @@ type Result struct {
 	Title string
 	// Cached is true when this result was served from the in-memory cache.
 	Cached bool
+	// ViaZyte is true when the page was fetched through the Zyte API fallback.
+	ViaZyte bool
 }
 
 // RawResult is a fetched page before any Markdown conversion: the decoded
@@ -59,6 +70,8 @@ type RawResult struct {
 	Status int
 	// Cached is true when this result was served from the in-memory cache.
 	Cached bool
+	// ViaZyte is true when this body came from the Zyte API fallback.
+	ViaZyte bool
 }
 
 type cacheEntry struct {
@@ -72,6 +85,14 @@ type Client struct {
 
 	mu    sync.Mutex
 	cache map[string]cacheEntry
+
+	// Zyte fallback: when zyteKey is set, a direct fetch that returns HTTP 4xx is
+	// retried through the Zyte browserHtml API, and the URL's domain is remembered
+	// (zyteDomains) so subsequent fetches of that domain skip straight to Zyte.
+	zyteKey     string
+	zyteHTTP    *http.Client
+	zmu         sync.Mutex
+	zyteDomains map[string]bool
 }
 
 // Options configures a Client.
@@ -79,6 +100,9 @@ type Options struct {
 	// AllowPrivate permits requests to loopback/private/link-local addresses.
 	// Off by default as an SSRF guard (blocks cloud metadata, localhost, LAN).
 	AllowPrivate bool
+	// ZyteAPIKey enables the Zyte API fallback (https://docs.zyte.com). Empty
+	// disables it — fetches then only use the normal browser-like path.
+	ZyteAPIKey string
 }
 
 // New constructs a Client. The cookie jar persists Cloudflare clearance cookies
@@ -86,7 +110,7 @@ type Options struct {
 func New(opts Options) *Client {
 	jar, _ := cookiejar.New(nil)
 	transport := newUTLSTransport(opts.AllowPrivate)
-	return &Client{
+	c := &Client{
 		http: &http.Client{
 			Transport: transport,
 			Jar:       jar,
@@ -102,6 +126,14 @@ func New(opts Options) *Client {
 		},
 		cache: map[string]cacheEntry{},
 	}
+	if opts.ZyteAPIKey != "" {
+		c.zyteKey = opts.ZyteAPIKey
+		// Zyte is a normal public HTTPS API; use a plain client with a longer
+		// timeout (browser rendering takes longer than a GET).
+		c.zyteHTTP = &http.Client{Timeout: zyteTimeout}
+		c.zyteDomains = map[string]bool{}
+	}
+	return c
 }
 
 // Fetch retrieves url (upgrading http→https), follows redirects, and returns the
@@ -111,7 +143,7 @@ func (c *Client) Fetch(ctx context.Context, url string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	res := Result{FinalURL: raw.FinalURL, Cached: raw.Cached}
+	res := Result{FinalURL: raw.FinalURL, Cached: raw.Cached, ViaZyte: raw.ViaZyte}
 	if strings.Contains(raw.ContentType, "html") || looksLikeHTML(raw.Body) {
 		md, title := htmlToMarkdown(raw.Body, raw.FinalURL)
 		res.Markdown = md
@@ -137,6 +169,18 @@ func (c *Client) FetchRaw(ctx context.Context, url string) (RawResult, error) {
 		return r, nil
 	}
 
+	// If this domain has already been seen to require Zyte (a previous direct
+	// fetch 4xx'd and Zyte succeeded), skip the normal path entirely.
+	host := hostOf(url)
+	if c.zyteEnabled() && c.domainNeedsZyte(host) {
+		raw, err := c.fetchViaZyte(ctx, url)
+		if err != nil {
+			return RawResult{}, err
+		}
+		c.cachePut(url, raw)
+		return raw, nil
+	}
+
 	// Small random delay to avoid a too-regular request cadence.
 	jitter(ctx, 120*time.Millisecond, 480*time.Millisecond)
 
@@ -152,6 +196,18 @@ func (c *Client) FetchRaw(ctx context.Context, url string) (RawResult, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
+		// A 4xx often means anti-bot/geo/login walls our direct fetch can't pass.
+		// If Zyte is configured, retry through its browser API and remember that
+		// this domain needs Zyte so future fetches skip straight to it.
+		if c.zyteEnabled() && resp.StatusCode < 500 {
+			raw, zerr := c.fetchViaZyte(ctx, url)
+			if zerr == nil {
+				c.markDomainNeedsZyte(host)
+				c.cachePut(url, raw)
+				return raw, nil
+			}
+			return RawResult{}, fmt.Errorf("server returned %s; zyte fallback failed: %w", resp.Status, zerr)
+		}
 		return RawResult{}, fmt.Errorf("server returned %s", resp.Status)
 	}
 
@@ -173,6 +229,94 @@ func (c *Client) FetchRaw(ctx context.Context, url string) (RawResult, error) {
 	}
 	c.cachePut(url, raw)
 	return raw, nil
+}
+
+// zyteEnabled reports whether the Zyte fallback is configured.
+func (c *Client) zyteEnabled() bool { return c.zyteKey != "" }
+
+// hostOf extracts the lowercased host of a URL (the Zyte-domain cache key).
+func hostOf(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(u.Hostname())
+}
+
+func (c *Client) domainNeedsZyte(host string) bool {
+	if host == "" {
+		return false
+	}
+	c.zmu.Lock()
+	defer c.zmu.Unlock()
+	return c.zyteDomains[host]
+}
+
+func (c *Client) markDomainNeedsZyte(host string) {
+	if host == "" {
+		return
+	}
+	c.zmu.Lock()
+	c.zyteDomains[host] = true
+	c.zmu.Unlock()
+}
+
+// fetchViaZyte retrieves url through the Zyte browserHtml API and returns it as a
+// RawResult (status 200, text/html). The API key is the HTTP Basic username.
+func (c *Client) fetchViaZyte(ctx context.Context, url string) (RawResult, error) {
+	reqBody, _ := json.Marshal(map[string]any{"url": url, "browserHtml": true})
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, zyteEndpoint, bytes.NewReader(reqBody))
+	if err != nil {
+		return RawResult{}, err
+	}
+	req.SetBasicAuth(c.zyteKey, "")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.zyteHTTP.Do(req)
+	if err != nil {
+		return RawResult{}, fmt.Errorf("zyte request: %w", err)
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxZyteResponse))
+	if err != nil {
+		return RawResult{}, fmt.Errorf("zyte read: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return RawResult{}, fmt.Errorf("zyte returned %s: %s", resp.Status, snippet(respBody))
+	}
+
+	var out struct {
+		URL         string `json:"url"`
+		BrowserHTML string `json:"browserHtml"`
+	}
+	if err := json.Unmarshal(respBody, &out); err != nil {
+		return RawResult{}, fmt.Errorf("zyte decode: %w", err)
+	}
+	if strings.TrimSpace(out.BrowserHTML) == "" {
+		return RawResult{}, errors.New("zyte returned empty browserHtml")
+	}
+	final := url
+	if out.URL != "" {
+		final = out.URL
+	}
+	return RawResult{
+		Body:        []byte(out.BrowserHTML),
+		ContentType: "text/html",
+		FinalURL:    final,
+		Status:      http.StatusOK,
+		ViaZyte:     true,
+	}, nil
+}
+
+// snippet returns a short, single-line excerpt for error messages.
+func snippet(b []byte) string {
+	s := strings.TrimSpace(string(b))
+	s = strings.ReplaceAll(s, "\n", " ")
+	if len(s) > 200 {
+		return s[:200] + "…"
+	}
+	return s
 }
 
 func (c *Client) cacheGet(url string) (RawResult, bool) {
