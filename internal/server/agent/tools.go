@@ -62,7 +62,7 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 	}
 
 	reg["memory_useful"] = toolEntry{
-		def: fnTool("memory_useful", `Routine step: when memory_search results inform your reply, call this with the composite ids (e.g. u.4, s.7, p.2) of the memories you actually used, then give your answer. Cite only those — not every result, and not facts you judged irrelevant. It records which remembered facts helped so memory keeps improving.`, map[string]any{
+		def: fnTool("memory_useful", `Always call this tool after memory_search results are useful for your reply. Call it with the composite memory ids (e.g. u.4, s.7, p.2), then give your answer. Cite only useful memories — not every result, and not facts you judged irrelevant. This tool helps improve memory.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"ids":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Composite memory ids that informed the answer, e.g. [\"u.4\",\"s.7\"]"},
