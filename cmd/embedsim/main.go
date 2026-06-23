@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strings"
 
 	"github.com/ivoras/harlequin/internal/server/config"
 	"github.com/ivoras/harlequin/internal/server/embed"
@@ -18,25 +19,35 @@ import (
 
 func main() {
 	configPath := flag.String("config", "server.yaml", "path to server config YAML")
+	urlFlag := flag.String("url", "", "embeddings base URL ending in /v1 (overrides server.yaml; e.g. http://127.0.0.1:2236/v1)")
+	modelFlag := flag.String("model", "", "model name to send (used with -url)")
 	flag.Parse()
 	args := flag.Args()
 	if len(args) != 2 {
-		fmt.Fprintln(os.Stderr, `usage: embedsim [-config server.yaml] "<text a>" "<text b>"`)
+		fmt.Fprintln(os.Stderr, `usage: embedsim [-config server.yaml | -url <…/v1> [-model M]] "<text a>" "<text b>"`)
 		os.Exit(2)
 	}
 
-	cfg, err := config.Load(*configPath)
-	if err != nil {
-		fatal("config: %v", err)
-	}
-	if cfg.Embeddings.BaseURL == "" || cfg.Embeddings.Model == "" {
-		fatal("no embeddings provider configured (set embeddings.base_url and embeddings.model)")
+	var baseURL, model, apiKey string
+	if *urlFlag != "" {
+		baseURL = strings.TrimRight(*urlFlag, "/")
+		model = *modelFlag
+		apiKey = os.Getenv("EMBED_API_KEY")
+	} else {
+		cfg, err := config.Load(*configPath)
+		if err != nil {
+			fatal("config: %v", err)
+		}
+		if cfg.Embeddings.BaseURL == "" || cfg.Embeddings.Model == "" {
+			fatal("no embeddings provider configured (set embeddings.base_url and embeddings.model, or pass -url)")
+		}
+		baseURL, model, apiKey = cfg.Embeddings.BaseURL, cfg.Embeddings.Model, cfg.Embeddings.APIKey
 	}
 
-	e := embed.New(cfg.Embeddings.BaseURL, cfg.Embeddings.APIKey, cfg.Embeddings.Model, cfg.Embeddings.Dim)
+	e := embed.New(baseURL, apiKey, model, 0)
 	vecs, err := e.Embed(context.Background(), args)
 	if err != nil {
-		fatal("embed (%s @ %s): %v", cfg.Embeddings.Model, cfg.Embeddings.BaseURL, err)
+		fatal("embed (%s @ %s): %v", model, baseURL, err)
 	}
 	if len(vecs) != 2 {
 		fatal("expected 2 vectors, got %d", len(vecs))
@@ -46,7 +57,11 @@ func main() {
 		fatal("vector dimension mismatch: %d vs %d", len(a), len(b))
 	}
 
-	fmt.Printf("model:  %s @ %s (dim %d)\n", cfg.Embeddings.Model, cfg.Embeddings.BaseURL, len(a))
+	mName := model
+	if mName == "" {
+		mName = "(server default)"
+	}
+	fmt.Printf("model:  %s @ %s (dim %d)\n", mName, baseURL, len(a))
 	fmt.Printf("a:      %q\n", args[0])
 	fmt.Printf("b:      %q\n", args[1])
 	fmt.Printf("cosine: %.4f\n", cosine(a, b))
