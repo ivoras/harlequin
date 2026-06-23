@@ -116,6 +116,16 @@ type runContext struct {
 	step       int
 	emit       EmitFunc
 	memWritten []string // content stored/changed via memory_write or memory_change (auto-extract dedup)
+	// Memory-usefulness instrumentation (no learning yet — just measurement):
+	// memRecalled is every composite id surfaced by memory_search this turn;
+	// memUseful is the subset the model explicitly cited via memory_useful (only
+	// ids that were actually recalled); memUsefulCalled records whether the model
+	// called the tool at all, and memUsefulInvalid counts cited ids that were
+	// never recalled (hallucinated / stale).
+	memRecalled      []string
+	memUseful        []string
+	memUsefulCalled  bool
+	memUsefulInvalid int
 }
 
 // systemPromptFile is the deployed, JS-templated default system prompt
@@ -463,6 +473,20 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 		sessionEnd["timing"] = timing
 	}
 	a.logEvent(ctx, rc, sessionlog.TypeSessionEnd, sessionEnd)
+
+	// Memory-usefulness instrumentation: record what was recalled vs. what the
+	// model cited as useful, so we can measure compliance before any learning is
+	// driven from it. Only logged when memory was actually searched this turn.
+	if len(rc.memRecalled) > 0 {
+		a.logEvent(ctx, rc, sessionlog.TypeMemoryFeedback, map[string]any{
+			"recalled":       rc.memRecalled,
+			"recalled_count": len(rc.memRecalled),
+			"useful_cited":   rc.memUseful,
+			"useful_count":   len(rc.memUseful),
+			"tool_called":    rc.memUsefulCalled,
+			"invalid_cited":  rc.memUsefulInvalid,
+		})
+	}
 
 	done := types.StreamEvent{Type: types.SSEDone, Model: turnModel, ContextTokens: turnContextTokens, ContextMax: turnContextMax}
 	if a.ReportTiming {
