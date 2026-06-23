@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -146,14 +147,28 @@ func (s *Scheduler) run(ctx context.Context, userID int64, job types.CronJob) {
 		}
 		output = truncate(output, maxOutput)
 
-		// Notify only on a real change between two *successful* runs. This avoids
-		// flapping: transient errors (fetch failures, anti-bot blocks, selector
-		// misses) don't alert, the first run doesn't alert (nothing to compare),
-		// and recovering from an error doesn't read as a change.
+		// A "no result" run (empty output or the NO_UPDATE sentinel) is a no-op: it
+		// never notifies, and it keeps the previous meaningful output as the change
+		// baseline so a later real finding still diffs against it (and a flapping
+		// "nothing → something → nothing" cycle doesn't re-alert).
+		noop := status == "ok" && isNoResult(output)
+
+		// Notify only on a real change between two *successful*, non-no-op runs.
+		// This avoids flapping: transient errors (fetch failures, anti-bot blocks,
+		// selector misses) don't alert, the first run doesn't alert (nothing to
+		// compare), recovering from an error doesn't read as a change, and a
+		// "nothing to report" run doesn't alert at all.
 		notifyNow := job.Notify && s.dispatch != nil &&
-			status == "ok" && job.LastStatus == "ok" && output != job.LastOutput
-		if err := s.store.RecordRun(ctx, udb, job.ID, time.Now(), status, output); err != nil {
-			log.Printf("cron: record run for job %d (user %d): %v", job.ID, userID, err)
+			status == "ok" && job.LastStatus == "ok" && !noop && output != job.LastOutput
+
+		var recErr error
+		if noop {
+			recErr = s.store.RecordRunStatus(ctx, udb, job.ID, time.Now(), status)
+		} else {
+			recErr = s.store.RecordRun(ctx, udb, job.ID, time.Now(), status, output)
+		}
+		if recErr != nil {
+			log.Printf("cron: record run for job %d (user %d): %v", job.ID, userID, recErr)
 		}
 		if notifyNow {
 			email, _, _ := s.identity(ctx, userID)
@@ -177,6 +192,21 @@ func (s *Scheduler) identity(ctx context.Context, userID int64) (string, string,
 	err := s.storage.System.QueryRowContext(ctx,
 		`SELECT email, role FROM users WHERE id = ?`, userID).Scan(&email, &role)
 	return email, role, err
+}
+
+// isNoResult reports whether a run's output declares "nothing to report": empty
+// (e.g. a JS job returning ""/null) or the NO_UPDATE sentinel as the whole output
+// or its first line (skill jobs are instructed to reply with it).
+func isNoResult(output string) bool {
+	t := strings.TrimSpace(output)
+	if t == "" {
+		return true
+	}
+	first := t
+	if i := strings.IndexByte(t, '\n'); i >= 0 {
+		first = strings.TrimSpace(t[:i])
+	}
+	return strings.EqualFold(first, types.CronNoUpdateSentinel)
 }
 
 func truncate(s string, max int) string {

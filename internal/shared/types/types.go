@@ -242,6 +242,12 @@ const (
 	CronKindSkill = "skill" // run an agent turn that can use a skill
 )
 
+// CronNoUpdateSentinel is the marker a cron run emits to declare "nothing new to
+// report" — the scheduler treats it (and empty output) as a no-op: no
+// notification, and the previous meaningful output is kept as the change
+// baseline. JS jobs can return ""/null; skill jobs are told to reply with this.
+const CronNoUpdateSentinel = "NO_UPDATE"
+
 // CronJob is a per-user scheduled task: a JS script or an agent/skill turn run on
 // a cron schedule with user-provided inputs.
 type CronJob struct {
