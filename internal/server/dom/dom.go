@@ -720,3 +720,281 @@ func (d *Doc) QueryContext(selector string, max int, cx ContextOptions) ([]Match
 	})
 	return out, nil
 }
+
+// --- flattened text view + family selection (WebFetchDOM grep/selector modes) ---
+
+// flattenTags are the only element tags kept in the flattened view and family
+// descriptors; everything else is skipped (but still descended into).
+var flattenTags = map[string]bool{
+	"div": true, "span": true, "a": true, "li": true, "ol": true, "ul": true, "p": true,
+	"table": true, "tr": true, "td": true, "th": true, "img": true,
+}
+
+// descAttrs are the only attributes shown in a descriptor, in this order.
+var descAttrs = []string{"class", "href", "alt", "src"}
+
+// descriptor renders an element as tag(attr="v" …) using only descAttrs.
+func descriptor(n *html.Node) string {
+	var parts []string
+	for _, k := range descAttrs {
+		if v := getAttr(n, k); v != "" {
+			parts = append(parts, fmt.Sprintf("%s=%q", k, v))
+		}
+	}
+	if len(parts) == 0 {
+		return n.Data
+	}
+	return n.Data + "(" + strings.Join(parts, " ") + ")"
+}
+
+// Flatten renders the document as one line per element of an allowed tag: the
+// dotted path of allowed-tag ancestors (each a descriptor) ending at the element,
+// then ": <own text>". Non-allowed tags are skipped from the path but descended
+// into, so their allowed descendants still appear.
+func (d *Doc) Flatten() []string {
+	root := d.root()
+	if root == nil {
+		return nil
+	}
+	var out []string
+	var stack []string
+	var walk func(n *html.Node)
+	walk = func(n *html.Node) {
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			if c.Type != html.ElementNode {
+				continue
+			}
+			if flattenTags[c.Data] {
+				stack = append(stack, descriptor(c))
+				out = append(out, strings.Join(stack, ".")+": "+truncate(ownText(c), 160))
+				walk(c)
+				stack = stack[:len(stack)-1]
+			} else {
+				walk(c)
+			}
+		}
+	}
+	walk(root)
+	return out
+}
+
+// GrepFlatten greps the flattened view plus any extra lines (case-insensitive
+// substring) and returns the matching lines with contextLines of surrounding
+// lines on each side; match lines are prefixed "> ", context lines "  ", and
+// non-adjacent groups are separated by "--". Empty if nothing matches. extra is
+// appended to the flattened lines so callers can include e.g. the link list in
+// the grep corpus.
+func (d *Doc) GrepFlatten(pattern string, contextLines int, extra []string) string {
+	if contextLines < 0 {
+		contextLines = 0
+	}
+	lines := append(d.Flatten(), extra...)
+	needle := strings.ToLower(pattern)
+	keep := make([]bool, len(lines))
+	match := make([]bool, len(lines))
+	found := false
+	for i, ln := range lines {
+		if strings.Contains(strings.ToLower(ln), needle) {
+			match[i] = true
+			found = true
+			for j := i - contextLines; j <= i+contextLines; j++ {
+				if j >= 0 && j < len(lines) {
+					keep[j] = true
+				}
+			}
+		}
+	}
+	if !found {
+		return ""
+	}
+	var out []string
+	prev := -2
+	for i := range lines {
+		if !keep[i] {
+			continue
+		}
+		if prev >= 0 && i > prev+1 {
+			out = append(out, "--")
+		}
+		mark := "  "
+		if match[i] {
+			mark = "> "
+		}
+		out = append(out, mark+lines[i])
+		prev = i
+	}
+	return strings.Join(out, "\n")
+}
+
+// DescNode is an element rendered as a descriptor plus its (bounded) text.
+type DescNode struct {
+	Desc string
+	Text string
+}
+
+// Family is a selector match with its immediate relatives.
+type Family struct {
+	Match    DescNode
+	Parent   *DescNode
+	Siblings []DescNode // up to the requested limit, nearest first
+	Children []DescNode // up to the requested limit, in document order
+}
+
+func descOf(n *html.Node, textMax int) DescNode {
+	return DescNode{Desc: descriptor(n), Text: truncate(fullText(n), textMax)}
+}
+
+// SelectFamily matches selector (standard CSS; comma = union, e.g.
+// "div.item.muted-item, div.product-card") and returns each match with its
+// element parent, up to sibLimit nearest sibling elements, and up to childLimit
+// child elements.
+func (d *Doc) SelectFamily(selector string, maxMatches, sibLimit, childLimit int) ([]Family, error) {
+	m, err := cascadia.Compile(strings.TrimSpace(selector))
+	if err != nil {
+		return nil, fmt.Errorf("invalid selector %q: %w", selector, err)
+	}
+	if sibLimit <= 0 {
+		sibLimit = 3
+	}
+	if childLimit <= 0 {
+		childLimit = 3
+	}
+	var fams []Family
+	d.doc.FindMatcher(m).EachWithBreak(func(_ int, s *goquery.Selection) bool {
+		if len(s.Nodes) == 0 {
+			return true
+		}
+		n := s.Nodes[0]
+		f := Family{Match: descOf(n, 200)}
+		for p := n.Parent; p != nil; p = p.Parent {
+			if p.Type == html.ElementNode {
+				dn := descOf(p, 160)
+				f.Parent = &dn
+				break
+			}
+		}
+		f.Siblings = nearestSiblings(n, sibLimit)
+		for c := n.FirstChild; c != nil && len(f.Children) < childLimit; c = c.NextSibling {
+			if c.Type == html.ElementNode {
+				f.Children = append(f.Children, descOf(c, 120))
+			}
+		}
+		fams = append(fams, f)
+		return maxMatches <= 0 || len(fams) < maxMatches
+	})
+	return fams, nil
+}
+
+// nearestSiblings returns up to limit element siblings of n, following siblings
+// first then preceding, nearest first.
+func nearestSiblings(n *html.Node, limit int) []DescNode {
+	var next, prev []*html.Node
+	for s := n.NextSibling; s != nil; s = s.NextSibling {
+		if s.Type == html.ElementNode {
+			next = append(next, s)
+		}
+	}
+	for s := n.PrevSibling; s != nil; s = s.PrevSibling {
+		if s.Type == html.ElementNode {
+			prev = append(prev, s)
+		}
+	}
+	var out []DescNode
+	for i := 0; len(out) < limit && (i < len(next) || i < len(prev)); i++ {
+		if i < len(next) && len(out) < limit {
+			out = append(out, descOf(next[i], 120))
+		}
+		if i < len(prev) && len(out) < limit {
+			out = append(out, descOf(prev[i], 120))
+		}
+	}
+	return out
+}
+
+// FamiliesYAML renders families as YAML.
+func FamiliesYAML(fams []Family) string {
+	var b strings.Builder
+	for _, f := range fams {
+		fmt.Fprintf(&b, "- desc: %s\n", yamlScalar(f.Match.Desc))
+		fmt.Fprintf(&b, "  text: %s\n", yamlScalar(f.Match.Text))
+		if f.Parent != nil {
+			fmt.Fprintf(&b, "  parent: %s\n", yamlScalar(f.Parent.Desc))
+		}
+		if len(f.Siblings) > 0 {
+			b.WriteString("  siblings:\n")
+			for _, s := range f.Siblings {
+				fmt.Fprintf(&b, "    - desc: %s\n      text: %s\n", yamlScalar(s.Desc), yamlScalar(s.Text))
+			}
+		}
+		if len(f.Children) > 0 {
+			b.WriteString("  children:\n")
+			for _, c := range f.Children {
+				fmt.Fprintf(&b, "    - desc: %s\n      text: %s\n", yamlScalar(c.Desc), yamlScalar(c.Text))
+			}
+		}
+	}
+	return b.String()
+}
+
+// yamlScalar renders s as a safe double-quoted YAML scalar.
+func yamlScalar(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, "\"", "\\\"")
+	return "\"" + s + "\""
+}
+
+// LinkLines returns <a> elements formatted as `<href>[ data-page/rel]: link
+// text`, sorted alphabetically. A link is unique by href plus its data-page/rel
+// (so pagination links — same href, differing data-page or rel=next/prev —
+// survive instead of collapsing). Only absolute or root-relative hrefs (starting
+// with "/", "http://" or "https://") are kept; fragment, javascript:, and bare
+// relative links, and anchors with no visible text, are dropped.
+func (d *Doc) LinkLines() []string {
+	root := d.root()
+	if root == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	var walk func(n *html.Node)
+	walk = func(n *html.Node) {
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			if c.Type != html.ElementNode {
+				continue
+			}
+			if c.Data == "a" {
+				href := getAttr(c, "href")
+				text := strings.TrimSpace(fullText(c))
+				if text != "" && isNavigableHref(href) {
+					// Distinguishing attrs let pagination survive: page links often
+					// share one href and differ only by data-page (JS pagination) or
+					// rel=next/prev. Key the dedup on them and surface them.
+					dp, rel := getAttr(c, "data-page"), getAttr(c, "rel")
+					key := href + "\x00" + dp + "\x00" + rel
+					if !seen[key] {
+						seen[key] = true
+						suffix := ""
+						if dp != "" {
+							suffix += " [data-page=" + dp + "]"
+						}
+						if rel != "" {
+							suffix += " [rel=" + rel + "]"
+						}
+						out = append(out, href+suffix+": "+truncate(text, 160))
+					}
+				}
+			}
+			walk(c)
+		}
+	}
+	walk(root)
+	sort.Strings(out)
+	return out
+}
+
+// isNavigableHref reports whether href is an absolute or root-relative URL.
+func isNavigableHref(href string) bool {
+	return strings.HasPrefix(href, "/") ||
+		strings.HasPrefix(href, "https://") ||
+		strings.HasPrefix(href, "http://")
+}

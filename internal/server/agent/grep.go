@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/ivoras/harlequin/internal/server/llm"
 	"github.com/ivoras/harlequin/internal/server/sandboxfs"
@@ -215,6 +216,12 @@ func grepContentLines(uri, content string, re *regexp.Regexp, before, after int,
 		}
 	}
 	hasCtx := before > 0 || after > 0
+	loc := func(sep string, i int, s string) string {
+		if showNums {
+			return fmt.Sprintf("%s%s%d%s%s", uri, sep, i+1, sep, s)
+		}
+		return fmt.Sprintf("%s%s%s", uri, sep, s)
+	}
 	var out []string
 	prev := -2
 	for i := 0; i < len(lines); i++ {
@@ -224,18 +231,70 @@ func grepContentLines(uri, content string, re *regexp.Regexp, before, after int,
 		if hasCtx && prev >= 0 && i > prev+1 {
 			out = append(out, "--")
 		}
-		sep := "-"
 		if isMatch[i] {
-			sep = ":"
-		}
-		if showNums {
-			out = append(out, fmt.Sprintf("%s%s%d%s%s", uri, sep, i+1, sep, lines[i]))
+			// Long lines (minified HTML) are windowed around each match so a
+			// content match never dumps the whole document.
+			for _, w := range matchWindows(lines[i], re) {
+				out = append(out, loc(":", i, w))
+			}
 		} else {
-			out = append(out, fmt.Sprintf("%s%s%s", uri, sep, lines[i]))
+			out = append(out, loc("-", i, truncRunes(lines[i], grepMaxLineWidth)))
 		}
 		prev = i
 	}
 	return out
+}
+
+// grep content windowing bounds: lines no longer than grepMaxLineWidth print
+// whole; longer ones show grepWindowHalf chars each side of a match.
+const (
+	grepMaxLineWidth      = 240
+	grepWindowHalf        = 120
+	grepMaxWindowsPerLine = 50
+)
+
+// matchWindows returns the whole line if short, else a bounded window of text
+// around each match (…before<match>after…), capped in count.
+func matchWindows(line string, re *regexp.Regexp) []string {
+	if len(line) <= grepMaxLineWidth {
+		return []string{line}
+	}
+	var out []string
+	for _, m := range re.FindAllStringIndex(line, -1) {
+		s, e := m[0]-grepWindowHalf, m[1]+grepWindowHalf
+		if s < 0 {
+			s = 0
+		}
+		if e > len(line) {
+			e = len(line)
+		}
+		seg := line[s:e]
+		if s > 0 {
+			seg = "…" + seg
+		}
+		if e < len(line) {
+			seg = seg + "…"
+		}
+		out = append(out, seg)
+		if len(out) >= grepMaxWindowsPerLine {
+			break
+		}
+	}
+	if len(out) == 0 {
+		out = append(out, truncRunes(line, grepMaxLineWidth))
+	}
+	return out
+}
+
+// truncRunes truncates s to at most n bytes (rune-boundary safe) with an ellipsis.
+func truncRunes(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n] + "…"
 }
 
 func typeExtensions(t string) []string {

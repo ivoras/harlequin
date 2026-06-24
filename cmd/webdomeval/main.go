@@ -15,7 +15,7 @@ import (
 )
 
 const llmURL = "http://127.0.0.1:2234/v1/chat/completions"
-const resultCap = 15000
+const resultCap = 20000
 
 func capTo(s string) string { if len(s) > resultCap { return s[:resultCap] + "\n…[truncated]" }; return s }
 
