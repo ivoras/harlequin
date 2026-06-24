@@ -45,6 +45,7 @@ func webFetchDOMToolDef() llm.Tool {
 			"max_matches": map[string]any{"type": "integer", "description": "Cap on returned nodes (default 20)"},
 			"max_depth":   map[string]any{"type": "integer", "description": "Skeleton depth when no grep/selector (default 3)"},
 			"context":     map[string]any{"type": "integer", "description": "Neighbouring elements to include around each grep/single match — sibling and ancestor levels — so a value is read together with its nearby label/name/link (default 3; 0 disables)"},
+			"save_file":   map[string]any{"type": "string", "description": "If set, save the fetched page under this name in the tmp:// namespace (e.g. \"links.html\"). The result returns the full path (e.g. tmp://links.html) for use with the Grep tool."},
 		},
 		"required":             []string{"url"},
 		"additionalProperties": false,
@@ -68,6 +69,7 @@ func (a *Agent) webFetchDOM(ctx context.Context, rc *runContext, args map[string
 	}
 	selector := strings.TrimSpace(argString(args, "selector"))
 	grep := strings.TrimSpace(argString(args, "grep"))
+	saveFile := strings.TrimSpace(argString(args, "save_file"))
 	maxMatches := argInt(args, "max_matches", 20)
 	maxDepth := argInt(args, "max_depth", 3)
 	context := argInt(args, "context", 3)
@@ -88,8 +90,12 @@ func (a *Agent) webFetchDOM(ctx context.Context, rc *runContext, args map[string
 	}
 
 	// Stash the raw HTML so the model can re-query it (or write a parser against
-	// it) without another network round-trip.
+	// it) without another network round-trip. save_file lets the caller choose the
+	// tmp:// name (e.g. to grep it with the Grep tool); otherwise a hashed name.
 	handle := "page-" + shortHash(raw.FinalURL) + ".html"
+	if saveFile != "" {
+		handle = saveFile
+	}
 	if err := a.tmpRoot(rc.userID).Write(handle, raw.Body); err != nil {
 		log.Printf("webfetchdom: could not save handle %s: %v", handle, err)
 		handle = ""
@@ -107,6 +113,9 @@ func (a *Agent) webFetchDOM(ctx context.Context, rc *runContext, args map[string
 	fmt.Fprintf(&sb, "URL: %s\n", raw.FinalURL)
 	if title := firstText(d, "title"); title != "" {
 		fmt.Fprintf(&sb, "Title: %s\n", title)
+	}
+	if saveFile != "" && handle != "" {
+		fmt.Fprintf(&sb, "Saved page to tmp://%s — search it with the Grep tool, e.g. Grep(pattern=\"…\", path=\"tmp://%s\").\n", handle, handle)
 	}
 	if handle != "" {
 		fmt.Fprintf(&sb, "(The page's raw HTML is also saved to tmp://%s — data, NOT json and NOT a script. You don't need it to pick a selector: call WebFetchDOM again with grep= or selector=. Only if writing a run_js parser, read it in `code`: var h=dom.parse(tmp.read(%q)); println(dom.query(h, \"<css>\").length))\n", handle, handle)

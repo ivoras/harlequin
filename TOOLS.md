@@ -96,13 +96,26 @@ say" questions. (15-min cache; reports cross-host redirects to call again.)
 
 ### `WebFetchDOM`
 **Why:** precise scraping, not summarisation — returns the page's HTML structure as
-JSON (with ready-to-use CSS selectors / candidate lists) so the agent can find the
-exact path to data, then re-query it with `run_js` (no AI per check). Use to set up
-a durable extractor/monitor.
+JSON (candidate lists with ready-to-use CSS selectors; `selector=` for one record
+per list item; `grep=` for a value with its surrounding context). Use to read,
+compare, filter, or count list items, or to set up a durable extractor/monitor.
+Pass `save_file` to keep the raw page under `tmp://` (the result returns the full
+path) for follow-up searching with `Grep`.
 **Examples:**
 - discover: `WebFetchDOM({"url": "https://news.site/list"})`
-- locate: `WebFetchDOM({"url": "https://news.site/list", "grep": "Breaking:"})`
-- verify a selector: `WebFetchDOM({"url": "https://news.site/list", "selector": "li.headline"})`
+- list items: `WebFetchDOM({"url": "https://news.site/list", "selector": "li.headline"})`
+- locate a value: `WebFetchDOM({"url": "https://news.site/list", "grep": "Breaking:"})`
+- save for grepping: `WebFetchDOM({"url": "https://news.site/list", "save_file": "news.html"})`
+
+### `Grep`
+**Why:** ripgrep-style content search over files saved in your sandbox namespaces
+(`tmp://`, `storage://`) — e.g. a page saved by `WebFetchDOM`'s `save_file` or a
+stored document — without reading the whole file. `output_mode` is
+`files_with_matches` (default), `content`, or `count`; supports `glob`, `type`,
+`-A`/`-B`/`-C`, `-i`, `-n`, `multiline`, `head_limit`.
+**Examples:**
+- `Grep({"pattern": "Ryzen", "path": "tmp://news.html", "output_mode": "content", "-n": true})`
+- `Grep({"pattern": "error", "path": "tmp://", "glob": "*.json", "output_mode": "count"})`
 
 ---
 
