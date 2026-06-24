@@ -31,7 +31,7 @@ type Doc struct {
 // Node is a located element: a stable CSS Path plus a compact summary the small
 // model can read cheaply.
 type Node struct {
-	Path  string            `json:"path"`
+	Path  string            `json:"path,omitempty"`
 	Tag   string            `json:"tag"`
 	ID    string            `json:"id,omitempty"`
 	Class string            `json:"class,omitempty"`
@@ -123,6 +123,27 @@ func (d *Doc) Grep(pattern string, opts GrepOptions) ([]Node, error) {
 
 // GrepNode runs Grep within ctx's subtree (ctx may be any element node).
 func GrepNode(ctx *html.Node, pattern string, opts GrepOptions) ([]Node, error) {
+	hits, err := grepRawNodes(ctx, pattern, opts)
+	if err != nil {
+		return nil, err
+	}
+	tc := opts.TextChars
+	if tc <= 0 {
+		tc = defaultTextChars
+	}
+	out := make([]Node, 0, len(hits))
+	for _, n := range hits {
+		out = append(out, summary(n, tc))
+		if opts.MaxMatches > 0 && len(out) >= opts.MaxMatches {
+			break
+		}
+	}
+	return out, nil
+}
+
+// grepRawNodes returns the matching element nodes (document order), the shared
+// core of GrepNode and the context-bearing GrepContext.
+func grepRawNodes(ctx *html.Node, pattern string, opts GrepOptions) ([]*html.Node, error) {
 	match, err := matcherFor(pattern, opts)
 	if err != nil {
 		return nil, err
@@ -192,18 +213,7 @@ func GrepNode(ctx *html.Node, pattern string, opts GrepOptions) ([]Node, error) 
 	}
 
 	sort.Slice(hits, func(i, j int) bool { return order[hits[i]] < order[hits[j]] })
-	tc := opts.TextChars
-	if tc <= 0 {
-		tc = defaultTextChars
-	}
-	out := make([]Node, 0, len(hits))
-	for _, n := range hits {
-		out = append(out, summary(n, tc))
-		if opts.MaxMatches > 0 && len(out) >= opts.MaxMatches {
-			break
-		}
-	}
-	return out, nil
+	return hits, nil
 }
 
 // SkelOptions tunes Skeleton.
@@ -349,7 +359,14 @@ func attrMap(n *html.Node) map[string]string {
 	}
 	m := make(map[string]string, len(n.Attr))
 	for _, a := range n.Attr {
+		// id and class have dedicated fields on Node/SkelNode; don't duplicate them.
+		if a.Key == "id" || a.Key == "class" {
+			continue
+		}
 		m[a.Key] = a.Val
+	}
+	if len(m) == 0 {
+		return nil
 	}
 	return m
 }
@@ -437,8 +454,82 @@ func truncate(s string, max int) string {
 	return s
 }
 
+// --- record extraction ---
+
+// Record is one item of a repeating list: a stable Path, a short text summary,
+// and outbound links. One Records call yields the list as comparable rows so a
+// model can read, compare, filter, or count items in a single call rather than
+// grepping each field. It extracts no semantics (no number/price parsing) — the
+// model reads the item text and decides what matters.
+type Record struct {
+	Path  string   `json:"path,omitempty"`
+	Text  string   `json:"text,omitempty"`
+	Links []string `json:"links,omitempty"`
+}
+
+// linksIn returns up to max distinct href/src URLs found in n's subtree.
+func linksIn(n *html.Node, max int) []string {
+	if max <= 0 {
+		max = 4
+	}
+	seen := map[string]bool{}
+	var out []string
+	var walk func(*html.Node)
+	walk = func(node *html.Node) {
+		for c := node.FirstChild; c != nil; c = c.NextSibling {
+			if c.Type == html.ElementNode {
+				for _, a := range c.Attr {
+					if (a.Key == "href" || a.Key == "src") && a.Val != "" && !seen[a.Val] {
+						seen[a.Val] = true
+						out = append(out, a.Val)
+					}
+				}
+			}
+			walk(c)
+			if len(out) >= max {
+				return
+			}
+		}
+	}
+	walk(n)
+	if len(out) > max {
+		out = out[:max]
+	}
+	return out
+}
+
+// Records returns the elements matching selector as comparable records (short
+// text + outbound links). max caps the rows (<=0 = 30 default); textChars bounds
+// each text snippet (<=0 uses the default).
+func (d *Doc) Records(selector string, max, textChars int) ([]Record, error) {
+	m, err := cascadia.Compile(strings.TrimSpace(selector))
+	if err != nil {
+		return nil, fmt.Errorf("invalid selector %q: %w", selector, err)
+	}
+	if max <= 0 {
+		max = 30
+	}
+	if textChars <= 0 {
+		textChars = defaultTextChars
+	}
+	var out []Record
+	d.doc.FindMatcher(m).EachWithBreak(func(_ int, s *goquery.Selection) bool {
+		if len(s.Nodes) == 0 {
+			return true
+		}
+		n := s.Nodes[0]
+		out = append(out, Record{
+			Path:  nodePath(n),
+			Text:  truncate(fullText(n), textChars),
+			Links: linksIn(n, 4),
+		})
+		return len(out) < max
+	})
+	return out, nil
+}
+
 // GroupCandidate is a detected repeating sibling group — a likely list/table of
-// records (e.g. the rows of items to monitor).
+// records (e.g. the rows of items to monitor or compare).
 type GroupCandidate struct {
 	// Selector is a CSS selector (tag + classes) that matches the group's members.
 	Selector string `json:"selector"`
@@ -528,4 +619,104 @@ func signature(n *html.Node) string {
 		cls = cls[:3]
 	}
 	return tag + "." + strings.Join(cls, ".")
+}
+
+// --- match context (neighbourhood around a located node) ---
+
+// ContextOptions controls how much surrounding DOM Grep/Query attach to each
+// match, so a value (e.g. a price) can be read together with nearby labels,
+// names, and links without further calls. It makes no assumption about page
+// structure: it walks sibling and ancestor elements generically.
+type ContextOptions struct {
+	// Siblings is how many preceding and following sibling elements to include
+	// on each side of the match (0 = none).
+	Siblings int
+	// Ancestors is how many ancestor levels to include, nearest first (0 = none).
+	// Ancestor text is the element's whole-subtree text (bounded), so a label or
+	// name held in a cousin subtree is surfaced alongside the match.
+	Ancestors int
+	// TextChars bounds each context node's text snippet (<=0 uses the default).
+	TextChars int
+}
+
+// MatchContext is a located node plus its DOM neighbourhood.
+type MatchContext struct {
+	Match     Node   `json:"match"`
+	Prev      []Node `json:"prev,omitempty"`      // preceding siblings, nearest last
+	Next      []Node `json:"next,omitempty"`      // following siblings, nearest first
+	Ancestors []Node `json:"ancestors,omitempty"` // enclosing elements, nearest first
+}
+
+func contextFor(n *html.Node, opts ContextOptions) MatchContext {
+	tc := opts.TextChars
+	if tc <= 0 {
+		tc = defaultTextChars
+	}
+	mc := MatchContext{Match: summary(n, tc)}
+	// Context nodes are read for their content (a nearby name/label/link), never
+	// queried, so they carry no Path — the deep nth-of-type chains would dominate
+	// the byte budget and crowd out other matches. Only Match keeps its Path.
+	ctxSummary := func(e *html.Node) Node {
+		s := summary(e, tc)
+		s.Path = ""
+		return s
+	}
+	// Preceding siblings (collect nearest-first, then reverse so output reads
+	// in document order).
+	cnt := 0
+	for s := n.PrevSibling; s != nil && cnt < opts.Siblings; s = s.PrevSibling {
+		if s.Type == html.ElementNode {
+			mc.Prev = append(mc.Prev, ctxSummary(s))
+			cnt++
+		}
+	}
+	for i, j := 0, len(mc.Prev)-1; i < j; i, j = i+1, j-1 {
+		mc.Prev[i], mc.Prev[j] = mc.Prev[j], mc.Prev[i]
+	}
+	cnt = 0
+	for s := n.NextSibling; s != nil && cnt < opts.Siblings; s = s.NextSibling {
+		if s.Type == html.ElementNode {
+			mc.Next = append(mc.Next, ctxSummary(s))
+			cnt++
+		}
+	}
+	cnt = 0
+	for p := n.Parent; p != nil && p.Type == html.ElementNode && cnt < opts.Ancestors; p = p.Parent {
+		mc.Ancestors = append(mc.Ancestors, ctxSummary(p))
+		cnt++
+	}
+	return mc
+}
+
+// GrepContext is Grep with each match wrapped in its DOM neighbourhood.
+func (d *Doc) GrepContext(pattern string, opts GrepOptions, cx ContextOptions) ([]MatchContext, error) {
+	hits, err := grepRawNodes(d.root(), pattern, opts)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]MatchContext, 0, len(hits))
+	for _, n := range hits {
+		out = append(out, contextFor(n, cx))
+		if opts.MaxMatches > 0 && len(out) >= opts.MaxMatches {
+			break
+		}
+	}
+	return out, nil
+}
+
+// QueryContext is Query with each match wrapped in its DOM neighbourhood. Best
+// for a selector that matches one or a few nodes; for long lists prefer Records.
+func (d *Doc) QueryContext(selector string, max int, cx ContextOptions) ([]MatchContext, error) {
+	m, err := cascadia.Compile(strings.TrimSpace(selector))
+	if err != nil {
+		return nil, fmt.Errorf("invalid selector %q: %w", selector, err)
+	}
+	var out []MatchContext
+	d.doc.FindMatcher(m).EachWithBreak(func(_ int, s *goquery.Selection) bool {
+		if len(s.Nodes) > 0 {
+			out = append(out, contextFor(s.Nodes[0], cx))
+		}
+		return max <= 0 || len(out) < max
+	})
+	return out, nil
 }
