@@ -432,19 +432,26 @@ func capExample(v string) string {
 	return strings.TrimSpace(v[:slotKeyExampleMax]) + "…"
 }
 
-// slotForMemory returns the slot row for one memory, if any.
-func (m memDB) slotForMemory(ctx context.Context, memoryLocal int64) (slotextract.Slot, bool) {
+// slotsForMemory returns all slot rows for one memory, ordered by slot id
+// (oldest first), or nil if the memory carries none.
+func (m memDB) slotsForMemory(ctx context.Context, memoryLocal int64) []slotextract.Slot {
 	if m.db == nil {
-		return slotextract.Slot{}, false
+		return nil
 	}
-	var slot slotextract.Slot
-	err := m.db.QueryRowContext(ctx,
-		`SELECT key, value FROM memory_slots WHERE memory_id = ? LIMIT 1`, memoryLocal).
-		Scan(&slot.Key, &slot.Value)
+	rows, err := m.db.QueryContext(ctx,
+		`SELECT key, value FROM memory_slots WHERE memory_id = ? ORDER BY id`, memoryLocal)
 	if err != nil {
-		return slotextract.Slot{}, false
+		return nil
 	}
-	return slot, slot.Key != ""
+	defer rows.Close()
+	var out []slotextract.Slot
+	for rows.Next() {
+		var slot slotextract.Slot
+		if rows.Scan(&slot.Key, &slot.Value) == nil && slot.Key != "" {
+			out = append(out, slot)
+		}
+	}
+	return out
 }
 
 // slotsForKey returns all (memory_id, value) rows for a key in this database.
@@ -524,9 +531,9 @@ type memorySlot struct {
 	value string
 }
 
-// slotsByMemoryLocals returns the slot (at most one per memory today) for each
-// local memory row id in this database file.
-func (m memDB) slotsByMemoryLocals(ctx context.Context, memoryLocals []int64) map[int64]memorySlot {
+// slotsByMemoryLocals returns all slots for each local memory row id in this
+// database file, ordered by slot id (oldest first) within each memory.
+func (m memDB) slotsByMemoryLocals(ctx context.Context, memoryLocals []int64) map[int64][]memorySlot {
 	if m.db == nil || len(memoryLocals) == 0 {
 		return nil
 	}
@@ -537,24 +544,24 @@ func (m memDB) slotsByMemoryLocals(ctx context.Context, memoryLocals []int64) ma
 		args[i] = id
 	}
 	q := `SELECT memory_id, key, value FROM memory_slots WHERE memory_id IN (` +
-		strings.Join(placeholders, ",") + `)`
+		strings.Join(placeholders, ",") + `) ORDER BY id`
 	rows, err := m.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil
 	}
 	defer rows.Close()
-	out := make(map[int64]memorySlot, len(memoryLocals))
+	out := make(map[int64][]memorySlot, len(memoryLocals))
 	for rows.Next() {
 		var local int64
 		var sl memorySlot
 		if rows.Scan(&local, &sl.key, &sl.value) == nil {
-			out[local] = sl
+			out[local] = append(out[local], sl)
 		}
 	}
 	return out
 }
 
-// attachSlots fills SlotKey and SlotValue on each memory from memory_slots.
+// attachSlots fills Slots on each memory from memory_slots.
 func (s *Store) attachSlots(ctx context.Context, userDB *sql.DB, mems []types.Memory) {
 	if len(mems) == 0 {
 		return
@@ -573,9 +580,8 @@ func (s *Store) attachSlots(ctx context.Context, userDB *sql.DB, mems []types.Me
 		slots := s.memFor(scope, userDB).slotsByMemoryLocals(ctx, locals)
 		for _, i := range indices {
 			if _, local, ok := decodeID(mems[i].ID); ok {
-				if sl, ok := slots[local]; ok {
-					mems[i].SlotKey = sl.key
-					mems[i].SlotValue = sl.value
+				for _, sl := range slots[local] {
+					mems[i].Slots = append(mems[i].Slots, types.MemorySlot{Key: sl.key, Value: sl.value})
 				}
 			}
 		}

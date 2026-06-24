@@ -31,12 +31,15 @@ func TestMemoryDeletable(t *testing.T) {
 	}
 }
 
-func TestFormatMemorySlotKey(t *testing.T) {
+func TestFormatMemorySlotKeys(t *testing.T) {
 	t.Parallel()
-	if got := formatMemorySlotKey("company.name"); got != "{company.name}" {
+	if got := formatMemorySlotKeys([]types.MemorySlot{{Key: "company.name"}}); got != "{company.name}" {
 		t.Fatalf("got %q", got)
 	}
-	if got := formatMemorySlotKey(""); got != "{-}" {
+	if got := formatMemorySlotKeys([]types.MemorySlot{{Key: "memory.date"}, {Key: "user.birthday"}}); got != "{memory.date, user.birthday}" {
+		t.Fatalf("got %q", got)
+	}
+	if got := formatMemorySlotKeys(nil); got != "{-}" {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -46,12 +49,12 @@ func TestRenderMemoryLineSameFormat(t *testing.T) {
 	created := time.Date(2026, 5, 31, 21, 48, 0, 0, time.UTC)
 	shared := types.Memory{
 		ID: "s.3", Scope: "shared", Source: "auto",
-		SlotKey: "organization.name", Content: "The organization name is MegaCorp LLC.",
+		Slots: []types.MemorySlot{{Key: "organization.name", Value: "MegaCorp LLC"}}, Content: "The organization name is MegaCorp LLC.",
 		CreatedAt: created,
 	}
 	user := types.Memory{
 		ID: "u.1", Scope: "user", Source: "auto",
-		SlotKey: "", Content: "User prefers tea.",
+		Content:   "User prefers tea.",
 		CreatedAt: created,
 	}
 	sharedLine := renderMemoryLine(shared, true)

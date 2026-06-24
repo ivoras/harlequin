@@ -86,7 +86,7 @@
           <div class="wrap">{m.content}</div>
           <div class="row small muted">
             <span class="pill">{m.id}</span>
-            {#if m.slot_key}<span class="pill">{m.slot_key}</span>{/if}
+            {#each m.slots ?? [] as s}<span class="pill" title={s.value}>{s.key}</span>{/each}
             {#if m.pinned}<span title="pinned">📌</span>{/if}
             <span class="spacer"></span>
             <button class="ghost danger small" onclick={() => del(m.id)}>Delete</button>

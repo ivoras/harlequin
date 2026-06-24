@@ -17,11 +17,12 @@ import (
 
 // webFetchDOMDescription is advertised to the model.
 const webFetchDOMDescription = `
-- Fetches a web page and returns a JSON summary of its structure IN THIS TOOL RESULT (read it directly; it is the answer, not something to feed back into run_js).
+- Fetches a web page and returns a JSON summary of its structure AS THE TOOL RESULT (read it directly; it is the answer, not something to feed back into run_js).
 - With NO grep/selector, returns "candidate lists" — repeating elements with a ready-to-use CSS selector, a count, and a sample of each; plus a page skeleton.
 - To locate a specific value (e.g. a price), call again with grep="<text that appears on the page, e.g. 79,90>" — each match includes a CSS "path".
 - To confirm a selector, call again with selector="<css>" — it returns the matching element(s). Finding and confirming a selector needs ONLY this tool — you do NOT need run_js.
-- Separately, the page's RAW HTML (not JSON) is saved to a tmp:// handle. It is a DATA file, not a script. You only need it if you later write a run_js parser, and then ONLY via dom.parse(tmp.read(handle)) inside run_js 'code' — never pass the handle as run_js 'script' (that runs HTML as JS and fails).
+- Separately, the page's RAW HTML (not JSON) is saved to a tmp:// handle. It is a DATA file, not a script. You only need it if you later write a run_js parser, and then ONLY via dom.parse(tmp.read(handle)) inside run_js 'code' — never pass the handle as run_js 'script' (it expects JS and fails).
+- Prefer this tool with the grep or selector instead of WebFetch if the page is expected to be large and complex.
 `
 
 // webFetchDOMResultCap bounds the JSON returned to the (small) model.

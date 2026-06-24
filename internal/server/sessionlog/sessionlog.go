@@ -45,7 +45,7 @@ const (
 	TypeSessionExpired = "session_expired"
 
 	// TypeMemoryFeedback records, per turn, which memories were recalled by
-	// memory_search and which the model explicitly cited via memory_useful —
+	// memory_search and which the model explicitly cited via memory_feedback —
 	// instrumentation for measuring how reliably the model reports useful memories
 	// (no learning is driven from it yet).
 	TypeMemoryFeedback = "memory_feedback"

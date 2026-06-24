@@ -172,13 +172,16 @@ export interface SkillFiles {
   files: Record<string, string>;
 }
 
+export interface MemorySlot {
+  key: string;
+  value?: string;
+}
 export interface Memory {
   id: string; // "u.N" | "s.N"
   scope: string; // user | shared
   user_id?: number;
   content: string;
-  slot_key?: string;
-  slot_value?: string;
+  slots?: MemorySlot[];
   source?: string;
   pinned: boolean;
   expires_at?: string;
@@ -199,7 +202,7 @@ export interface MemoryConflict {
 export interface SearchResult {
   id: string;
   content: string;
-  slot_key?: string;
+  slot_keys?: string[];
   score: number;
 }
 export interface CreateMemoryRequest {

@@ -30,7 +30,7 @@ Your tools are defined separately. When a task matches a tool, use the tool rath
 ## Using memory to answer
 
 - Resolve references you're expected to remember ("that watch", "my car", "the project") with `memory_search` BEFORE asking the user to clarify or saying you don't know. Query with the user's own words.
-- When `memory_search` results are useful for your reply, call `memory_useful` with the ids you actually used, then answer.
+- If `memory_search` results are useful for your reply, call `memory_feedback` with the ids you actually used, then answer.
 
 ## Memory scope (user vs shared)
 
