@@ -118,7 +118,7 @@ type runContext struct {
 	memWritten []string // content stored/changed via memory_write or memory_change (auto-extract dedup)
 	// Memory-usefulness instrumentation (no learning yet — just measurement):
 	// memRecalled is every composite id surfaced by memory_search this turn;
-	// memUseful is the subset the model explicitly cited via memory_useful (only
+	// memUseful is the subset the model explicitly cited via memory_feedback (only
 	// ids that were actually recalled); memUsefulCalled records whether the model
 	// called the tool at all, and memUsefulInvalid counts cited ids that were
 	// never recalled (hallucinated / stale).

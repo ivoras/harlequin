@@ -1,7 +1,7 @@
 // Command memfeedback summarizes the memory_feedback events in the session logs,
-// so you can judge whether explicit memory citation (the memory_useful tool) is a
+// so you can judge whether explicit memory citation (the memory_feedback tool) is a
 // trustworthy usefulness signal on your models before any learning is driven from
-// it. It reports how often the model calls memory_useful when memory was
+// it. It reports how often the model calls memory_feedback when memory was
 // searched, how selectively it cites, and how often it cites ids that were never
 // actually recalled.
 //
@@ -27,7 +27,7 @@ func main() {
 
 	var (
 		turns           int // memory_feedback events (turns where memory was searched)
-		called          int // turns where the model called memory_useful
+		called          int // turns where the model called memory_feedback
 		calledNoneValid int // called, but cited zero ids that were actually recalled
 		turnsInvalid    int // turns that cited at least one non-recalled (bogus) id
 		sumRecalled     int
@@ -86,7 +86,7 @@ func main() {
 
 	fmt.Printf("memory_feedback summary (%s)\n", *dir)
 	fmt.Printf("  turns with memory searched : %d\n", turns)
-	fmt.Printf("  memory_useful called       : %d (%s of those turns)\n", called, pct(called, turns))
+	fmt.Printf("  memory_feedback called     : %d (%s of those turns)\n", called, pct(called, turns))
 	fmt.Printf("  memories recalled (total)  : %d  (avg %.1f/turn)\n", sumRecalled, avg(sumRecalled, turns))
 	fmt.Printf("  cited as useful (total)    : %d  (avg %.1f/turn)\n", sumUseful, avg(sumUseful, turns))
 	fmt.Println()

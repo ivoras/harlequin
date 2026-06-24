@@ -53,7 +53,7 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 				return "", err
 			}
 			// Record which memories were surfaced this turn (the candidate set the
-			// model may later cite via memory_useful).
+			// model may later cite via memory_feedback).
 			for _, r := range res {
 				rc.memRecalled = appendUnique(rc.memRecalled, r.ID)
 			}
@@ -61,8 +61,8 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 		},
 	}
 
-	reg["memory_useful"] = toolEntry{
-		def: fnTool("memory_useful", `Always call this tool after memory_search results are useful for your reply. Call it with the composite memory ids (e.g. u.4, s.7, p.2), then give your answer. Cite only useful memories — not every result, and not facts you judged irrelevant. This tool helps improve memory.`, map[string]any{
+	reg["memory_feedback"] = toolEntry{
+		def: fnTool("memory_feedback", `Always call this tool after memory_search results are useful for your reply. Call it with the composite memory ids (e.g. u.4, s.7, p.2), then give your answer. Cite only useful memories — not every result, and not facts you judged irrelevant. This tool helps improve memory.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"ids":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Composite memory ids that informed the answer, e.g. [\"u.4\",\"s.7\"]"},
@@ -764,8 +764,8 @@ func renderResults(res []types.SearchResult) string {
 	sb.WriteString("Ranked memory results (prefer #1 when it directly answers the question; use id or slot_key with memory_change/memory_delete; do not invent facts not listed here):\n")
 	for i, r := range res {
 		fmt.Fprintf(&sb, "%d. [%s", i+1, r.ID)
-		if k := strings.TrimSpace(r.SlotKey); k != "" {
-			fmt.Fprintf(&sb, " {%s}", k)
+		if len(r.SlotKeys) > 0 {
+			fmt.Fprintf(&sb, " {%s}", strings.Join(r.SlotKeys, ", "))
 		}
 		fmt.Fprintf(&sb, "] %s\n", strings.TrimSpace(r.Content))
 	}

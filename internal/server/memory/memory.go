@@ -358,7 +358,8 @@ func (s *Store) searchTuned(ctx context.Context, userDB, projDB *sql.DB, query s
 	return out, nil
 }
 
-// attachSlotsToResults fills SlotKey on search hits when indexed.
+// attachSlotsToResults fills SlotKeys on search hits with every slot key the
+// memory carries.
 func (s *Store) attachSlotsToResults(ctx context.Context, userDB, projDB *sql.DB, results []types.SearchResult) {
 	for i, r := range results {
 		scope, local, ok := decodeID(r.ID)
@@ -374,8 +375,8 @@ func (s *Store) attachSlotsToResults(ctx context.Context, userDB, projDB *sql.DB
 		} else {
 			m = s.memFor(scope, userDB)
 		}
-		if slot, ok := m.slotForMemory(ctx, local); ok {
-			results[i].SlotKey = slot.Key
+		for _, slot := range m.slotsForMemory(ctx, local) {
+			results[i].SlotKeys = append(results[i].SlotKeys, slot.Key)
 		}
 	}
 }

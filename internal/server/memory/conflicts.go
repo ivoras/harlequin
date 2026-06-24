@@ -74,18 +74,21 @@ func (s *Store) detectConflicts(ctx context.Context, userDB *sql.DB, userID int6
 		}
 	}
 
-	// Structured slot path: use an already-indexed slot (from add/indexSlot) or
-	// extract and index now, then flag peers sharing that key.
-	var slot slotextract.Slot
-	hasSlot := false
+	// Structured slot path: use the slots already indexed (from add/indexSlot) or
+	// extract and index one now, then flag peers sharing each slot's key.
+	var slots []slotextract.Slot
 	if scope, local, ok := decodeID(newID); ok {
-		slot, hasSlot = s.memFor(scope, userDB).slotForMemory(ctx, local)
+		slots = s.memFor(scope, userDB).slotsForMemory(ctx, local)
 	}
-	if !hasSlot {
-		slot, hasSlot = s.indexSlot(ctx, userDB, newID, content, contentBlob)
+	if len(slots) == 0 {
+		if slot, ok := s.indexSlot(ctx, userDB, newID, content, contentBlob); ok {
+			slots = append(slots, slot)
+		}
 	}
-	if hasSlot {
-		hits = appendNewHits(hits, s.slotConflicts(ctx, userDB, newID, slot))
+	if len(slots) > 0 {
+		for _, slot := range slots {
+			hits = appendNewHits(hits, s.slotConflicts(ctx, userDB, newID, slot))
+		}
 		return hits, nil
 	}
 

@@ -492,18 +492,25 @@ type SkillFiles struct {
 	Files map[string]string `json:"files"`
 }
 
+// MemorySlot is one normalized (key, value) attribute attached to a memory. A
+// memory may carry several slots — e.g. the same date fact filed under both
+// user.birthday and memory.date.
+type MemorySlot struct {
+	Key   string `json:"key"`
+	Value string `json:"value,omitempty"`
+}
+
 // Memory is a stored memory entry.
 type Memory struct {
-	ID        string     `json:"id"`    // composite: "u.<localid>" | "s.<localid>"
-	Scope     string     `json:"scope"` // "user" | "shared"
-	UserID    *int64     `json:"user_id,omitempty"`
-	Content   string     `json:"content"`
-	SlotKey   string     `json:"slot_key,omitempty"`   // normalized attribute key, if extracted
-	SlotValue string     `json:"slot_value,omitempty"` // normalized value paired with SlotKey
-	Source    string     `json:"source,omitempty"`
-	Pinned    bool       `json:"pinned"`
-	ExpiresAt *time.Time `json:"expires_at,omitempty"`
-	CreatedAt time.Time  `json:"created_at"`
+	ID        string       `json:"id"`    // composite: "u.<localid>" | "s.<localid>"
+	Scope     string       `json:"scope"` // "user" | "shared"
+	UserID    *int64       `json:"user_id,omitempty"`
+	Content   string       `json:"content"`
+	Slots     []MemorySlot `json:"slots,omitempty"` // normalized attribute slots, if extracted
+	Source    string       `json:"source,omitempty"`
+	Pinned    bool         `json:"pinned"`
+	ExpiresAt *time.Time   `json:"expires_at,omitempty"`
+	CreatedAt time.Time    `json:"created_at"`
 }
 
 // CreateMemoryRequest is the body of POST /memory.
@@ -555,10 +562,10 @@ type CreateDocumentRequest struct {
 // SearchResult is a hybrid-search hit. ID is a composite id: "u.<n>"/"s.<n>" for
 // memories, "d.<n>" for document chunks.
 type SearchResult struct {
-	ID      string  `json:"id"`
-	Content string  `json:"content"`
-	SlotKey string  `json:"slot_key,omitempty"`
-	Score   float64 `json:"score"`
+	ID       string   `json:"id"`
+	Content  string   `json:"content"`
+	SlotKeys []string `json:"slot_keys,omitempty"`
+	Score    float64  `json:"score"`
 }
 
 // UsageRecord is a per-completion accounting row.

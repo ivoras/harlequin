@@ -699,15 +699,20 @@ func renderMemoryLine(mem types.Memory, canManageShared bool) string {
 	}
 	return fmt.Sprintf(" %s%-6s %s [%s/%s]%s %s %s",
 		pin, mem.ID, formatMemoryTime(mem.CreatedAt), mem.Scope, mem.Source, deletable,
-		formatMemorySlotKey(mem.SlotKey), mem.Content)
+		formatMemorySlotKeys(mem.Slots), mem.Content)
 }
 
-// formatMemorySlotKey renders the slot key column for list lines; "{-}" when none.
-func formatMemorySlotKey(key string) string {
-	if key == "" {
+// formatMemorySlotKeys renders the slot-key column for list lines as
+// "{key1, key2}", or "{-}" when the memory carries no slots.
+func formatMemorySlotKeys(slots []types.MemorySlot) string {
+	if len(slots) == 0 {
 		return "{-}"
 	}
-	return "{" + key + "}"
+	keys := make([]string, len(slots))
+	for i, sl := range slots {
+		keys[i] = sl.Key
+	}
+	return "{" + strings.Join(keys, ", ") + "}"
 }
 
 // formatMemoryTime formats a memory timestamp as ISO 8601 UTC to minute precision.
@@ -728,11 +733,17 @@ func renderMemoryDetail(mem types.Memory, canManageShared bool) string {
 		fmt.Fprintf(&sb, "  expires: %s\n", formatMemoryTime(*mem.ExpiresAt))
 	}
 	fmt.Fprintf(&sb, "  created: %s\n", formatMemoryTime(mem.CreatedAt))
-	fmt.Fprintf(&sb, "  slot:    %s", formatMemorySlotKey(mem.SlotKey))
-	if mem.SlotKey != "" {
-		fmt.Fprintf(&sb, " = %s", mem.SlotValue)
+	if len(mem.Slots) == 0 {
+		fmt.Fprintf(&sb, "  slots:   {-}\n")
+	} else {
+		for i, sl := range mem.Slots {
+			label := "  slots:  "
+			if i > 0 {
+				label = "          "
+			}
+			fmt.Fprintf(&sb, "%s {%s} = %s\n", label, sl.Key, sl.Value)
+		}
 	}
-	sb.WriteByte('\n')
 	fmt.Fprintf(&sb, "  content: %s", mem.Content)
 	if memoryDeletable(mem, canManageShared) {
 		sb.WriteString("\n  (delete with /memory delete " + mem.ID + ")")
