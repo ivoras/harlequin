@@ -62,6 +62,27 @@ func TestGrepCandidateFiles(t *testing.T) {
 	}
 }
 
+func TestMatchWindowsLongLine(t *testing.T) {
+	t.Parallel()
+	// A short line is returned whole.
+	if got := matchWindows("the AMD chip", regexp.MustCompile("AMD")); len(got) != 1 || got[0] != "the AMD chip" {
+		t.Fatalf("short line: %v", got)
+	}
+	// A long line is windowed around each match, not returned whole.
+	long := strings.Repeat("x", 500) + "NEEDLE" + strings.Repeat("y", 500)
+	got := matchWindows(long, regexp.MustCompile("NEEDLE"))
+	if len(got) != 1 {
+		t.Fatalf("want 1 window, got %d", len(got))
+	}
+	w := got[0]
+	if len(w) >= len(long) {
+		t.Fatalf("window not bounded: %d vs %d", len(w), len(long))
+	}
+	if !strings.Contains(w, "NEEDLE") || !strings.HasPrefix(w, "…") || !strings.HasSuffix(w, "…") {
+		t.Fatalf("window missing match/ellipsis: %q", w[:40])
+	}
+}
+
 func TestArgBool(t *testing.T) {
 	t.Parallel()
 	if !argBool(map[string]any{"-i": true}, "-i", false) {

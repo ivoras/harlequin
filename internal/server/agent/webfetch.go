@@ -22,6 +22,7 @@ const webFetchDescription = `
 - Returns the AI model’s response about the page content.
 - 15-minute cache for repeated URLs.
 - Redirects: tool tells you if URL changed; call again with new URL.
+- Pagination: if a listing spans multiple pages (next/"page 2" links), fetch each page and combine — don't answer from page 1 alone.
 `
 
 const (

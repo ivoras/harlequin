@@ -326,6 +326,12 @@ func (r *Runner) hostAPI(vm *goja.Runtime, rc RunContext) map[string]HostFunc {
 		if s.Text != "" {
 			m["text"] = s.Text
 		}
+		// textContent mirrors the DOM property: the element's full text (bounded),
+		// so model code reaching for node.textContent works. getAttribute is added
+		// JS-side (see bootstrapJS) since funcs don't survive the JSON bridge.
+		if full := dom.Summarize(n, 8192).Text; full != "" {
+			m["textContent"] = full
+		}
 		return m
 	}
 	fsRoot := func(area string) *sandboxfs.Root {
@@ -469,10 +475,23 @@ func (r *Runner) hostAPI(vm *goja.Runtime, rc RunContext) map[string]HostFunc {
 // bootstrapJS wires the low-level host functions into ergonomic globals: dom,
 // tmp, storage, load, include.
 const bootstrapJS = `
+function __domDecorate(n){
+  if (n && typeof n === 'object') {
+    n.getAttribute = function(name){
+      if (n.attrs && n.attrs[name] !== undefined && n.attrs[name] !== null) return n.attrs[name];
+      if (name === 'class') return n.class || null;
+      if (name === 'id') return n.id || null;
+      return null;
+    };
+    if (n.textContent === undefined) n.textContent = n.text || "";
+  }
+  return n;
+}
+function __domDecorateAll(a){ if (a) { for (var i=0;i<a.length;i++) __domDecorate(a[i]); } return a; }
 var dom = {
   parse: function(html){ return __dom_parse(html); },
-  query: function(ctx, sel){ return __dom_query(ctx, sel); },
-  grep:  function(ctx, pat, opts){ return __dom_grep(ctx, pat, opts || {}); },
+  query: function(ctx, sel){ return __domDecorateAll(__dom_query(ctx, sel)); },
+  grep:  function(ctx, pat, opts){ return __domDecorateAll(__dom_grep(ctx, pat, opts || {})); },
   lists: function(h){ return __dom_lists(h); },
   json:  function(h, opts){ return __dom_json(h, opts || {}); }
 };
