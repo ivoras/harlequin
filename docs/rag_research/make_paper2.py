@@ -27,12 +27,65 @@ CTX = load("r2_llm_contextual.json", {}).get("contextual")
 RERANK = load("r2_llm_rerank.json", {}).get("rerank")
 GEN = load("r2_llm_geneval.json", {}).get("geneval")
 C2 = load("r2_results_corpus2.json")
+# qwen0.6b: the embedder Harlequin runs in production, evaluated end-to-end (one
+# model the whole path — boundaries, chunks and queries). Additive: granite files
+# are untouched.
+QCORE = {r["variant"]: r for r in (load("r2_results_qwen_core.json", {"results": []})["results"])}
+QCONF = load("confound_curve_qwen06b.json", [])
 
 C = {"sem": "#c0392b", "ps": "#16a085", "st": "#2980b9", "me": "#7f8c8d",
-     "ov": "#8e44ad", "rnd": "#e67e22", "fix": "#27ae60", "q": "#2c3e50"}
+     "ov": "#8e44ad", "rnd": "#e67e22", "fix": "#27ae60", "q": "#2c3e50",
+     "q06": "#d35400"}
 
 
 def esc(s): return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+# ---------------- column-header tooltips ----------------
+# Plain-language description of every table column, surfaced as a title= tooltip
+# on the <th> (and a dotted underline cue). Keyed by the displayed header label.
+TIPS = {
+    "method": "Chunking method: boundary-placement rule and target size",
+    "config": "backend / chunking variant / retrieval mode",
+    "variant": "Chunking variant (boundary rule + parameter)",
+    "index": "Chunking variant being indexed",
+    "pipeline": "Full retrieval pipeline being scored",
+    "pipeline (subset)": "Retrieval pipeline, evaluated on the reranking subset",
+    "n": "Number of chunks the document was split into",
+    "R@1": "Answer recall@1: fraction of questions whose #1 retrieved chunk covers an acceptable answer sentence",
+    "R@5": "Answer recall@5: an acceptable answer chunk appears in the top 5",
+    "R@10": "Answer recall@10: an acceptable answer chunk appears in the top 10",
+    "ans@256": "Hit within the top chunks whose cumulative size ≤ 256 tokens — equal retrieved-context budget, neutralising the chunk-size confound",
+    "ans@1024": "Hit within the top chunks whose cumulative size ≤ 1024 tokens — equal retrieved-context budget",
+    "MRR": "Mean reciprocal rank of the first hit within the top 10",
+    "mis": "recall@5 on the misspelled-query subgroup",
+    "dumb": "recall@5 on the naive ('dumb') query subgroup",
+    "AUC": "AUROC of the top-1 score separating in-document from out-of-domain questions (higher = better OOD rejection)",
+    "EER": "Equal error rate of in-doc vs out-of-domain separation (lower = better)",
+    "mean tok": "Mean chunk size in model tokens",
+    "semantic R@1": "recall@1 of the semantic-adjacency variant",
+    "random R@1 (same size)": "recall@1 of random boundaries interpolated to the same mean chunk size",
+    "Δ": "semantic recall@1 minus size-matched random recall@1 (positive = semantic boundaries help)",
+    "BM25 R@1": "recall@1, lexical-only retrieval with custom numpy Okapi BM25",
+    "FTS5 R@1": "recall@1, lexical-only retrieval with SQLite FTS5's built-in BM25",
+    "BM25-hyb R@5": "recall@5, dense + numpy-BM25 RRF hybrid",
+    "FTS5-hyb R@5": "recall@5, dense + FTS5 RRF hybrid",
+    "base R@1": "recall@1 of the bi-encoder ordering before reranking",
+    "rerank R@1": "recall@1 after zero-shot LLM listwise reranking",
+    "base R@5": "recall@5 before reranking",
+    "rerank R@5": "recall@5 after reranking",
+    "gen correct@5": "LLM judge: fraction of questions the top-5 context correctly answers",
+}
+
+
+def th(label, tip=None):
+    """A header cell carrying a plain-language tooltip (title=)."""
+    t = tip if tip is not None else TIPS.get(label, "")
+    return f'<th title="{esc(t)}">{esc(label)}</th>' if t else f"<th>{esc(label)}</th>"
+
+
+def thead_row(labels):
+    return "<thead><tr>" + "".join(th(l) for l in labels) + "</tr></thead>"
 
 
 # ---------------- chart helpers ----------------
@@ -123,8 +176,10 @@ def grouped(cats, groups, title, vmax, w=720, h=320):
 
 
 # ---------------- confound analysis ----------------
-def confound_figure():
-    if not CONF:
+def _confound_figure(conf, fig_title, tbl_caption):
+    """Build (size-vs-recall@1 curve, size-matched semantic-vs-random table) for
+    one embedder's confound sweep."""
+    if not conf:
         return "", ""
     fams = {"semadj": ("semantic (adjacent)", C["sem"]),
             "fixed": ("fixed (regular)", C["fix"]),
@@ -132,7 +187,7 @@ def confound_figure():
     series = []
     rnd_pts = {}
     for fam, (lab, col) in fams.items():
-        pts = [(r["tok_mean"], r["recall1"]) for r in CONF if r["family"] == fam]
+        pts = [(r["tok_mean"], r["recall1"]) for r in conf if r["family"] == fam]
         if fam == "random":  # average seeds at each size
             from collections import defaultdict
             d = defaultdict(list)
@@ -142,18 +197,16 @@ def confound_figure():
             rnd_pts = dict(pts)
         if pts:
             series.append((lab, col, pts))
-    fig = curve(series, "Figure 1. recall@1 vs chunk size, by boundary rule",
-                "mean chunk size (model tokens, log)", "recall@1")
+    fig = curve(series, fig_title, "mean chunk size (model tokens, log)", "recall@1")
     # size-matched semantic vs random table
     rt = sorted(rnd_pts); rr = [rnd_pts[t] for t in rt]
     rows = []
-    for r in sorted((x for x in CONF if x["family"] == "semadj"), key=lambda z: z["tok_mean"]):
+    for r in sorted((x for x in conf if x["family"] == "semadj"), key=lambda z: z["tok_mean"]):
         ri = float(__import__("numpy").interp(r["tok_mean"], rt, rr))
         rows.append((r["variant"], r["tok_mean"], r["recall1"], ri, r["recall1"] - ri))
-    tb = ['<table><caption>Table 1. Semantic vs random boundaries at matched chunk size '
-          '(random interpolated to the semantic variant’s size).</caption>',
-          '<thead><tr><th>semantic variant</th><th>mean tok</th><th>semantic R@1</th>'
-          '<th>random R@1 (same size)</th><th>&Delta;</th></tr></thead><tbody>']
+    tb = [f'<table><caption>{tbl_caption}</caption>',
+          "<thead><tr>" + th("semantic variant", TIPS["variant"]) + th("mean tok")
+          + th("semantic R@1") + th("random R@1 (same size)") + th("Δ") + "</tr></thead><tbody>"]
     for v, t, s, ri, d in rows:
         tb.append(f'<tr><td class="m">{v}</td><td>{t:.0f}</td><td>{s:.3f}</td>'
                   f'<td>{ri:.3f}</td><td>{"<b>+" if d>=0 else ""}{d:.3f}{"</b>" if d>=0 else ""}</td></tr>')
@@ -161,8 +214,23 @@ def confound_figure():
     return fig, "\n".join(tb)
 
 
+def confound_figure():
+    return _confound_figure(
+        CONF, "Figure 1. recall@1 vs chunk size, by boundary rule (granite)",
+        "Table 1. Semantic vs random boundaries at matched chunk size, granite "
+        "(random interpolated to the semantic variant’s size).")
+
+
+def qwen_confound_figure():
+    return _confound_figure(
+        QCONF, "Figure 2. recall@1 vs chunk size, by boundary rule "
+        "(Qwen3-Embedding-0.6B, one model the whole path)",
+        "Table 2. Semantic vs random boundaries at matched chunk size, "
+        "Qwen3-Embedding-0.6B (random interpolated to the semantic variant’s size).")
+
+
 # ---------------- tables ----------------
-def core_table():
+def _core_like_table(src, caption):
     cols = [("n_chunks", "n", "{}"), ("recall@1", "R@1", "{:.3f}"),
             ("recall@5", "R@5", "{:.3f}"), ("answer@256tok", "ans@256", "{:.3f}"),
             ("answer@1024tok", "ans@1024", "{:.3f}"), ("mrr@10", "MRR", "{:.3f}"),
@@ -172,15 +240,15 @@ def core_table():
              "mech_512", "mech_1024", "mech_1500", "overlap_1024"]
     best = {}
     for ck, _, _ in cols:
-        vals = [CORE[o][ck] for o in order if o in CORE and CORE[o].get(ck) is not None]
+        vals = [src[o][ck] for o in order if o in src and src[o].get(ck) is not None]
         if vals:
             best[ck] = min(vals) if ck == "eer" else max(vals)
-    h = ['<table><caption>Table 2. Core comparison (granite dense). CI = 95% bootstrap.</caption>',
-         '<thead><tr><th>method</th>'] + [f"<th>{esc(l)}</th>" for _, l, _ in cols] + ['</tr></thead><tbody>']
+    h = [f'<table><caption>{caption}</caption>',
+         "<thead><tr>" + th("method") + "".join(th(l) for _, l, _ in cols) + "</tr></thead><tbody>"]
     for o in order:
-        if o not in CORE:
+        if o not in src:
             continue
-        r = CORE[o]; h.append(f'<tr><td class="m">{o}</td>')
+        r = src[o]; h.append(f'<tr><td class="m">{o}</td>')
         for ck, _, fmt in cols:
             v = r.get(ck)
             cell = fmt.format(v) if v is not None else "-"
@@ -192,6 +260,20 @@ def core_table():
     return "\n".join(h)
 
 
+def core_table():
+    return _core_like_table(CORE, "Table 3. Core comparison (granite dense). CI = 95% bootstrap.")
+
+
+def qwen_core_table():
+    if not QCORE:
+        return ""
+    return _core_like_table(
+        QCORE, "Table 4. Core comparison under the production embedder "
+        "Qwen3-Embedding-0.6B, dense, one model the whole path "
+        "(boundaries + chunks + queries). sem_adjacent gate retuned to qwen's "
+        "drift scale (g=0.60; median adjacent drift 0.52 vs granite 0.13).")
+
+
 def ablation_section():
     variants = ["per_sentence", "sem_adjacent_g0.12", "structure_1024", "mech_256",
                 "mech_512", "mech_1024", "mech_1500", "overlap_1024"]
@@ -201,7 +283,10 @@ def ablation_section():
               ("granite hybrid", C["st"], g("granite", "hybrid")),
               ("qwen4b dense", C["sem"], g("qwen4b", "dense")),
               ("qwen4b hybrid", C["q"], g("qwen4b", "hybrid"))]
-    fig = grouped(variants, groups, "Figure 2. recall@1 by embedder x retrieval mode", 0.7)
+    if QCORE:  # production 0.6B embedder, dense (one model the whole path)
+        groups.append(("qwen0.6b dense", C["q06"],
+                       {v: QCORE.get(v, {}).get("recall@1") for v in variants}))
+    fig = grouped(variants, groups, "Figure 3. recall@1 by embedder x retrieval mode", 0.7)
     return fig
 
 
@@ -218,39 +303,39 @@ def ladder_figure():
     if not steps:
         return ""
     return hbar(steps, max(v for _, v, _ in steps) * 1.15,
-                "Figure 3. recall@1 lift across the pipeline", pad_l=260)
+                "Figure 4. recall@1 lift across the pipeline", pad_l=260)
 
 
 def llm_tables():
     out = []
     if RERANK:
-        h = ['<table><caption>Table 3. Zero-shot LLM listwise reranking of the top-50 '
+        h = ['<table><caption>Table 5. Zero-shot LLM listwise reranking of the top-50 '
              '(subset, reasoning disabled for tractability). It degrades a strong '
              'bi-encoder ordering.</caption>',
-             '<thead><tr><th>pipeline (subset)</th><th>base R@1</th><th>rerank R@1</th>'
-             '<th>base R@5</th><th>rerank R@5</th></tr></thead><tbody>']
+             thead_row(["pipeline (subset)", "base R@1", "rerank R@1", "base R@5", "rerank R@5"])
+             + "<tbody>"]
         for r in RERANK:
             h.append(f'<tr><td class="m">{esc(r["label"])}</td>'
                      f'<td>{r["base_recall@1"]:.3f}</td><td>{r["rerank_recall@1"]:.3f}</td>'
                      f'<td>{r["base_recall@5"]:.3f}</td><td>{r["rerank_recall@5"]:.3f}</td></tr>')
         out.append("\n".join(h) + "</tbody></table>")
     if CTX:
-        h = ['<table><caption>Table 4. Contextual Retrieval (LLM context prefix) vs base.</caption>',
-             '<thead><tr><th>index</th><th>R@1</th><th>R@5</th><th>ans@1024</th></tr></thead><tbody>']
+        h = ['<table><caption>Table 6. Contextual Retrieval (LLM context prefix) vs base.</caption>',
+             thead_row(["index", "R@1", "R@5", "ans@1024"]) + "<tbody>"]
         for r in CTX:
             h.append(f'<tr><td class="m">{esc(r["variant"])}</td><td>{r["recall@1"]:.3f}</td>'
                      f'<td>{r["recall@5"]:.3f}</td><td>{r["answer@1024tok"]:.3f}</td></tr>')
         out.append("\n".join(h) + "</tbody></table>")
     if HYDE:
-        h = ['<table><caption>Table 5. HyDE query expansion (granite dense).</caption>',
-             '<thead><tr><th>variant</th><th>R@1</th><th>R@5</th></tr></thead><tbody>']
+        h = ['<table><caption>Table 7. HyDE query expansion (granite dense).</caption>',
+             thead_row(["variant", "R@1", "R@5"]) + "<tbody>"]
         for r in HYDE:
             h.append(f'<tr><td class="m">{esc(r["variant"])}</td><td>{r["recall@1"]:.3f}</td>'
                      f'<td>{r["recall@5"]:.3f}</td></tr>')
         out.append("\n".join(h) + "</tbody></table>")
     if GEN:
-        h = ['<table><caption>Table 6. Generation-grounded correctness (LLM judge, subset).</caption>',
-             '<thead><tr><th>pipeline</th><th>gen correct@5</th></tr></thead><tbody>']
+        h = ['<table><caption>Table 8. Generation-grounded correctness (LLM judge, subset).</caption>',
+             thead_row(["pipeline", "gen correct@5"]) + "<tbody>"]
         for r in GEN:
             h.append(f'<tr><td class="m">{esc(r["label"])}</td><td>{r["gen_correct@5"]:.3f}</td></tr>')
         out.append("\n".join(h) + "</tbody></table>")
@@ -268,7 +353,7 @@ def corpus2_section():
         pts = [(r["tok_mean"], r["recall1"]) for r in rows if r["family"] == fam]
         if pts:
             series.append((lab, col, pts))
-    fig = curve(series, "Figure 4. Generalization corpus: recall@1 vs chunk size",
+    fig = curve(series, "Figure 5. Generalization corpus: recall@1 vs chunk size",
                 "mean chunk size (tokens, log)", "recall@1")
     return (f"<p>Replication on {C2['n_questions']} grounded questions over a contrasting "
             f"non-legal corpus (Darwin, <i>Origin of Species</i>): the same size law and "
@@ -290,8 +375,8 @@ def _full_ablation_table():
     cols = [("n_chunks", "n"), ("recall@1", "R@1"), ("recall@5", "R@5"),
             ("recall@10", "R@10"), ("answer@1024tok", "ans@1024"),
             ("mrr@10", "MRR"), ("ood_auc", "AUC"), ("eer", "EER")]
-    h = ['<table id="ablation-grid" class="sortable"><thead><tr><th>config</th>'] + \
-        [f"<th>{l}</th>" for _, l in cols] + ['</tr></thead><tbody>']
+    h = ['<table id="ablation-grid" class="sortable"><thead><tr>' + th("config")] + \
+        [th(l) for _, l in cols] + ['</tr></thead><tbody>']
     for k in keys:
         r = ABL[k]; h.append(f'<tr><td class="m">{esc(k)}</td>')
         for ck, _ in cols:
@@ -309,11 +394,10 @@ def fts_table():
                 "mech_512", "mech_1024", "mech_1500", "overlap_1024"]
     def g(v, mode, m):
         return ABL.get(f"granite/{v}/{mode}", {}).get(m)
-    h = ['<table><caption>Table 7. Lexical backend: custom numpy BM25 vs SQLite FTS5 '
+    h = ['<table><caption>Table 9. Lexical backend: custom numpy BM25 vs SQLite FTS5 '
          '(built-in BM25), granite. Lexical-only and dense+lexical RRF hybrids. '
          'The two backends are within noise.</caption>',
-         '<thead><tr><th>variant</th><th>BM25 R@1</th><th>FTS5 R@1</th>'
-         '<th>BM25-hyb R@5</th><th>FTS5-hyb R@5</th></tr></thead><tbody>']
+         thead_row(["variant", "BM25 R@1", "FTS5 R@1", "BM25-hyb R@5", "FTS5-hyb R@5"]) + "<tbody>"]
     for v in variants:
         h.append(f'<tr><td class="m">{v}</td>'
                  f'<td>{(g(v,"bm25","recall@1") or 0):.3f}</td>'
