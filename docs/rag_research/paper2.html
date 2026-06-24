@@ -73,7 +73,7 @@ retrieved-token budget B to neutralise the size confound.</li>
 size, not the rule. At matched size, semantic boundaries sit at or above random; the gain is
 real but small and concentrated in small chunks.</p>
 <figure><svg viewBox="0 0 620 340" role="img">
-<text x="50" y="15" class="ct">Figure 1. recall@1 vs chunk size, by boundary rule</text>
+<text x="50" y="15" class="ct">Figure 1. recall@1 vs chunk size, by boundary rule (granite)</text>
 <line x1="50" y1="298" x2="500" y2="298" class="grid"/>
 <text x="44" y="301" class="ax" text-anchor="end">0.34</text>
 <line x1="50" y1="244" x2="500" y2="244" class="grid"/>
@@ -122,8 +122,8 @@ real but small and concentrated in small chunks.</p>
 <rect x="510" y="64" width="10" height="10" fill="#e67e22"/>
 <text x="524" y="73" class="leg">random</text>
 </svg><figcaption>Each rule swept across sizes; random averaged over 3 seeds. The families overlap — size dominates — with semantic slightly above random at small sizes.</figcaption></figure>
-<table><caption>Table 1. Semantic vs random boundaries at matched chunk size (random interpolated to the semantic variant’s size).</caption>
-<thead><tr><th>semantic variant</th><th>mean tok</th><th>semantic R@1</th><th>random R@1 (same size)</th><th>&Delta;</th></tr></thead><tbody>
+<table><caption>Table 1. Semantic vs random boundaries at matched chunk size, granite (random interpolated to the semantic variant’s size).</caption>
+<thead><tr><th title="Chunking variant (boundary rule + parameter)">semantic variant</th><th title="Mean chunk size in model tokens">mean tok</th><th title="recall@1 of the semantic-adjacency variant">semantic R@1</th><th title="recall@1 of random boundaries interpolated to the same mean chunk size">random R@1 (same size)</th><th title="semantic recall@1 minus size-matched random recall@1 (positive = semantic boundaries help)">Δ</th></tr></thead><tbody>
 <tr><td class="m">semadj_g0.08</td><td>89</td><td>0.547</td><td>0.491</td><td><b>+0.056</b></td></tr>
 <tr><td class="m">semadj_g0.10</td><td>103</td><td>0.535</td><td>0.484</td><td><b>+0.051</b></td></tr>
 <tr><td class="m">semadj_g0.12</td><td>123</td><td>0.515</td><td>0.473</td><td><b>+0.042</b></td></tr>
@@ -134,19 +134,8 @@ real but small and concentrated in small chunks.</p>
 </tbody></table>
 
 <h2>4. Core comparison</h2>
-<table><caption>Table 2. Core comparison (granite dense). CI = 95% bootstrap.</caption>
-<thead><tr><th>method</th>
-<th>n</th>
-<th>R@1</th>
-<th>R@5</th>
-<th>ans@256</th>
-<th>ans@1024</th>
-<th>MRR</th>
-<th>mis</th>
-<th>dumb</th>
-<th>AUC</th>
-<th>EER</th>
-</tr></thead><tbody>
+<table><caption>Table 3. Core comparison (granite dense). CI = 95% bootstrap.</caption>
+<thead><tr><th title="Chunking method: boundary-placement rule and target size">method</th><th title="Number of chunks the document was split into">n</th><th title="Answer recall@1: fraction of questions whose #1 retrieved chunk covers an acceptable answer sentence">R@1</th><th title="Answer recall@5: an acceptable answer chunk appears in the top 5">R@5</th><th title="Hit within the top chunks whose cumulative size ≤ 256 tokens — equal retrieved-context budget, neutralising the chunk-size confound">ans@256</th><th title="Hit within the top chunks whose cumulative size ≤ 1024 tokens — equal retrieved-context budget">ans@1024</th><th title="Mean reciprocal rank of the first hit within the top 10">MRR</th><th title="recall@5 on the misspelled-query subgroup">mis</th><th title="recall@5 on the naive ('dumb') query subgroup">dumb</th><th title="AUROC of the top-1 score separating in-document from out-of-domain questions (higher = better OOD rejection)">AUC</th><th title="Equal error rate of in-doc vs out-of-domain separation (lower = better)">EER</th></tr></thead><tbody>
 <tr><td class="m">per_sentence</td>
 <td><b>2112</b></td>
 <td><b>0.547</b></td>
@@ -251,7 +240,7 @@ structural/mechanical chunks most (and, with last-token instruction pooling, und
 single-sentence chunks); BM25 hybrid lifts recall@5 broadly; the best static pipeline is
 <code>qwen4b/structure_1024/dense</code> at recall@1 0.643.</p>
 <figure><svg viewBox="0 0 720 320" role="img">
-<text x="44" y="15" class="ct">Figure 2. recall@1 by embedder x retrieval mode</text>
+<text x="44" y="15" class="ct">Figure 3. recall@1 by embedder x retrieval mode</text>
 <line x1="44" y1="256" x2="610" y2="256" class="grid"/>
 <text x="39" y="259" class="ax" text-anchor="end">0.00</text>
 <line x1="44" y1="210" x2="610" y2="210" class="grid"/>
@@ -265,45 +254,53 @@ single-sentence chunks); BM25 hybrid lifts recall@5 broadly; the best static pip
 <line x1="44" y1="28" x2="610" y2="28" class="grid"/>
 <text x="39" y="31" class="ax" text-anchor="end">0.70</text>
 <text x="79" y="270" class="ax" text-anchor="end" transform="rotate(-30 79 270)">per_sentence</text>
-<rect x="47.9" y="77.7" width="14.2" height="178.3" fill="#7f8c8d"/>
-<rect x="63.7" y="79.3" width="14.2" height="176.7" fill="#2980b9"/>
-<rect x="79.4" y="113.4" width="14.2" height="142.6" fill="#c0392b"/>
-<rect x="95.1" y="88.3" width="14.2" height="167.7" fill="#2c3e50"/>
+<rect x="47.2" y="77.7" width="11.6" height="178.3" fill="#7f8c8d"/>
+<rect x="60.1" y="79.3" width="11.6" height="176.7" fill="#2980b9"/>
+<rect x="72.9" y="113.4" width="11.6" height="142.6" fill="#c0392b"/>
+<rect x="85.8" y="88.3" width="11.6" height="167.7" fill="#2c3e50"/>
+<rect x="98.7" y="115.1" width="11.6" height="140.9" fill="#d35400"/>
 <text x="150" y="270" class="ax" text-anchor="end" transform="rotate(-30 150 270)">sem_adjacent_g0.12</text>
-<rect x="118.7" y="88.3" width="14.2" height="167.7" fill="#7f8c8d"/>
-<rect x="134.4" y="68.4" width="14.2" height="187.6" fill="#2980b9"/>
-<rect x="150.1" y="74.1" width="14.2" height="181.9" fill="#c0392b"/>
-<rect x="165.8" y="55.4" width="14.2" height="200.6" fill="#2c3e50"/>
+<rect x="118.0" y="88.3" width="11.6" height="167.7" fill="#7f8c8d"/>
+<rect x="130.8" y="68.4" width="11.6" height="187.6" fill="#2980b9"/>
+<rect x="143.7" y="74.1" width="11.6" height="181.9" fill="#c0392b"/>
+<rect x="156.6" y="55.4" width="11.6" height="200.6" fill="#2c3e50"/>
+<rect x="169.4" y="122.8" width="11.6" height="133.2" fill="#d35400"/>
 <text x="221" y="270" class="ax" text-anchor="end" transform="rotate(-30 221 270)">structure_1024</text>
-<rect x="189.4" y="81.4" width="14.2" height="174.6" fill="#7f8c8d"/>
-<rect x="205.2" y="61.9" width="14.2" height="194.1" fill="#2980b9"/>
-<rect x="220.9" y="46.4" width="14.2" height="209.6" fill="#c0392b"/>
-<rect x="236.6" y="49.3" width="14.2" height="206.7" fill="#2c3e50"/>
+<rect x="188.7" y="81.4" width="11.6" height="174.6" fill="#7f8c8d"/>
+<rect x="201.6" y="61.9" width="11.6" height="194.1" fill="#2980b9"/>
+<rect x="214.4" y="46.4" width="11.6" height="209.6" fill="#c0392b"/>
+<rect x="227.3" y="49.3" width="11.6" height="206.7" fill="#2c3e50"/>
+<rect x="240.2" y="108.6" width="11.6" height="147.4" fill="#d35400"/>
 <text x="292" y="270" class="ax" text-anchor="end" transform="rotate(-30 292 270)">mech_256</text>
-<rect x="260.2" y="105.7" width="14.2" height="150.3" fill="#7f8c8d"/>
-<rect x="275.9" y="89.5" width="14.2" height="166.5" fill="#2980b9"/>
-<rect x="291.6" y="70.0" width="14.2" height="186.0" fill="#c0392b"/>
-<rect x="307.3" y="62.7" width="14.2" height="193.3" fill="#2c3e50"/>
+<rect x="259.5" y="105.7" width="11.6" height="150.3" fill="#7f8c8d"/>
+<rect x="272.3" y="89.5" width="11.6" height="166.5" fill="#2980b9"/>
+<rect x="285.2" y="70.0" width="11.6" height="186.0" fill="#c0392b"/>
+<rect x="298.1" y="62.7" width="11.6" height="193.3" fill="#2c3e50"/>
+<rect x="310.9" y="113.4" width="11.6" height="142.6" fill="#d35400"/>
 <text x="362" y="270" class="ax" text-anchor="end" transform="rotate(-30 362 270)">mech_512</text>
-<rect x="330.9" y="121.2" width="14.2" height="134.8" fill="#7f8c8d"/>
-<rect x="346.7" y="91.1" width="14.2" height="164.9" fill="#2980b9"/>
-<rect x="362.4" y="76.9" width="14.2" height="179.1" fill="#c0392b"/>
-<rect x="378.1" y="64.7" width="14.2" height="191.3" fill="#2c3e50"/>
+<rect x="330.2" y="121.2" width="11.6" height="134.8" fill="#7f8c8d"/>
+<rect x="343.1" y="91.1" width="11.6" height="164.9" fill="#2980b9"/>
+<rect x="355.9" y="76.9" width="11.6" height="179.1" fill="#c0392b"/>
+<rect x="368.8" y="64.7" width="11.6" height="191.3" fill="#2c3e50"/>
+<rect x="381.7" y="107.8" width="11.6" height="148.2" fill="#d35400"/>
 <text x="433" y="270" class="ax" text-anchor="end" transform="rotate(-30 433 270)">mech_1024</text>
-<rect x="401.7" y="120.4" width="14.2" height="135.6" fill="#7f8c8d"/>
-<rect x="417.4" y="84.6" width="14.2" height="171.4" fill="#2980b9"/>
-<rect x="433.1" y="87.1" width="14.2" height="168.9" fill="#c0392b"/>
-<rect x="448.8" y="72.0" width="14.2" height="184.0" fill="#2c3e50"/>
+<rect x="401.0" y="120.4" width="11.6" height="135.6" fill="#7f8c8d"/>
+<rect x="413.8" y="84.6" width="11.6" height="171.4" fill="#2980b9"/>
+<rect x="426.7" y="87.1" width="11.6" height="168.9" fill="#c0392b"/>
+<rect x="439.6" y="72.0" width="11.6" height="184.0" fill="#2c3e50"/>
+<rect x="452.4" y="151.6" width="11.6" height="104.4" fill="#d35400"/>
 <text x="504" y="270" class="ax" text-anchor="end" transform="rotate(-30 504 270)">mech_1500</text>
-<rect x="472.4" y="124.8" width="14.2" height="131.2" fill="#7f8c8d"/>
-<rect x="488.2" y="94.0" width="14.2" height="162.0" fill="#2980b9"/>
-<rect x="503.9" y="100.5" width="14.2" height="155.5" fill="#c0392b"/>
-<rect x="519.6" y="72.0" width="14.2" height="184.0" fill="#2c3e50"/>
+<rect x="471.7" y="124.8" width="11.6" height="131.2" fill="#7f8c8d"/>
+<rect x="484.6" y="94.0" width="11.6" height="162.0" fill="#2980b9"/>
+<rect x="497.4" y="100.5" width="11.6" height="155.5" fill="#c0392b"/>
+<rect x="510.3" y="72.0" width="11.6" height="184.0" fill="#2c3e50"/>
+<rect x="523.2" y="155.7" width="11.6" height="100.3" fill="#d35400"/>
 <text x="575" y="270" class="ax" text-anchor="end" transform="rotate(-30 575 270)">overlap_1024</text>
-<rect x="543.2" y="119.5" width="14.2" height="136.5" fill="#7f8c8d"/>
-<rect x="558.9" y="85.4" width="14.2" height="170.6" fill="#2980b9"/>
-<rect x="574.6" y="85.0" width="14.2" height="171.0" fill="#c0392b"/>
-<rect x="590.3" y="68.8" width="14.2" height="187.2" fill="#2c3e50"/>
+<rect x="542.5" y="119.5" width="11.6" height="136.5" fill="#7f8c8d"/>
+<rect x="555.3" y="85.4" width="11.6" height="170.6" fill="#2980b9"/>
+<rect x="568.2" y="85.0" width="11.6" height="171.0" fill="#c0392b"/>
+<rect x="581.1" y="68.8" width="11.6" height="187.2" fill="#2c3e50"/>
+<rect x="593.9" y="144.7" width="11.6" height="111.3" fill="#d35400"/>
 <rect x="618" y="28" width="10" height="10" fill="#7f8c8d"/>
 <text x="632" y="37" class="leg">granite dense</text>
 <rect x="618" y="44" width="10" height="10" fill="#2980b9"/>
@@ -312,10 +309,12 @@ single-sentence chunks); BM25 hybrid lifts recall@5 broadly; the best static pip
 <text x="632" y="69" class="leg">qwen4b dense</text>
 <rect x="618" y="76" width="10" height="10" fill="#2c3e50"/>
 <text x="632" y="85" class="leg">qwen4b hybrid</text>
+<rect x="618" y="92" width="10" height="10" fill="#d35400"/>
+<text x="632" y="101" class="leg">qwen0.6b dense</text>
 </svg><figcaption>recall@1 across the 8 chunkers under granite vs
 Qwen3-Embedding-4B, dense vs BM25-hybrid.</figcaption></figure>
 <figure><svg viewBox="0 0 720 138" role="img">
-<text x="260" y="15" class="ct">Figure 3. recall@1 lift across the pipeline</text>
+<text x="260" y="15" class="ct">Figure 4. recall@1 lift across the pipeline</text>
 <line x1="260" y1="26" x2="260" y2="122" class="grid"/>
 <text x="260" y="134" class="ax" text-anchor="middle">0.00</text>
 <line x1="341" y1="26" x2="341" y2="122" class="grid"/>
@@ -351,27 +350,27 @@ to exploit them. <b>Zero-shot LLM listwise reranking</b> with a general chat mod
 disabled for tractability) actively <i>degraded</i> a strong bi-encoder ordering (Table 3) —
 a dedicated cross-encoder, not a prompted generator, is the right tool. The lesson: spend
 effort on the embedder and lexical hybrid, not on bolt-on LLM stages.</p>
-<table><caption>Table 3. Zero-shot LLM listwise reranking of the top-50 (subset, reasoning disabled for tractability). It degrades a strong bi-encoder ordering.</caption>
-<thead><tr><th>pipeline (subset)</th><th>base R@1</th><th>rerank R@1</th><th>base R@5</th><th>rerank R@5</th></tr></thead><tbody>
+<table><caption>Table 5. Zero-shot LLM listwise reranking of the top-50 (subset, reasoning disabled for tractability). It degrades a strong bi-encoder ordering.</caption>
+<thead><tr><th title="Retrieval pipeline, evaluated on the reranking subset">pipeline (subset)</th><th title="recall@1 of the bi-encoder ordering before reranking">base R@1</th><th title="recall@1 after zero-shot LLM listwise reranking">rerank R@1</th><th title="recall@5 before reranking">base R@5</th><th title="recall@5 after reranking">rerank R@5</th></tr></thead><tbody>
 <tr><td class="m">qwen4b/structure_1024/dense</td><td>0.650</td><td>0.469</td><td>0.869</td><td>0.713</td></tr>
 <tr><td class="m">granite/mech_1024/dense</td><td>0.400</td><td>0.188</td><td>0.775</td><td>0.631</td></tr></tbody></table>
-<table><caption>Table 4. Contextual Retrieval (LLM context prefix) vs base.</caption>
-<thead><tr><th>index</th><th>R@1</th><th>R@5</th><th>ans@1024</th></tr></thead><tbody>
+<table><caption>Table 6. Contextual Retrieval (LLM context prefix) vs base.</caption>
+<thead><tr><th title="Chunking variant being indexed">index</th><th title="Answer recall@1: fraction of questions whose #1 retrieved chunk covers an acceptable answer sentence">R@1</th><th title="Answer recall@5: an acceptable answer chunk appears in the top 5">R@5</th><th title="Hit within the top chunks whose cumulative size ≤ 1024 tokens — equal retrieved-context budget">ans@1024</th></tr></thead><tbody>
 <tr><td class="m">ctx_sem_adjacent_g0.12</td><td>0.504</td><td>0.800</td><td>0.855</td></tr>
 <tr><td class="m">ctx_mech_256</td><td>0.429</td><td>0.757</td><td>0.753</td></tr></tbody></table>
-<table><caption>Table 5. HyDE query expansion (granite dense).</caption>
-<thead><tr><th>variant</th><th>R@1</th><th>R@5</th></tr></thead><tbody>
+<table><caption>Table 7. HyDE query expansion (granite dense).</caption>
+<thead><tr><th title="Chunking variant (boundary rule + parameter)">variant</th><th title="Answer recall@1: fraction of questions whose #1 retrieved chunk covers an acceptable answer sentence">R@1</th><th title="Answer recall@5: an acceptable answer chunk appears in the top 5">R@5</th></tr></thead><tbody>
 <tr><td class="m">sem_adjacent_g0.12</td><td>0.485</td><td>0.733</td></tr>
 <tr><td class="m">structure_1024</td><td>0.561</td><td>0.808</td></tr>
 <tr><td class="m">mech_256</td><td>0.463</td><td>0.724</td></tr>
 <tr><td class="m">per_sentence</td><td>0.429</td><td>0.672</td></tr></tbody></table>
-<table><caption>Table 6. Generation-grounded correctness (LLM judge, subset).</caption>
-<thead><tr><th>pipeline</th><th>gen correct@5</th></tr></thead><tbody>
+<table><caption>Table 8. Generation-grounded correctness (LLM judge, subset).</caption>
+<thead><tr><th title="Full retrieval pipeline being scored">pipeline</th><th title="LLM judge: fraction of questions the top-5 context correctly answers">gen correct@5</th></tr></thead><tbody>
 <tr><td class="m">granite/mech_1024/dense</td><td>0.608</td></tr>
 <tr><td class="m">qwen4b/structure_1024/dense</td><td>0.683</td></tr>
 <tr><td class="m">granite/structure_1024/hybrid</td><td>0.642</td></tr></tbody></table>
-<h3>5.2 Lexical backend: SQLite FTS5 vs custom BM25</h3><p>We compare two lexical arms: a custom numpy BM25 and SQLite&rsquo;s built-in FTS5 (its own BM25 and tokenizer). They are within noise on recall@1/@5 both standalone and inside the dense hybrid (FTS5 is marginally lower on large chunks, where its default tokenizer keeps stopwords), so FTS5 is a dependency-free drop-in lexical backend.</p><table><caption>Table 7. Lexical backend: custom numpy BM25 vs SQLite FTS5 (built-in BM25), granite. Lexical-only and dense+lexical RRF hybrids. The two backends are within noise.</caption>
-<thead><tr><th>variant</th><th>BM25 R@1</th><th>FTS5 R@1</th><th>BM25-hyb R@5</th><th>FTS5-hyb R@5</th></tr></thead><tbody>
+<h3>5.2 Lexical backend: SQLite FTS5 vs custom BM25</h3><p>We compare two lexical arms: a custom numpy BM25 and SQLite&rsquo;s built-in FTS5 (its own BM25 and tokenizer). They are within noise on recall@1/@5 both standalone and inside the dense hybrid (FTS5 is marginally lower on large chunks, where its default tokenizer keeps stopwords), so FTS5 is a dependency-free drop-in lexical backend.</p><table><caption>Table 9. Lexical backend: custom numpy BM25 vs SQLite FTS5 (built-in BM25), granite. Lexical-only and dense+lexical RRF hybrids. The two backends are within noise.</caption>
+<thead><tr><th title="Chunking variant (boundary rule + parameter)">variant</th><th title="recall@1, lexical-only retrieval with custom numpy Okapi BM25">BM25 R@1</th><th title="recall@1, lexical-only retrieval with SQLite FTS5's built-in BM25">FTS5 R@1</th><th title="recall@5, dense + numpy-BM25 RRF hybrid">BM25-hyb R@5</th><th title="recall@5, dense + FTS5 RRF hybrid">FTS5-hyb R@5</th></tr></thead><tbody>
 <tr><td class="m">per_sentence</td><td>0.444</td><td>0.436</td><td>0.753</td><td>0.757</td></tr>
 <tr><td class="m">sem_adjacent_g0.12</td><td>0.509</td><td>0.499</td><td>0.830</td><td>0.829</td></tr>
 <tr><td class="m">structure_1024</td><td>0.490</td><td>0.490</td><td>0.839</td><td>0.835</td></tr>
@@ -385,7 +384,7 @@ effort on the embedder and lexical hybrid, not on bolt-on LLM stages.</p>
 
 <h2>6. Generalization</h2><p>Replication on 120 grounded questions over a contrasting non-legal corpus (Darwin, <i>Origin of Species</i>): the same size law and semantic&gt;random ordering hold.</p>
 <figure><svg viewBox="0 0 620 340" role="img">
-<text x="50" y="15" class="ct">Figure 4. Generalization corpus: recall@1 vs chunk size</text>
+<text x="50" y="15" class="ct">Figure 5. Generalization corpus: recall@1 vs chunk size</text>
 <line x1="50" y1="298" x2="500" y2="298" class="grid"/>
 <text x="44" y="301" class="ax" text-anchor="end">0.23</text>
 <line x1="50" y1="244" x2="500" y2="244" class="grid"/>
@@ -443,15 +442,15 @@ by the downstream context budget. Semantic-adjacency chunking earns a modest, qu
 once size is controlled — it is not, by itself, the main driver of retrieval quality.</p>
 
 <h2>Appendix. Full ablation grid</h2>
-<table id="ablation-grid" class="sortable"><thead><tr><th>config</th>
-<th>n</th>
-<th>R@1</th>
-<th>R@5</th>
-<th>R@10</th>
-<th>ans@1024</th>
-<th>MRR</th>
-<th>AUC</th>
-<th>EER</th>
+<table id="ablation-grid" class="sortable"><thead><tr><th title="backend / chunking variant / retrieval mode">config</th>
+<th title="Number of chunks the document was split into">n</th>
+<th title="Answer recall@1: fraction of questions whose #1 retrieved chunk covers an acceptable answer sentence">R@1</th>
+<th title="Answer recall@5: an acceptable answer chunk appears in the top 5">R@5</th>
+<th title="Answer recall@10: an acceptable answer chunk appears in the top 10">R@10</th>
+<th title="Hit within the top chunks whose cumulative size ≤ 1024 tokens — equal retrieved-context budget">ans@1024</th>
+<th title="Mean reciprocal rank of the first hit within the top 10">MRR</th>
+<th title="AUROC of the top-1 score separating in-document from out-of-domain questions (higher = better OOD rejection)">AUC</th>
+<th title="Equal error rate of in-doc vs out-of-domain separation (lower = better)">EER</th>
 </tr></thead><tbody>
 <tr><td class="m">granite/mech_1024/bm25</td>
 <td>89</td>

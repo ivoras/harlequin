@@ -258,6 +258,16 @@ EMBEDDERS = {
         query_prefix="Instruct: Given a question, retrieve passages that answer it\nQuery: ",
         doc_prefix="",
         max_batch_tokens=1700),    # server runs at -c/-ub 2048; keep headroom
+    # The 0.6B Qwen3 embedder Harlequin actually runs in production (server.yaml:
+    # Qwen/Qwen3-Embedding-0.6B, dim 1024, served on :2235, n_ctx 2560). Same
+    # Instruct/Query prompt convention as the 4B sibling.
+    "qwen06b": dict(
+        url="http://localhost:2235/v1/embeddings",
+        model="Qwen3-Embedding-0.6B-Q8_0.gguf",
+        dim=1024,
+        query_prefix="Instruct: Given a question, retrieve passages that answer it\nQuery: ",
+        doc_prefix="",
+        max_batch_tokens=2200),    # server n_ctx 2560; keep headroom
 }
 
 

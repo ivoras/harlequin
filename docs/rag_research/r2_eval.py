@@ -183,6 +183,16 @@ def configs_for(group):
         vs = sorted(f[:-7] for f in os.listdir(idxdir) if f.endswith(".sqlite"))
         vs = [v for v in vs if v.startswith(("fixed_", "random_", "semadj_", "semcen_"))]
         return [(f"granite/{v}/dense", "granite", v, "dense") for v in vs]
+    # qwen0.6b is the embedder Harlequin runs in production; these groups evaluate
+    # it end-to-end (boundaries + chunk + query embeddings all qwen0.6b) and write
+    # their own result files, leaving the granite r2_results_*.json untouched.
+    if group == "qwen_core":
+        return [(f"qwen06b/{v}/dense", "qwen06b", v, "dense") for v in CORE_VARIANTS]
+    if group == "qwen_confound":
+        idxdir = os.path.join(DATA, "idx", "qwen06b")
+        vs = sorted(f[:-7] for f in os.listdir(idxdir) if f.endswith(".sqlite"))
+        vs = [v for v in vs if v.startswith(("fixed_", "random_", "semadj_", "semcen_"))]
+        return [(f"qwen06b/{v}/dense", "qwen06b", v, "dense") for v in vs]
     raise ValueError(group)
 
 
