@@ -72,8 +72,17 @@ out-of-domain rejection are first-class concerns too.
     numeric/quoted token — so it under-samples the exact-extraction case FTS5
     exists for (article numbers, terms of art). The result means "don't
     *over*-weight FTS5", not "drop it"; keep the arm (weight > 0) as recall
-    insurance. Settling FTS5's value for exact extraction needs a dedicated
-    exact-token question set this study lacks.
+    insurance.
+15. **Exact-extraction probe (§8.1).** `r3_probe_build.py` mines the corpus for
+    grounded queries anchored on exact tokens (percentages, protocol numbers,
+    article+paragraph refs) → `data/probe_exact.json`; `r3_probe_sweep.py` (needs
+    the snowflake server) runs dense / FTS5-weight / **score-gated** hybrids on
+    the probe vs the paraphrase set → `data/r3_probe_sweep.json`. Finding: the
+    weight preference inverts (exact wants FTS5 up-weighted, dense alone weakest);
+    and **dropping low-BM25 FTS5 hits before fusion (score-gating) beats a flat
+    weight on both query types** — the recommended production fusion is a
+    confidence-gated (ideally gated + up-weighted) lexical arm, not a fixed
+    global weight.
 
 ## Gotchas (learned the hard way)
 

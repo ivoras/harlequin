@@ -19,6 +19,8 @@ C2 = (json.load(open(os.path.join(DATA, "r3_corpus2.json")))
       if os.path.exists(os.path.join(DATA, "r3_corpus2.json")) else None)
 RRF = (json.load(open(os.path.join(DATA, "r3_rrf_sweep.json")))
        if os.path.exists(os.path.join(DATA, "r3_rrf_sweep.json")) else None)
+PROBE = (json.load(open(os.path.join(DATA, "r3_probe_sweep.json")))
+         if os.path.exists(os.path.join(DATA, "r3_probe_sweep.json")) else None)
 
 # stable colour per physical model
 MC = {"granite": "#2980b9", "snowflake": "#16a085", "qwen06b": "#c0392b",
@@ -65,6 +67,11 @@ TIPS = {
     "mis R@1": "recall@1 on the misspelled-query subgroup",
     "mis R@5": "recall@5 on the misspelled-query subgroup",
     "mis MRR": "mean reciprocal rank on the misspelled-query subgroup",
+    "method": "Retrieval/fusion method: dense only, dense+FTS5 RRF at a given FTS5 weight, or score-gated (weak FTS5 hits dropped before fusion)",
+    "exact R@1": "recall@1 on the exact-extraction probe (queries anchored on exact tokens)",
+    "exact R@5": "recall@5 on the exact-extraction probe",
+    "para R@1": "recall@1 on the clean paraphrase questions",
+    "para R@5": "recall@5 on the clean paraphrase questions",
 }
 
 
@@ -364,6 +371,52 @@ def ch_lexical():
     return "\n".join(out)
 
 
+def ch_probe():
+    if not PROBE:
+        return ""
+    # method label -> json key (only the ones we surface)
+    methods = [("dense", "dense"), ("hybrid w=0.25", "hybrid_w0.25"),
+               ("hybrid w=1", "hybrid_w1.0"), ("hybrid w=2", "hybrid_w2.0"),
+               ("hybrid w=4", "hybrid_w4.0"), ("gated p75 (w=1)", "gated_p75"),
+               ("gated p90 (w=1)", "gated_p90")]
+    rows = []
+    for lbl, key in methods:
+        ex, cl = PROBE["exact"].get(key), PROBE["clean"].get(key)
+        if not ex or not cl:
+            continue
+        rows.append({"method": lbl,
+                     "exact R@1": ex["recall@1"], "exact R@5": ex["recall@5"],
+                     "para R@1": cl["recall@1"], "para R@5": cl["recall@5"]})
+    cols = [("method", "method", None),
+            ("exact R@1", "exact R@1", "{:.3f}"), ("exact R@5", "exact R@5", "{:.3f}"),
+            ("para R@1", "para R@1", "{:.3f}"), ("para R@5", "para R@5", "{:.3f}")]
+    nex = PROBE["exact"]["dense"]["n"]
+    npa = PROBE["clean"]["dense"]["n"]
+    return ("<h3>8.1 Exact-extraction probe and score-gated fusion</h3>\n"
+            f"<p>We mine the corpus for {nex} grounded queries anchored on an exact "
+            "token dense embeddings blur &mdash; percentages (e.g. the 55&thinsp;% / "
+            "65&thinsp;% qualified-majority thresholds), protocol numbers and "
+            "article+paragraph references &mdash; and score them against the "
+            f"{npa} clean paraphrase questions. The weight preference <b>inverts</b>: "
+            "exact-extraction wants the FTS5 arm <i>up</i>-weighted (dense alone is "
+            "weakest; recall@1 climbs steeply with FTS5 weight), while paraphrase "
+            "wants it down-weighted &mdash; one global weight cannot serve both.</p>\n"
+            + table(cols, rows, "Table 7. Exact-extraction probe vs clean paraphrase: "
+                    "dense, FTS5-weight hybrids, and score-gated hybrids (weak FTS5 "
+                    "hits below a BM25 percentile floor dropped before fusion).",
+                    bold={"exact R@1": "max", "exact R@5": "max",
+                          "para R@1": "max", "para R@5": "max"})
+            + "\n<p><b>Score-gating resolves the tension.</b> Dropping low-BM25 FTS5 "
+            "hits before fusion (keeping only confident, rare-token matches) lifts "
+            "exact-extraction recall@5 close to the heavy-weight hybrid <i>and</i> "
+            "improves paraphrase recall@1 over the equal-weight hybrid &mdash; it is "
+            "better than a flat weight on both query types at once, because the floor "
+            "(not a fixed weight) decides per query whether lexical evidence is "
+            "trustworthy. A confidence-gated lexical arm &mdash; ideally gated "
+            "<i>and</i> up-weighted on the survivors &mdash; is the recommended "
+            "production fusion.</p>")
+
+
 def ch_rrf_sweep():
     if not RRF:
         return ""
@@ -421,10 +474,9 @@ def ch_rrf_sweep():
             "cannot reward the lexical arm for the case it exists for. The "
             "down-weighting above is therefore specific to this paraphrase-dominated "
             "mix; it should be read as &lsquo;do not <i>over</i>-weight FTS5&rsquo;, "
-            "not &lsquo;drop it&rsquo;. The FTS5 arm is kept in the fusion (weight "
-            "&gt; 0) as cheap recall insurance for the exact-token tail real users "
-            "issue; settling its value there needs a dedicated exact-extraction "
-            "question set this study lacks.</p>")
+            "not &lsquo;drop it&rsquo;. &sect;8.1 builds a dedicated exact-extraction "
+            "probe and shows the opposite weight preference there.</p>"
+            + ch_probe())
 
 
 def ch_selection():
@@ -466,7 +518,7 @@ def ch_selection():
             "by a pinpoint+rejection composite (z-scored R@1, MRR, AUC at 2×; "
             "R@5, ans@1024 at 1×). Models are ranked by the same composite; "
             "dimension and throughput are reported but not scored.</p>\n"
-            + table(cols, rows, "Table 7. Best pipeline per model, ranked by "
+            + table(cols, rows, "Table 8. Best pipeline per model, ranked by "
                     "composite. Cost columns (dim, vec/s) are informational.")
             + "\n" + rec)
 
