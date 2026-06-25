@@ -1,0 +1,2311 @@
+{
+ "questions": [
+  {
+   "q": "10 % progressively subscribed reserve",
+   "token": "10 %",
+   "kind": "percent",
+   "support_sent": 1476,
+   "acc": [
+    1476
+   ]
+  },
+  {
+   "q": "what happened on 1 April 2017",
+   "token": "1 April 2017",
+   "kind": "date",
+   "support_sent": 1577,
+   "acc": [
+    1577,
+    1873,
+    1878
+   ]
+  },
+  {
+   "q": "Protocol (No 1) parliaments national european",
+   "token": "Protocol (No 1)",
+   "kind": "protocol",
+   "support_sent": 26,
+   "acc": [
+    26
+   ]
+  },
+  {
+   "q": "Article 10(1) transitional declaration appropriate",
+   "token": "Article 10(1)",
+   "kind": "article_para",
+   "support_sent": 2033,
+   "acc": [
+    2033
+   ]
+  },
+  {
+   "q": "1 000 000 notwithstanding acquisition contracting",
+   "token": "1 000 000",
+   "kind": "figure",
+   "support_sent": 1811,
+   "acc": [
+    1811
+   ]
+  },
+  {
+   "q": "Article 108 jurisdiction institutions subparagraph",
+   "token": "Article 108",
+   "kind": "article",
+   "support_sent": 842,
+   "acc": [
+    842
+   ]
+  },
+  {
+   "q": "100 % shareholders transferred distributed",
+   "token": "100 %",
+   "kind": "percent",
+   "support_sent": 1210,
+   "acc": [
+    1210
+   ]
+  },
+  {
+   "q": "what happened on 1 December 2009",
+   "token": "1 December 2009",
+   "kind": "date",
+   "support_sent": 0,
+   "acc": [
+    0,
+    10
+   ]
+  },
+  {
+   "q": "Protocol (No 10) cooperation established structured",
+   "token": "Protocol (No 10)",
+   "kind": "protocol",
+   "support_sent": 33,
+   "acc": [
+    33
+   ]
+  },
+  {
+   "q": "Article 10(3) transitional declaration appropriate",
+   "token": "Article 10(3)",
+   "kind": "article_para",
+   "support_sent": 2033,
+   "acc": [
+    2033
+   ]
+  },
+  {
+   "q": "1 217 626 000 netherlands subscribed luxembourg",
+   "token": "1 217 626 000",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 116 functioning commission situation",
+   "token": "Article 116",
+   "kind": "article",
+   "support_sent": 1959,
+   "acc": [
+    1959
+   ]
+  },
+  {
+   "q": "20 % shareholders transferred distributed",
+   "token": "20 %",
+   "kind": "percent",
+   "support_sent": 1210,
+   "acc": [
+    1210
+   ]
+  },
+  {
+   "q": "what happened on 1 January 1993",
+   "token": "1 January 1993",
+   "kind": "date",
+   "support_sent": 621,
+   "acc": [
+    621
+   ]
+  },
+  {
+   "q": "Protocol (No 11) european article treaty",
+   "token": "Protocol (No 11)",
+   "kind": "protocol",
+   "support_sent": 34,
+   "acc": [
+    34
+   ]
+  },
+  {
+   "q": "Article 107(2) declaration functioning european",
+   "token": "Article 107(2)",
+   "kind": "article_para",
+   "support_sent": 121,
+   "acc": [
+    121,
+    1967
+   ]
+  },
+  {
+   "q": "1 318 525 000 netherlands subscribed luxembourg",
+   "token": "1 318 525 000",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 119 competition functioning accordance",
+   "token": "Article 119",
+   "kind": "article",
+   "support_sent": 970,
+   "acc": [
+    970
+   ]
+  },
+  {
+   "q": "250 % outstanding guarantees subscribed",
+   "token": "250 %",
+   "kind": "percent",
+   "support_sent": 1431,
+   "acc": [
+    1431
+   ]
+  },
+  {
+   "q": "what happened on 1 January 2009",
+   "token": "1 January 2009",
+   "kind": "date",
+   "support_sent": 1883,
+   "acc": [
+    1883
+   ]
+  },
+  {
+   "q": "Protocol (No 12) excessive procedure deficit",
+   "token": "Protocol (No 12)",
+   "kind": "protocol",
+   "support_sent": 35,
+   "acc": [
+    35
+   ]
+  },
+  {
+   "q": "Article 108(2) jurisdiction institutions subparagraph",
+   "token": "Article 108(2)",
+   "kind": "article_para",
+   "support_sent": 842,
+   "acc": [
+    842
+   ]
+  },
+  {
+   "q": "1 679 222 000 netherlands subscribed luxembourg",
+   "token": "1 679 222 000",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 121 guidelines generally adoption",
+   "token": "Article 121",
+   "kind": "article",
+   "support_sent": 1608,
+   "acc": [
+    1608
+   ]
+  },
+  {
+   "q": "3 % contracting functioning provisions",
+   "token": "3 %",
+   "kind": "percent",
+   "support_sent": 1583,
+   "acc": [
+    1583
+   ]
+  },
+  {
+   "q": "what happened on 1 September 2016",
+   "token": "1 September 2016",
+   "kind": "date",
+   "support_sent": 830,
+   "acc": [
+    830
+   ]
+  },
+  {
+   "q": "Protocol (No 13) convergence criteria",
+   "token": "Protocol (No 13)",
+   "kind": "protocol",
+   "support_sent": 36,
+   "acc": [
+    36
+   ]
+  },
+  {
+   "q": "Article 11(1) subparagraph appointment territories",
+   "token": "Article 11(1)",
+   "kind": "article_para",
+   "support_sent": 1365,
+   "acc": [
+    1365
+   ]
+  },
+  {
+   "q": "1 774 990 500 netherlands subscribed luxembourg",
+   "token": "1 774 990 500",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 123 institutions undertakings functioning",
+   "token": "Article 123",
+   "kind": "article",
+   "support_sent": 1114,
+   "acc": [
+    1114,
+    1636
+   ]
+  },
+  {
+   "q": "5 % subscribed capital average",
+   "token": "5 %",
+   "kind": "percent",
+   "support_sent": 1355,
+   "acc": [
+    1355
+   ]
+  },
+  {
+   "q": "what happened on 1 September 2019",
+   "token": "1 September 2019",
+   "kind": "date",
+   "support_sent": 830,
+   "acc": [
+    830
+   ]
+  },
+  {
+   "q": "Protocol (No 14) group",
+   "token": "Protocol (No 14)",
+   "kind": "protocol",
+   "support_sent": 37,
+   "acc": [
+    37
+   ]
+  },
+  {
+   "q": "Article 121(2) guidelines generally adoption",
+   "token": "Article 121(2)",
+   "kind": "article_para",
+   "support_sent": 1608,
+   "acc": [
+    1608
+   ]
+  },
+  {
+   "q": "1 820 820 000 netherlands subscribed luxembourg",
+   "token": "1 820 820 000",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 128 functioning accordance banknotes",
+   "token": "Article 128",
+   "kind": "article",
+   "support_sent": 1096,
+   "acc": [
+    1096
+   ]
+  },
+  {
+   "q": "50 % establishment subscription established",
+   "token": "50 %",
+   "kind": "percent",
+   "support_sent": 1157,
+   "acc": [
+    1157,
+    1368
+   ]
+  },
+  {
+   "q": "what happened on 11 August 2012",
+   "token": "11 August 2012",
+   "kind": "date",
+   "support_sent": 2,
+   "acc": [
+    2
+   ]
+  },
+  {
+   "q": "Protocol (No 15) provisions relating northern",
+   "token": "Protocol (No 15)",
+   "kind": "protocol",
+   "support_sent": 38,
+   "acc": [
+    38
+   ]
+  },
+  {
+   "q": "Article 126(2) contracting functioning provisions",
+   "token": "Article 126(2)",
+   "kind": "article_para",
+   "support_sent": 1583,
+   "acc": [
+    1583
+   ]
+  },
+  {
+   "q": "10 416 365 500 netherlands subscribed luxembourg",
+   "token": "10 416 365 500",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 130 organisation independence instructions",
+   "token": "Article 130",
+   "kind": "article",
+   "support_sent": 989,
+   "acc": [
+    989
+   ]
+  },
+  {
+   "q": "55 % representing comprising population",
+   "token": "55 %",
+   "kind": "percent",
+   "support_sent": 314,
+   "acc": [
+    314,
+    681,
+    1878
+   ]
+  },
+  {
+   "q": "what happened on 11 July 2012",
+   "token": "11 July 2012",
+   "kind": "date",
+   "support_sent": 2,
+   "acc": [
+    2
+   ]
+  },
+  {
+   "q": "Protocol (No 16) provisions relating certain",
+   "token": "Protocol (No 16)",
+   "kind": "protocol",
+   "support_sent": 39,
+   "acc": [
+    39
+   ]
+  },
+  {
+   "q": "Article 126(6) examination government criterion",
+   "token": "Article 126(6)",
+   "kind": "article_para",
+   "support_sent": 1591,
+   "acc": [
+    1591
+   ]
+  },
+  {
+   "q": "100 000 netherlands metric",
+   "token": "100 000",
+   "kind": "figure",
+   "support_sent": 1810,
+   "acc": [
+    1810
+   ]
+  },
+  {
+   "q": "Article 131 functioning legislation accordance",
+   "token": "Article 131",
+   "kind": "article",
+   "support_sent": 1076,
+   "acc": [
+    1076
+   ]
+  },
+  {
+   "q": "60 % contracting functioning provisions",
+   "token": "60 %",
+   "kind": "percent",
+   "support_sent": 1583,
+   "acc": [
+    1583
+   ]
+  },
+  {
+   "q": "what happened on 12 December 1992",
+   "token": "12 December 1992",
+   "kind": "date",
+   "support_sent": 1713,
+   "acc": [
+    1713
+   ]
+  },
+  {
+   "q": "Protocol (No 17) denmark",
+   "token": "Protocol (No 17)",
+   "kind": "protocol",
+   "support_sent": 40,
+   "acc": [
+    40
+   ]
+  },
+  {
+   "q": "Article 127(1) functioning objectives accordance",
+   "token": "Article 127(1)",
+   "kind": "article_para",
+   "support_sent": 968,
+   "acc": [
+    968
+   ]
+  },
+  {
+   "q": "165 882 000 netherlands subscribed luxembourg",
+   "token": "165 882 000",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 132 functioning regulations accordance",
+   "token": "Article 132",
+   "kind": "article",
+   "support_sent": 1214,
+   "acc": [
+    1214
+   ]
+  },
+  {
+   "q": "62 % comprising population qualified",
+   "token": "62 %",
+   "kind": "percent",
+   "support_sent": 1831,
+   "acc": [
+    1831
+   ]
+  },
+  {
+   "q": "what happened on 12 December 2007",
+   "token": "12 December 2007",
+   "kind": "date",
+   "support_sent": 7,
+   "acc": [
+    7,
+    239
+   ]
+  },
+  {
+   "q": "Protocol (No 18) france",
+   "token": "Protocol (No 18)",
+   "kind": "protocol",
+   "support_sent": 41,
+   "acc": [
+    41
+   ]
+  },
+  {
+   "q": "Article 127(2) functioning accordance operations",
+   "token": "Article 127(2)",
+   "kind": "article_para",
+   "support_sent": 972,
+   "acc": [
+    972,
+    994
+   ]
+  },
+  {
+   "q": "2 825 416 500 netherlands subscribed luxembourg",
+   "token": "2 825 416 500",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 136 ratification furthermore publication",
+   "token": "Article 136",
+   "kind": "article",
+   "support_sent": 3,
+   "acc": [
+    3
+   ]
+  },
+  {
+   "q": "65 % representing comprising population",
+   "token": "65 %",
+   "kind": "percent",
+   "support_sent": 314,
+   "acc": [
+    314
+   ]
+  },
+  {
+   "q": "what happened on 13 December 2007",
+   "token": "13 December 2007",
+   "kind": "date",
+   "support_sent": 0,
+   "acc": [
+    0,
+    62,
+    1863
+   ]
+  },
+  {
+   "q": "Protocol (No 19) integrated framework schengen",
+   "token": "Protocol (No 19)",
+   "kind": "protocol",
+   "support_sent": 42,
+   "acc": [
+    42
+   ]
+  },
+  {
+   "q": "Article 127(3) functioning accordance european",
+   "token": "Article 127(3)",
+   "kind": "article_para",
+   "support_sent": 973,
+   "acc": [
+    973
+   ]
+  },
+  {
+   "q": "2 970 783 000 netherlands subscribed luxembourg",
+   "token": "2 970 783 000",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 138 prejudice european without",
+   "token": "Article 138",
+   "kind": "article",
+   "support_sent": 988,
+   "acc": [
+    988
+   ]
+  },
+  {
+   "q": "68 % subscribed qualified majority",
+   "token": "68 %",
+   "kind": "percent",
+   "support_sent": 1369,
+   "acc": [
+    1369
+   ]
+  },
+  {
+   "q": "what happened on 14 June 1985",
+   "token": "14 June 1985",
+   "kind": "date",
+   "support_sent": 1645,
+   "acc": [
+    1645
+   ]
+  },
+  {
+   "q": "Protocol (No 2) subsidiarity application principles",
+   "token": "Protocol (No 2)",
+   "kind": "protocol",
+   "support_sent": 27,
+   "acc": [
+    27
+   ]
+  },
+  {
+   "q": "Article 127(4) institutions functioning authorities",
+   "token": "Article 127(4)",
+   "kind": "article_para",
+   "support_sent": 976,
+   "acc": [
+    976
+   ]
+  },
+  {
+   "q": "200 000 metric france",
+   "token": "200 000",
+   "kind": "figure",
+   "support_sent": 1808,
+   "acc": [
+    1808
+   ]
+  },
+  {
+   "q": "Article 141 transitional introduction functioning",
+   "token": "Article 141",
+   "kind": "article",
+   "support_sent": 1296,
+   "acc": [
+    1296,
+    1626
+   ]
+  },
+  {
+   "q": "90 % consolidating participation contributions",
+   "token": "90 %",
+   "kind": "percent",
+   "support_sent": 1772,
+   "acc": [
+    1772
+   ]
+  },
+  {
+   "q": "what happened on 15 July 1964",
+   "token": "15 July 1964",
+   "kind": "date",
+   "support_sent": 1929,
+   "acc": [
+    1929
+   ]
+  },
+  {
+   "q": "Protocol (No 20) application functioning european",
+   "token": "Protocol (No 20)",
+   "kind": "protocol",
+   "support_sent": 43,
+   "acc": [
+    43
+   ]
+  },
+  {
+   "q": "Article 127(5) institutions functioning authorities",
+   "token": "Article 127(5)",
+   "kind": "article_para",
+   "support_sent": 975,
+   "acc": [
+    975
+   ]
+  },
+  {
+   "q": "214 805 000 netherlands subscribed luxembourg",
+   "token": "214 805 000",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 156 declaration functioning european",
+   "token": "Article 156",
+   "kind": "article",
+   "support_sent": 125,
+   "acc": [
+    125,
+    1985
+   ]
+  },
+  {
+   "q": "what happened on 16 April 2003",
+   "token": "16 April 2003",
+   "kind": "date",
+   "support_sent": 1648,
+   "acc": [
+    1648
+   ]
+  },
+  {
+   "q": "Protocol (No 21) position security kingdom",
+   "token": "Protocol (No 21)",
+   "kind": "protocol",
+   "support_sent": 44,
+   "acc": [
+    44
+   ]
+  },
+  {
+   "q": "Article 127(6) institutions undertakings functioning",
+   "token": "Article 127(6)",
+   "kind": "article_para",
+   "support_sent": 1125,
+   "acc": [
+    1125
+   ]
+  },
+  {
+   "q": "22 546 811 500 netherlands subscribed luxembourg",
+   "token": "22 546 811 500",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 168 declaration functioning european",
+   "token": "Article 168",
+   "kind": "article",
+   "support_sent": 127,
+   "acc": [
+    127,
+    1991
+   ]
+  },
+  {
+   "q": "what happened on 16 December 2015",
+   "token": "16 December 2015",
+   "kind": "date",
+   "support_sent": 5,
+   "acc": [
+    5
+   ]
+  },
+  {
+   "q": "Protocol (No 22) position denmark",
+   "token": "Protocol (No 22)",
+   "kind": "protocol",
+   "support_sent": 45,
+   "acc": [
+    45
+   ]
+  },
+  {
+   "q": "Article 128(1) functioning accordance banknotes",
+   "token": "Article 128(1)",
+   "kind": "article_para",
+   "support_sent": 1096,
+   "acc": [
+    1096
+   ]
+  },
+  {
+   "q": "233 247 390 000 netherlands subscribed luxembourg",
+   "token": "233 247 390 000",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 174 declaration functioning european",
+   "token": "Article 174",
+   "kind": "article",
+   "support_sent": 129,
+   "acc": [
+    129,
+    1993
+   ]
+  },
+  {
+   "q": "what happened on 16 October 1996",
+   "token": "16 October 1996",
+   "kind": "date",
+   "support_sent": 1603,
+   "acc": [
+    1603,
+    1605
+   ]
+  },
+  {
+   "q": "Protocol (No 23) relations external crossing",
+   "token": "Protocol (No 23)",
+   "kind": "protocol",
+   "support_sent": 46,
+   "acc": [
+    46
+   ]
+  },
+  {
+   "q": "Article 129(1) functioning accordance governing",
+   "token": "Article 129(1)",
+   "kind": "article_para",
+   "support_sent": 996,
+   "acc": [
+    996,
+    1299
+   ]
+  },
+  {
+   "q": "258 583 500 netherlands subscribed luxembourg",
+   "token": "258 583 500",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 177 consolidating participation contributions",
+   "token": "Article 177",
+   "kind": "article",
+   "support_sent": 1772,
+   "acc": [
+    1772
+   ]
+  },
+  {
+   "q": "what happened on 17 May 1990",
+   "token": "17 May 1990",
+   "kind": "date",
+   "support_sent": 1812,
+   "acc": [
+    1812
+   ]
+  },
+  {
+   "q": "Protocol (No 24) nationals european asylum",
+   "token": "Protocol (No 24)",
+   "kind": "protocol",
+   "support_sent": 47,
+   "acc": [
+    47
+   ]
+  },
+  {
+   "q": "Article 129(3) functioning accordance european",
+   "token": "Article 129(3)",
+   "kind": "article_para",
+   "support_sent": 1249,
+   "acc": [
+    1249
+   ]
+  },
+  {
+   "q": "263 707 000 netherlands subscribed luxembourg",
+   "token": "263 707 000",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 179 declaration functioning european",
+   "token": "Article 179",
+   "kind": "article",
+   "support_sent": 131,
+   "acc": [
+    131,
+    1995
+   ]
+  },
+  {
+   "q": "what happened on 18 October 1961",
+   "token": "18 October 1961",
+   "kind": "date",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "Protocol (No 25) competence exercise shared",
+   "token": "Protocol (No 25)",
+   "kind": "protocol",
+   "support_sent": 48,
+   "acc": [
+    48
+   ]
+  },
+  {
+   "q": "Article 129(4) recommendation complementary legislation",
+   "token": "Article 129(4)",
+   "kind": "article_para",
+   "support_sent": 1265,
+   "acc": [
+    1265
+   ]
+  },
+  {
+   "q": "351 981 000 netherlands subscribed luxembourg",
+   "token": "351 981 000",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 189 representatives institutions establishing",
+   "token": "Article 189",
+   "kind": "article",
+   "support_sent": 1510,
+   "acc": [
+    1510,
+    2092
+   ]
+  },
+  {
+   "q": "what happened on 19 June 1990",
+   "token": "19 June 1990",
+   "kind": "date",
+   "support_sent": 1645,
+   "acc": [
+    1645
+   ]
+  },
+  {
+   "q": "Protocol (No 26) services interest general",
+   "token": "Protocol (No 26)",
+   "kind": "protocol",
+   "support_sent": 49,
+   "acc": [
+    49
+   ]
+  },
+  {
+   "q": "Article 139(1) functioning derogation specified",
+   "token": "Article 139(1)",
+   "kind": "article_para",
+   "support_sent": 1279,
+   "acc": [
+    1279,
+    1470
+   ]
+  },
+  {
+   "q": "37 578 019 000 netherlands subscribed luxembourg",
+   "token": "37 578 019 000",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 190 subparagraph paragraphs substance",
+   "token": "Article 190",
+   "kind": "article",
+   "support_sent": 2092,
+   "acc": [
+    2092
+   ]
+  },
+  {
+   "q": "what happened on 2 October 1997",
+   "token": "2 October 1997",
+   "kind": "date",
+   "support_sent": 1645,
+   "acc": [
+    1645
+   ]
+  },
+  {
+   "q": "Protocol (No 27) competition internal market",
+   "token": "Protocol (No 27)",
+   "kind": "protocol",
+   "support_sent": 50,
+   "acc": [
+    50
+   ]
+  },
+  {
+   "q": "Article 139(4) subparagraph functioning suspended",
+   "token": "Article 139(4)",
+   "kind": "article_para",
+   "support_sent": 1613,
+   "acc": [
+    1613,
+    1614
+   ]
+  },
+  {
+   "q": "4 810 160 500 netherlands subscribed luxembourg",
+   "token": "4 810 160 500",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 191 establishing contracting considering",
+   "token": "Article 191",
+   "kind": "article",
+   "support_sent": 1525,
+   "acc": [
+    1525,
+    2086
+   ]
+  },
+  {
+   "q": "what happened on 22 June 2007",
+   "token": "22 June 2007",
+   "kind": "date",
+   "support_sent": 1927,
+   "acc": [
+    1927
+   ]
+  },
+  {
+   "q": "Protocol (No 28) territorial economic cohesion",
+   "token": "Protocol (No 28)",
+   "kind": "protocol",
+   "support_sent": 51,
+   "acc": [
+    51
+   ]
+  },
+  {
+   "q": "Article 14(2) parliamentary provisionally establishing",
+   "token": "Article 14(2)",
+   "kind": "article_para",
+   "support_sent": 1821,
+   "acc": [
+    1821,
+    1823
+   ]
+  },
+  {
+   "q": "410 217 500 netherlands subscribed luxembourg",
+   "token": "410 217 500",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 192 subparagraph paragraphs substance",
+   "token": "Article 192",
+   "kind": "article",
+   "support_sent": 2092,
+   "acc": [
+    2092
+   ]
+  },
+  {
+   "q": "what happened on 23 July 2002",
+   "token": "23 July 2002",
+   "kind": "date",
+   "support_sent": 1856,
+   "acc": [
+    1856,
+    1857,
+    2090
+   ]
+  },
+  {
+   "q": "Protocol (No 29) broadcasting system public",
+   "token": "Protocol (No 29)",
+   "kind": "protocol",
+   "support_sent": 52,
+   "acc": [
+    52
+   ]
+  },
+  {
+   "q": "Article 14(3) legislation designation derogation",
+   "token": "Article 14(3)",
+   "kind": "article_para",
+   "support_sent": 1822,
+   "acc": [
+    1822
+   ]
+  },
+  {
+   "q": "5 000 capital million",
+   "token": "5 000",
+   "kind": "figure",
+   "support_sent": 1141,
+   "acc": [
+    1141
+   ]
+  },
+  {
+   "q": "Article 194 declaration functioning european",
+   "token": "Article 194",
+   "kind": "article",
+   "support_sent": 133,
+   "acc": [
+    133,
+    1997
+   ]
+  },
+  {
+   "q": "what happened on 24 July 2002",
+   "token": "24 July 2002",
+   "kind": "date",
+   "support_sent": 1856,
+   "acc": [
+    1856
+   ]
+  },
+  {
+   "q": "Protocol (No 3) european statute justice",
+   "token": "Protocol (No 3)",
+   "kind": "protocol",
+   "support_sent": 28,
+   "acc": [
+    28
+   ]
+  },
+  {
+   "q": "Article 140(3) preparations irrevocably functioning",
+   "token": "Article 140(3)",
+   "kind": "article_para",
+   "support_sent": 1323,
+   "acc": [
+    1323,
+    1633
+   ]
+  },
+  {
+   "q": "5 170 732 500 netherlands subscribed luxembourg",
+   "token": "5 170 732 500",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 197 subparagraph paragraphs substance",
+   "token": "Article 197",
+   "kind": "article",
+   "support_sent": 2092,
+   "acc": [
+    2092
+   ]
+  },
+  {
+   "q": "what happened on 25 April 2005",
+   "token": "25 April 2005",
+   "kind": "date",
+   "support_sent": 1648,
+   "acc": [
+    1648
+   ]
+  },
+  {
+   "q": "Protocol (No 30) application fundamental european",
+   "token": "Protocol (No 30)",
+   "kind": "protocol",
+   "support_sent": 53,
+   "acc": [
+    53
+   ]
+  },
+  {
+   "q": "Article 141(1) functioning derogation amendments",
+   "token": "Article 141(1)",
+   "kind": "article_para",
+   "support_sent": 1626,
+   "acc": [
+    1626
+   ]
+  },
+  {
+   "q": "5 274 105 000 netherlands subscribed luxembourg",
+   "token": "5 274 105 000",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 202 paragraphs paragraph substance",
+   "token": "Article 202",
+   "kind": "article",
+   "support_sent": 2094,
+   "acc": [
+    2094
+   ]
+  },
+  {
+   "q": "what happened on 25 December 2015",
+   "token": "25 December 2015",
+   "kind": "date",
+   "support_sent": 830,
+   "acc": [
+    830
+   ]
+  },
+  {
+   "q": "Protocol (No 31) netherlands concerning petroleum",
+   "token": "Protocol (No 31)",
+   "kind": "protocol",
+   "support_sent": 54,
+   "acc": [
+    54
+   ]
+  },
+  {
+   "q": "Article 141(2) transitional introduction functioning",
+   "token": "Article 141(2)",
+   "kind": "article_para",
+   "support_sent": 1296,
+   "acc": [
+    1296
+   ]
+  },
+  {
+   "q": "50 000 currencies equivalent prejudice",
+   "token": "50 000",
+   "kind": "figure",
+   "support_sent": 1167,
+   "acc": [
+    1167
+   ]
+  },
+  {
+   "q": "Article 203 paragraphs paragraph substance",
+   "token": "Article 203",
+   "kind": "article",
+   "support_sent": 2094,
+   "acc": [
+    2094
+   ]
+  },
+  {
+   "q": "what happened on 25 March 2011",
+   "token": "25 March 2011",
+   "kind": "date",
+   "support_sent": 3,
+   "acc": [
+    3
+   ]
+  },
+  {
+   "q": "Protocol (No 32) acquisition property denmark",
+   "token": "Protocol (No 32)",
+   "kind": "protocol",
+   "support_sent": 55,
+   "acc": [
+    55
+   ]
+  },
+  {
+   "q": "Article 15(4) implementation modification deliberation",
+   "token": "Article 15(4)",
+   "kind": "article_para",
+   "support_sent": 1577,
+   "acc": [
+    1577,
+    1950
+   ]
+  },
+  {
+   "q": "560 951 500 netherlands subscribed luxembourg",
+   "token": "560 951 500",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 205 paragraphs paragraph substance",
+   "token": "Article 205",
+   "kind": "article",
+   "support_sent": 2094,
+   "acc": [
+    2094
+   ]
+  },
+  {
+   "q": "what happened on 28 July 1951",
+   "token": "28 July 1951",
+   "kind": "date",
+   "support_sent": 1765,
+   "acc": [
+    1765
+   ]
+  },
+  {
+   "q": "Protocol (No 33) functioning concerning european",
+   "token": "Protocol (No 33)",
+   "kind": "protocol",
+   "support_sent": 56,
+   "acc": [
+    56
+   ]
+  },
+  {
+   "q": "Article 15(5) declaration european treaty",
+   "token": "Article 15(5)",
+   "kind": "article_para",
+   "support_sent": 75,
+   "acc": [
+    75,
+    1871
+   ]
+  },
+  {
+   "q": "6 910 226 000 netherlands subscribed luxembourg",
+   "token": "6 910 226 000",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 207 jurisdiction institutions subparagraph",
+   "token": "Article 207",
+   "kind": "article",
+   "support_sent": 842,
+   "acc": [
+    842
+   ]
+  },
+  {
+   "q": "what happened on 29 October 2010",
+   "token": "29 October 2010",
+   "kind": "date",
+   "support_sent": 2,
+   "acc": [
+    2
+   ]
+  },
+  {
+   "q": "Protocol (No 34) arrangements greenland special",
+   "token": "Protocol (No 34)",
+   "kind": "protocol",
+   "support_sent": 57,
+   "acc": [
+    57
+   ]
+  },
+  {
+   "q": "Article 16(1) subparagraph appointment territories",
+   "token": "Article 16(1)",
+   "kind": "article_para",
+   "support_sent": 1365,
+   "acc": [
+    1365
+   ]
+  },
+  {
+   "q": "604 206 500 netherlands subscribed luxembourg",
+   "token": "604 206 500",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 211 paragraphs paragraph substance",
+   "token": "Article 211",
+   "kind": "article",
+   "support_sent": 2095,
+   "acc": [
+    2095
+   ]
+  },
+  {
+   "q": "what happened on 3 November 1993",
+   "token": "3 November 1993",
+   "kind": "date",
+   "support_sent": 1638,
+   "acc": [
+    1638,
+    1639
+   ]
+  },
+  {
+   "q": "Protocol (No 35) article",
+   "token": "Protocol (No 35)",
+   "kind": "protocol",
+   "support_sent": 58,
+   "acc": [
+    58
+   ]
+  },
+  {
+   "q": "Article 16(6) configurations subparagraphs subparagraph",
+   "token": "Article 16(6)",
+   "kind": "article_para",
+   "support_sent": 1834,
+   "acc": [
+    1834
+   ]
+  },
+  {
+   "q": "625 000 luxembourg economic metric",
+   "token": "625 000",
+   "kind": "figure",
+   "support_sent": 1807,
+   "acc": [
+    1807
+   ]
+  },
+  {
+   "q": "Article 214 paragraphs paragraph substance",
+   "token": "Article 214",
+   "kind": "article",
+   "support_sent": 2095,
+   "acc": [
+    2095
+   ]
+  },
+  {
+   "q": "what happened on 30 October 1997",
+   "token": "30 October 1997",
+   "kind": "date",
+   "support_sent": 1603,
+   "acc": [
+    1603,
+    1605
+   ]
+  },
+  {
+   "q": "Protocol (No 36) transitional provisions",
+   "token": "Protocol (No 36)",
+   "kind": "protocol",
+   "support_sent": 60,
+   "acc": [
+    60
+   ]
+  },
+  {
+   "q": "Article 16(9) declaration concerning presidency",
+   "token": "Article 16(9)",
+   "kind": "article_para",
+   "support_sent": 81,
+   "acc": [
+    81,
+    1884
+   ]
+  },
+  {
+   "q": "75 000 metric italy",
+   "token": "75 000",
+   "kind": "figure",
+   "support_sent": 1809,
+   "acc": [
+    1809
+   ]
+  },
+  {
+   "q": "Article 217 paragraphs paragraph substance",
+   "token": "Article 217",
+   "kind": "article",
+   "support_sent": 2095,
+   "acc": [
+    2095
+   ]
+  },
+  {
+   "q": "what happened on 31 December 1982",
+   "token": "31 December 1982",
+   "kind": "date",
+   "support_sent": 2073,
+   "acc": [
+    2073
+   ]
+  },
+  {
+   "q": "Protocol (No 37) consequences financial research",
+   "token": "Protocol (No 37)",
+   "kind": "protocol",
+   "support_sent": 61,
+   "acc": [
+    61
+   ]
+  },
+  {
+   "q": "Article 168(4) declaration functioning european",
+   "token": "Article 168(4)",
+   "kind": "article_para",
+   "support_sent": 127,
+   "acc": [
+    127,
+    1991
+   ]
+  },
+  {
+   "q": "854 400 000 netherlands subscribed luxembourg",
+   "token": "854 400 000",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 219 functioning accordance operations",
+   "token": "Article 219",
+   "kind": "article",
+   "support_sent": 972,
+   "acc": [
+    972
+   ]
+  },
+  {
+   "q": "what happened on 7 December 2000",
+   "token": "7 December 2000",
+   "kind": "date",
+   "support_sent": 10,
+   "acc": [
+    10,
+    239
+   ]
+  },
+  {
+   "q": "Protocol (No 4) european statute justice",
+   "token": "Protocol (No 4)",
+   "kind": "protocol",
+   "support_sent": 28,
+   "acc": [
+    28
+   ]
+  },
+  {
+   "q": "Article 17(7) consultations subparagraph backgrounds",
+   "token": "Article 17(7)",
+   "kind": "article_para",
+   "support_sent": 1905,
+   "acc": [
+    1905
+   ]
+  },
+  {
+   "q": "98 429 500 netherlands subscribed luxembourg",
+   "token": "98 429 500",
+   "kind": "figure",
+   "support_sent": 1350,
+   "acc": [
+    1350
+   ]
+  },
+  {
+   "q": "Article 220 subparagraph substance paragraph",
+   "token": "Article 220",
+   "kind": "article",
+   "support_sent": 2096,
+   "acc": [
+    2096
+   ]
+  },
+  {
+   "q": "what happened on 7 June 2009",
+   "token": "7 June 2009",
+   "kind": "date",
+   "support_sent": 1822,
+   "acc": [
+    1822
+   ]
+  },
+  {
+   "q": "Protocol (No 5) investment european statute",
+   "token": "Protocol (No 5)",
+   "kind": "protocol",
+   "support_sent": 29,
+   "acc": [
+    29
+   ]
+  },
+  {
+   "q": "Article 18(1) representative accordance procedure",
+   "token": "Article 18(1)",
+   "kind": "article_para",
+   "support_sent": 347,
+   "acc": [
+    347
+   ]
+  },
+  {
+   "q": "Article 221 subparagraph substance paragraph",
+   "token": "Article 221",
+   "kind": "article",
+   "support_sent": 2096,
+   "acc": [
+    2096
+   ]
+  },
+  {
+   "q": "what happened on 8 April 1965",
+   "token": "8 April 1965",
+   "kind": "date",
+   "support_sent": 1510,
+   "acc": [
+    1510,
+    1517
+   ]
+  },
+  {
+   "q": "Protocol (No 6) institutions departments privileges",
+   "token": "Protocol (No 6)",
+   "kind": "protocol",
+   "support_sent": 30,
+   "acc": [
+    30
+   ]
+  },
+  {
+   "q": "Article 18(2) instructions institution commission",
+   "token": "Article 18(2)",
+   "kind": "article_para",
+   "support_sent": 339,
+   "acc": [
+    339,
+    1472
+   ]
+  },
+  {
+   "q": "Article 228 functioning pursuant european",
+   "token": "Article 228",
+   "kind": "article",
+   "support_sent": 736,
+   "acc": [
+    736
+   ]
+  },
+  {
+   "q": "what happened on 9 December 2011",
+   "token": "9 December 2011",
+   "kind": "date",
+   "support_sent": 1647,
+   "acc": [
+    1647,
+    1660
+   ]
+  },
+  {
+   "q": "Protocol (No 7) institutions departments privileges",
+   "token": "Protocol (No 7)",
+   "kind": "protocol",
+   "support_sent": 30,
+   "acc": [
+    30
+   ]
+  },
+  {
+   "q": "Article 2(2) contracting functioning competence",
+   "token": "Article 2(2)",
+   "kind": "article_para",
+   "support_sent": 1767,
+   "acc": [
+    1767
+   ]
+  },
+  {
+   "q": "Article 234 functioning accordance parliament",
+   "token": "Article 234",
+   "kind": "article",
+   "support_sent": 356,
+   "acc": [
+    356
+   ]
+  },
+  {
+   "q": "Protocol (No 8) fundamental convention protection",
+   "token": "Protocol (No 8)",
+   "kind": "protocol",
+   "support_sent": 31,
+   "acc": [
+    31
+   ]
+  },
+  {
+   "q": "Article 20(2) implementation functioning contribute",
+   "token": "Article 20(2)",
+   "kind": "article_para",
+   "support_sent": 485,
+   "acc": [
+    485
+   ]
+  },
+  {
+   "q": "Article 235 subparagraph functioning provisions",
+   "token": "Article 235",
+   "kind": "article",
+   "support_sent": 1828,
+   "acc": [
+    1828
+   ]
+  },
+  {
+   "q": "Protocol (No 9) implementation functioning decision",
+   "token": "Protocol (No 9)",
+   "kind": "protocol",
+   "support_sent": 32,
+   "acc": [
+    32
+   ]
+  },
+  {
+   "q": "Article 218(3) functioning negotiated accordance",
+   "token": "Article 218(3)",
+   "kind": "article_para",
+   "support_sent": 607,
+   "acc": [
+    607
+   ]
+  },
+  {
+   "q": "Article 236 configurations functioning accordance",
+   "token": "Article 236",
+   "kind": "article",
+   "support_sent": 318,
+   "acc": [
+    318,
+    325
+   ]
+  },
+  {
+   "q": "Article 22(1) representative implementing derogation",
+   "token": "Article 22(1)",
+   "kind": "article_para",
+   "support_sent": 459,
+   "acc": [
+    459
+   ]
+  },
+  {
+   "q": "Article 23a accelerated preliminary references",
+   "token": "Article 23a",
+   "kind": "article",
+   "support_sent": 776,
+   "acc": [
+    776
+   ]
+  },
+  {
+   "q": "Article 228(2) functioning pursuant european",
+   "token": "Article 228(2)",
+   "kind": "article_para",
+   "support_sent": 736,
+   "acc": [
+    736
+   ]
+  },
+  {
+   "q": "Article 240 representative international functioning",
+   "token": "Article 240",
+   "kind": "article",
+   "support_sent": 492,
+   "acc": [
+    492,
+    1838
+   ]
+  },
+  {
+   "q": "Article 235(1) subparagraph functioning provisions",
+   "token": "Article 235(1)",
+   "kind": "article_para",
+   "support_sent": 1828,
+   "acc": [
+    1828
+   ]
+  },
+  {
+   "q": "Article 241 representatives functioning legislative",
+   "token": "Article 241",
+   "kind": "article",
+   "support_sent": 1936,
+   "acc": [
+    1936
+   ]
+  },
+  {
+   "q": "Article 24(3) representative international organisations",
+   "token": "Article 24(3)",
+   "kind": "article_para",
+   "support_sent": 479,
+   "acc": [
+    479
+   ]
+  },
+  {
+   "q": "Article 244 established unanimously functioning",
+   "token": "Article 244",
+   "kind": "article",
+   "support_sent": 344,
+   "acc": [
+    344
+   ]
+  },
+  {
+   "q": "Article 240(2) functioning conformity secretary",
+   "token": "Article 240(2)",
+   "kind": "article_para",
+   "support_sent": 1838,
+   "acc": [
+    1838
+   ]
+  },
+  {
+   "q": "Article 245 functioning pursuant european",
+   "token": "Article 245",
+   "kind": "article",
+   "support_sent": 736,
+   "acc": [
+    736
+   ]
+  },
+  {
+   "q": "Article 245(2) functioning pursuant european",
+   "token": "Article 245(2)",
+   "kind": "article_para",
+   "support_sent": 736,
+   "acc": [
+    736
+   ]
+  },
+  {
+   "q": "Article 247 functioning pursuant european",
+   "token": "Article 247",
+   "kind": "article",
+   "support_sent": 736,
+   "acc": [
+    736
+   ]
+  },
+  {
+   "q": "Article 256(1) jurisdiction institutions subparagraph",
+   "token": "Article 256(1)",
+   "kind": "article_para",
+   "support_sent": 842,
+   "acc": [
+    842
+   ]
+  },
+  {
+   "q": "Article 252 declaration functioning regarding",
+   "token": "Article 252",
+   "kind": "article",
+   "support_sent": 139,
+   "acc": [
+    139,
+    2003
+   ]
+  },
+  {
+   "q": "Article 256(2) functioning consistency considers",
+   "token": "Article 256(2)",
+   "kind": "article_para",
+   "support_sent": 875,
+   "acc": [
+    875,
+    879,
+    881
+   ]
+  },
+  {
+   "q": "Article 258 transitional institutions cooperation",
+   "token": "Article 258",
+   "kind": "article",
+   "support_sent": 1842,
+   "acc": [
+    1842
+   ]
+  },
+  {
+   "q": "Article 256(3) functioning prescribed proposals",
+   "token": "Article 256(3)",
+   "kind": "article_para",
+   "support_sent": 884,
+   "acc": [
+    884
+   ]
+  },
+  {
+   "q": "Article 265 circumstances application accompanied",
+   "token": "Article 265",
+   "kind": "article",
+   "support_sent": 762,
+   "acc": [
+    762,
+    826
+   ]
+  },
+  {
+   "q": "Article 26(1) implementation implications participate",
+   "token": "Article 26(1)",
+   "kind": "article_para",
+   "support_sent": 1724,
+   "acc": [
+    1724
+   ]
+  },
+  {
+   "q": "Article 267 functioning proceedings concerned",
+   "token": "Article 267",
+   "kind": "article",
+   "support_sent": 770,
+   "acc": [
+    770,
+    773
+   ]
+  },
+  {
+   "q": "Article 282(1) contracting functioning provisions",
+   "token": "Article 282(1)",
+   "kind": "article_para",
+   "support_sent": 965,
+   "acc": [
+    965
+   ]
+  },
+  {
+   "q": "Article 270 jurisdiction functioning hereafter",
+   "token": "Article 270",
+   "kind": "article",
+   "support_sent": 895,
+   "acc": [
+    895
+   ]
+  },
+  {
+   "q": "Article 282(2) functioning objectives accordance",
+   "token": "Article 282(2)",
+   "kind": "article_para",
+   "support_sent": 968,
+   "acc": [
+    968
+   ]
+  },
+  {
+   "q": "Article 275 jurisdiction functioning provisions",
+   "token": "Article 275",
+   "kind": "article",
+   "support_sent": 414,
+   "acc": [
+    414
+   ]
+  },
+  {
+   "q": "Article 282(3) functioning personality proceedings",
+   "token": "Article 282(3)",
+   "kind": "article_para",
+   "support_sent": 993,
+   "acc": [
+    993
+   ]
+  },
+  {
+   "q": "Article 27a cooperation provisions numbering",
+   "token": "Article 27a",
+   "kind": "article",
+   "support_sent": 2101,
+   "acc": [
+    2101
+   ]
+  },
+  {
+   "q": "Article 283(1) functioning accordance governing",
+   "token": "Article 283(1)",
+   "kind": "article_para",
+   "support_sent": 998,
+   "acc": [
+    998
+   ]
+  },
+  {
+   "q": "Article 27b cooperation provisions numbering",
+   "token": "Article 27b",
+   "kind": "article",
+   "support_sent": 2101,
+   "acc": [
+    2101
+   ]
+  },
+  {
+   "q": "Article 283(2) subparagraph accordance executive",
+   "token": "Article 283(2)",
+   "kind": "article_para",
+   "support_sent": 1035,
+   "acc": [
+    1035,
+    1039,
+    1615
+   ]
+  },
+  {
+   "q": "Article 27c cooperation provisions numbering",
+   "token": "Article 27c",
+   "kind": "article",
+   "support_sent": 2101,
+   "acc": [
+    2101
+   ]
+  },
+  {
+   "q": "Article 284(3) functioning accordance activities",
+   "token": "Article 284(3)",
+   "kind": "article_para",
+   "support_sent": 1093,
+   "acc": [
+    1093
+   ]
+  },
+  {
+   "q": "Article 27d cooperation provisions numbering",
+   "token": "Article 27d",
+   "kind": "article",
+   "support_sent": 2101,
+   "acc": [
+    2101
+   ]
+  },
+  {
+   "q": "Article 286(6) functioning pursuant european",
+   "token": "Article 286(6)",
+   "kind": "article_para",
+   "support_sent": 736,
+   "acc": [
+    736
+   ]
+  },
+  {
+   "q": "Article 27e cooperation provisions numbering",
+   "token": "Article 27e",
+   "kind": "article",
+   "support_sent": 2101,
+   "acc": [
+    2101
+   ]
+  },
+  {
+   "q": "Article 3(1) functioning objectives therefore",
+   "token": "Article 3(1)",
+   "kind": "article_para",
+   "support_sent": 2011,
+   "acc": [
+    2011
+   ]
+  },
+  {
+   "q": "Article 280 prescription functioning derogation",
+   "token": "Article 280",
+   "kind": "article",
+   "support_sent": 870,
+   "acc": [
+    870
+   ]
+  },
+  {
+   "q": "Article 3(2) implementation transitional functioning",
+   "token": "Article 3(2)",
+   "kind": "article_para",
+   "support_sent": 1873,
+   "acc": [
+    1873,
+    2010
+   ]
+  },
+  {
+   "q": "Article 281 establishing contracting functioning",
+   "token": "Article 281",
+   "kind": "article",
+   "support_sent": 686,
+   "acc": [
+    686
+   ]
+  },
+  {
+   "q": "Article 3(3) provisions applicable commission",
+   "token": "Article 3(3)",
+   "kind": "article_para",
+   "support_sent": 1795,
+   "acc": [
+    1795,
+    1873,
+    1922
+   ]
+  },
+  {
+   "q": "Article 284 functioning accordance activities",
+   "token": "Article 284",
+   "kind": "article",
+   "support_sent": 1093,
+   "acc": [
+    1093
+   ]
+  },
+  {
+   "q": "Article 3(5) declaration functioning conference",
+   "token": "Article 3(5)",
+   "kind": "article_para",
+   "support_sent": 2010,
+   "acc": [
+    2010
+   ]
+  },
+  {
+   "q": "Article 286 functioning pursuant european",
+   "token": "Article 286",
+   "kind": "article",
+   "support_sent": 736,
+   "acc": [
+    736
+   ]
+  },
+  {
+   "q": "Article 31(1) representatives implications subparagraph",
+   "token": "Article 31(1)",
+   "kind": "article_para",
+   "support_sent": 504,
+   "acc": [
+    504,
+    2012
+   ]
+  },
+  {
+   "q": "Article 287 functioning examination operational",
+   "token": "Article 287",
+   "kind": "article",
+   "support_sent": 1139,
+   "acc": [
+    1139
+   ]
+  },
+  {
+   "q": "Article 312(2) subparagraph satisfactory declaration",
+   "token": "Article 312(2)",
+   "kind": "article_para",
+   "support_sent": 2065,
+   "acc": [
+    2065
+   ]
+  },
+  {
+   "q": "Article 290 declaration functioning european",
+   "token": "Article 290",
+   "kind": "article",
+   "support_sent": 141,
+   "acc": [
+    141,
+    2006
+   ]
+  },
+  {
+   "q": "Article 331(1) functioning procedure provided",
+   "token": "Article 331(1)",
+   "kind": "article_para",
+   "support_sent": 1695,
+   "acc": [
+    1695,
+    1746
+   ]
+  },
+  {
+   "q": "Article 291 jurisdiction institutions subparagraph",
+   "token": "Article 291",
+   "kind": "article",
+   "support_sent": 842,
+   "acc": [
+    842
+   ]
+  },
+  {
+   "q": "Article 35(2) transitional institutions cooperation",
+   "token": "Article 35(2)",
+   "kind": "article_para",
+   "support_sent": 1842,
+   "acc": [
+    1842
+   ]
+  },
+  {
+   "q": "Article 2a functioning processing activities",
+   "token": "Article 2a",
+   "kind": "article",
+   "support_sent": 1718,
+   "acc": [
+    1718
+   ]
+  },
+  {
+   "q": "Article 352(1) declaration functioning conference",
+   "token": "Article 352(1)",
+   "kind": "article_para",
+   "support_sent": 2010,
+   "acc": [
+    2010
+   ]
+  },
+  {
+   "q": "Article 301 implementation transitional institutions",
+   "token": "Article 301",
+   "kind": "article",
+   "support_sent": 1839,
+   "acc": [
+    1839
+   ]
+  },
+  {
+   "q": "Article 355(1) modification declaration functioning",
+   "token": "Article 355(1)",
+   "kind": "article_para",
+   "support_sent": 2017,
+   "acc": [
+    2017
+   ]
+  },
+  {
+   "q": "Article 305 implementation transitional institutions",
+   "token": "Article 305",
+   "kind": "article",
+   "support_sent": 1839,
+   "acc": [
+    1839
+   ]
+  },
+  {
+   "q": "Article 355(6) declaration functioning european",
+   "token": "Article 355(6)",
+   "kind": "article_para",
+   "support_sent": 149,
+   "acc": [
+    149,
+    2017,
+    2067
+   ]
+  },
+  {
+   "q": "Article 308 contracting functioning established",
+   "token": "Article 308",
+   "kind": "article",
+   "support_sent": 1346,
+   "acc": [
+    1346,
+    1348
+   ]
+  },
+  {
+   "q": "Article 4(1) subscribed capital average",
+   "token": "Article 4(1)",
+   "kind": "article_para",
+   "support_sent": 1355,
+   "acc": [
+    1355
+   ]
+  },
+  {
+   "q": "Article 311 subparagraph satisfactory declaration",
+   "token": "Article 311",
+   "kind": "article",
+   "support_sent": 2065,
+   "acc": [
+    2065
+   ]
+  },
+  {
+   "q": "Article 4(2) consolidating participation contributions",
+   "token": "Article 4(2)",
+   "kind": "article_para",
+   "support_sent": 1772,
+   "acc": [
+    1772,
+    1806
+   ]
+  }
+ ]
+}
