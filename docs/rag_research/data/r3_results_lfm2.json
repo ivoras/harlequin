@@ -109,10 +109,10 @@
    "eer": 0.20548132157169263
   },
   {
-   "label": "lfm2/per_sentence/hybrid",
+   "label": "lfm2/per_sentence/bm25_hybrid",
    "evalconfig": "lfm2",
    "variant": "per_sentence",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 2112,
    "recall@1": 0.5423940420150757,
    "recall@1_ci": [
@@ -284,10 +284,10 @@
    "eer": 0.21419709432885448
   },
   {
-   "label": "lfm2/mech_256/hybrid",
+   "label": "lfm2/mech_256/bm25_hybrid",
    "evalconfig": "lfm2",
    "variant": "mech_256",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 369,
    "recall@1": 0.5561097264289856,
    "recall@1_ci": [
@@ -459,10 +459,10 @@
    "eer": 0.2397768017766529
   },
   {
-   "label": "lfm2/mech_512/hybrid",
+   "label": "lfm2/mech_512/bm25_hybrid",
    "evalconfig": "lfm2",
    "variant": "mech_512",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 180,
    "recall@1": 0.524937629699707,
    "recall@1_ci": [
@@ -634,10 +634,10 @@
    "eer": 0.283355665562462
   },
   {
-   "label": "lfm2/mech_1024/hybrid",
+   "label": "lfm2/mech_1024/bm25_hybrid",
    "evalconfig": "lfm2",
    "variant": "mech_1024",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 90,
    "recall@1": 0.4975062310695648,
    "recall@1_ci": [
@@ -809,10 +809,10 @@
    "eer": 0.3313296361087331
   },
   {
-   "label": "lfm2/mech_1500/hybrid",
+   "label": "lfm2/mech_1500/bm25_hybrid",
    "evalconfig": "lfm2",
    "variant": "mech_1500",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 60,
    "recall@1": 0.49127182364463806,
    "recall@1_ci": [
@@ -984,10 +984,10 @@
    "eer": 0.2397830051736331
   },
   {
-   "label": "lfm2/overlap_512/hybrid",
+   "label": "lfm2/overlap_512/bm25_hybrid",
    "evalconfig": "lfm2",
    "variant": "overlap_512",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 180,
    "recall@1": 0.5274314284324646,
    "recall@1_ci": [
@@ -1159,10 +1159,10 @@
    "eer": 0.28460254835547943
   },
   {
-   "label": "lfm2/overlap_1024/hybrid",
+   "label": "lfm2/overlap_1024/bm25_hybrid",
    "evalconfig": "lfm2",
    "variant": "overlap_1024",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 90,
    "recall@1": 0.49376559257507324,
    "recall@1_ci": [
@@ -1334,10 +1334,10 @@
    "eer": 0.20921576655376486
   },
   {
-   "label": "lfm2/semadj_g0.4148/hybrid",
+   "label": "lfm2/semadj_g0.4148/bm25_hybrid",
    "evalconfig": "lfm2",
    "variant": "semadj_g0.4148",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 907,
    "recall@1": 0.5336658358573914,
    "recall@1_ci": [
@@ -1509,10 +1509,10 @@
    "eer": 0.18929045545340628
   },
   {
-   "label": "lfm2/semadj_g0.4745/hybrid",
+   "label": "lfm2/semadj_g0.4745/bm25_hybrid",
    "evalconfig": "lfm2",
    "variant": "semadj_g0.4745",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 833,
    "recall@1": 0.5473815202713013,
    "recall@1_ci": [
@@ -1684,10 +1684,10 @@
    "eer": 0.21357365293234576
   },
   {
-   "label": "lfm2/semadj_g0.5212/hybrid",
+   "label": "lfm2/semadj_g0.5212/bm25_hybrid",
    "evalconfig": "lfm2",
    "variant": "semadj_g0.5212",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 743,
    "recall@1": 0.5735660791397095,
    "recall@1_ci": [
@@ -1859,10 +1859,10 @@
    "eer": 0.20361099738216648
   },
   {
-   "label": "lfm2/semadj_g0.5718/hybrid",
+   "label": "lfm2/semadj_g0.5718/bm25_hybrid",
    "evalconfig": "lfm2",
    "variant": "semadj_g0.5718",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 645,
    "recall@1": 0.6097257137298584,
    "recall@1_ci": [
@@ -2034,10 +2034,10 @@
    "eer": 0.22104874629347032
   },
   {
-   "label": "lfm2/semadj_g0.6155/hybrid",
+   "label": "lfm2/semadj_g0.6155/bm25_hybrid",
    "evalconfig": "lfm2",
    "variant": "semadj_g0.6155",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 541,
    "recall@1": 0.5885286927223206,
    "recall@1_ci": [
@@ -2209,10 +2209,10 @@
    "eer": 0.22291286708601632
   },
   {
-   "label": "lfm2/semadj_g0.6686/hybrid",
+   "label": "lfm2/semadj_g0.6686/bm25_hybrid",
    "evalconfig": "lfm2",
    "variant": "semadj_g0.6686",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 436,
    "recall@1": 0.6009975075721741,
    "recall@1_ci": [
@@ -2384,10 +2384,10 @@
    "eer": 0.21860460788327685
   },
   {
-   "label": "lfm2/semadj_g0.7736/hybrid",
+   "label": "lfm2/semadj_g0.7736/bm25_hybrid",
    "evalconfig": "lfm2",
    "variant": "semadj_g0.7736",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 255,
    "recall@1": 0.5224438905715942,
    "recall@1_ci": [

@@ -1241,7 +1241,7 @@
      "n_chunks": 921
     },
     {
-     "lexical": "hybrid",
+     "lexical": "bm25_hybrid",
      "recall@1": 0.5748129487037659,
      "recall@5": 0.8104737997055054,
      "recall@10": 0.8877805471420288,
@@ -1317,7 +1317,7 @@
      "n_chunks": 842
     },
     {
-     "lexical": "hybrid",
+     "lexical": "bm25_hybrid",
      "recall@1": 0.5822942852973938,
      "recall@5": 0.834164559841156,
      "recall@10": 0.8902742862701416,
@@ -1393,7 +1393,7 @@
      "n_chunks": 926
     },
     {
-     "lexical": "hybrid",
+     "lexical": "bm25_hybrid",
      "recall@1": 0.5723192095756531,
      "recall@5": 0.8254364132881165,
      "recall@10": 0.8865336775779724,
@@ -1469,7 +1469,7 @@
      "n_chunks": 838
     },
     {
-     "lexical": "hybrid",
+     "lexical": "bm25_hybrid",
      "recall@1": 0.5773067474365234,
      "recall@5": 0.8329176902770996,
      "recall@10": 0.8865336775779724,
@@ -1545,7 +1545,7 @@
      "n_chunks": 920
     },
     {
-     "lexical": "hybrid",
+     "lexical": "bm25_hybrid",
      "recall@1": 0.5648379325866699,
      "recall@5": 0.8017456531524658,
      "recall@10": 0.8753117322921753,

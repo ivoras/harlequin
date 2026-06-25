@@ -169,9 +169,9 @@ def ch_naming():
 <code>overlap_512/1024</code>, <code>sem_adjacent</code>).</li>
 <li><b>lexical_backend</b> &mdash; the retrieval/fusion arm: <code>dense</code>
 (sqlite-vec cosine), <code>bm25</code>, <code>fts5</code>, or their dense+lexical
-RRF hybrids <code>hybrid</code> (BM25) and <code>fts5_hybrid</code>.</li>
+RRF hybrids <code>bm25_hybrid</code> and <code>fts5_hybrid</code>.</li>
 </ul>
-<p>Example: <code>lfm2/sem_adjacent/hybrid</code> is the LFM2.5 embedder (native
+<p>Example: <code>lfm2/sem_adjacent/bm25_hybrid</code> is the LFM2.5 embedder (native
 prompts), adjacent-sentence semantic chunks, dense+BM25 RRF.</p>"""
 
 

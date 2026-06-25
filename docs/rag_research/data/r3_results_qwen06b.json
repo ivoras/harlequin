@@ -109,10 +109,10 @@
    "eer": 0.20548132157169263
   },
   {
-   "label": "qwen06b/per_sentence/hybrid",
+   "label": "qwen06b/per_sentence/bm25_hybrid",
    "evalconfig": "qwen06b",
    "variant": "per_sentence",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 2112,
    "recall@1": 0.5436409115791321,
    "recall@1_ci": [
@@ -284,10 +284,10 @@
    "eer": 0.21419709432885448
   },
   {
-   "label": "qwen06b/mech_256/hybrid",
+   "label": "qwen06b/mech_256/bm25_hybrid",
    "evalconfig": "qwen06b",
    "variant": "mech_256",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 365,
    "recall@1": 0.5586034655570984,
    "recall@1_ci": [
@@ -459,10 +459,10 @@
    "eer": 0.23728923958759818
   },
   {
-   "label": "qwen06b/mech_512/hybrid",
+   "label": "qwen06b/mech_512/bm25_hybrid",
    "evalconfig": "qwen06b",
    "variant": "mech_512",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 179,
    "recall@1": 0.5548628568649292,
    "recall@1_ci": [
@@ -634,10 +634,10 @@
    "eer": 0.2908183521296262
   },
   {
-   "label": "qwen06b/mech_1024/hybrid",
+   "label": "qwen06b/mech_1024/bm25_hybrid",
    "evalconfig": "qwen06b",
    "variant": "mech_1024",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 88,
    "recall@1": 0.5074812769889832,
    "recall@1_ci": [
@@ -809,10 +809,10 @@
    "eer": 0.31513876999044677
   },
   {
-   "label": "qwen06b/mech_1500/hybrid",
+   "label": "qwen06b/mech_1500/bm25_hybrid",
    "evalconfig": "qwen06b",
    "variant": "mech_1500",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 59,
    "recall@1": 0.5,
    "recall@1_ci": [
@@ -984,10 +984,10 @@
    "eer": 0.23480788079552364
   },
   {
-   "label": "qwen06b/overlap_512/hybrid",
+   "label": "qwen06b/overlap_512/bm25_hybrid",
    "evalconfig": "qwen06b",
    "variant": "overlap_512",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 179,
    "recall@1": 0.557356595993042,
    "recall@1_ci": [
@@ -1159,10 +1159,10 @@
    "eer": 0.295805883301696
   },
   {
-   "label": "qwen06b/overlap_1024/hybrid",
+   "label": "qwen06b/overlap_1024/bm25_hybrid",
    "evalconfig": "qwen06b",
    "variant": "overlap_1024",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 88,
    "recall@1": 0.5012468695640564,
    "recall@1_ci": [
@@ -1334,10 +1334,10 @@
    "eer": 0.20361099738216648
   },
   {
-   "label": "qwen06b/semadj_g0.3672/hybrid",
+   "label": "qwen06b/semadj_g0.3672/bm25_hybrid",
    "evalconfig": "qwen06b",
    "variant": "semadj_g0.3672",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 926,
    "recall@1": 0.5698254108428955,
    "recall@1_ci": [
@@ -1509,10 +1509,10 @@
    "eer": 0.20112343519311177
   },
   {
-   "label": "qwen06b/semadj_g0.4218/hybrid",
+   "label": "qwen06b/semadj_g0.4218/bm25_hybrid",
    "evalconfig": "qwen06b",
    "variant": "semadj_g0.4218",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 840,
    "recall@1": 0.5710723400115967,
    "recall@1_ci": [
@@ -1684,10 +1684,10 @@
    "eer": 0.21917842210394411
   },
   {
-   "label": "qwen06b/semadj_g0.4672/hybrid",
+   "label": "qwen06b/semadj_g0.4672/bm25_hybrid",
    "evalconfig": "qwen06b",
    "variant": "semadj_g0.4672",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 744,
    "recall@1": 0.589775562286377,
    "recall@1_ci": [
@@ -1859,10 +1859,10 @@
    "eer": 0.2185549807074354
   },
   {
-   "label": "qwen06b/semadj_g0.5173/hybrid",
+   "label": "qwen06b/semadj_g0.5173/bm25_hybrid",
    "evalconfig": "qwen06b",
    "variant": "semadj_g0.5173",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 636,
    "recall@1": 0.5885286927223206,
    "recall@1_ci": [
@@ -2034,10 +2034,10 @@
    "eer": 0.20983920795027358
   },
   {
-   "label": "qwen06b/semadj_g0.5765/hybrid",
+   "label": "qwen06b/semadj_g0.5765/bm25_hybrid",
    "evalconfig": "qwen06b",
    "variant": "semadj_g0.5765",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 513,
    "recall@1": 0.5673316717147827,
    "recall@1_ci": [
@@ -2209,10 +2209,10 @@
    "eer": 0.22167218768997904
   },
   {
-   "label": "qwen06b/semadj_g0.6588/hybrid",
+   "label": "qwen06b/semadj_g0.6588/bm25_hybrid",
    "evalconfig": "qwen06b",
    "variant": "semadj_g0.6588",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 396,
    "recall@1": 0.5548628568649292,
    "recall@1_ci": [
@@ -2384,10 +2384,10 @@
    "eer": 0.21051227652262378
   },
   {
-   "label": "qwen06b/semadj_g0.7625/hybrid",
+   "label": "qwen06b/semadj_g0.7625/bm25_hybrid",
    "evalconfig": "qwen06b",
    "variant": "semadj_g0.7625",
-   "mode": "hybrid",
+   "mode": "bm25_hybrid",
    "n_chunks": 238,
    "recall@1": 0.5536159873008728,
    "recall@1_ci": [

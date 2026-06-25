@@ -52,9 +52,9 @@ size-normalised scoring are reused unchanged from the prior study.</p>
 <code>overlap_512/1024</code>, <code>sem_adjacent</code>).</li>
 <li><b>lexical_backend</b> &mdash; the retrieval/fusion arm: <code>dense</code>
 (sqlite-vec cosine), <code>bm25</code>, <code>fts5</code>, or their dense+lexical
-RRF hybrids <code>hybrid</code> (BM25) and <code>fts5_hybrid</code>.</li>
+RRF hybrids <code>bm25_hybrid</code> and <code>fts5_hybrid</code>.</li>
 </ul>
-<p>Example: <code>lfm2/sem_adjacent/hybrid</code> is the LFM2.5 embedder (native
+<p>Example: <code>lfm2/sem_adjacent/bm25_hybrid</code> is the LFM2.5 embedder (native
 prompts), adjacent-sentence semantic chunks, dense+BM25 RRF.</p>
 <h2>3. Native prompt conventions</h2>
 <p>Embedding models are trained with model-specific instruction prefixes. Symmetric models (granite) prepend nothing; asymmetric retrieval models prepend a query instruction and, for some, a document tag. Harlequin currently sends <i>raw text</i> (no prefix) on both sides, so for every model we measure both the native convention and the no-prefix mode (§4).</p>
@@ -959,7 +959,7 @@ prompts), adjacent-sentence semantic chunks, dense+BM25 RRF.</p>
 <td>0.850</td>
 </tr>
 <tr>
-<td class="m">hybrid</td>
+<td class="m">bm25_hybrid</td>
 <td><b>0.575</b></td>
 <td>0.810</td>
 <td>0.888</td>
@@ -1007,7 +1007,7 @@ prompts), adjacent-sentence semantic chunks, dense+BM25 RRF.</p>
 <td>0.866</td>
 </tr>
 <tr>
-<td class="m">hybrid</td>
+<td class="m">bm25_hybrid</td>
 <td>0.582</td>
 <td>0.834</td>
 <td>0.890</td>
@@ -1055,7 +1055,7 @@ prompts), adjacent-sentence semantic chunks, dense+BM25 RRF.</p>
 <td>0.867</td>
 </tr>
 <tr>
-<td class="m">hybrid</td>
+<td class="m">bm25_hybrid</td>
 <td>0.572</td>
 <td>0.825</td>
 <td>0.887</td>
@@ -1103,7 +1103,7 @@ prompts), adjacent-sentence semantic chunks, dense+BM25 RRF.</p>
 <td>0.861</td>
 </tr>
 <tr>
-<td class="m">hybrid</td>
+<td class="m">bm25_hybrid</td>
 <td>0.577</td>
 <td>0.833</td>
 <td>0.887</td>
@@ -1151,7 +1151,7 @@ prompts), adjacent-sentence semantic chunks, dense+BM25 RRF.</p>
 <td>0.855</td>
 </tr>
 <tr>
-<td class="m">hybrid</td>
+<td class="m">bm25_hybrid</td>
 <td>0.565</td>
 <td>0.802</td>
 <td>0.875</td>
