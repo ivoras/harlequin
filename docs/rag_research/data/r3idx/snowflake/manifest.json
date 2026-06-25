@@ -1,0 +1,80 @@
+{
+ "config": "snowflake",
+ "model": "snowflake-arctic-embed-l-v2.0-q8_0.gguf",
+ "dim": 1024,
+ "n_sent": 2112,
+ "gates": [
+  0.3772,
+  0.4341,
+  0.4814,
+  0.5338,
+  0.5924,
+  0.6587,
+  0.8163
+ ],
+ "variants": {
+  "per_sentence": {
+   "n_chunks": 2112,
+   "tok_mean": 43.67376893939394
+  },
+  "mech_256": {
+   "n_chunks": 410,
+   "tok_mean": 224.9731707317073
+  },
+  "mech_512": {
+   "n_chunks": 197,
+   "tok_mean": 468.2182741116751
+  },
+  "mech_1024": {
+   "n_chunks": 96,
+   "tok_mean": 960.8229166666666
+  },
+  "mech_1500": {
+   "n_chunks": 65,
+   "tok_mean": 1419.0615384615385
+  },
+  "overlap_512": {
+   "n_chunks": 197,
+   "tok_mean": 477.8680203045685
+  },
+  "overlap_1024": {
+   "n_chunks": 96,
+   "tok_mean": 972.71875
+  },
+  "semadj_g0.3772": {
+   "n_chunks": 923,
+   "tok_mean": 99.93391115926327,
+   "gate": 0.3772
+  },
+  "semadj_g0.4341": {
+   "n_chunks": 842,
+   "tok_mean": 109.54750593824228,
+   "gate": 0.4341
+  },
+  "semadj_g0.4814": {
+   "n_chunks": 748,
+   "tok_mean": 123.31417112299465,
+   "gate": 0.4814
+  },
+  "semadj_g0.5338": {
+   "n_chunks": 644,
+   "tok_mean": 143.22826086956522,
+   "gate": 0.5338
+  },
+  "semadj_g0.5924": {
+   "n_chunks": 532,
+   "tok_mean": 173.3815789473684,
+   "gate": 0.5924
+  },
+  "semadj_g0.6587": {
+   "n_chunks": 411,
+   "tok_mean": 224.42579075425792,
+   "gate": 0.6587
+  },
+  "semadj_g0.8163": {
+   "n_chunks": 252,
+   "tok_mean": 366.02777777777777,
+   "gate": 0.8163
+  }
+ }
+}

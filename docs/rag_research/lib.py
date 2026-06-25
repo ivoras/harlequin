@@ -49,6 +49,12 @@ _ENC = tiktoken.get_encoding("cl100k_base")
 TOKENIZE_URL = os.environ.get("TOKENIZE_URL", "http://localhost:2235/tokenize")
 MODEL_MAX_TOKENS = 1500  # server physical batch size == hard per-input limit
 
+# Which embedding model the /tokenize endpoint is currently serving. Token counts
+# are tokenizer-specific (granite/bert/qwen3/gemma/lfm2 all differ), so the gtok
+# cache MUST be namespaced by model or one model would read another's counts.
+# r3_build sets this to the active backend before chunking.
+GTOK_MODEL = os.environ.get("GTOK_MODEL", "granite")
+
 
 def n_tokens(text: str) -> int:
     """tiktoken cl100k proxy count (offline, no server needed)."""
@@ -72,7 +78,7 @@ def _gtok_conn() -> sqlite3.Connection:
 def gtok(text: str) -> int:
     """Exact granite token count for `text` (cached, via llama.cpp /tokenize)."""
     conn = _gtok_conn()
-    k = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    k = hashlib.sha256((GTOK_MODEL + "\x00" + text).encode("utf-8")).hexdigest()
     row = conn.execute("SELECT n FROM gtok WHERE k=?", (k,)).fetchone()
     if row is not None:
         return row[0]
@@ -246,28 +252,59 @@ def unpack(blob: bytes) -> np.ndarray:
 # Registry of embedding backends. Each entry: url, model id, dim, and the
 # instruction prefixes the model expects for queries vs documents. granite has
 # no prefixes; Qwen3-Embedding uses an "Instruct:/Query:" prefix for queries.
+# The single-embedder study (paper3): five candidate models, each served in turn
+# on :2235 by r3_server (one model resident at a time, doing boundaries + chunk
+# vectors + query vectors). Two prompt modes per model:
+#   <name>      native prompt convention (the model's documented query/doc prompt)
+#   <name>_np   no-prefix / raw text both sides == how Harlequin embeds today
+# granite is symmetric (no native prompt), so granite == granite_np.
+# Doc embeddings are shared across modes when doc_prefix is identical, so the
+# on-disk cache (keyed by model+prefixed-text) dedupes them automatically.
+_U = "http://localhost:2235/v1/embeddings"
+_QWEN_Q = ("Instruct: Given a web search query, retrieve relevant passages that "
+           "answer the query\nQuery: ")
 EMBEDDERS = {
-    "granite": dict(
-        url="http://localhost:2235/v1/embeddings",
-        model="granite-embedding-311M-multilingual-r2-Q8_0.gguf",
-        dim=768, query_prefix="", doc_prefix="", max_batch_tokens=None),
-    "qwen4b": dict(
-        url="http://localhost:2236/v1/embeddings",
-        model="qwen3-embedding-4b",
-        dim=2560,
-        query_prefix="Instruct: Given a question, retrieve passages that answer it\nQuery: ",
-        doc_prefix="",
-        max_batch_tokens=1700),    # server runs at -c/-ub 2048; keep headroom
-    # The 0.6B Qwen3 embedder Harlequin actually runs in production (server.yaml:
-    # Qwen/Qwen3-Embedding-0.6B, dim 1024, served on :2235, n_ctx 2560). Same
-    # Instruct/Query prompt convention as the 4B sibling.
-    "qwen06b": dict(
-        url="http://localhost:2235/v1/embeddings",
-        model="Qwen3-Embedding-0.6B-Q8_0.gguf",
-        dim=1024,
-        query_prefix="Instruct: Given a question, retrieve passages that answer it\nQuery: ",
-        doc_prefix="",
-        max_batch_tokens=2200),    # server n_ctx 2560; keep headroom
+    # --- native prompt convention -----------------------------------------
+    "granite": dict(url=_U, model="granite-embedding-311M-multilingual-r2-Q8_0.gguf",
+                    dim=768, query_prefix="", doc_prefix="", max_batch_tokens=2200),
+    "snowflake": dict(url=_U, model="snowflake-arctic-embed-l-v2.0-q8_0.gguf",
+                      dim=1024, query_prefix="query: ", doc_prefix="", max_batch_tokens=2200),
+    "qwen06b": dict(url=_U, model="Qwen3-Embedding-0.6B-Q8_0.gguf",
+                    dim=1024, query_prefix=_QWEN_Q, doc_prefix="", max_batch_tokens=2200),
+    "gemma": dict(url=_U, model="embeddinggemma-300M-Q8_0.gguf",
+                  dim=768, query_prefix="task: search result | query: ",
+                  doc_prefix="title: none | text: ", max_batch_tokens=1800),
+    "lfm2": dict(url=_U, model="LFM2.5-Embedding-350M-Q8_0.gguf",
+                 dim=1024, query_prefix="query: ", doc_prefix="document: ", max_batch_tokens=2200),
+    # --- no-prefix (raw text both sides, == Harlequin today) --------------
+    "snowflake_np": dict(url=_U, model="snowflake-arctic-embed-l-v2.0-q8_0.gguf",
+                         dim=1024, query_prefix="", doc_prefix="", max_batch_tokens=2200),
+    "qwen06b_np": dict(url=_U, model="Qwen3-Embedding-0.6B-Q8_0.gguf",
+                       dim=1024, query_prefix="", doc_prefix="", max_batch_tokens=2200),
+    "gemma_np": dict(url=_U, model="embeddinggemma-300M-Q8_0.gguf",
+                     dim=768, query_prefix="", doc_prefix="", max_batch_tokens=1800),
+    "lfm2_np": dict(url=_U, model="LFM2.5-Embedding-350M-Q8_0.gguf",
+                    dim=1024, query_prefix="", doc_prefix="", max_batch_tokens=2200),
+}
+
+# The 5 physical models, and which r3_server backend serves each. Multiple
+# EMBEDDERS configs (native/_np) share one resident server.
+MODELS = ["granite", "snowflake", "qwen06b", "gemma", "lfm2"]
+SERVER_OF = {  # EMBEDDERS config -> r3_server backend (which gguf to load)
+    "granite": "granite",
+    "snowflake": "snowflake", "snowflake_np": "snowflake",
+    "qwen06b": "qwen06b", "qwen06b_np": "qwen06b",
+    "gemma": "gemma", "gemma_np": "gemma",
+    "lfm2": "lfm2", "lfm2_np": "lfm2",
+}
+# Prompt modes to evaluate per model for the prefix-gap chapter. granite has no
+# native prompt so only one mode.
+MODES_OF = {
+    "granite": ["granite"],
+    "snowflake": ["snowflake", "snowflake_np"],
+    "qwen06b": ["qwen06b", "qwen06b_np"],
+    "gemma": ["gemma", "gemma_np"],
+    "lfm2": ["lfm2", "lfm2_np"],
 }
 
 
@@ -280,7 +317,7 @@ class Embedder:
     """
 
     def __init__(self, backend: str = "granite", batch_size: int = 32,
-                 verbose: bool = True):
+                 verbose: bool = True, workers: int = 1):
         cfg = EMBEDDERS[backend]
         self.backend = backend
         self.url = cfg["url"]
@@ -290,6 +327,12 @@ class Embedder:
         self.doc_prefix = cfg["doc_prefix"]
         self.max_batch_tokens = cfg.get("max_batch_tokens")
         self.batch_size = batch_size
+        # Concurrency note: although llama-server advertises n_parallel=4 slots,
+        # firing >1 concurrent /v1/embeddings request makes this build abort in
+        # server_context_impl::decode (ggml_abort) — the combined parallel-sequence
+        # batch overflows the physical batch. So embedding is SEQUENTIAL by default
+        # (workers=1). Raising workers is opt-in and known to crash the server.
+        self.workers = workers
         self.verbose = verbose
         self.conn = _cache_conn()
         self.calls = 0
@@ -345,21 +388,26 @@ class Embedder:
         # batch the misses. If max_batch_tokens is set (small-context embedding
         # servers), pack each request by estimated token budget so a batch of
         # large chunks never overflows the server micro-batch (large chunks go
-        # solo). Otherwise batch by fixed count.
+        # solo). Otherwise batch by fixed count. Batches are POSTed concurrently
+        # (up to self.workers) to saturate the server's parallel slots; cache
+        # writes happen back on this thread as results arrive (sqlite is not
+        # shared across threads).
         batches = self._make_batches(todo, texts)
         done = 0
-        for idxs in batches:
-            vecs = self._post([texts[i] for i in idxs])
-            for i, v in zip(idxs, vecs):
-                out[i] = v
-                self.conn.execute(
-                    "INSERT OR REPLACE INTO emb (k,v) VALUES (?,?)",
-                    (keys[i], pack(v)),
-                )
-            self.conn.commit()
-            done += len(idxs)
-            if self.verbose and todo:
-                print(f"    embedded {done}/{len(todo)} new", file=sys.stderr)
+        from concurrent.futures import ThreadPoolExecutor
+        work = lambda idxs: (idxs, self._post([texts[i] for i in idxs]))
+        with ThreadPoolExecutor(max_workers=max(1, self.workers)) as ex:
+            for idxs, vecs in ex.map(work, batches):
+                for i, v in zip(idxs, vecs):
+                    out[i] = v
+                    self.conn.execute(
+                        "INSERT OR REPLACE INTO emb (k,v) VALUES (?,?)",
+                        (keys[i], pack(v)),
+                    )
+                self.conn.commit()
+                done += len(idxs)
+                if self.verbose and todo:
+                    print(f"    embedded {done}/{len(todo)} new", file=sys.stderr)
         return np.vstack([o for o in out])  # type: ignore[arg-type]
 
     @staticmethod
