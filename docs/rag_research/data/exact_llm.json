@@ -1,0 +1,905 @@
+{
+ "questions": [
+  {
+   "q": "Treaty on European Union responsibilities implementation representative",
+   "token": "Treaty on European Union",
+   "kind": "treaty",
+   "support_sent": 1578,
+   "acc": [
+    1578
+   ]
+  },
+  {
+   "q": "European Parliament implementation parliamentary institutions",
+   "token": "European Parliament",
+   "kind": "institution",
+   "support_sent": 276,
+   "acc": [
+    276
+   ]
+  },
+  {
+   "q": "Kingdom of Belgium relationship contracting participate",
+   "token": "Kingdom of Belgium",
+   "kind": "country",
+   "support_sent": 1645,
+   "acc": [
+    1645
+   ]
+  },
+  {
+   "q": "Economic and Monetary Union accomplishment institutional strengthening",
+   "token": "Economic and Monetary Union",
+   "kind": "term",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "Brussels nomenclature netherlands contracting",
+   "token": "Brussels",
+   "kind": "seat",
+   "support_sent": 1778,
+   "acc": [
+    1778
+   ]
+  },
+  {
+   "q": "what happened on 13 December 2007",
+   "token": "13 December 2007",
+   "kind": "date",
+   "support_sent": 0,
+   "acc": [
+    0
+   ]
+  },
+  {
+   "q": "Treaty on the Functioning of the European Union responsibilities implementation representative",
+   "token": "Treaty on the Functioning of the European Union",
+   "kind": "treaty",
+   "support_sent": 1578,
+   "acc": [
+    1578
+   ]
+  },
+  {
+   "q": "European Council constitutional significantly participation",
+   "token": "European Council",
+   "kind": "institution",
+   "support_sent": 1713,
+   "acc": [
+    1713
+   ]
+  },
+  {
+   "q": "Republic of Bulgaria accomplishment institutional strengthening",
+   "token": "Republic of Bulgaria",
+   "kind": "country",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "area of freedom, security and justice relationship contracting participate",
+   "token": "area of freedom, security and justice",
+   "kind": "term",
+   "support_sent": 1645,
+   "acc": [
+    1645
+   ]
+  },
+  {
+   "q": "Strasbourg representatives institutions establishing",
+   "token": "Strasbourg",
+   "kind": "seat",
+   "support_sent": 1510,
+   "acc": [
+    1510
+   ]
+  },
+  {
+   "q": "what happened on 1 December 2009",
+   "token": "1 December 2009",
+   "kind": "date",
+   "support_sent": 0,
+   "acc": [
+    0
+   ]
+  },
+  {
+   "q": "Treaty establishing the European Community parliamentary provisionally subparagraph",
+   "token": "Treaty establishing the European Community",
+   "kind": "treaty",
+   "support_sent": 1821,
+   "acc": [
+    1821
+   ]
+  },
+  {
+   "q": "European Commission implementing significant appropriate",
+   "token": "European Commission",
+   "kind": "institution",
+   "support_sent": 274,
+   "acc": [
+    274
+   ]
+  },
+  {
+   "q": "Czech Republic accomplishment institutional strengthening",
+   "token": "Czech Republic",
+   "kind": "country",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "common foreign and security policy responsibilities implementation representative",
+   "token": "common foreign and security policy",
+   "kind": "term",
+   "support_sent": 1578,
+   "acc": [
+    1578
+   ]
+  },
+  {
+   "q": "Frankfurt european central",
+   "token": "Frankfurt",
+   "kind": "seat",
+   "support_sent": 1523,
+   "acc": [
+    1523
+   ]
+  },
+  {
+   "q": "Treaty establishing the European Atomic Energy Community constitutional communications organisation",
+   "token": "Treaty establishing the European Atomic Energy Community",
+   "kind": "treaty",
+   "support_sent": 628,
+   "acc": [
+    628
+   ]
+  },
+  {
+   "q": "Council of the European Union implementation transitional functioning",
+   "token": "Council of the European Union",
+   "kind": "institution",
+   "support_sent": 1873,
+   "acc": [
+    1873
+   ]
+  },
+  {
+   "q": "Kingdom of Denmark relationship contracting participate",
+   "token": "Kingdom of Denmark",
+   "kind": "country",
+   "support_sent": 1645,
+   "acc": [
+    1645
+   ]
+  },
+  {
+   "q": "common security and defence policy responsibilities implementation representative",
+   "token": "common security and defence policy",
+   "kind": "term",
+   "support_sent": 1578,
+   "acc": [
+    1578
+   ]
+  },
+  {
+   "q": "the Hague european europol police",
+   "token": "the Hague",
+   "kind": "seat",
+   "support_sent": 1524,
+   "acc": [
+    1524
+   ]
+  },
+  {
+   "q": "Charter of Fundamental Rights of the European Union aforementioned justiciability explanations",
+   "token": "Charter of Fundamental Rights of the European Union",
+   "kind": "treaty",
+   "support_sent": 1774,
+   "acc": [
+    1774
+   ]
+  },
+  {
+   "q": "Court of Justice of the European Union jurisdiction constituting contracting",
+   "token": "Court of Justice of the European Union",
+   "kind": "institution",
+   "support_sent": 1765,
+   "acc": [
+    1765
+   ]
+  },
+  {
+   "q": "Federal Republic of Germany accomplishment institutional strengthening",
+   "token": "Federal Republic of Germany",
+   "kind": "country",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "qualified majority representing netherlands luxembourg",
+   "token": "qualified majority",
+   "kind": "term",
+   "support_sent": 1829,
+   "acc": [
+    1829
+   ]
+  },
+  {
+   "q": "Luxembourg accomplishment institutional strengthening",
+   "token": "Luxembourg",
+   "kind": "seat",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "Treaty of Lisbon responsibilities implementation representative",
+   "token": "Treaty of Lisbon",
+   "kind": "treaty",
+   "support_sent": 1578,
+   "acc": [
+    1578
+   ]
+  },
+  {
+   "q": "Court of Justice jurisdiction constituting contracting",
+   "token": "Court of Justice",
+   "kind": "institution",
+   "support_sent": 1765,
+   "acc": [
+    1765
+   ]
+  },
+  {
+   "q": "Republic of Estonia accomplishment institutional strengthening",
+   "token": "Republic of Estonia",
+   "kind": "country",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "internal market accomplishment institutional strengthening",
+   "token": "internal market",
+   "kind": "term",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "euro responsibilities implementation representative",
+   "token": "euro",
+   "kind": "seat",
+   "support_sent": 1578,
+   "acc": [
+    1578
+   ]
+  },
+  {
+   "q": "Treaty of Amsterdam relationship contracting participate",
+   "token": "Treaty of Amsterdam",
+   "kind": "treaty",
+   "support_sent": 1645,
+   "acc": [
+    1645
+   ]
+  },
+  {
+   "q": "European Central Bank contracting functioning particular",
+   "token": "European Central Bank",
+   "kind": "institution",
+   "support_sent": 1643,
+   "acc": [
+    1643
+   ]
+  },
+  {
+   "q": "Hellenic Republic accomplishment institutional strengthening",
+   "token": "Hellenic Republic",
+   "kind": "country",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "enhanced cooperation arrangements contracting obligations",
+   "token": "enhanced cooperation",
+   "kind": "term",
+   "support_sent": 1582,
+   "acc": [
+    1582
+   ]
+  },
+  {
+   "q": "ecu responsibilities implementation representative",
+   "token": "ecu",
+   "kind": "seat",
+   "support_sent": 1578,
+   "acc": [
+    1578
+   ]
+  },
+  {
+   "q": "Final Act international environmental independence",
+   "token": "Final Act",
+   "kind": "treaty",
+   "support_sent": 394,
+   "acc": [
+    394
+   ]
+  },
+  {
+   "q": "Court of Auditors parliaments information parliament",
+   "token": "Court of Auditors",
+   "kind": "institution",
+   "support_sent": 644,
+   "acc": [
+    644
+   ]
+  },
+  {
+   "q": "Kingdom of Spain relationship contracting participate",
+   "token": "Kingdom of Spain",
+   "kind": "country",
+   "support_sent": 1645,
+   "acc": [
+    1645
+   ]
+  },
+  {
+   "q": "ordinary legislative procedure consultation regulations emoluments",
+   "token": "ordinary legislative procedure",
+   "kind": "term",
+   "support_sent": 1550,
+   "acc": [
+    1550,
+    1556
+   ]
+  },
+  {
+   "q": "Statute of the Court of Justice of the European Union transitional establishing respectively",
+   "token": "Statute of the Court of Justice of the European Union",
+   "kind": "treaty",
+   "support_sent": 2,
+   "acc": [
+    2
+   ]
+  },
+  {
+   "q": "European Investment Bank consolidating participation contributions",
+   "token": "European Investment Bank",
+   "kind": "institution",
+   "support_sent": 1772,
+   "acc": [
+    1772
+   ]
+  },
+  {
+   "q": "French Republic accomplishment institutional strengthening",
+   "token": "French Republic",
+   "kind": "country",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "price stability convergence contracting derogations",
+   "token": "price stability",
+   "kind": "term",
+   "support_sent": 1589,
+   "acc": [
+    1589
+   ]
+  },
+  {
+   "q": "Statute of the European Investment Bank contracting functioning established",
+   "token": "Statute of the European Investment Bank",
+   "kind": "treaty",
+   "support_sent": 1346,
+   "acc": [
+    1346
+   ]
+  },
+  {
+   "q": "Economic and Social Committee implementation transitional institutions",
+   "token": "Economic and Social Committee",
+   "kind": "institution",
+   "support_sent": 1839,
+   "acc": [
+    1839
+   ]
+  },
+  {
+   "q": "Italian Republic accomplishment institutional strengthening",
+   "token": "Italian Republic",
+   "kind": "country",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "monetary policy functioning accordance operations",
+   "token": "monetary policy",
+   "kind": "term",
+   "support_sent": 972,
+   "acc": [
+    972
+   ]
+  },
+  {
+   "q": "Schengen acquis relationship contracting participate",
+   "token": "Schengen acquis",
+   "kind": "treaty",
+   "support_sent": 1645,
+   "acc": [
+    1645
+   ]
+  },
+  {
+   "q": "Committee of the Regions implementation transitional institutions",
+   "token": "Committee of the Regions",
+   "kind": "institution",
+   "support_sent": 1839,
+   "acc": [
+    1839
+   ]
+  },
+  {
+   "q": "Republic of Cyprus accomplishment institutional strengthening",
+   "token": "Republic of Cyprus",
+   "kind": "country",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "subsidiarity plenipotentiaries independence establishing",
+   "token": "subsidiarity",
+   "kind": "term",
+   "support_sent": 198,
+   "acc": [
+    198
+   ]
+  },
+  {
+   "q": "Statute of the European System of Central Banks and of the European Central Bank contracting functioning particular",
+   "token": "Statute of the European System of Central Banks and of the European Central Bank",
+   "kind": "treaty",
+   "support_sent": 1643,
+   "acc": [
+    1643
+   ]
+  },
+  {
+   "q": "European System of Central Banks contracting functioning particular",
+   "token": "European System of Central Banks",
+   "kind": "institution",
+   "support_sent": 1643,
+   "acc": [
+    1643
+   ]
+  },
+  {
+   "q": "Republic of Latvia accomplishment institutional strengthening",
+   "token": "Republic of Latvia",
+   "kind": "country",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "proportionality subsidiarity application contracting",
+   "token": "proportionality",
+   "kind": "term",
+   "support_sent": 651,
+   "acc": [
+    651
+   ]
+  },
+  {
+   "q": "General Court prescription functioning derogation",
+   "token": "General Court",
+   "kind": "institution",
+   "support_sent": 870,
+   "acc": [
+    870
+   ]
+  },
+  {
+   "q": "Republic of Lithuania accomplishment institutional strengthening",
+   "token": "Republic of Lithuania",
+   "kind": "country",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "own resources consolidating participation contributions",
+   "token": "own resources",
+   "kind": "term",
+   "support_sent": 1772,
+   "acc": [
+    1772
+   ]
+  },
+  {
+   "q": "Governing Council implementation composition accordance",
+   "token": "Governing Council",
+   "kind": "institution",
+   "support_sent": 1012,
+   "acc": [
+    1012
+   ]
+  },
+  {
+   "q": "Grand Duchy of Luxembourg relationship contracting participate",
+   "token": "Grand Duchy of Luxembourg",
+   "kind": "country",
+   "support_sent": 1645,
+   "acc": [
+    1645
+   ]
+  },
+  {
+   "q": "excessive deficit contracting functioning provisions",
+   "token": "excessive deficit",
+   "kind": "term",
+   "support_sent": 1583,
+   "acc": [
+    1583
+   ]
+  },
+  {
+   "q": "Political and Security Committee representative international functioning",
+   "token": "Political and Security Committee",
+   "kind": "institution",
+   "support_sent": 492,
+   "acc": [
+    492
+   ]
+  },
+  {
+   "q": "Republic of Hungary accomplishment institutional strengthening",
+   "token": "Republic of Hungary",
+   "kind": "country",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "Stability and Growth Pact restructuring orientations expenditure",
+   "token": "Stability and Growth Pact",
+   "kind": "term",
+   "support_sent": 1976,
+   "acc": [
+    1976
+   ]
+  },
+  {
+   "q": "Eurojust implementation parliamentary institutions",
+   "token": "Eurojust",
+   "kind": "institution",
+   "support_sent": 276,
+   "acc": [
+    276
+   ]
+  },
+  {
+   "q": "Republic of Malta accomplishment institutional strengthening",
+   "token": "Republic of Malta",
+   "kind": "country",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "European Atomic Energy Community constitutional communications organisation",
+   "token": "European Atomic Energy Community",
+   "kind": "term",
+   "support_sent": 628,
+   "acc": [
+    628
+   ]
+  },
+  {
+   "q": "Europol implementation parliamentary institutions",
+   "token": "Europol",
+   "kind": "institution",
+   "support_sent": 276,
+   "acc": [
+    276
+   ]
+  },
+  {
+   "q": "Kingdom of the Netherlands relationship contracting participate",
+   "token": "Kingdom of the Netherlands",
+   "kind": "country",
+   "support_sent": 1645,
+   "acc": [
+    1645
+   ]
+  },
+  {
+   "q": "Eurosystem constitute national currency",
+   "token": "Eurosystem",
+   "kind": "term",
+   "support_sent": 966,
+   "acc": [
+    966
+   ]
+  },
+  {
+   "q": "European Economic Community infrastructure accomplishment disequilibria",
+   "token": "European Economic Community",
+   "kind": "institution",
+   "support_sent": 2031,
+   "acc": [
+    2031
+   ]
+  },
+  {
+   "q": "Republic of Austria accomplishment institutional strengthening",
+   "token": "Republic of Austria",
+   "kind": "country",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "free movement of persons plenipotentiaries independence establishing",
+   "token": "free movement of persons",
+   "kind": "term",
+   "support_sent": 198,
+   "acc": [
+    198
+   ]
+  },
+  {
+   "q": "European Defence Agency responsibilities implementation representative",
+   "token": "European Defence Agency",
+   "kind": "institution",
+   "support_sent": 1578,
+   "acc": [
+    1578
+   ]
+  },
+  {
+   "q": "Republic of Poland accomplishment institutional strengthening",
+   "token": "Republic of Poland",
+   "kind": "country",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "fundamental rights jurisdiction constituting contracting",
+   "token": "fundamental rights",
+   "kind": "term",
+   "support_sent": 1765,
+   "acc": [
+    1765
+   ]
+  },
+  {
+   "q": "High Representative of the Union for Foreign Affairs and Security Policy responsibilities implementation strengthening",
+   "token": "High Representative of the Union for Foreign Affairs and Security Policy",
+   "kind": "institution",
+   "support_sent": 1578,
+   "acc": [
+    1578
+   ]
+  },
+  {
+   "q": "Portuguese Republic accomplishment institutional strengthening",
+   "token": "Portuguese Republic",
+   "kind": "country",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "rule of law accomplishment institutional strengthening",
+   "token": "rule of law",
+   "kind": "term",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "European External Action Service representative declaration preparatory",
+   "token": "European External Action Service",
+   "kind": "institution",
+   "support_sent": 1920,
+   "acc": [
+    1920
+   ]
+  },
+  {
+   "q": "Republic of Slovenia accomplishment institutional strengthening",
+   "token": "Republic of Slovenia",
+   "kind": "country",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "human dignity indivisibility international universality",
+   "token": "human dignity",
+   "kind": "term",
+   "support_sent": 391,
+   "acc": [
+    391
+   ]
+  },
+  {
+   "q": "Economic and Financial Committee unanimously appropriate convergence",
+   "token": "Economic and Financial Committee",
+   "kind": "institution",
+   "support_sent": 1597,
+   "acc": [
+    1597
+   ]
+  },
+  {
+   "q": "Slovak Republic accomplishment institutional strengthening",
+   "token": "Slovak Republic",
+   "kind": "country",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "sustainable development accomplishment institutional strengthening",
+   "token": "sustainable development",
+   "kind": "term",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "Permanent Representatives governments committee chairing",
+   "token": "Permanent Representatives",
+   "kind": "institution",
+   "support_sent": 1891,
+   "acc": [
+    1891
+   ]
+  },
+  {
+   "q": "Republic of Finland accomplishment institutional strengthening",
+   "token": "Republic of Finland",
+   "kind": "country",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "common commercial policy established provisions consulting",
+   "token": "common commercial policy",
+   "kind": "term",
+   "support_sent": 1801,
+   "acc": [
+    1801
+   ]
+  },
+  {
+   "q": "Executive Board recommendation subparagraph professional",
+   "token": "Executive Board",
+   "kind": "institution",
+   "support_sent": 1039,
+   "acc": [
+    1039
+   ]
+  },
+  {
+   "q": "Kingdom of Sweden accomplishment institutional strengthening",
+   "token": "Kingdom of Sweden",
+   "kind": "country",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "European Social Fund infrastructure accomplishment disequilibria",
+   "token": "European Social Fund",
+   "kind": "term",
+   "support_sent": 2031,
+   "acc": [
+    2031
+   ]
+  },
+  {
+   "q": "President of the European Council representative organisational consultation",
+   "token": "President of the European Council",
+   "kind": "institution",
+   "support_sent": 1883,
+   "acc": [
+    1883
+   ]
+  },
+  {
+   "q": "United Kingdom of Great Britain and Northern Ireland accomplishment institutional strengthening",
+   "token": "United Kingdom of Great Britain and Northern Ireland",
+   "kind": "country",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "structured cooperation responsibilities implementation representative",
+   "token": "structured cooperation",
+   "kind": "term",
+   "support_sent": 1578,
+   "acc": [
+    1578
+   ]
+  },
+  {
+   "q": "President of the Commission representative organisation consistently",
+   "token": "President of the Commission",
+   "kind": "institution",
+   "support_sent": 345,
+   "acc": [
+    345
+   ]
+  },
+  {
+   "q": "United Kingdom accomplishment institutional strengthening",
+   "token": "United Kingdom",
+   "kind": "country",
+   "support_sent": 197,
+   "acc": [
+    197
+   ]
+  },
+  {
+   "q": "Secretary-General representative declaration preparatory",
+   "token": "Secretary-General",
+   "kind": "institution",
+   "support_sent": 1920,
+   "acc": [
+    1920
+   ]
+  },
+  {
+   "q": "Kingdom of Norway relationship contracting participate",
+   "token": "Kingdom of Norway",
+   "kind": "country",
+   "support_sent": 1645,
+   "acc": [
+    1645
+   ]
+  }
+ ]
+}
