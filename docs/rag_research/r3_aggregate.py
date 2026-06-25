@@ -19,6 +19,7 @@ import numpy as np
 
 from lib import DATA, EMBEDDERS, MODELS, MODES_OF
 
+RP = os.environ.get("RPREFIX", "r3")     # result-file prefix (r3 = 802-set, r4 = augmented)
 REF_CHUNKER = "mech_512"          # neutral mid-size dense reference for the prefix gap
 # pinpoint + rejection weighted composite (per the study's objective)
 COMPOSITE_W = {"recall@1": 2.0, "mrr@10": 2.0, "ood_auc": 2.0,
@@ -26,7 +27,7 @@ COMPOSITE_W = {"recall@1": 2.0, "mrr@10": 2.0, "ood_auc": 2.0,
 
 
 def load_results(evalconfig):
-    p = os.path.join(DATA, f"r3_results_{evalconfig}.json")
+    p = os.path.join(DATA, f"{RP}_results_{evalconfig}.json")
     if not os.path.exists(p):
         return None
     d = json.load(open(p))
@@ -62,7 +63,7 @@ def slim(r):
 
 
 def main():
-    bench = json.load(open(os.path.join(DATA, "r3_bench.json")))
+    bench = json.load(open(os.path.join(DATA, f"{RP}_bench.json")))
     agg = {"models": {}, "prefix_gap": [], "gate": {}, "chunkers": {},
            "lexical": {}, "selection": [], "ref_chunker": REF_CHUNKER,
            "composite_w": COMPOSITE_W, "naming": {}}
@@ -177,8 +178,8 @@ def main():
     agg["naming"] = {m: {"query_prefix": EMBEDDERS[carried[m]]["query_prefix"],
                          "doc_prefix": EMBEDDERS[carried[m]]["doc_prefix"]}
                      for m in carried}
-    json.dump(agg, open(os.path.join(DATA, "r3_agg.json"), "w"), indent=1)
-    print("wrote data/r3_agg.json; carried modes:", carried)
+    json.dump(agg, open(os.path.join(DATA, f"{RP}_agg.json"), "w"), indent=1)
+    print(f"wrote data/{RP}_agg.json; carried modes:", carried)
 
 
 # the index_config a carried eval-config reads (mirror of r3_eval.EVALS)

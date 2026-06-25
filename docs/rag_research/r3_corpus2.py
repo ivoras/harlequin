@@ -20,7 +20,7 @@ from r3_build import GATE_PCTILES
 
 C2 = os.path.join(DATA, "corpus2.json")
 QS2 = os.path.join(DATA, "questions2.json")
-OUT = os.path.join(DATA, "r3_corpus2.json")
+OUT = os.path.join(DATA, f"{os.environ.get('RPREFIX', 'r3')}_corpus2.json")
 
 
 def _acceptable(sents, M, qs):

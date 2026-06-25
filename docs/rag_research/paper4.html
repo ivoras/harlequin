@@ -1,0 +1,1510 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Selecting an embedding model for Harlequin: a single-embedder RAG study</title>
+<style>
+ html{font-size:17px} body{font-family:Georgia,serif;color:#1a1a1a;max-width:860px;
+  margin:0 auto;padding:2.4rem 1.3rem 5rem;line-height:1.5}
+ h1{font-size:1.55rem;line-height:1.25;margin:0 0 .3rem}
+ h2{font-size:1.15rem;border-bottom:1px solid #ddd;padding-bottom:.2rem;margin:2rem 0 .7rem}
+ h3{font-size:1rem;margin:1.2rem 0 .4rem}
+ .meta{color:#666;font-size:.92rem;margin-bottom:1.3rem}
+ .abstract{background:#f7f7f5;border:1px solid #ddd;padding:.9rem 1.1rem;font-size:.96rem}
+ code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.86em;background:#f2f2f0;padding:0 .25em;border-radius:3px}
+ table{border-collapse:collapse;width:100%;font-size:.78rem;margin:.6rem 0;font-family:ui-monospace,monospace}
+ caption{caption-side:bottom;text-align:left;color:#666;font-size:.84rem;padding-top:.4rem;font-family:Georgia,serif}
+ th,td{border-bottom:1px solid #ddd;padding:.24rem .4rem;text-align:right}
+ th{cursor:pointer;user-select:none;white-space:nowrap;border-bottom:2px solid #bbb}
+ th[title]{text-decoration:underline dotted #bbb;text-underline-offset:3px}
+ th:hover{background:#eef} th .ar{color:#c0392b}
+ th:first-child,td.m{text-align:left}
+ figure{margin:1.1rem 0} svg{width:100%;height:auto;border:1px solid #ddd;background:#fff}
+ figcaption{color:#666;font-size:.85rem;margin-top:.3rem}
+ .ct{font:600 13px Georgia,serif;fill:#1a1a1a} .grid{stroke:#eee}
+ .ax{font:10px ui-monospace,monospace;fill:#888} .leg{font:10px ui-monospace,monospace}
+ ul,ol{padding-left:1.2rem} li{margin:.2rem 0}
+ .fn{font-size:.85rem;color:#666;border-top:1px solid #ddd;margin-top:2.4rem;padding-top:.6rem}
+</style></head><body>
+
+<h1>Selecting an embedding model for Harlequin document ingestion: a single-embedder RAG study</h1>
+<div class="meta">Corpus: consolidated Treaty on European Union (<code>CELEX:12016M/TXT</code>).
+Five candidate embedders, each the sole model on the whole path. Generated from <code>r4_*</code> results (augmented 1152-question set).</div>
+
+<div class="abstract"><b>Abstract.</b> We select a single embedding model for Harlequin document ingestion by evaluating five small open embedders &mdash; granite-311M, snowflake-arctic-l-v2.0, Qwen3-Embedding-0.6B, embeddinggemma-300M and LFM2.5-Embedding-350M &mdash; each run as the <i>only</i> model on the whole path (sentence boundaries, chunk vectors and query vectors), on a 204-page legal corpus with 1152 grounded in-document (incl. 350 exact-extraction) and 201 out-of-domain questions, scored by duplicate-aware, size-normalised cosine retrieval metrics with bootstrap CIs. We report native-prompt vs no-prefix behaviour, sweep the semantic-chunking gate per model, compare eight chunkers and two lexical backends (custom BM25 vs SQLite FTS5) under RRF, and rank models by a pinpoint+rejection composite with a cost table. The recommended triple is <code>snowflake/semadj_g0.3772/fts5_hybrid</code> (dim 1024, recall@1 0.602).</div>
+
+<h2>1. Goal &amp; setup</h2>
+<p>Harlequin ingests documents, chunks them, embeds the chunks into a SQLite +
+sqlite-vec (cosine) store, and retrieves them for memory and RAG. We pick the
+single best <code>embedder/chunker/lexical_backend</code> for that path. Each of
+the five models is served alone on <code>:2235</code> (llama.cpp, OpenAI API) and
+does <i>everything</i> &mdash; semantic boundaries, chunk vectors and query
+vectors &mdash; so no result mixes models. Chunk budgets are measured in each
+model's own tokens. Questions (1152 in-document, grounded to exact sentence ids, incl. 350 exact-extraction added in this round;
+122 misspelled, 100 naive; plus 201 out-of-domain) and the duplicate-aware,
+size-normalised scoring are reused unchanged from the prior study.</p>
+
+<h2>2. Evaluation set</h2>
+<p>The benchmark is 1353 questions over the consolidated TEU: <b>1152 in-document</b> (grounded to exact sentence ids) and <b>201 out-of-domain</b>. Earlier rounds were ~99% paraphrase; this round adds 350 <b>exact-extraction</b> questions so the set exercises exact-token retrieval too &mdash; exact is now 30% of in-document.</p>
+<table class="sortable"><caption>Evaluation-set composition (in-document subgroups).</caption><thead><tr><th title="A subgroup of the in-document question set">segment</th><th title="Number of chunks/questions">n</th><th title="Share of the in-document questions">% in-doc</th></tr></thead><tbody>
+<tr>
+<td class="m">paraphrase (normal)</td>
+<td>642</td>
+<td>56%</td>
+</tr>
+<tr>
+<td class="m">naive / 'dumb'</td>
+<td>38</td>
+<td>3%</td>
+</tr>
+<tr>
+<td class="m">misspelled</td>
+<td>122</td>
+<td>11%</td>
+</tr>
+<tr>
+<td class="m">exact — mined</td>
+<td>250</td>
+<td>22%</td>
+</tr>
+<tr>
+<td class="m">exact — named entity (LLM)</td>
+<td>100</td>
+<td>9%</td>
+</tr>
+</tbody></table>
+<p><b>Exact-extraction questions</b> are grounded against the PDF, not invented. <i>Mined</i> (250) are anchored on an exact token found in the text &mdash; percentages, dates, protocol numbers, article(+paragraph) references, grouped figures. <i>Named-entity</i> (100) were extracted by an LLM (treaty/instrument names, formal Member-State names, institutions &amp; bodies, terms of art, seats, dates) and kept only where the phrase occurs verbatim; grounding is duplicate-aware (acceptable = the support sentence plus occurrences that lexically overlap it). By exact-token kind: article_para 67, article 66, date 37, protocol 37, figure 32, institution 27, country 27, term 25, percent 13, treaty 12, seat 7.</p>
+<p>Scoring is unchanged: a hit covers any acceptable sentence; metrics are size-normalised (<code>answer@Btok</code>) with bootstrap CIs; out-of-domain questions test rejection. The exact subset drives §9.1.</p>
+<h2>3. Naming convention</h2>
+<p>Every result set is named <code>embedder/chunker/lexical_backend</code>:</p>
+<ul>
+<li><b>embedder</b> &mdash; one of the five models, in its carried prompt mode
+(<code>_np</code> suffix marks the no-prefix mode).</li>
+<li><b>chunker</b> &mdash; the boundary rule and target size
+(<code>per_sentence</code>, <code>mech_256…mech_1500</code>,
+<code>overlap_512/1024</code>, <code>sem_adjacent</code>).</li>
+<li><b>lexical_backend</b> &mdash; the retrieval/fusion arm: <code>dense</code>
+(sqlite-vec cosine), <code>bm25</code>, <code>fts5</code>, or their dense+lexical
+RRF hybrids <code>bm25_hybrid</code> and <code>fts5_hybrid</code>.</li>
+</ul>
+<p>Example: <code>lfm2/sem_adjacent/bm25_hybrid</code> is the LFM2.5 embedder (native
+prompts), adjacent-sentence semantic chunks, dense+BM25 RRF.</p>
+<h2>4. Native prompt conventions</h2>
+<p>Embedding models are trained with model-specific instruction prefixes. Symmetric models (granite) prepend nothing; asymmetric retrieval models prepend a query instruction and, for some, a document tag. Harlequin currently sends <i>raw text</i> (no prefix) on both sides, so for every model we measure both the native convention and the no-prefix mode (§5).</p>
+<table class="sortable"><caption>Table 1. Native prompt conventions (documented per model). granite is symmetric (no prompt); the others are asymmetric. The no-prefix mode drops both.</caption><thead><tr><th title="Embedding model (served alone on :2235, doing boundaries + chunk + query vectors)">model</th><th title="Exact string prepended to a query before embedding (native convention)">query prefix</th><th title="Exact string prepended to a passage before embedding (native convention)">doc prefix</th></tr></thead><tbody>
+<tr><td class="m">granite-311M</td><td class="m"><code>(none)</code></td><td class="m"><code>(none)</code></td></tr>
+<tr><td class="m">snowflake-arctic-l-v2.0</td><td class="m"><code>query: </code></td><td class="m"><code>(none)</code></td></tr>
+<tr><td class="m">Qwen3-Emb-0.6B</td><td class="m"><code>Instruct: Given a web search query, retrieve relevant passages that answer the query↵Query: </code></td><td class="m"><code>(none)</code></td></tr>
+<tr><td class="m">embeddinggemma-300M</td><td class="m"><code>task: search result | query: </code></td><td class="m"><code>title: none | text: </code></td></tr>
+<tr><td class="m">LFM2.5-Emb-350M</td><td class="m"><code>query: </code></td><td class="m"><code>document: </code></td></tr>
+</tbody></table>
+<h2>5. Prompt mode: native prefixes vs no-prefix</h2>
+<p>On a fixed reference chunker (<code>mech_512</code>, dense), we compare each model's native prompts against raw text. The better mode (✓) is carried into every later chapter. granite has a single (symmetric) mode.</p>
+<table class="sortable"><caption>Table 2. Prefix gap on the reference chunker. 'carried' marks the mode used downstream.</caption><thead><tr><th title="Embedding model (served alone on :2235, doing boundaries + chunk + query vectors)">model</th><th title="Prompt mode: native = model's documented query/doc prefixes; no-prefix = raw text both sides (Harlequin today)">mode</th><th title="Answer recall@1: the #1 retrieved chunk covers an acceptable answer sentence">R@1</th><th title="Answer recall@5: an acceptable answer chunk is in the top 5">R@5</th><th title="Hit within the top chunks summing to ≤1024 tokens — equal retrieved-context budget (size-neutral)">ans@1024</th><th title="AUROC of the top-1 score separating in-document from out-of-domain queries (higher = better rejection)">AUC</th><th title="Pinpoint+rejection composite: weighted mean of z-scored R@1, MRR, AUC (2×) and R@5, ans@1024 (1×)">score</th><th title="✓ marks the prompt mode carried into all later chapters (the better of native vs no-prefix here)">carried</th></tr></thead><tbody>
+<tr>
+<td class="m">granite-311M</td>
+<td>native</td>
+<td>0.353</td>
+<td>0.646</td>
+<td>0.561</td>
+<td>0.919</td>
+<td>-</td>
+<td>✓</td>
+</tr>
+<tr>
+<td class="m">snowflake-arctic-l-v2.0</td>
+<td>native</td>
+<td>0.494</td>
+<td>0.804</td>
+<td>0.709</td>
+<td>0.923</td>
+<td>+1.00</td>
+<td>✓</td>
+</tr>
+<tr>
+<td class="m">snowflake-arctic-l-v2.0</td>
+<td>no-prefix</td>
+<td>0.426</td>
+<td>0.738</td>
+<td>0.659</td>
+<td>0.920</td>
+<td>-1.00</td>
+<td></td>
+</tr>
+<tr>
+<td class="m">Qwen3-Emb-0.6B</td>
+<td>native</td>
+<td>0.437</td>
+<td>0.716</td>
+<td>0.632</td>
+<td>0.876</td>
+<td>+0.50</td>
+<td>✓</td>
+</tr>
+<tr>
+<td class="m">Qwen3-Emb-0.6B</td>
+<td>no-prefix</td>
+<td>0.425</td>
+<td>0.695</td>
+<td>0.610</td>
+<td>0.891</td>
+<td>-0.50</td>
+<td></td>
+</tr>
+<tr>
+<td class="m">embeddinggemma-300M</td>
+<td>native</td>
+<td>0.467</td>
+<td>0.759</td>
+<td>0.674</td>
+<td>0.917</td>
+<td>-0.50</td>
+<td></td>
+</tr>
+<tr>
+<td class="m">embeddinggemma-300M</td>
+<td>no-prefix</td>
+<td>0.470</td>
+<td>0.787</td>
+<td>0.704</td>
+<td>0.846</td>
+<td>+0.50</td>
+<td>✓</td>
+</tr>
+<tr>
+<td class="m">LFM2.5-Emb-350M</td>
+<td>native</td>
+<td>0.398</td>
+<td>0.672</td>
+<td>0.574</td>
+<td>0.899</td>
+<td>-0.50</td>
+<td></td>
+</tr>
+<tr>
+<td class="m">LFM2.5-Emb-350M</td>
+<td>no-prefix</td>
+<td>0.427</td>
+<td>0.713</td>
+<td>0.633</td>
+<td>0.892</td>
+<td>+0.50</td>
+<td>✓</td>
+</tr>
+</tbody></table>
+<h2>6. Semantic-adjacency gate sweep</h2>
+<p>The <code>sem_adjacent</code> chunker cuts between two sentences when their embedding cosine distance exceeds a gate. The gate's scale is model-specific (drift distributions differ), so it is swept per model at percentiles of that model's adjacent-drift distribution. Finer gates yield smaller chunks and — as everywhere — higher pinpoint scores; we pick each model's gate by the same pinpoint+rejection composite used to rank models, and carry that <code>sem_adjacent</code> variant forward.</p>
+<figure><svg viewBox="0 0 660 340" role="img">
+<text x="52" y="15" class="ct">Figure 1. sem_adjacent: recall@1 vs chunk size (gate swept per model)</text>
+<line x1="52" y1="298" x2="510" y2="298" class="grid"/>
+<text x="46" y="301" class="ax" text-anchor="end">0.28</text>
+<line x1="52" y1="244" x2="510" y2="244" class="grid"/>
+<text x="46" y="247" class="ax" text-anchor="end">0.35</text>
+<line x1="52" y1="190" x2="510" y2="190" class="grid"/>
+<text x="46" y="193" class="ax" text-anchor="end">0.41</text>
+<line x1="52" y1="136" x2="510" y2="136" class="grid"/>
+<text x="46" y="139" class="ax" text-anchor="end">0.47</text>
+<line x1="52" y1="82" x2="510" y2="82" class="grid"/>
+<text x="46" y="85" class="ax" text-anchor="end">0.54</text>
+<line x1="52" y1="28" x2="510" y2="28" class="grid"/>
+<text x="46" y="31" class="ax" text-anchor="end">0.60</text>
+<text x="236" y="313" class="ax" text-anchor="middle">160</text>
+<text x="465" y="313" class="ax" text-anchor="middle">320</text>
+<text x="281" y="337" class="ax" text-anchor="middle">mean chunk size (tokens, log)</text>
+<text x="14" y="163" class="ax" text-anchor="middle" transform="rotate(-90 14 163)">recall@1</text>
+<polyline points="52.7,171.8 85.6,180.6 122.5,182.1 169.7,201.8 234.5,207.7 321.6,243.5 476.8,269.8" fill="none" stroke="#2980b9" stroke-width="2"/>
+<circle cx="52.7" cy="171.8" r="2.6" fill="#2980b9"/>
+<circle cx="85.6" cy="180.6" r="2.6" fill="#2980b9"/>
+<circle cx="122.5" cy="182.1" r="2.6" fill="#2980b9"/>
+<circle cx="169.7" cy="201.8" r="2.6" fill="#2980b9"/>
+<circle cx="234.5" cy="207.7" r="2.6" fill="#2980b9"/>
+<circle cx="321.6" cy="243.5" r="2.6" fill="#2980b9"/>
+<circle cx="476.8" cy="269.8" r="2.6" fill="#2980b9"/>
+<polyline points="80.0,47.5 110.4,51.9 149.6,58.5 199.2,54.1 262.5,84.1 348.0,117.7 510.0,157.2" fill="none" stroke="#16a085" stroke-width="2"/>
+<circle cx="80.0" cy="47.5" r="2.6" fill="#16a085"/>
+<circle cx="110.4" cy="51.9" r="2.6" fill="#16a085"/>
+<circle cx="149.6" cy="58.5" r="2.6" fill="#16a085"/>
+<circle cx="199.2" cy="54.1" r="2.6" fill="#16a085"/>
+<circle cx="262.5" cy="84.1" r="2.6" fill="#16a085"/>
+<circle cx="348.0" cy="117.7" r="2.6" fill="#16a085"/>
+<circle cx="510.0" cy="157.2" r="2.6" fill="#16a085"/>
+<polyline points="52.0,100.9 84.3,118.4 124.5,130.9 176.4,147.0 247.6,178.4 333.4,177.0 502.0,196.0" fill="none" stroke="#c0392b" stroke-width="2"/>
+<circle cx="52.0" cy="100.9" r="2.6" fill="#c0392b"/>
+<circle cx="84.3" cy="118.4" r="2.6" fill="#c0392b"/>
+<circle cx="124.5" cy="130.9" r="2.6" fill="#c0392b"/>
+<circle cx="176.4" cy="147.0" r="2.6" fill="#c0392b"/>
+<circle cx="247.6" cy="178.4" r="2.6" fill="#c0392b"/>
+<circle cx="333.4" cy="177.0" r="2.6" fill="#c0392b"/>
+<circle cx="502.0" cy="196.0" r="2.6" fill="#c0392b"/>
+<polyline points="52.4,117.7 84.0,122.8 125.6,148.4 172.8,166.0 239.5,183.5 330.6,196.0 479.4,288.1" fill="none" stroke="#8e44ad" stroke-width="2"/>
+<circle cx="52.4" cy="117.7" r="2.6" fill="#8e44ad"/>
+<circle cx="84.0" cy="122.8" r="2.6" fill="#8e44ad"/>
+<circle cx="125.6" cy="148.4" r="2.6" fill="#8e44ad"/>
+<circle cx="172.8" cy="166.0" r="2.6" fill="#8e44ad"/>
+<circle cx="239.5" cy="183.5" r="2.6" fill="#8e44ad"/>
+<circle cx="330.6" cy="196.0" r="2.6" fill="#8e44ad"/>
+<circle cx="479.4" cy="288.1" r="2.6" fill="#8e44ad"/>
+<polyline points="56.1,96.5 89.0,110.4 120.7,102.4 177.4,119.2 237.6,125.8 315.1,159.4 491.7,227.4" fill="none" stroke="#e67e22" stroke-width="2"/>
+<circle cx="56.1" cy="96.5" r="2.6" fill="#e67e22"/>
+<circle cx="89.0" cy="110.4" r="2.6" fill="#e67e22"/>
+<circle cx="120.7" cy="102.4" r="2.6" fill="#e67e22"/>
+<circle cx="177.4" cy="119.2" r="2.6" fill="#e67e22"/>
+<circle cx="237.6" cy="125.8" r="2.6" fill="#e67e22"/>
+<circle cx="315.1" cy="159.4" r="2.6" fill="#e67e22"/>
+<circle cx="491.7" cy="227.4" r="2.6" fill="#e67e22"/>
+<circle cx="52.7" cy="171.8" r="5.5" fill="none" stroke="#2980b9" stroke-width="2"/>
+<circle cx="80.0" cy="47.5" r="5.5" fill="none" stroke="#16a085" stroke-width="2"/>
+<circle cx="52.0" cy="100.9" r="5.5" fill="none" stroke="#c0392b" stroke-width="2"/>
+<circle cx="52.4" cy="117.7" r="5.5" fill="none" stroke="#8e44ad" stroke-width="2"/>
+<circle cx="56.1" cy="96.5" r="5.5" fill="none" stroke="#e67e22" stroke-width="2"/>
+<rect x="522" y="32" width="10" height="10" fill="#2980b9"/>
+<text x="536" y="41" class="leg">granite-311M</text>
+<rect x="522" y="48" width="10" height="10" fill="#16a085"/>
+<text x="536" y="57" class="leg">snowflake-arctic-l-v2.0</text>
+<rect x="522" y="64" width="10" height="10" fill="#c0392b"/>
+<text x="536" y="73" class="leg">Qwen3-Emb-0.6B</text>
+<rect x="522" y="80" width="10" height="10" fill="#8e44ad"/>
+<text x="536" y="89" class="leg">embeddinggemma-300M</text>
+<rect x="522" y="96" width="10" height="10" fill="#e67e22"/>
+<text x="536" y="105" class="leg">LFM2.5-Emb-350M</text>
+</svg><figcaption>One line per model; each point is a gate. Circled = the gate selected by the composite.</figcaption></figure>
+<figure><svg viewBox="0 0 660 340" role="img">
+<text x="52" y="15" class="ct">Figure 2. sem_adjacent: answer@1024 (equal-budget) vs chunk size</text>
+<line x1="52" y1="298" x2="510" y2="298" class="grid"/>
+<text x="46" y="301" class="ax" text-anchor="end">0.50</text>
+<line x1="52" y1="244" x2="510" y2="244" class="grid"/>
+<text x="46" y="247" class="ax" text-anchor="end">0.58</text>
+<line x1="52" y1="190" x2="510" y2="190" class="grid"/>
+<text x="46" y="193" class="ax" text-anchor="end">0.67</text>
+<line x1="52" y1="136" x2="510" y2="136" class="grid"/>
+<text x="46" y="139" class="ax" text-anchor="end">0.75</text>
+<line x1="52" y1="82" x2="510" y2="82" class="grid"/>
+<text x="46" y="85" class="ax" text-anchor="end">0.83</text>
+<line x1="52" y1="28" x2="510" y2="28" class="grid"/>
+<text x="46" y="31" class="ax" text-anchor="end">0.92</text>
+<text x="236" y="313" class="ax" text-anchor="middle">160</text>
+<text x="465" y="313" class="ax" text-anchor="middle">320</text>
+<text x="281" y="337" class="ax" text-anchor="middle">mean chunk size (tokens, log)</text>
+<text x="14" y="163" class="ax" text-anchor="middle" transform="rotate(-90 14 163)">answer@1024</text>
+<polyline points="52.7,119.6 85.6,137.4 122.5,155.7 169.7,170.7 234.5,190.8 321.6,239.1 476.8,274.7" fill="none" stroke="#2980b9" stroke-width="2"/>
+<circle cx="52.7" cy="119.6" r="2.6" fill="#2980b9"/>
+<circle cx="85.6" cy="137.4" r="2.6" fill="#2980b9"/>
+<circle cx="122.5" cy="155.7" r="2.6" fill="#2980b9"/>
+<circle cx="169.7" cy="170.7" r="2.6" fill="#2980b9"/>
+<circle cx="234.5" cy="190.8" r="2.6" fill="#2980b9"/>
+<circle cx="321.6" cy="239.1" r="2.6" fill="#2980b9"/>
+<circle cx="476.8" cy="274.7" r="2.6" fill="#2980b9"/>
+<polyline points="80.0,50.6 110.4,50.6 149.6,64.0 199.2,73.4 262.5,85.1 348.0,120.7 510.0,193.0" fill="none" stroke="#16a085" stroke-width="2"/>
+<circle cx="80.0" cy="50.6" r="2.6" fill="#16a085"/>
+<circle cx="110.4" cy="50.6" r="2.6" fill="#16a085"/>
+<circle cx="149.6" cy="64.0" r="2.6" fill="#16a085"/>
+<circle cx="199.2" cy="73.4" r="2.6" fill="#16a085"/>
+<circle cx="262.5" cy="85.1" r="2.6" fill="#16a085"/>
+<circle cx="348.0" cy="120.7" r="2.6" fill="#16a085"/>
+<circle cx="510.0" cy="193.0" r="2.6" fill="#16a085"/>
+<polyline points="52.0,95.1 84.3,104.0 124.5,115.7 176.4,132.9 247.6,159.6 333.4,199.1 502.0,238.0" fill="none" stroke="#c0392b" stroke-width="2"/>
+<circle cx="52.0" cy="95.1" r="2.6" fill="#c0392b"/>
+<circle cx="84.3" cy="104.0" r="2.6" fill="#c0392b"/>
+<circle cx="124.5" cy="115.7" r="2.6" fill="#c0392b"/>
+<circle cx="176.4" cy="132.9" r="2.6" fill="#c0392b"/>
+<circle cx="247.6" cy="159.6" r="2.6" fill="#c0392b"/>
+<circle cx="333.4" cy="199.1" r="2.6" fill="#c0392b"/>
+<circle cx="502.0" cy="238.0" r="2.6" fill="#c0392b"/>
+<polyline points="52.4,80.7 84.0,88.4 125.6,94.6 172.8,109.6 239.5,138.5 330.6,163.5 479.4,263.6" fill="none" stroke="#8e44ad" stroke-width="2"/>
+<circle cx="52.4" cy="80.7" r="2.6" fill="#8e44ad"/>
+<circle cx="84.0" cy="88.4" r="2.6" fill="#8e44ad"/>
+<circle cx="125.6" cy="94.6" r="2.6" fill="#8e44ad"/>
+<circle cx="172.8" cy="109.6" r="2.6" fill="#8e44ad"/>
+<circle cx="239.5" cy="138.5" r="2.6" fill="#8e44ad"/>
+<circle cx="330.6" cy="163.5" r="2.6" fill="#8e44ad"/>
+<circle cx="479.4" cy="263.6" r="2.6" fill="#8e44ad"/>
+<polyline points="56.1,95.7 89.0,102.9 120.7,113.5 177.4,131.8 237.6,158.5 315.1,174.6 491.7,284.7" fill="none" stroke="#e67e22" stroke-width="2"/>
+<circle cx="56.1" cy="95.7" r="2.6" fill="#e67e22"/>
+<circle cx="89.0" cy="102.9" r="2.6" fill="#e67e22"/>
+<circle cx="120.7" cy="113.5" r="2.6" fill="#e67e22"/>
+<circle cx="177.4" cy="131.8" r="2.6" fill="#e67e22"/>
+<circle cx="237.6" cy="158.5" r="2.6" fill="#e67e22"/>
+<circle cx="315.1" cy="174.6" r="2.6" fill="#e67e22"/>
+<circle cx="491.7" cy="284.7" r="2.6" fill="#e67e22"/>
+<circle cx="52.7" cy="119.6" r="5.5" fill="none" stroke="#2980b9" stroke-width="2"/>
+<circle cx="80.0" cy="50.6" r="5.5" fill="none" stroke="#16a085" stroke-width="2"/>
+<circle cx="52.0" cy="95.1" r="5.5" fill="none" stroke="#c0392b" stroke-width="2"/>
+<circle cx="52.4" cy="80.7" r="5.5" fill="none" stroke="#8e44ad" stroke-width="2"/>
+<circle cx="56.1" cy="95.7" r="5.5" fill="none" stroke="#e67e22" stroke-width="2"/>
+<rect x="522" y="32" width="10" height="10" fill="#2980b9"/>
+<text x="536" y="41" class="leg">granite-311M</text>
+<rect x="522" y="48" width="10" height="10" fill="#16a085"/>
+<text x="536" y="57" class="leg">snowflake-arctic-l-v2.0</text>
+<rect x="522" y="64" width="10" height="10" fill="#c0392b"/>
+<text x="536" y="73" class="leg">Qwen3-Emb-0.6B</text>
+<rect x="522" y="80" width="10" height="10" fill="#8e44ad"/>
+<text x="536" y="89" class="leg">embeddinggemma-300M</text>
+<rect x="522" y="96" width="10" height="10" fill="#e67e22"/>
+<text x="536" y="105" class="leg">LFM2.5-Emb-350M</text>
+</svg><figcaption>Size-neutral view: hit within a 1024-token retrieved budget.</figcaption></figure>
+<table class="sortable"><caption>Table 3. Selected sem_adjacent gate per model.</caption><thead><tr><th title="Embedding model (served alone on :2235, doing boundaries + chunk + query vectors)">model</th><th title="sem_adjacent cut threshold: cut between sentences when 1-cos(adjacent) exceeds it">gate</th><th title="Mean chunk size in this model's own tokens">tok</th><th title="Answer recall@1: the #1 retrieved chunk covers an acceptable answer sentence">R@1</th><th title="Answer recall@5: an acceptable answer chunk is in the top 5">R@5</th><th title="Hit within the top chunks summing to ≤1024 tokens — equal retrieved-context budget (size-neutral)">ans@1024</th><th title="AUROC of the top-1 score separating in-document from out-of-domain queries (higher = better rejection)">AUC</th></tr></thead><tbody>
+<tr>
+<td class="m">granite-311M</td>
+<td>0.084</td>
+<td>92</td>
+<td>0.431</td>
+<td>0.681</td>
+<td>0.776</td>
+<td>0.947</td>
+</tr>
+<tr>
+<td class="m">snowflake-arctic-l-v2.0</td>
+<td>0.377</td>
+<td>100</td>
+<td>0.579</td>
+<td>0.828</td>
+<td>0.884</td>
+<td>0.937</td>
+</tr>
+<tr>
+<td class="m">Qwen3-Emb-0.6B</td>
+<td>0.367</td>
+<td>92</td>
+<td>0.516</td>
+<td>0.753</td>
+<td>0.814</td>
+<td>0.910</td>
+</tr>
+<tr>
+<td class="m">embeddinggemma-300M</td>
+<td>0.305</td>
+<td>92</td>
+<td>0.496</td>
+<td>0.741</td>
+<td>0.837</td>
+<td>0.926</td>
+</tr>
+<tr>
+<td class="m">LFM2.5-Emb-350M</td>
+<td>0.476</td>
+<td>93</td>
+<td>0.521</td>
+<td>0.756</td>
+<td>0.813</td>
+<td>0.931</td>
+</tr>
+</tbody></table>
+<h2>7. Chunker comparison</h2>
+<p>Eight chunkers per model, dense retrieval, carried prompt mode: per-sentence, four mechanical token caps, two overlapping caps, and the model's selected <code>sem_adjacent</code>. Smaller chunks win on pinpoint metrics and OOD rejection; larger caps trade that for deep recall. <code>answer@B</code> compares at an equal retrieved-token budget.</p>
+<p><b>How a chunk is indexed.</b> Every chunker emits the same kind of object: a contiguous run of whole sentences that becomes one <i>atomic record</i>, keyed by a shared chunk id across all three structures &mdash; the <code>chunks</code> table (text + sentence-span provenance), the sqlite-vec <code>vec0</code> index (one cosine vector), and an FTS5 row (a single <code>text</code> field, <code>rowid</code> = chunk id). The chunker decides only <i>what a record is</i> &mdash; where the boundaries fall &mdash; while that same record is what dense, BM25 and FTS5 each retrieve; because the id is shared, their ranked lists fuse directly by id under RRF (§8). A chunker therefore affects retrieval only by changing record boundaries and sizes, which is exactly what the table below isolates.</p>
+<figure><svg viewBox="0 0 720 330" role="img">
+<text x="44" y="15" class="ct">Figure 3. recall@1 by chunker × model (dense)</text>
+<line x1="44" y1="254" x2="570" y2="254" class="grid"/>
+<text x="39" y="257" class="ax" text-anchor="end">0.00</text>
+<line x1="44" y1="209" x2="570" y2="209" class="grid"/>
+<text x="39" y="212" class="ax" text-anchor="end">0.14</text>
+<line x1="44" y1="164" x2="570" y2="164" class="grid"/>
+<text x="39" y="167" class="ax" text-anchor="end">0.28</text>
+<line x1="44" y1="118" x2="570" y2="118" class="grid"/>
+<text x="39" y="121" class="ax" text-anchor="end">0.42</text>
+<line x1="44" y1="73" x2="570" y2="73" class="grid"/>
+<text x="39" y="76" class="ax" text-anchor="end">0.56</text>
+<line x1="44" y1="28" x2="570" y2="28" class="grid"/>
+<text x="39" y="31" class="ax" text-anchor="end">0.70</text>
+<text x="77" y="268" class="ax" text-anchor="end" transform="rotate(-35 77 268)">per_sentence</text>
+<rect x="47.0" y="108.0" width="10.8" height="146.0" fill="#2980b9"/>
+<rect x="58.9" y="60.1" width="10.8" height="193.9" fill="#16a085"/>
+<rect x="70.9" y="89.2" width="10.8" height="164.8" fill="#c0392b"/>
+<rect x="82.9" y="95.4" width="10.8" height="158.6" fill="#8e44ad"/>
+<rect x="94.8" y="97.6" width="10.8" height="156.4" fill="#e67e22"/>
+<text x="143" y="268" class="ax" text-anchor="end" transform="rotate(-35 143 268)">mech_256</text>
+<rect x="112.7" y="131.2" width="10.8" height="122.8" fill="#2980b9"/>
+<rect x="124.7" y="73.5" width="10.8" height="180.5" fill="#16a085"/>
+<rect x="136.6" y="101.5" width="10.8" height="152.5" fill="#c0392b"/>
+<rect x="148.6" y="87.2" width="10.8" height="166.8" fill="#8e44ad"/>
+<rect x="160.6" y="104.6" width="10.8" height="149.4" fill="#e67e22"/>
+<text x="208" y="268" class="ax" text-anchor="end" transform="rotate(-35 208 268)">mech_512</text>
+<rect x="178.5" y="139.9" width="10.8" height="114.1" fill="#2980b9"/>
+<rect x="190.4" y="94.5" width="10.8" height="159.5" fill="#16a085"/>
+<rect x="202.4" y="113.0" width="10.8" height="141.0" fill="#c0392b"/>
+<rect x="214.4" y="102.1" width="10.8" height="151.9" fill="#8e44ad"/>
+<rect x="226.3" y="116.1" width="10.8" height="137.9" fill="#e67e22"/>
+<text x="274" y="268" class="ax" text-anchor="end" transform="rotate(-35 274 268)">mech_1024</text>
+<rect x="244.2" y="141.6" width="10.8" height="112.4" fill="#2980b9"/>
+<rect x="256.2" y="88.1" width="10.8" height="165.9" fill="#16a085"/>
+<rect x="268.1" y="145.3" width="10.8" height="108.7" fill="#c0392b"/>
+<rect x="280.1" y="100.4" width="10.8" height="153.6" fill="#8e44ad"/>
+<rect x="292.1" y="134.3" width="10.8" height="119.7" fill="#e67e22"/>
+<text x="340" y="268" class="ax" text-anchor="end" transform="rotate(-35 340 268)">mech_1500</text>
+<rect x="310.0" y="140.8" width="10.8" height="113.2" fill="#2980b9"/>
+<rect x="321.9" y="97.6" width="10.8" height="156.4" fill="#16a085"/>
+<rect x="333.9" y="138.3" width="10.8" height="115.7" fill="#c0392b"/>
+<rect x="345.9" y="116.1" width="10.8" height="137.9" fill="#8e44ad"/>
+<rect x="357.8" y="152.8" width="10.8" height="101.2" fill="#e67e22"/>
+<text x="406" y="268" class="ax" text-anchor="end" transform="rotate(-35 406 268)">overlap_512</text>
+<rect x="375.7" y="140.8" width="10.8" height="113.2" fill="#2980b9"/>
+<rect x="387.7" y="92.3" width="10.8" height="161.7" fill="#16a085"/>
+<rect x="399.6" y="109.7" width="10.8" height="144.3" fill="#c0392b"/>
+<rect x="411.6" y="100.7" width="10.8" height="153.3" fill="#8e44ad"/>
+<rect x="423.6" y="116.4" width="10.8" height="137.6" fill="#e67e22"/>
+<text x="471" y="268" class="ax" text-anchor="end" transform="rotate(-35 471 268)">overlap_1024</text>
+<rect x="441.5" y="142.7" width="10.8" height="111.3" fill="#2980b9"/>
+<rect x="453.4" y="88.6" width="10.8" height="165.4" fill="#16a085"/>
+<rect x="465.4" y="143.3" width="10.8" height="110.7" fill="#c0392b"/>
+<rect x="477.4" y="104.9" width="10.8" height="149.1" fill="#8e44ad"/>
+<rect x="489.3" y="132.4" width="10.8" height="121.6" fill="#e67e22"/>
+<text x="537" y="268" class="ax" text-anchor="end" transform="rotate(-35 537 268)">sem_adjacent</text>
+<rect x="507.2" y="114.7" width="10.8" height="139.3" fill="#2980b9"/>
+<rect x="519.2" y="67.1" width="10.8" height="186.9" fill="#16a085"/>
+<rect x="531.1" y="87.5" width="10.8" height="166.5" fill="#c0392b"/>
+<rect x="543.1" y="94.0" width="10.8" height="160.0" fill="#8e44ad"/>
+<rect x="555.1" y="85.8" width="10.8" height="168.2" fill="#e67e22"/>
+<rect x="580" y="28" width="10" height="10" fill="#2980b9"/>
+<text x="594" y="37" class="leg">granite-311M</text>
+<rect x="580" y="44" width="10" height="10" fill="#16a085"/>
+<text x="594" y="53" class="leg">snowflake-arctic-l-v2.0</text>
+<rect x="580" y="60" width="10" height="10" fill="#c0392b"/>
+<text x="594" y="69" class="leg">Qwen3-Emb-0.6B</text>
+<rect x="580" y="76" width="10" height="10" fill="#8e44ad"/>
+<text x="594" y="85" class="leg">embeddinggemma-300M</text>
+<rect x="580" y="92" width="10" height="10" fill="#e67e22"/>
+<text x="594" y="101" class="leg">LFM2.5-Emb-350M</text>
+</svg><figcaption>Carried prompt mode, dense retrieval.</figcaption></figure>
+<h3>7.1 granite-311M (<code>granite</code>)</h3>
+<table class="sortable"><caption>Table 4.1. Chunkers under granite-311M, dense.</caption><thead><tr><th title="Chunking rule and target size">chunker</th><th title="Mean chunk size in this model's own tokens">tok</th><th title="Answer recall@1: the #1 retrieved chunk covers an acceptable answer sentence">R@1</th><th title="Answer recall@5: an acceptable answer chunk is in the top 5">R@5</th><th title="Answer recall@10: an acceptable answer chunk is in the top 10">R@10</th><th title="Hit within the top chunks summing to ≤256 tokens — equal retrieved-context budget (size-neutral)">ans@256</th><th title="Hit within the top chunks summing to ≤1024 tokens — equal retrieved-context budget (size-neutral)">ans@1024</th><th title="Mean reciprocal rank of the first hit within the top 10">MRR</th><th title="AUROC of the top-1 score separating in-document from out-of-domain queries (higher = better rejection)">AUC</th><th title="Equal error rate of in-doc vs out-of-domain separation (lower = better)">EER</th></tr></thead><tbody>
+<tr>
+<td class="m">per_sentence</td>
+<td>40</td>
+<td><b>0.452</b></td>
+<td>0.669</td>
+<td>0.715</td>
+<td>0.701</td>
+<td><b>0.794</b></td>
+<td><b>0.549</b></td>
+<td><b>0.961</b></td>
+<td><b>0.113</b></td>
+</tr>
+<tr>
+<td class="m">mech_256</td>
+<td>232</td>
+<td>0.380</td>
+<td>0.661</td>
+<td>0.742</td>
+<td>0.509</td>
+<td>0.659</td>
+<td>0.509</td>
+<td>0.932</td>
+<td>0.135</td>
+</tr>
+<tr>
+<td class="m">mech_512</td>
+<td>479</td>
+<td>0.353</td>
+<td>0.646</td>
+<td>0.750</td>
+<td>0.355</td>
+<td>0.561</td>
+<td>0.488</td>
+<td>0.919</td>
+<td>0.159</td>
+</tr>
+<tr>
+<td class="m">mech_1024</td>
+<td>952</td>
+<td>0.348</td>
+<td>0.645</td>
+<td>0.763</td>
+<td>0.348</td>
+<td>0.468</td>
+<td>0.485</td>
+<td>0.912</td>
+<td>0.174</td>
+</tr>
+<tr>
+<td class="m">mech_1500</td>
+<td>1437</td>
+<td>0.351</td>
+<td>0.653</td>
+<td>0.786</td>
+<td>0.351</td>
+<td>0.351</td>
+<td>0.492</td>
+<td>0.902</td>
+<td>0.179</td>
+</tr>
+<tr>
+<td class="m">overlap_512</td>
+<td>487</td>
+<td>0.351</td>
+<td>0.652</td>
+<td>0.752</td>
+<td>0.352</td>
+<td>0.563</td>
+<td>0.490</td>
+<td>0.922</td>
+<td>0.163</td>
+</tr>
+<tr>
+<td class="m">overlap_1024</td>
+<td>966</td>
+<td>0.345</td>
+<td>0.646</td>
+<td>0.764</td>
+<td>0.345</td>
+<td>0.477</td>
+<td>0.486</td>
+<td>0.915</td>
+<td>0.174</td>
+</tr>
+<tr>
+<td class="m">sem_adjacent (g=0.084)</td>
+<td>92</td>
+<td>0.431</td>
+<td><b>0.681</b></td>
+<td>0.758</td>
+<td>0.643</td>
+<td>0.776</td>
+<td>0.545</td>
+<td>0.947</td>
+<td>0.140</td>
+</tr>
+</tbody></table>
+<h3>7.2 snowflake-arctic-l-v2.0 (<code>snowflake</code>)</h3>
+<table class="sortable"><caption>Table 4.2. Chunkers under snowflake-arctic-l-v2.0, dense.</caption><thead><tr><th title="Chunking rule and target size">chunker</th><th title="Mean chunk size in this model's own tokens">tok</th><th title="Answer recall@1: the #1 retrieved chunk covers an acceptable answer sentence">R@1</th><th title="Answer recall@5: an acceptable answer chunk is in the top 5">R@5</th><th title="Answer recall@10: an acceptable answer chunk is in the top 10">R@10</th><th title="Hit within the top chunks summing to ≤256 tokens — equal retrieved-context budget (size-neutral)">ans@256</th><th title="Hit within the top chunks summing to ≤1024 tokens — equal retrieved-context budget (size-neutral)">ans@1024</th><th title="Mean reciprocal rank of the first hit within the top 10">MRR</th><th title="AUROC of the top-1 score separating in-document from out-of-domain queries (higher = better rejection)">AUC</th><th title="Equal error rate of in-doc vs out-of-domain separation (lower = better)">EER</th></tr></thead><tbody>
+<tr>
+<td class="m">per_sentence</td>
+<td>44</td>
+<td><b>0.601</b></td>
+<td>0.800</td>
+<td>0.853</td>
+<td>0.815</td>
+<td><b>0.902</b></td>
+<td><b>0.691</b></td>
+<td><b>0.940</b></td>
+<td><b>0.126</b></td>
+</tr>
+<tr>
+<td class="m">mech_256</td>
+<td>225</td>
+<td>0.559</td>
+<td>0.813</td>
+<td>0.878</td>
+<td>0.700</td>
+<td>0.810</td>
+<td>0.677</td>
+<td>0.933</td>
+<td>0.135</td>
+</tr>
+<tr>
+<td class="m">mech_512</td>
+<td>468</td>
+<td>0.494</td>
+<td>0.804</td>
+<td>0.882</td>
+<td>0.497</td>
+<td>0.709</td>
+<td>0.628</td>
+<td>0.923</td>
+<td>0.159</td>
+</tr>
+<tr>
+<td class="m">mech_1024</td>
+<td>961</td>
+<td>0.514</td>
+<td>0.820</td>
+<td>0.888</td>
+<td>0.514</td>
+<td>0.664</td>
+<td>0.647</td>
+<td>0.918</td>
+<td>0.169</td>
+</tr>
+<tr>
+<td class="m">mech_1500</td>
+<td>1419</td>
+<td>0.484</td>
+<td>0.806</td>
+<td>0.904</td>
+<td>0.484</td>
+<td>0.489</td>
+<td>0.627</td>
+<td>0.917</td>
+<td>0.179</td>
+</tr>
+<tr>
+<td class="m">overlap_512</td>
+<td>478</td>
+<td>0.501</td>
+<td>0.796</td>
+<td>0.878</td>
+<td>0.502</td>
+<td>0.707</td>
+<td>0.630</td>
+<td>0.922</td>
+<td>0.164</td>
+</tr>
+<tr>
+<td class="m">overlap_1024</td>
+<td>973</td>
+<td>0.512</td>
+<td>0.817</td>
+<td>0.892</td>
+<td>0.512</td>
+<td>0.657</td>
+<td>0.647</td>
+<td>0.916</td>
+<td>0.179</td>
+</tr>
+<tr>
+<td class="m">sem_adjacent (g=0.377)</td>
+<td>100</td>
+<td>0.579</td>
+<td><b>0.828</b></td>
+<td>0.884</td>
+<td>0.776</td>
+<td>0.884</td>
+<td>0.690</td>
+<td>0.937</td>
+<td>0.130</td>
+</tr>
+</tbody></table>
+<h3>7.3 Qwen3-Emb-0.6B (<code>qwen06b</code>)</h3>
+<table class="sortable"><caption>Table 4.3. Chunkers under Qwen3-Emb-0.6B, dense.</caption><thead><tr><th title="Chunking rule and target size">chunker</th><th title="Mean chunk size in this model's own tokens">tok</th><th title="Answer recall@1: the #1 retrieved chunk covers an acceptable answer sentence">R@1</th><th title="Answer recall@5: an acceptable answer chunk is in the top 5">R@5</th><th title="Answer recall@10: an acceptable answer chunk is in the top 10">R@10</th><th title="Hit within the top chunks summing to ≤256 tokens — equal retrieved-context budget (size-neutral)">ans@256</th><th title="Hit within the top chunks summing to ≤1024 tokens — equal retrieved-context budget (size-neutral)">ans@1024</th><th title="Mean reciprocal rank of the first hit within the top 10">MRR</th><th title="AUROC of the top-1 score separating in-document from out-of-domain queries (higher = better rejection)">AUC</th><th title="Equal error rate of in-doc vs out-of-domain separation (lower = better)">EER</th></tr></thead><tbody>
+<tr>
+<td class="m">per_sentence</td>
+<td>40</td>
+<td>0.510</td>
+<td>0.714</td>
+<td>0.783</td>
+<td>0.717</td>
+<td><b>0.840</b></td>
+<td>0.603</td>
+<td><b>0.921</b></td>
+<td><b>0.174</b></td>
+</tr>
+<tr>
+<td class="m">mech_256</td>
+<td>233</td>
+<td>0.472</td>
+<td>0.740</td>
+<td>0.806</td>
+<td>0.602</td>
+<td>0.734</td>
+<td>0.593</td>
+<td>0.893</td>
+<td>0.214</td>
+</tr>
+<tr>
+<td class="m">mech_512</td>
+<td>475</td>
+<td>0.437</td>
+<td>0.716</td>
+<td>0.821</td>
+<td>0.447</td>
+<td>0.632</td>
+<td>0.564</td>
+<td>0.876</td>
+<td>0.229</td>
+</tr>
+<tr>
+<td class="m">mech_1024</td>
+<td>966</td>
+<td>0.337</td>
+<td>0.654</td>
+<td>0.773</td>
+<td>0.337</td>
+<td>0.463</td>
+<td>0.479</td>
+<td>0.849</td>
+<td>0.250</td>
+</tr>
+<tr>
+<td class="m">mech_1500</td>
+<td>1441</td>
+<td>0.359</td>
+<td>0.668</td>
+<td>0.777</td>
+<td>0.359</td>
+<td>0.364</td>
+<td>0.502</td>
+<td>0.840</td>
+<td>0.274</td>
+</tr>
+<tr>
+<td class="m">overlap_512</td>
+<td>483</td>
+<td>0.447</td>
+<td>0.730</td>
+<td>0.819</td>
+<td>0.451</td>
+<td>0.642</td>
+<td>0.574</td>
+<td>0.872</td>
+<td>0.234</td>
+</tr>
+<tr>
+<td class="m">overlap_1024</td>
+<td>974</td>
+<td>0.343</td>
+<td>0.649</td>
+<td>0.771</td>
+<td>0.343</td>
+<td>0.464</td>
+<td>0.483</td>
+<td>0.846</td>
+<td>0.254</td>
+</tr>
+<tr>
+<td class="m">sem_adjacent (g=0.367)</td>
+<td>92</td>
+<td><b>0.516</b></td>
+<td><b>0.753</b></td>
+<td>0.806</td>
+<td>0.694</td>
+<td>0.814</td>
+<td><b>0.620</b></td>
+<td>0.910</td>
+<td>0.180</td>
+</tr>
+</tbody></table>
+<h3>7.4 embeddinggemma-300M (<code>gemma_np</code>)</h3>
+<table class="sortable"><caption>Table 4.4. Chunkers under embeddinggemma-300M, dense.</caption><thead><tr><th title="Chunking rule and target size">chunker</th><th title="Mean chunk size in this model's own tokens">tok</th><th title="Answer recall@1: the #1 retrieved chunk covers an acceptable answer sentence">R@1</th><th title="Answer recall@5: an acceptable answer chunk is in the top 5">R@5</th><th title="Answer recall@10: an acceptable answer chunk is in the top 10">R@10</th><th title="Hit within the top chunks summing to ≤256 tokens — equal retrieved-context budget (size-neutral)">ans@256</th><th title="Hit within the top chunks summing to ≤1024 tokens — equal retrieved-context budget (size-neutral)">ans@1024</th><th title="Mean reciprocal rank of the first hit within the top 10">MRR</th><th title="AUROC of the top-1 score separating in-document from out-of-domain queries (higher = better rejection)">AUC</th><th title="Equal error rate of in-doc vs out-of-domain separation (lower = better)">EER</th></tr></thead><tbody>
+<tr>
+<td class="m">per_sentence</td>
+<td>40</td>
+<td>0.491</td>
+<td>0.695</td>
+<td>0.762</td>
+<td>0.786</td>
+<td><b>0.855</b></td>
+<td>0.586</td>
+<td><b>0.951</b></td>
+<td><b>0.120</b></td>
+</tr>
+<tr>
+<td class="m">mech_256</td>
+<td>232</td>
+<td><b>0.516</b></td>
+<td><b>0.796</b></td>
+<td>0.866</td>
+<td>0.655</td>
+<td>0.795</td>
+<td><b>0.643</b></td>
+<td>0.883</td>
+<td>0.223</td>
+</tr>
+<tr>
+<td class="m">mech_512</td>
+<td>479</td>
+<td>0.470</td>
+<td>0.787</td>
+<td>0.873</td>
+<td>0.472</td>
+<td>0.704</td>
+<td>0.609</td>
+<td>0.846</td>
+<td>0.268</td>
+</tr>
+<tr>
+<td class="m">mech_1024</td>
+<td>952</td>
+<td>0.476</td>
+<td>0.775</td>
+<td>0.865</td>
+<td>0.476</td>
+<td>0.592</td>
+<td>0.605</td>
+<td>0.823</td>
+<td>0.288</td>
+</tr>
+<tr>
+<td class="m">mech_1500</td>
+<td>1437</td>
+<td>0.427</td>
+<td>0.736</td>
+<td>0.849</td>
+<td>0.427</td>
+<td>0.431</td>
+<td>0.567</td>
+<td>0.790</td>
+<td>0.319</td>
+</tr>
+<tr>
+<td class="m">overlap_512</td>
+<td>487</td>
+<td>0.475</td>
+<td>0.786</td>
+<td>0.874</td>
+<td>0.477</td>
+<td>0.699</td>
+<td>0.611</td>
+<td>0.845</td>
+<td>0.262</td>
+</tr>
+<tr>
+<td class="m">overlap_1024</td>
+<td>966</td>
+<td>0.462</td>
+<td>0.742</td>
+<td>0.839</td>
+<td>0.462</td>
+<td>0.582</td>
+<td>0.590</td>
+<td>0.822</td>
+<td>0.288</td>
+</tr>
+<tr>
+<td class="m">sem_adjacent (g=0.305)</td>
+<td>92</td>
+<td>0.496</td>
+<td>0.741</td>
+<td>0.799</td>
+<td>0.736</td>
+<td>0.837</td>
+<td>0.608</td>
+<td>0.926</td>
+<td>0.154</td>
+</tr>
+</tbody></table>
+<h3>7.5 LFM2.5-Emb-350M (<code>lfm2_np</code>)</h3>
+<table class="sortable"><caption>Table 4.5. Chunkers under LFM2.5-Emb-350M, dense.</caption><thead><tr><th title="Chunking rule and target size">chunker</th><th title="Mean chunk size in this model's own tokens">tok</th><th title="Answer recall@1: the #1 retrieved chunk covers an acceptable answer sentence">R@1</th><th title="Answer recall@5: an acceptable answer chunk is in the top 5">R@5</th><th title="Answer recall@10: an acceptable answer chunk is in the top 10">R@10</th><th title="Hit within the top chunks summing to ≤256 tokens — equal retrieved-context budget (size-neutral)">ans@256</th><th title="Hit within the top chunks summing to ≤1024 tokens — equal retrieved-context budget (size-neutral)">ans@1024</th><th title="Mean reciprocal rank of the first hit within the top 10">MRR</th><th title="AUROC of the top-1 score separating in-document from out-of-domain queries (higher = better rejection)">AUC</th><th title="Equal error rate of in-doc vs out-of-domain separation (lower = better)">EER</th></tr></thead><tbody>
+<tr>
+<td class="m">per_sentence</td>
+<td>41</td>
+<td>0.484</td>
+<td>0.695</td>
+<td>0.753</td>
+<td>0.729</td>
+<td><b>0.838</b></td>
+<td>0.579</td>
+<td><b>0.946</b></td>
+<td><b>0.129</b></td>
+</tr>
+<tr>
+<td class="m">mech_256</td>
+<td>232</td>
+<td>0.463</td>
+<td>0.753</td>
+<td>0.839</td>
+<td>0.600</td>
+<td>0.746</td>
+<td>0.593</td>
+<td>0.917</td>
+<td>0.179</td>
+</tr>
+<tr>
+<td class="m">mech_512</td>
+<td>475</td>
+<td>0.427</td>
+<td>0.713</td>
+<td>0.821</td>
+<td>0.429</td>
+<td>0.633</td>
+<td>0.560</td>
+<td>0.892</td>
+<td>0.204</td>
+</tr>
+<tr>
+<td class="m">mech_1024</td>
+<td>951</td>
+<td>0.371</td>
+<td>0.693</td>
+<td>0.801</td>
+<td>0.371</td>
+<td>0.503</td>
+<td>0.516</td>
+<td>0.864</td>
+<td>0.220</td>
+</tr>
+<tr>
+<td class="m">mech_1500</td>
+<td>1426</td>
+<td>0.313</td>
+<td>0.681</td>
+<td>0.822</td>
+<td>0.313</td>
+<td>0.313</td>
+<td>0.477</td>
+<td>0.852</td>
+<td>0.259</td>
+</tr>
+<tr>
+<td class="m">overlap_512</td>
+<td>482</td>
+<td>0.426</td>
+<td>0.720</td>
+<td>0.823</td>
+<td>0.427</td>
+<td>0.630</td>
+<td>0.560</td>
+<td>0.891</td>
+<td>0.199</td>
+</tr>
+<tr>
+<td class="m">overlap_1024</td>
+<td>961</td>
+<td>0.377</td>
+<td>0.695</td>
+<td>0.808</td>
+<td>0.377</td>
+<td>0.505</td>
+<td>0.522</td>
+<td>0.862</td>
+<td>0.229</td>
+</tr>
+<tr>
+<td class="m">sem_adjacent (g=0.476)</td>
+<td>93</td>
+<td><b>0.521</b></td>
+<td><b>0.756</b></td>
+<td>0.831</td>
+<td>0.672</td>
+<td>0.813</td>
+<td><b>0.626</b></td>
+<td>0.931</td>
+<td>0.139</td>
+</tr>
+</tbody></table>
+<h2>8. Lexical backend: BM25 vs FTS5 (+RRF)</h2>
+<p>For each model's best dense chunker we compare lexical arms: a custom numpy Okapi BM25 and SQLite's built-in FTS5 (its own BM25 + tokenizer), standalone and as a dense+lexical RRF hybrid. Exact tokens (article numbers, &lsquo;qualified majority&rsquo;) matter for legal text, so the hybrid is the relevant comparison.</p>
+<h3>8.1 granite-311M (base <code>per_sentence</code>)</h3>
+<table class="sortable"><caption>Table 5.1. Lexical arms on granite-311M/per_sentence.</caption><thead><tr><th title="Lexical/fusion arm: dense only, BM25, FTS5, or a dense+lexical RRF hybrid">lexical</th><th title="Answer recall@1: the #1 retrieved chunk covers an acceptable answer sentence">R@1</th><th title="Answer recall@5: an acceptable answer chunk is in the top 5">R@5</th><th title="Answer recall@10: an acceptable answer chunk is in the top 10">R@10</th><th title="Hit within the top chunks summing to ≤1024 tokens — equal retrieved-context budget (size-neutral)">ans@1024</th><th title="Mean reciprocal rank of the first hit within the top 10">MRR</th><th title="AUROC of the top-1 score separating in-document from out-of-domain queries (higher = better rejection)">AUC</th></tr></thead><tbody>
+<tr>
+<td class="m">dense</td>
+<td>0.452</td>
+<td>0.669</td>
+<td>0.715</td>
+<td>0.794</td>
+<td>0.549</td>
+<td><b>0.961</b></td>
+</tr>
+<tr>
+<td class="m">bm25</td>
+<td><b>0.507</b></td>
+<td>0.673</td>
+<td>0.723</td>
+<td>0.798</td>
+<td>0.582</td>
+<td>0.863</td>
+</tr>
+<tr>
+<td class="m">fts5</td>
+<td>0.504</td>
+<td>0.679</td>
+<td>0.731</td>
+<td>0.810</td>
+<td>0.584</td>
+<td>0.862</td>
+</tr>
+<tr>
+<td class="m">bm25_hybrid</td>
+<td>0.501</td>
+<td>0.714</td>
+<td>0.823</td>
+<td>0.886</td>
+<td>0.601</td>
+<td>0.901</td>
+</tr>
+<tr>
+<td class="m">fts5_hybrid</td>
+<td>0.501</td>
+<td><b>0.721</b></td>
+<td>0.826</td>
+<td><b>0.892</b></td>
+<td><b>0.605</b></td>
+<td>0.898</td>
+</tr>
+</tbody></table>
+<h3>8.2 snowflake-arctic-l-v2.0 (base <code>semadj_g0.3772</code>)</h3>
+<table class="sortable"><caption>Table 5.2. Lexical arms on snowflake-arctic-l-v2.0/semadj_g0.3772.</caption><thead><tr><th title="Lexical/fusion arm: dense only, BM25, FTS5, or a dense+lexical RRF hybrid">lexical</th><th title="Answer recall@1: the #1 retrieved chunk covers an acceptable answer sentence">R@1</th><th title="Answer recall@5: an acceptable answer chunk is in the top 5">R@5</th><th title="Answer recall@10: an acceptable answer chunk is in the top 10">R@10</th><th title="Hit within the top chunks summing to ≤1024 tokens — equal retrieved-context budget (size-neutral)">ans@1024</th><th title="Mean reciprocal rank of the first hit within the top 10">MRR</th><th title="AUROC of the top-1 score separating in-document from out-of-domain queries (higher = better rejection)">AUC</th></tr></thead><tbody>
+<tr>
+<td class="m">dense</td>
+<td>0.579</td>
+<td>0.828</td>
+<td>0.884</td>
+<td>0.884</td>
+<td>0.690</td>
+<td><b>0.937</b></td>
+</tr>
+<tr>
+<td class="m">bm25</td>
+<td>0.542</td>
+<td>0.744</td>
+<td>0.812</td>
+<td>0.812</td>
+<td>0.635</td>
+<td>0.882</td>
+</tr>
+<tr>
+<td class="m">fts5</td>
+<td>0.553</td>
+<td>0.747</td>
+<td>0.810</td>
+<td>0.815</td>
+<td>0.642</td>
+<td>0.872</td>
+</tr>
+<tr>
+<td class="m">bm25_hybrid</td>
+<td>0.591</td>
+<td>0.841</td>
+<td>0.891</td>
+<td>0.884</td>
+<td>0.702</td>
+<td>0.897</td>
+</tr>
+<tr>
+<td class="m">fts5_hybrid</td>
+<td><b>0.602</b></td>
+<td><b>0.849</b></td>
+<td>0.899</td>
+<td><b>0.890</b></td>
+<td><b>0.711</b></td>
+<td>0.893</td>
+</tr>
+</tbody></table>
+<h3>8.3 Qwen3-Emb-0.6B (base <code>semadj_g0.3672</code>)</h3>
+<table class="sortable"><caption>Table 5.3. Lexical arms on Qwen3-Emb-0.6B/semadj_g0.3672.</caption><thead><tr><th title="Lexical/fusion arm: dense only, BM25, FTS5, or a dense+lexical RRF hybrid">lexical</th><th title="Answer recall@1: the #1 retrieved chunk covers an acceptable answer sentence">R@1</th><th title="Answer recall@5: an acceptable answer chunk is in the top 5">R@5</th><th title="Answer recall@10: an acceptable answer chunk is in the top 10">R@10</th><th title="Hit within the top chunks summing to ≤1024 tokens — equal retrieved-context budget (size-neutral)">ans@1024</th><th title="Mean reciprocal rank of the first hit within the top 10">MRR</th><th title="AUROC of the top-1 score separating in-document from out-of-domain queries (higher = better rejection)">AUC</th></tr></thead><tbody>
+<tr>
+<td class="m">dense</td>
+<td>0.516</td>
+<td>0.753</td>
+<td>0.806</td>
+<td>0.814</td>
+<td>0.620</td>
+<td><b>0.910</b></td>
+</tr>
+<tr>
+<td class="m">bm25</td>
+<td>0.550</td>
+<td>0.739</td>
+<td>0.799</td>
+<td>0.812</td>
+<td>0.636</td>
+<td>0.891</td>
+</tr>
+<tr>
+<td class="m">fts5</td>
+<td>0.542</td>
+<td>0.741</td>
+<td>0.800</td>
+<td>0.813</td>
+<td>0.633</td>
+<td>0.884</td>
+</tr>
+<tr>
+<td class="m">bm25_hybrid</td>
+<td>0.557</td>
+<td>0.795</td>
+<td>0.855</td>
+<td>0.860</td>
+<td>0.662</td>
+<td>0.852</td>
+</tr>
+<tr>
+<td class="m">fts5_hybrid</td>
+<td><b>0.562</b></td>
+<td><b>0.800</b></td>
+<td>0.866</td>
+<td><b>0.872</b></td>
+<td><b>0.668</b></td>
+<td>0.841</td>
+</tr>
+</tbody></table>
+<h3>8.4 embeddinggemma-300M (base <code>mech_256</code>)</h3>
+<table class="sortable"><caption>Table 5.4. Lexical arms on embeddinggemma-300M/mech_256.</caption><thead><tr><th title="Lexical/fusion arm: dense only, BM25, FTS5, or a dense+lexical RRF hybrid">lexical</th><th title="Answer recall@1: the #1 retrieved chunk covers an acceptable answer sentence">R@1</th><th title="Answer recall@5: an acceptable answer chunk is in the top 5">R@5</th><th title="Answer recall@10: an acceptable answer chunk is in the top 10">R@10</th><th title="Hit within the top chunks summing to ≤1024 tokens — equal retrieved-context budget (size-neutral)">ans@1024</th><th title="Mean reciprocal rank of the first hit within the top 10">MRR</th><th title="AUROC of the top-1 score separating in-document from out-of-domain queries (higher = better rejection)">AUC</th></tr></thead><tbody>
+<tr>
+<td class="m">dense</td>
+<td>0.516</td>
+<td>0.796</td>
+<td>0.866</td>
+<td>0.795</td>
+<td>0.643</td>
+<td>0.883</td>
+</tr>
+<tr>
+<td class="m">bm25</td>
+<td>0.599</td>
+<td>0.794</td>
+<td>0.847</td>
+<td>0.795</td>
+<td>0.687</td>
+<td><b>0.884</b></td>
+</tr>
+<tr>
+<td class="m">fts5</td>
+<td><b>0.601</b></td>
+<td>0.786</td>
+<td>0.845</td>
+<td>0.786</td>
+<td>0.685</td>
+<td>0.865</td>
+</tr>
+<tr>
+<td class="m">bm25_hybrid</td>
+<td>0.589</td>
+<td>0.854</td>
+<td>0.910</td>
+<td>0.854</td>
+<td>0.708</td>
+<td>0.874</td>
+</tr>
+<tr>
+<td class="m">fts5_hybrid</td>
+<td>0.587</td>
+<td><b>0.860</b></td>
+<td>0.912</td>
+<td><b>0.856</b></td>
+<td><b>0.710</b></td>
+<td>0.875</td>
+</tr>
+</tbody></table>
+<h3>8.5 LFM2.5-Emb-350M (base <code>semadj_g0.4764</code>)</h3>
+<table class="sortable"><caption>Table 5.5. Lexical arms on LFM2.5-Emb-350M/semadj_g0.4764.</caption><thead><tr><th title="Lexical/fusion arm: dense only, BM25, FTS5, or a dense+lexical RRF hybrid">lexical</th><th title="Answer recall@1: the #1 retrieved chunk covers an acceptable answer sentence">R@1</th><th title="Answer recall@5: an acceptable answer chunk is in the top 5">R@5</th><th title="Answer recall@10: an acceptable answer chunk is in the top 10">R@10</th><th title="Hit within the top chunks summing to ≤1024 tokens — equal retrieved-context budget (size-neutral)">ans@1024</th><th title="Mean reciprocal rank of the first hit within the top 10">MRR</th><th title="AUROC of the top-1 score separating in-document from out-of-domain queries (higher = better rejection)">AUC</th></tr></thead><tbody>
+<tr>
+<td class="m">dense</td>
+<td>0.521</td>
+<td>0.756</td>
+<td>0.831</td>
+<td>0.813</td>
+<td>0.626</td>
+<td><b>0.931</b></td>
+</tr>
+<tr>
+<td class="m">bm25</td>
+<td>0.541</td>
+<td>0.734</td>
+<td>0.804</td>
+<td>0.812</td>
+<td>0.632</td>
+<td>0.888</td>
+</tr>
+<tr>
+<td class="m">fts5</td>
+<td>0.552</td>
+<td>0.743</td>
+<td>0.806</td>
+<td>0.813</td>
+<td>0.640</td>
+<td>0.876</td>
+</tr>
+<tr>
+<td class="m">bm25_hybrid</td>
+<td>0.569</td>
+<td>0.808</td>
+<td>0.878</td>
+<td>0.865</td>
+<td>0.681</td>
+<td>0.887</td>
+</tr>
+<tr>
+<td class="m">fts5_hybrid</td>
+<td><b>0.576</b></td>
+<td><b>0.813</b></td>
+<td>0.885</td>
+<td><b>0.872</b></td>
+<td><b>0.686</b></td>
+<td>0.884</td>
+</tr>
+</tbody></table>
+<h2>9. RRF weight on the lexical (FTS5) arm</h2>
+<p>The winning lexical pipeline <code>snowflake/semadj_g0.3772/fts5_hybrid</code> fuses the dense and FTS5 arms by RRF. Here we hold the dense arm at weight 1.0 and sweep the FTS5 arm's RRF weight over [0.25, 0.5, 1.0, 2.0, 4.0] (1.0 = the equal-weight default). FTS5 is exact-token, so we score the <b>misspelled</b> (122) and <b>clean</b> (1030) in-document subsets separately: lexical weight should help well-formed queries and hurt typo'd ones.</p>
+<figure><svg viewBox="0 0 660 340" role="img">
+<text x="52" y="15" class="ct">Figure 4. RRF FTS5-arm weight vs recall (clean vs misspelled)</text>
+<line x1="52" y1="298" x2="510" y2="298" class="grid"/>
+<text x="46" y="301" class="ax" text-anchor="end">0.27</text>
+<line x1="52" y1="244" x2="510" y2="244" class="grid"/>
+<text x="46" y="247" class="ax" text-anchor="end">0.40</text>
+<line x1="52" y1="190" x2="510" y2="190" class="grid"/>
+<text x="46" y="193" class="ax" text-anchor="end">0.52</text>
+<line x1="52" y1="136" x2="510" y2="136" class="grid"/>
+<text x="46" y="139" class="ax" text-anchor="end">0.65</text>
+<line x1="52" y1="82" x2="510" y2="82" class="grid"/>
+<text x="46" y="85" class="ax" text-anchor="end">0.78</text>
+<line x1="52" y1="28" x2="510" y2="28" class="grid"/>
+<text x="46" y="31" class="ax" text-anchor="end">0.91</text>
+<text x="52" y="313" class="ax" text-anchor="middle">0.25</text>
+<text x="166" y="313" class="ax" text-anchor="middle">0.5</text>
+<text x="281" y="313" class="ax" text-anchor="middle">1.0</text>
+<text x="395" y="313" class="ax" text-anchor="middle">2.0</text>
+<text x="510" y="313" class="ax" text-anchor="middle">4.0</text>
+<text x="281" y="337" class="ax" text-anchor="middle">FTS5-arm RRF weight (dense=1.0, log)</text>
+<text x="14" y="163" class="ax" text-anchor="middle" transform="rotate(-90 14 163)">recall</text>
+<polyline points="52.0,44.7 166.5,43.9 281.0,42.7 395.5,48.0 510.0,54.5" fill="none" stroke="#16a085" stroke-width="2"/>
+<circle cx="52.0" cy="44.7" r="2.6" fill="#16a085"/>
+<circle cx="166.5" cy="43.9" r="2.6" fill="#16a085"/>
+<circle cx="281.0" cy="42.7" r="2.6" fill="#16a085"/>
+<circle cx="395.5" cy="48.0" r="2.6" fill="#16a085"/>
+<circle cx="510.0" cy="54.5" r="2.6" fill="#16a085"/>
+<polyline points="52.0,140.9 166.5,145.0 281.0,144.2 395.5,142.1 510.0,140.9" fill="none" stroke="#2980b9" stroke-width="2"/>
+<circle cx="52.0" cy="140.9" r="2.6" fill="#2980b9"/>
+<circle cx="166.5" cy="145.0" r="2.6" fill="#2980b9"/>
+<circle cx="281.0" cy="144.2" r="2.6" fill="#2980b9"/>
+<circle cx="395.5" cy="142.1" r="2.6" fill="#2980b9"/>
+<circle cx="510.0" cy="140.9" r="2.6" fill="#2980b9"/>
+<polyline points="52.0,114.4 166.5,138.5 281.0,148.8 395.5,203.9 510.0,227.9" fill="none" stroke="#e67e22" stroke-width="2"/>
+<circle cx="52.0" cy="114.4" r="2.6" fill="#e67e22"/>
+<circle cx="166.5" cy="138.5" r="2.6" fill="#e67e22"/>
+<circle cx="281.0" cy="148.8" r="2.6" fill="#e67e22"/>
+<circle cx="395.5" cy="203.9" r="2.6" fill="#e67e22"/>
+<circle cx="510.0" cy="227.9" r="2.6" fill="#e67e22"/>
+<polyline points="52.0,231.4 166.5,262.4 281.0,269.2 395.5,289.9 510.0,293.3" fill="none" stroke="#c0392b" stroke-width="2"/>
+<circle cx="52.0" cy="231.4" r="2.6" fill="#c0392b"/>
+<circle cx="166.5" cy="262.4" r="2.6" fill="#c0392b"/>
+<circle cx="281.0" cy="269.2" r="2.6" fill="#c0392b"/>
+<circle cx="395.5" cy="289.9" r="2.6" fill="#c0392b"/>
+<circle cx="510.0" cy="293.3" r="2.6" fill="#c0392b"/>
+<rect x="522" y="32" width="10" height="10" fill="#16a085"/>
+<text x="536" y="41" class="leg">clean R@5</text>
+<rect x="522" y="48" width="10" height="10" fill="#2980b9"/>
+<text x="536" y="57" class="leg">clean R@1</text>
+<rect x="522" y="64" width="10" height="10" fill="#e67e22"/>
+<text x="536" y="73" class="leg">misspelled R@5</text>
+<rect x="522" y="80" width="10" height="10" fill="#c0392b"/>
+<text x="536" y="89" class="leg">misspelled R@1</text>
+</svg><figcaption>Misspelled queries fall off sharply as the FTS5 arm gains weight (exact-token matching cannot survive typos). The clean curve is nearly flat — it now blends paraphrase (which wants the lexical arm down) with exact-extraction (which wants it up, §9.1) — so no single global weight is right.</figcaption></figure>
+<table class="sortable"><caption>Table 6. FTS5-arm RRF weight sweep on snowflake/semadj_g0.3772/fts5_hybrid, clean vs misspelled queries.</caption><thead><tr><th title="RRF weight on the FTS5 lexical arm (dense arm fixed at 1.0). &gt;1 favours exact-token matches; &lt;1 favours the dense embedder">w_fts</th><th title="recall@1 on non-misspelled (clean) in-document questions">clean R@1</th><th title="recall@5 on non-misspelled questions">clean R@5</th><th title="mean reciprocal rank on non-misspelled questions">clean MRR</th><th title="recall@1 on the misspelled-query subgroup">mis R@1</th><th title="recall@5 on the misspelled-query subgroup">mis R@5</th><th title="mean reciprocal rank on the misspelled-query subgroup">mis MRR</th></tr></thead><tbody>
+<tr>
+<td>0.25</td>
+<td><b>0.642</b></td>
+<td>0.871</td>
+<td><b>0.744</b></td>
+<td><b>0.426</b></td>
+<td><b>0.705</b></td>
+<td><b>0.555</b></td>
+</tr>
+<tr>
+<td>0.50</td>
+<td>0.632</td>
+<td>0.873</td>
+<td>0.737</td>
+<td>0.352</td>
+<td>0.648</td>
+<td>0.492</td>
+</tr>
+<tr>
+<td>1.00</td>
+<td>0.634</td>
+<td><b>0.876</b></td>
+<td>0.740</td>
+<td>0.336</td>
+<td>0.623</td>
+<td>0.459</td>
+</tr>
+<tr>
+<td>2.00</td>
+<td>0.639</td>
+<td>0.863</td>
+<td>0.737</td>
+<td>0.287</td>
+<td>0.492</td>
+<td>0.385</td>
+</tr>
+<tr>
+<td>4.00</td>
+<td><b>0.642</b></td>
+<td>0.848</td>
+<td>0.735</td>
+<td>0.279</td>
+<td>0.434</td>
+<td>0.368</td>
+</tr>
+</tbody></table>
+<p><b>Why one global weight is wrong.</b> FTS5/BM25 is the right tool for exact-token queries (article numbers, percentages, dates, defined terms of art) that dense embedders blur &mdash; e.g. &lsquo;Article&nbsp;50&rsquo; vs &lsquo;Article&nbsp;52&rsquo; &mdash; but it adds noise on paraphrase. This eval set is now 70% paraphrase / 30% exact-extraction (§2), so the &lsquo;clean&rsquo; column above mixes both regimes and the aggregate weight preference is a compromise. The right reading is &lsquo;do not <i>over</i>-weight FTS5 globally, and never drop it&rsquo;. §9.1 separates the two regimes on a dedicated exact-extraction probe and shows the weight preference inverts &mdash; motivating per-query <i>score-gated</i> fusion instead of a fixed weight.</p><h3>9.1 Exact-extraction probe and score-gated fusion</h3>
+<p>We mine the corpus for 134 grounded queries anchored on an exact token dense embeddings blur &mdash; percentages (e.g. the 55&thinsp;% / 65&thinsp;% qualified-majority thresholds), protocol numbers and article+paragraph references &mdash; and score them against the 680 clean paraphrase questions. The weight preference <b>inverts</b>: exact-extraction wants the FTS5 arm <i>up</i>-weighted (dense alone is weakest; recall@1 climbs steeply with FTS5 weight), while paraphrase wants it down-weighted &mdash; one global weight cannot serve both.</p>
+<table class="sortable"><caption>Table 7. Exact-extraction probe vs clean paraphrase: dense, FTS5-weight hybrids, and score-gated hybrids (weak FTS5 hits below a BM25 percentile floor dropped before fusion).</caption><thead><tr><th title="Retrieval/fusion method: dense only, dense+FTS5 RRF at a given FTS5 weight, or score-gated (weak FTS5 hits dropped before fusion)">method</th><th title="recall@1 on the exact-extraction probe (queries anchored on exact tokens)">exact R@1</th><th title="recall@5 on the exact-extraction probe">exact R@5</th><th title="recall@1 on the clean paraphrase questions">para R@1</th><th title="recall@5 on the clean paraphrase questions">para R@5</th></tr></thead><tbody>
+<tr>
+<td class="m">dense</td>
+<td>0.537</td>
+<td>0.784</td>
+<td>0.651</td>
+<td>0.893</td>
+</tr>
+<tr>
+<td class="m">hybrid w=0.25</td>
+<td>0.604</td>
+<td>0.843</td>
+<td><b>0.666</b></td>
+<td><b>0.896</b></td>
+</tr>
+<tr>
+<td class="m">hybrid w=1</td>
+<td>0.672</td>
+<td>0.896</td>
+<td>0.632</td>
+<td>0.874</td>
+</tr>
+<tr>
+<td class="m">hybrid w=2</td>
+<td>0.754</td>
+<td>0.918</td>
+<td>0.609</td>
+<td>0.846</td>
+</tr>
+<tr>
+<td class="m">hybrid w=4</td>
+<td><b>0.761</b></td>
+<td>0.933</td>
+<td>0.599</td>
+<td>0.821</td>
+</tr>
+<tr>
+<td class="m">gated p75 (w=1)</td>
+<td>0.672</td>
+<td>0.918</td>
+<td>0.635</td>
+<td>0.881</td>
+</tr>
+<tr>
+<td class="m">gated p90 (w=1)</td>
+<td>0.679</td>
+<td><b>0.940</b></td>
+<td>0.646</td>
+<td>0.884</td>
+</tr>
+</tbody></table>
+<p><b>Score-gating resolves the tension.</b> Dropping low-BM25 FTS5 hits before fusion (keeping only confident, rare-token matches) lifts exact-extraction recall@5 close to the heavy-weight hybrid <i>and</i> improves paraphrase recall@1 over the equal-weight hybrid &mdash; it is better than a flat weight on both query types at once, because the floor (not a fixed weight) decides per query whether lexical evidence is trustworthy. A confidence-gated lexical arm &mdash; ideally gated <i>and</i> up-weighted on the survivors &mdash; is the recommended production fusion.</p>
+<h2>10. Model selection (composite + cost)</h2>
+<p>Each model is represented by its own best (chunker, lexical_backend) by a pinpoint+rejection composite (z-scored R@1, MRR, AUC at 2×; R@5, ans@1024 at 1×). Models are ranked by the same composite; dimension and throughput are reported but not scored.</p>
+<table class="sortable"><caption>Table 8. Best pipeline per model, ranked by composite. Cost columns (dim, vec/s) are informational.</caption><thead><tr><th title="Overall rank by the composite score">rank</th><th title="Recommended triple: embedder/chunker/lexical_backend">label</th><th title="Embedding dimension (vector storage + cosine search cost per chunk)">dim</th><th title="Raw embedding throughput on this host: corpus sentences embedded per second">vec/s</th><th title="Answer recall@1: the #1 retrieved chunk covers an acceptable answer sentence">R@1</th><th title="Answer recall@5: an acceptable answer chunk is in the top 5">R@5</th><th title="Hit within the top chunks summing to ≤1024 tokens — equal retrieved-context budget (size-neutral)">ans@1024</th><th title="Mean reciprocal rank of the first hit within the top 10">MRR</th><th title="AUROC of the top-1 score separating in-document from out-of-domain queries (higher = better rejection)">AUC</th><th title="Equal error rate of in-doc vs out-of-domain separation (lower = better)">EER</th><th title="Pinpoint+rejection composite: weighted mean of z-scored R@1, MRR, AUC (2×) and R@5, ans@1024 (1×)">score</th></tr></thead><tbody>
+<tr>
+<td>1</td>
+<td>snowflake/semadj_g0.3772/fts5_hybrid</td>
+<td>1024</td>
+<td>60</td>
+<td>0.602</td>
+<td>0.849</td>
+<td>0.890</td>
+<td>0.711</td>
+<td>0.893</td>
+<td>0.170</td>
+<td>+0.93</td>
+</tr>
+<tr>
+<td>2</td>
+<td>gemma_np/mech_256/fts5_hybrid</td>
+<td>768</td>
+<td>151</td>
+<td>0.587</td>
+<td>0.860</td>
+<td>0.856</td>
+<td>0.710</td>
+<td>0.875</td>
+<td>0.200</td>
+<td>+0.22</td>
+</tr>
+<tr>
+<td>3</td>
+<td>qwen06b/overlap_512/bm25</td>
+<td>1024</td>
+<td>44</td>
+<td>0.610</td>
+<td>0.827</td>
+<td>0.768</td>
+<td>0.705</td>
+<td>0.862</td>
+<td>0.182</td>
+<td>-0.16</td>
+</tr>
+<tr>
+<td>4</td>
+<td>granite/overlap_512/bm25</td>
+<td>768</td>
+<td>155</td>
+<td>0.609</td>
+<td>0.823</td>
+<td>0.771</td>
+<td>0.703</td>
+<td>0.863</td>
+<td>0.183</td>
+<td>-0.26</td>
+</tr>
+<tr>
+<td>5</td>
+<td>lfm2_np/semadj_g0.4764/fts5_hybrid</td>
+<td>1024</td>
+<td>73</td>
+<td>0.576</td>
+<td>0.813</td>
+<td>0.872</td>
+<td>0.686</td>
+<td>0.884</td>
+<td>0.173</td>
+<td>-0.73</td>
+</tr>
+</tbody></table>
+<p><b>Recommendation.</b> The best model/chunker/lexical triple is <code>snowflake/semadj_g0.3772/fts5_hybrid</code> (dim 1024, recall@1 0.602, recall@5 0.849, AUC 0.893). Cost is reported alongside quality: dimension drives vec0 storage and cosine-search cost, throughput the ingestion rate. Quality decides the ranking; cost is the tie-breaker to override the pick. The cost-efficient runner-up is <code>gemma_np/mech_256/fts5_hybrid</code> (dim 768, 151 vec/s vs 60, recall@1 0.587); prefer it if index size or ingest throughput dominates.</p>
+<h2>11. Generalization</h2>
+<p>Replication of the winner (<code>snowflake-arctic-embed-l-v2.0-q8_0.gguf</code>, one model the whole path) on 120 grounded questions over a contrasting non-legal corpus (Darwin, <i>Origin of Species</i>). The same size law and semantic≥random ordering hold.</p>
+<figure><svg viewBox="0 0 660 340" role="img">
+<text x="52" y="15" class="ct">Figure 5. Generalization: recall@1 vs chunk size</text>
+<line x1="52" y1="298" x2="510" y2="298" class="grid"/>
+<text x="46" y="301" class="ax" text-anchor="end">0.30</text>
+<line x1="52" y1="244" x2="510" y2="244" class="grid"/>
+<text x="46" y="247" class="ax" text-anchor="end">0.37</text>
+<line x1="52" y1="190" x2="510" y2="190" class="grid"/>
+<text x="46" y="193" class="ax" text-anchor="end">0.45</text>
+<line x1="52" y1="136" x2="510" y2="136" class="grid"/>
+<text x="46" y="139" class="ax" text-anchor="end">0.52</text>
+<line x1="52" y1="82" x2="510" y2="82" class="grid"/>
+<text x="46" y="85" class="ax" text-anchor="end">0.60</text>
+<line x1="52" y1="28" x2="510" y2="28" class="grid"/>
+<text x="46" y="31" class="ax" text-anchor="end">0.68</text>
+<text x="184" y="313" class="ax" text-anchor="middle">160</text>
+<text x="353" y="313" class="ax" text-anchor="middle">320</text>
+<text x="281" y="337" class="ax" text-anchor="middle">mean chunk size (tokens, log)</text>
+<text x="14" y="163" class="ax" text-anchor="middle" transform="rotate(-90 14 163)">recall@1</text>
+<polyline points="83.8,52.4 107.8,58.3 135.0,111.6 170.2,141.2 211.6,147.1 262.8,206.3 387.4,265.6" fill="none" stroke="#c0392b" stroke-width="2"/>
+<circle cx="83.8" cy="52.4" r="2.6" fill="#c0392b"/>
+<circle cx="107.8" cy="58.3" r="2.6" fill="#c0392b"/>
+<circle cx="135.0" cy="111.6" r="2.6" fill="#c0392b"/>
+<circle cx="170.2" cy="141.2" r="2.6" fill="#c0392b"/>
+<circle cx="211.6" cy="147.1" r="2.6" fill="#c0392b"/>
+<circle cx="262.8" cy="206.3" r="2.6" fill="#c0392b"/>
+<circle cx="387.4" cy="265.6" r="2.6" fill="#c0392b"/>
+<polyline points="52.0,46.5 151.3,111.6 276.3,141.2 391.1,271.5 510.0,253.7" fill="none" stroke="#27ae60" stroke-width="2"/>
+<circle cx="52.0" cy="46.5" r="2.6" fill="#27ae60"/>
+<circle cx="151.3" cy="111.6" r="2.6" fill="#27ae60"/>
+<circle cx="276.3" cy="141.2" r="2.6" fill="#27ae60"/>
+<circle cx="391.1" cy="271.5" r="2.6" fill="#27ae60"/>
+<circle cx="510.0" cy="253.7" r="2.6" fill="#27ae60"/>
+<polyline points="52.0,153.1 151.1,170.8 275.5,218.2 384.9,224.1 484.2,289.2" fill="none" stroke="#e67e22" stroke-width="2"/>
+<circle cx="52.0" cy="153.1" r="2.6" fill="#e67e22"/>
+<circle cx="151.1" cy="170.8" r="2.6" fill="#e67e22"/>
+<circle cx="275.5" cy="218.2" r="2.6" fill="#e67e22"/>
+<circle cx="384.9" cy="224.1" r="2.6" fill="#e67e22"/>
+<circle cx="484.2" cy="289.2" r="2.6" fill="#e67e22"/>
+<rect x="522" y="32" width="10" height="10" fill="#c0392b"/>
+<text x="536" y="41" class="leg">semantic</text>
+<rect x="522" y="48" width="10" height="10" fill="#27ae60"/>
+<text x="536" y="57" class="leg">fixed</text>
+<rect x="522" y="64" width="10" height="10" fill="#e67e22"/>
+<text x="536" y="73" class="leg">random</text>
+</svg><figcaption>The size law generalizes off legal text; semantic boundaries sit at or above random at matched size.</figcaption></figure>
+
+<h2>12. Conclusion</h2>
+<p>For Harlequin document ingestion, adopt <code>snowflake/semadj_g0.3772/fts5_hybrid</code>: it leads the pinpoint+rejection composite at dimension 1024. Index small, semantically- or mechanically-bounded chunks, and <b>keep a dense+lexical fusion</b>: once the eval set reflects a realistic 30% exact-extraction load (§2), the winner&rsquo;s lexical arm is <code>fts5_hybrid</code>, not dense alone &mdash; the FTS5 hybrid earns its place on article numbers, figures and named entities. A fixed global FTS5 weight is a compromise (§9); <b>score-gated fusion</b> (drop low-BM25 hits, up-weight the confident survivors, §9.1) is the recommended production scheme. BM25 and SQLite FTS5 are interchangeable, so FTS5 is the dependency-free choice. Prompt mode is per the carried decisions: snowflake-arctic-l-v2.0, Qwen3-Emb-0.6B do best with their native query prefix; embeddinggemma-300M, LFM2.5-Emb-350M on raw text.</p>
+
+<p class="fn">All figures/tables generated by <code>make_paper4.py</code> from
+<code>data/r4_agg.json</code>. Pipeline: <code>r3_server.py</code> (model lifecycle),
+<code>r3_build.py</code> (indexes), <code>r3_eval.py</code> (metrics),
+<code>r3_aggregate.py</code> (decisions), <code>r4_run.py</code> (v4 re-eval orchestration).</p>
+<script>
+document.querySelectorAll('table.sortable').forEach(function(table){
+  var heads=table.tHead.rows[0].cells;
+  for(var i=0;i<heads.length;i++)(function(th){
+    th.addEventListener('click',function(){
+      var tbody=table.tBodies[0],rows=Array.prototype.slice.call(tbody.rows);
+      var idx=Array.prototype.indexOf.call(th.parentNode.cells,th);
+      var asc=th.getAttribute('data-asc')!=='true';
+      Array.prototype.forEach.call(heads,function(h){h.removeAttribute('data-asc');
+        var a=h.querySelector('.ar');if(a)a.remove();});
+      th.setAttribute('data-asc',asc);
+      var num=rows.every(function(r){var t=r.cells[idx].textContent.trim();
+        return t===''||t==='-'||!isNaN(parseFloat(t));});
+      rows.sort(function(a,b){
+        var x=a.cells[idx].textContent.trim(),y=b.cells[idx].textContent.trim();
+        if(num){return (asc?1:-1)*((parseFloat(x)||0)-(parseFloat(y)||0));}
+        return asc?x.localeCompare(y):y.localeCompare(x);
+      });
+      rows.forEach(function(r){tbody.appendChild(r);});
+      var s=document.createElement('span');s.className='ar';s.textContent=asc?' ▲':' ▼';
+      th.appendChild(s);
+    });
+  })(heads[i]);
+});
+</script>
+</body></html>
