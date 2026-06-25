@@ -7,7 +7,7 @@ clean (non-misspelled) paraphrase questions — compare on
 snowflake/semadj_g0.4341:
   * dense only
   * dense+FTS5 RRF at several FTS5-arm weights
-  * dense+FTS5 RRF where weak FTS5 hits (BM25 score below an absolute floor) are
+  * dense+FTS5 RRF where weak FTS5 hits (outside the top decile per query) are
     dropped before fusion (the "score-gated hybrid")
 
 The gate keeps only confident lexical matches (rare exact tokens earn high BM25),
@@ -18,15 +18,12 @@ data/r3_probe_sweep.json.
 import json
 import os
 
-import numpy as np
-
 from lib import DATA, Embedder
 from r3_eval import EVALS, Retriever, _first_hit_rank, embed_queries
 from r3_rrf_sweep import EVALCONFIG, VARIANT, wrrf
 
 RP = os.environ.get("RPREFIX", "r3")
 WEIGHTS = [0.25, 1.0, 2.0, 4.0]
-GATE_PCTS = [0, 50, 75, 90]            # absolute BM25 floor at these score percentiles
 
 
 def score_set(qs, accs, qvecs, r, rank_fn):
@@ -40,18 +37,33 @@ def score_set(qs, accs, qvecs, r, rank_fn):
     return {"n": n, "recall@1": r1 / n, "recall@5": r5 / n}
 
 
-def run_set(name, qs, accs, qvecs, r, floors):
+def gate_top(fts, pct):
+    """Keep the strongest hits — the top (100-pct)% of a best-first list. This is
+    the same per-query gate Harlequin's documents.Search applies (portable, no
+    corpus-specific score constant)."""
+    if pct <= 0 or not fts:
+        return fts
+    import math
+    keep = max(1, math.ceil(len(fts) * (100 - pct) / 100.0))
+    return fts[:keep]
+
+
+def run_set(name, qs, accs, qvecs, r):
     out = {}
     out["dense"] = score_set(qs, accs, qvecs, r,
                              lambda q, v: r.dense(v))
     for w in WEIGHTS:
         out[f"hybrid_w{w}"] = score_set(qs, accs, qvecs, r,
                                         lambda q, v, w=w: wrrf(r.dense(v), r.fts5(q["q"]), w))
-    for pct, T in floors.items():
+    for pct in (0, 50, 75, 90):
         out[f"gated_p{pct}"] = score_set(
             qs, accs, qvecs, r,
-            lambda q, v, T=T: wrrf(r.dense(v), [(c, s) for c, s in r.fts5(q["q"]) if s >= T], 1.0))
-    out["_floors"] = floors
+            lambda q, v, pct=pct: wrrf(r.dense(v), gate_top(r.fts5(q["q"]), pct), 1.0))
+    # the production fusion: score-gate AND up-weight the surviving FTS5 hits
+    for pct in (75, 90):
+        out[f"gated_p{pct}_w2"] = score_set(
+            qs, accs, qvecs, r,
+            lambda q, v, pct=pct: wrrf(r.dense(v), gate_top(r.fts5(q["q"]), pct), 2.0))
     print(f"\n[{name}] n={qs and len(qs)}")
     for k, val in out.items():
         if k.startswith("_"):
@@ -78,15 +90,9 @@ def main():
              and q.get("category") not in ("exact", "exact_llm")]
     cacc = {q["id"]: ANS.get(q["id"], {q["support_sent"]}) for q in clean}
 
-    # BM25 score floors from the probe queries' FTS5 score distribution
-    allscores = []
-    for q in probe:
-        allscores += [s for _, s in r.fts5(q["q"])]
-    floors = {p: float(np.percentile(allscores, p)) if allscores else 0.0 for p in GATE_PCTS}
-
-    out = {"variant": VARIANT, "weights": WEIGHTS, "floors": floors,
-           "exact": run_set("exact-probe", probe, pacc, pvec, r, floors),
-           "clean": run_set("clean-paraphrase", clean, cacc, qv, r, floors)}
+    out = {"variant": VARIANT, "weights": WEIGHTS,
+           "exact": run_set("exact-probe", probe, pacc, pvec, r),
+           "clean": run_set("clean-paraphrase", clean, cacc, qv, r)}
     json.dump(out, open(os.path.join(DATA, f"{RP}_probe_sweep.json"), "w"), indent=1)
     print(f"\nwrote data/{RP}_probe_sweep.json")
 
