@@ -133,6 +133,7 @@ func main() {
 		MaxChunkRunes: cfg.Documents.MaxChunkRunes,
 		MinSentences:  cfg.Documents.MinSentences,
 	})
+	docStore.SetFusion(cfg.Documents.FTS5Weight, cfg.Documents.FTS5ScoreGatePct)
 	sessStore := session.NewStore()
 	auditStore := audit.NewStore()
 	sessionLog := sessionlog.New(cfg.SessionsDir(), cfg.Sessions.EnabledValue(), cfg.Sessions.LogTokens, cfg.Sessions.Redact)

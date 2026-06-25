@@ -165,6 +165,14 @@ type DocumentsConfig struct {
 	MaxChunkRunes int `yaml:"max_chunk_runes"`
 	// MinSentences avoids singleton chunks under "semadj".
 	MinSentences int `yaml:"min_sentences"`
+	// FTS5Weight is the RRF weight of the FTS5 lexical arm in document search
+	// (the dense arm is fixed at 1.0). >1 favours exact-token matches. Default 1.
+	FTS5Weight float64 `yaml:"fts5_weight"`
+	// FTS5ScoreGatePct gates the FTS5 arm: only the strongest FTS5 hits — those
+	// at or above this score percentile per query — enter the fusion, so weak
+	// lexical matches do not pollute paraphrase queries. 90 keeps the top decile;
+	// 0 disables gating (keep all). Range 0-99.
+	FTS5ScoreGatePct int `yaml:"fts5_score_gate_pct"`
 }
 
 // AgentConfig controls the agent loop and JS sandbox.
