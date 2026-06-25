@@ -210,10 +210,11 @@ def ch_evalset():
     return ("<h2>2. Evaluation set</h2>\n"
             f"<p>The benchmark is {len(qs)} questions over the consolidated TEU: "
             f"<b>{n} in-document</b> (grounded to exact sentence ids) and "
-            f"<b>{len(ood)} out-of-domain</b>. Earlier rounds were ~99% paraphrase; "
-            "this round adds 350 <b>exact-extraction</b> questions so the set "
-            f"exercises exact-token retrieval too &mdash; exact is now "
-            f"{exact_n/n:.0%} of in-document.</p>\n"
+            f"<b>{len(ood)} out-of-domain</b>. The in-document set spans "
+            "natural-language paraphrase, naive and misspelled queries, and "
+            f"<b>{exact_n} exact-extraction</b> questions ({exact_n/n:.0%} of "
+            "in-document) that exercise exact-token retrieval &mdash; the regime "
+            "where dense embeddings are weakest.</p>\n"
             + table(cols, rows, "Evaluation-set composition (in-document subgroups).")
             + "\n<p><b>Exact-extraction questions</b> are grounded against the PDF, "
             "not invented. <i>Mined</i> (250) are anchored on an exact token found "
@@ -526,7 +527,7 @@ def ch_rrf_sweep():
             "tool for exact-token queries (article numbers, percentages, dates, "
             "defined terms of art) that dense embedders blur &mdash; e.g. "
             "&lsquo;Article&nbsp;50&rsquo; vs &lsquo;Article&nbsp;52&rsquo; &mdash; "
-            "but it adds noise on paraphrase. This eval set is now 70% paraphrase / "
+            "but it adds noise on paraphrase. This eval set is 70% paraphrase / "
             "30% exact-extraction (§2), so the &lsquo;clean&rsquo; column above "
             "mixes both regimes and the aggregate weight preference is a compromise. "
             "The right reading is &lsquo;do not <i>over</i>-weight FTS5 globally, and "
@@ -658,7 +659,7 @@ def main():
 
 <h1>Selecting an embedding model for Harlequin document ingestion: a single-embedder RAG study</h1>
 <div class="meta">Corpus: consolidated Treaty on European Union (<code>CELEX:12016M/TXT</code>).
-Five candidate embedders, each the sole model on the whole path. Generated from <code>r4_*</code> results (augmented 1152-question set).</div>
+Five candidate embedders, each the sole model on the whole path. Generated from <code>r4_*</code> results.</div>
 
 <div class="abstract"><b>Abstract.</b> {abstract}</div>
 
@@ -669,9 +670,9 @@ single best <code>embedder/chunker/lexical_backend</code> for that path. Each of
 the five models is served alone on <code>:2235</code> (llama.cpp, OpenAI API) and
 does <i>everything</i> &mdash; semantic boundaries, chunk vectors and query
 vectors &mdash; so no result mixes models. Chunk budgets are measured in each
-model's own tokens. Questions (1152 in-document, grounded to exact sentence ids, incl. 350 exact-extraction added in this round;
-122 misspelled, 100 naive; plus 201 out-of-domain) and the duplicate-aware,
-size-normalised scoring are reused unchanged from the prior study.</p>
+model's own tokens. Questions (1152 in-document, grounded to exact sentence ids, incl. 350 exact-extraction;
+122 misspelled, 100 naive; plus 201 out-of-domain; see §2) are scored
+duplicate-aware and size-normalised with bootstrap confidence intervals.</p>
 
 {body}
 
@@ -679,10 +680,10 @@ size-normalised scoring are reused unchanged from the prior study.</p>
 <p>{('For Harlequin document ingestion, adopt <code>' + esc(win['label']) + '</code>: '
      'it leads the pinpoint+rejection composite at dimension ' + str(win['dim']) + '. '
      'Index small, semantically- or mechanically-bounded chunks, and <b>keep a '
-     'dense+lexical fusion</b>: once the eval set reflects a realistic 30% '
-     'exact-extraction load (§2), the winner&rsquo;s lexical arm is <code>'
-     + esc(win['lexical']) + '</code>, not dense alone &mdash; the FTS5 hybrid earns '
-     'its place on article numbers, figures and named entities. A fixed global FTS5 '
+     'dense+lexical fusion</b>: with a realistic 30% exact-extraction load (§2), '
+     'the winner&rsquo;s lexical arm is <code>'
+     + esc(win['lexical']) + '</code> &mdash; the FTS5 hybrid earns '
+     'its place on article numbers, figures and named entities, beating dense alone. A fixed global FTS5 '
      'weight is a compromise (§9); <b>score-gated fusion</b> (drop low-BM25 hits, '
      'up-weight the confident survivors, §9.1) is the recommended production scheme. '
      'BM25 and SQLite FTS5 are interchangeable, so FTS5 is the dependency-free '

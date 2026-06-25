@@ -27,7 +27,7 @@
 
 <h1>Selecting an embedding model for Harlequin document ingestion: a single-embedder RAG study</h1>
 <div class="meta">Corpus: consolidated Treaty on European Union (<code>CELEX:12016M/TXT</code>).
-Five candidate embedders, each the sole model on the whole path. Generated from <code>r4_*</code> results (augmented 1152-question set).</div>
+Five candidate embedders, each the sole model on the whole path. Generated from <code>r4_*</code> results.</div>
 
 <div class="abstract"><b>Abstract.</b> We select a single embedding model for Harlequin document ingestion by evaluating five small open embedders &mdash; granite-311M, snowflake-arctic-l-v2.0, Qwen3-Embedding-0.6B, embeddinggemma-300M and LFM2.5-Embedding-350M &mdash; each run as the <i>only</i> model on the whole path (sentence boundaries, chunk vectors and query vectors), on a 204-page legal corpus with 1152 grounded in-document (incl. 350 exact-extraction) and 201 out-of-domain questions, scored by duplicate-aware, size-normalised cosine retrieval metrics with bootstrap CIs. We report native-prompt vs no-prefix behaviour, sweep the semantic-chunking gate per model, compare eight chunkers and two lexical backends (custom BM25 vs SQLite FTS5) under RRF, and rank models by a pinpoint+rejection composite with a cost table. The recommended triple is <code>snowflake/semadj_g0.3772/fts5_hybrid</code> (dim 1024, recall@1 0.602).</div>
 
@@ -38,12 +38,12 @@ single best <code>embedder/chunker/lexical_backend</code> for that path. Each of
 the five models is served alone on <code>:2235</code> (llama.cpp, OpenAI API) and
 does <i>everything</i> &mdash; semantic boundaries, chunk vectors and query
 vectors &mdash; so no result mixes models. Chunk budgets are measured in each
-model's own tokens. Questions (1152 in-document, grounded to exact sentence ids, incl. 350 exact-extraction added in this round;
-122 misspelled, 100 naive; plus 201 out-of-domain) and the duplicate-aware,
-size-normalised scoring are reused unchanged from the prior study.</p>
+model's own tokens. Questions (1152 in-document, grounded to exact sentence ids, incl. 350 exact-extraction;
+122 misspelled, 100 naive; plus 201 out-of-domain; see §2) are scored
+duplicate-aware and size-normalised with bootstrap confidence intervals.</p>
 
 <h2>2. Evaluation set</h2>
-<p>The benchmark is 1353 questions over the consolidated TEU: <b>1152 in-document</b> (grounded to exact sentence ids) and <b>201 out-of-domain</b>. Earlier rounds were ~99% paraphrase; this round adds 350 <b>exact-extraction</b> questions so the set exercises exact-token retrieval too &mdash; exact is now 30% of in-document.</p>
+<p>The benchmark is 1353 questions over the consolidated TEU: <b>1152 in-document</b> (grounded to exact sentence ids) and <b>201 out-of-domain</b>. The in-document set spans natural-language paraphrase, naive and misspelled queries, and <b>350 exact-extraction</b> questions (30% of in-document) that exercise exact-token retrieval &mdash; the regime where dense embeddings are weakest.</p>
 <table class="sortable"><caption>Evaluation-set composition (in-document subgroups).</caption><thead><tr><th title="A subgroup of the in-document question set">segment</th><th title="Number of chunks/questions">n</th><th title="Share of the in-document questions">% in-doc</th></tr></thead><tbody>
 <tr>
 <td class="m">paraphrase (normal)</td>
@@ -1303,7 +1303,7 @@ prompts), adjacent-sentence semantic chunks, dense+BM25 RRF.</p>
 <td>0.368</td>
 </tr>
 </tbody></table>
-<p><b>Why one global weight is wrong.</b> FTS5/BM25 is the right tool for exact-token queries (article numbers, percentages, dates, defined terms of art) that dense embedders blur &mdash; e.g. &lsquo;Article&nbsp;50&rsquo; vs &lsquo;Article&nbsp;52&rsquo; &mdash; but it adds noise on paraphrase. This eval set is now 70% paraphrase / 30% exact-extraction (§2), so the &lsquo;clean&rsquo; column above mixes both regimes and the aggregate weight preference is a compromise. The right reading is &lsquo;do not <i>over</i>-weight FTS5 globally, and never drop it&rsquo;. §9.1 separates the two regimes on a dedicated exact-extraction probe and shows the weight preference inverts &mdash; motivating per-query <i>score-gated</i> fusion instead of a fixed weight.</p><h3>9.1 Exact-extraction probe and score-gated fusion</h3>
+<p><b>Why one global weight is wrong.</b> FTS5/BM25 is the right tool for exact-token queries (article numbers, percentages, dates, defined terms of art) that dense embedders blur &mdash; e.g. &lsquo;Article&nbsp;50&rsquo; vs &lsquo;Article&nbsp;52&rsquo; &mdash; but it adds noise on paraphrase. This eval set is 70% paraphrase / 30% exact-extraction (§2), so the &lsquo;clean&rsquo; column above mixes both regimes and the aggregate weight preference is a compromise. The right reading is &lsquo;do not <i>over</i>-weight FTS5 globally, and never drop it&rsquo;. §9.1 separates the two regimes on a dedicated exact-extraction probe and shows the weight preference inverts &mdash; motivating per-query <i>score-gated</i> fusion instead of a fixed weight.</p><h3>9.1 Exact-extraction probe and score-gated fusion</h3>
 <p>We mine the corpus for 134 grounded queries anchored on an exact token dense embeddings blur &mdash; percentages (e.g. the 55&thinsp;% / 65&thinsp;% qualified-majority thresholds), protocol numbers and article+paragraph references &mdash; and score them against the 680 clean paraphrase questions. The weight preference <b>inverts</b>: exact-extraction wants the FTS5 arm <i>up</i>-weighted (dense alone is weakest; recall@1 climbs steeply with FTS5 weight), while paraphrase wants it down-weighted &mdash; one global weight cannot serve both.</p>
 <table class="sortable"><caption>Table 7. Exact-extraction probe vs clean paraphrase: dense, FTS5-weight hybrids, and score-gated hybrids (weak FTS5 hits below a BM25 percentile floor dropped before fusion).</caption><thead><tr><th title="Retrieval/fusion method: dense only, dense+FTS5 RRF at a given FTS5 weight, or score-gated (weak FTS5 hits dropped before fusion)">method</th><th title="recall@1 on the exact-extraction probe (queries anchored on exact tokens)">exact R@1</th><th title="recall@5 on the exact-extraction probe">exact R@5</th><th title="recall@1 on the clean paraphrase questions">para R@1</th><th title="recall@5 on the clean paraphrase questions">para R@5</th></tr></thead><tbody>
 <tr>
@@ -1476,7 +1476,7 @@ prompts), adjacent-sentence semantic chunks, dense+BM25 RRF.</p>
 </svg><figcaption>The size law generalizes off legal text; semantic boundaries sit at or above random at matched size.</figcaption></figure>
 
 <h2>12. Conclusion</h2>
-<p>For Harlequin document ingestion, adopt <code>snowflake/semadj_g0.3772/fts5_hybrid</code>: it leads the pinpoint+rejection composite at dimension 1024. Index small, semantically- or mechanically-bounded chunks, and <b>keep a dense+lexical fusion</b>: once the eval set reflects a realistic 30% exact-extraction load (§2), the winner&rsquo;s lexical arm is <code>fts5_hybrid</code>, not dense alone &mdash; the FTS5 hybrid earns its place on article numbers, figures and named entities. A fixed global FTS5 weight is a compromise (§9); <b>score-gated fusion</b> (drop low-BM25 hits, up-weight the confident survivors, §9.1) is the recommended production scheme. BM25 and SQLite FTS5 are interchangeable, so FTS5 is the dependency-free choice. Prompt mode is per the carried decisions: snowflake-arctic-l-v2.0, Qwen3-Emb-0.6B do best with their native query prefix; embeddinggemma-300M, LFM2.5-Emb-350M on raw text.</p>
+<p>For Harlequin document ingestion, adopt <code>snowflake/semadj_g0.3772/fts5_hybrid</code>: it leads the pinpoint+rejection composite at dimension 1024. Index small, semantically- or mechanically-bounded chunks, and <b>keep a dense+lexical fusion</b>: with a realistic 30% exact-extraction load (§2), the winner&rsquo;s lexical arm is <code>fts5_hybrid</code> &mdash; the FTS5 hybrid earns its place on article numbers, figures and named entities, beating dense alone. A fixed global FTS5 weight is a compromise (§9); <b>score-gated fusion</b> (drop low-BM25 hits, up-weight the confident survivors, §9.1) is the recommended production scheme. BM25 and SQLite FTS5 are interchangeable, so FTS5 is the dependency-free choice. Prompt mode is per the carried decisions: snowflake-arctic-l-v2.0, Qwen3-Emb-0.6B do best with their native query prefix; embeddinggemma-300M, LFM2.5-Emb-350M on raw text.</p>
 
 <p class="fn">All figures/tables generated by <code>make_paper4.py</code> from
 <code>data/r4_agg.json</code>. Pipeline: <code>r3_server.py</code> (model lifecycle),
