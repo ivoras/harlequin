@@ -15,10 +15,24 @@ import os
 from r3_eval import (ANS, DATA, EVALS, INDOC, Retriever, _first_hit_rank,
                      embed_queries)
 
-EVALCONFIG = "snowflake"            # snowflake's carried prompt mode (native)
-VARIANT = "semadj_g0.4341"
+RP = os.environ.get("RPREFIX", "r3")
 WEIGHTS = [0.25, 0.5, 1.0, 2.0, 4.0]   # FTS5-arm RRF weight (dense fixed at 1.0)
 RRF_K = 60
+
+
+def snowflake_pick():
+    """snowflake's carried prompt mode + best gate variant from the aggregate
+    (re-selected per question set); fall back to the v3 defaults."""
+    p = os.path.join(DATA, f"{RP}_agg.json")
+    if os.path.exists(p):
+        agg = json.load(open(p))
+        mode = agg.get("carried", {}).get("snowflake", "snowflake")
+        var = agg.get("gate", {}).get("snowflake", {}).get("best_variant", "semadj_g0.4341")
+        return mode, var
+    return "snowflake", "semadj_g0.4341"
+
+
+EVALCONFIG, VARIANT = snowflake_pick()
 
 
 def wrrf(dense, fts, w_fts, k=RRF_K):
@@ -64,8 +78,8 @@ def main():
               f"  mis R@1={rec['misspelled']['recall@1']:.3f} R@5={rec['misspelled']['recall@5']:.3f}")
     out = {"evalconfig": EVALCONFIG, "variant": VARIANT, "weights": WEIGHTS,
            "base_weight": 1.0, "rrf_k": RRF_K, "rows": rows}
-    json.dump(out, open(os.path.join(DATA, "r3_rrf_sweep.json"), "w"), indent=1)
-    print("wrote data/r3_rrf_sweep.json")
+    json.dump(out, open(os.path.join(DATA, f"{RP}_rrf_sweep.json"), "w"), indent=1)
+    print(f"wrote data/{RP}_rrf_sweep.json")
 
 
 if __name__ == "__main__":

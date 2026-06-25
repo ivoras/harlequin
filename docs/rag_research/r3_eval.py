@@ -25,6 +25,7 @@ from bm25 import BM25, tokenize
 from lib import DATA, Embedder, VectorStore
 from r3_build import idx_path
 
+RP = os.environ.get("RPREFIX", "r3")     # result-file prefix (r3 = 802-set, r4 = augmented)
 QS = json.load(open(os.path.join(DATA, "eval_questions.json")))["questions"]
 ANS = {int(k): set(v) for k, v in json.load(open(os.path.join(DATA, "answer_sets.json"))).items()}
 INDOC = [q for q in QS if not q["not_found"]]
@@ -224,7 +225,7 @@ def main():
             print(f"{evalconfig}/{v:18} dense R@1={r['recall@1']:.3f} "
                   f"R@5={r['recall@5']:.3f} ans@1024={r['answer@1024tok']:.3f} "
                   f"AUC={r['ood_auc']:.3f}", file=sys.stderr)
-    out = os.path.join(DATA, f"r3_results_{evalconfig}.json")
+    out = os.path.join(DATA, f"{RP}_results_{evalconfig}.json")
     json.dump({"evalconfig": evalconfig, "index_config": index_config,
                "query_config": query_config, "results": results}, open(out, "w"), indent=1)
     print("wrote", out, file=sys.stderr)

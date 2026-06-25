@@ -22,8 +22,9 @@ import numpy as np
 
 from lib import DATA, Embedder
 from r3_eval import EVALS, Retriever, _first_hit_rank, embed_queries
-from r3_rrf_sweep import VARIANT, wrrf
+from r3_rrf_sweep import EVALCONFIG, VARIANT, wrrf
 
+RP = os.environ.get("RPREFIX", "r3")
 WEIGHTS = [0.25, 1.0, 2.0, 4.0]
 GATE_PCTS = [0, 50, 75, 90]            # absolute BM25 floor at these score percentiles
 
@@ -60,7 +61,7 @@ def run_set(name, qs, accs, qvecs, r, floors):
 
 
 def main():
-    index_config, query_config = EVALS["snowflake"]
+    index_config, query_config = EVALS[EVALCONFIG]
     r = Retriever(index_config, VARIANT, Embedder(query_config, verbose=False))
 
     # exact-extraction probe (new queries -> embedded via server)
@@ -73,7 +74,8 @@ def main():
     qv = embed_queries(query_config)
     QS = json.load(open(os.path.join(DATA, "eval_questions.json")))["questions"]
     ANS = {int(k): set(v) for k, v in json.load(open(os.path.join(DATA, "answer_sets.json"))).items()}
-    clean = [q for q in QS if not q["not_found"] and not q.get("misspelled")]
+    clean = [q for q in QS if not q["not_found"] and not q.get("misspelled")
+             and q.get("category") not in ("exact", "exact_llm")]
     cacc = {q["id"]: ANS.get(q["id"], {q["support_sent"]}) for q in clean}
 
     # BM25 score floors from the probe queries' FTS5 score distribution
@@ -85,8 +87,8 @@ def main():
     out = {"variant": VARIANT, "weights": WEIGHTS, "floors": floors,
            "exact": run_set("exact-probe", probe, pacc, pvec, r, floors),
            "clean": run_set("clean-paraphrase", clean, cacc, qv, r, floors)}
-    json.dump(out, open(os.path.join(DATA, "r3_probe_sweep.json"), "w"), indent=1)
-    print("\nwrote data/r3_probe_sweep.json")
+    json.dump(out, open(os.path.join(DATA, f"{RP}_probe_sweep.json"), "w"), indent=1)
+    print(f"\nwrote data/{RP}_probe_sweep.json")
 
 
 if __name__ == "__main__":
