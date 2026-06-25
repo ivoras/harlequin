@@ -141,7 +141,7 @@ def main():
         comp_rows = [res[best][(v, "dense")] for v in dense_candidates if (v, "dense") in res[best]]
         base_chunker = dense_candidates[int(np.argmax(composite(comp_rows)))]
         lex = []
-        for mode_name in ["dense", "bm25", "fts5", "hybrid", "fts5_hybrid"]:
+        for mode_name in ["dense", "bm25", "fts5", "bm25_hybrid", "fts5_hybrid"]:
             r = res[best].get((base_chunker, mode_name))
             if r:
                 lex.append({"lexical": mode_name, **slim(r)})
@@ -150,7 +150,7 @@ def main():
         # ---- 5. this model's best (chunker, lexical) by composite ----
         cand = []
         for v in dense_candidates:
-            for mode_name in ["dense", "bm25", "fts5", "hybrid", "fts5_hybrid"]:
+            for mode_name in ["dense", "bm25", "fts5", "bm25_hybrid", "fts5_hybrid"]:
                 r = res[best].get((v, mode_name))
                 if r:
                     cand.append((v, mode_name, r))

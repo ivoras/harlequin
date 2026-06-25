@@ -148,7 +148,7 @@ class Retriever:
             return self.lexical(qtext)
         if mode == "fts5":
             return self.fts5(qtext)
-        if mode == "hybrid":
+        if mode == "bm25_hybrid":
             return rrf(self.dense(qvec), self.lexical(qtext))
         if mode == "fts5_hybrid":
             return rrf(self.dense(qvec), self.fts5(qtext))
@@ -211,7 +211,7 @@ def main():
     variants = variants_for(index_config)
     # dense over every variant (size sweep + gate sweep); lexical/hybrid modes too
     # so the lexical-backend chapter has BM25 vs FTS5 across chunkers.
-    modes = ["dense", "bm25", "fts5", "hybrid", "fts5_hybrid"]
+    modes = ["dense", "bm25", "fts5", "bm25_hybrid", "fts5_hybrid"]
     results = []
     for v in variants:
         for mode in modes:
