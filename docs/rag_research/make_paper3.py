@@ -411,7 +411,20 @@ def ch_rrf_sweep():
                     f"{esc(RRF['evalconfig'])}/{esc(RRF['variant'])}/fts5_hybrid, "
                     "clean vs misspelled queries.",
                     bold={"clean R@1": "max", "clean R@5": "max", "clean MRR": "max",
-                          "mis R@1": "max", "mis R@5": "max", "mis MRR": "max"}))
+                          "mis R@1": "max", "mis R@5": "max", "mis MRR": "max"})
+            + "\n<p><b>Caveat — this benchmark under-samples exact extraction.</b> "
+            "FTS5/BM25 is the right tool precisely for exact-token queries (article "
+            "numbers, percentages, dates, defined terms of art) that dense embedders "
+            "blur &mdash; e.g. &lsquo;Article&nbsp;50&rsquo; vs &lsquo;Article&nbsp;52&rsquo;. "
+            "But these questions are ~99% natural-language paraphrase: only 8 of 802 "
+            "in-document queries carry an exact numeric or quoted token, so the sweep "
+            "cannot reward the lexical arm for the case it exists for. The "
+            "down-weighting above is therefore specific to this paraphrase-dominated "
+            "mix; it should be read as &lsquo;do not <i>over</i>-weight FTS5&rsquo;, "
+            "not &lsquo;drop it&rsquo;. The FTS5 arm is kept in the fusion (weight "
+            "&gt; 0) as cheap recall insurance for the exact-token tail real users "
+            "issue; settling its value there needs a dedicated exact-extraction "
+            "question set this study lacks.</p>")
 
 
 def ch_selection():
