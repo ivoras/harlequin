@@ -67,7 +67,13 @@ out-of-domain rejection are first-class concerns too.
 14. **RRF weight chapter (§8):** sweep the FTS5-arm RRF weight on the winning
     `…/fts5_hybrid` (dense fixed at 1.0), 5 values, scoring misspelled vs clean
     subsets separately (`r3_rrf_sweep.py`). Lexical weight helps clean queries a
-    little and hurts misspelled ones a lot.
+    little and hurts misspelled ones a lot. **Caveat (do not overclaim):** the
+    question set is ~99% paraphrase — only 8/802 queries carry an exact
+    numeric/quoted token — so it under-samples the exact-extraction case FTS5
+    exists for (article numbers, terms of art). The result means "don't
+    *over*-weight FTS5", not "drop it"; keep the arm (weight > 0) as recall
+    insurance. Settling FTS5's value for exact extraction needs a dedicated
+    exact-token question set this study lacks.
 
 ## Gotchas (learned the hard way)
 
