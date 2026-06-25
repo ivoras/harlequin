@@ -44,7 +44,7 @@ func main() {
 		baseURL, model, apiKey = cfg.Embeddings.BaseURL, cfg.Embeddings.Model, cfg.Embeddings.APIKey
 	}
 
-	e := embed.New(baseURL, apiKey, model, 0)
+	e := embed.New(baseURL, apiKey, model, 0, "", "")
 	vecs, err := e.Embed(context.Background(), args)
 	if err != nil {
 		fatal("embed (%s @ %s): %v", model, baseURL, err)

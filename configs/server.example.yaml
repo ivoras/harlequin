@@ -53,6 +53,22 @@ embeddings:
   model: "text-embedding-3-small"
   dim: 1536
   api_key_env: "EMBED_API_KEY"
+  # Prompt convention of the embedding model. Asymmetric retrieval models prepend
+  # an instruction to queries (and sometimes a tag to documents); e.g.
+  # snowflake-arctic-embed-l-v2.0 uses query_prefix "query: " and no doc prefix.
+  # Leave empty for symmetric models (OpenAI text-embedding-*, granite).
+  query_prefix: ""
+  doc_prefix: ""
+
+# Document RAG chunker (optional; defaults to mechanical "overlap").
+#   chunker: "overlap" | "semadj"   semadj = adjacent-sentence semantic chunking
+#   semadj_gate: model-specific adjacent cosine-distance cut threshold
+#   max_chunk_runes: cap so a chunk fits the embed server's physical batch
+# documents:
+#   chunker: "semadj"
+#   semadj_gate: 0.4341
+#   max_chunk_runes: 1600
+#   min_sentences: 2
 
 agent:
   max_steps: 50

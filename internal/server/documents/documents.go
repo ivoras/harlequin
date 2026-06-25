@@ -6,8 +6,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
+	"unicode"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	"github.com/ivoras/harlequin/internal/server/embed"
@@ -24,15 +26,49 @@ const (
 	chunkOverlap = 100
 )
 
+// ChunkConfig selects the document chunker. "overlap" is the mechanical
+// rune-window default; "semadj" is adjacent-sentence semantic chunking (cut
+// between two sentences when their embedding cosine distance exceeds SemAdjGate),
+// which the embedding-model study found best for retrieval. The gate is
+// model-specific (e.g. snowflake-arctic ~0.43). MaxChunkRunes caps a chunk so it
+// still fits the embedding server's physical batch.
+type ChunkConfig struct {
+	Strategy      string
+	SemAdjGate    float64
+	MaxChunkRunes int
+	MinSentences  int
+}
+
+func defaultChunkConfig() ChunkConfig {
+	return ChunkConfig{Strategy: "overlap", SemAdjGate: 0.4341, MaxChunkRunes: 1600, MinSentences: 2}
+}
+
 // Store manages documents and chunks.
 type Store struct {
 	db       *sql.DB
 	embedder embed.Embedder
+	chunk    ChunkConfig
 }
 
-// NewStore constructs a documents Store.
+// NewStore constructs a documents Store with the default (overlap) chunker.
 func NewStore(db *sql.DB, embedder embed.Embedder) *Store {
-	return &Store{db: db, embedder: embedder}
+	return &Store{db: db, embedder: embedder, chunk: defaultChunkConfig()}
+}
+
+// SetChunkConfig overrides the chunker; zero-valued fields keep their defaults.
+func (s *Store) SetChunkConfig(c ChunkConfig) {
+	if c.Strategy != "" {
+		s.chunk.Strategy = c.Strategy
+	}
+	if c.SemAdjGate > 0 {
+		s.chunk.SemAdjGate = c.SemAdjGate
+	}
+	if c.MaxChunkRunes > 0 {
+		s.chunk.MaxChunkRunes = c.MaxChunkRunes
+	}
+	if c.MinSentences > 0 {
+		s.chunk.MinSentences = c.MinSentences
+	}
 }
 
 // Ingest stores a document, chunks + embeds its content, and indexes the chunks.
@@ -55,7 +91,10 @@ func (s *Store) Ingest(ctx context.Context, req types.CreateDocumentRequest, use
 	}
 	docID, _ := res.LastInsertId()
 
-	chunks := chunkText(req.Content)
+	chunks, err := s.chunkContent(ctx, req.Content)
+	if err != nil {
+		return nil, fmt.Errorf("chunk document: %w", err)
+	}
 	if len(chunks) > 0 {
 		vecs, err := s.embedder.Embed(ctx, chunks)
 		if err != nil {
@@ -202,7 +241,7 @@ func (s *Store) Search(ctx context.Context, query string, limit int) ([]types.Se
 		fold(ftsRows, ranks, contents)
 	}
 
-	if vecs, err := s.embedder.Embed(ctx, []string{query}); err == nil && len(vecs) == 1 {
+	if vecs, err := s.embedder.EmbedQuery(ctx, []string{query}); err == nil && len(vecs) == 1 {
 		if blob, err := sqlite_vec.SerializeFloat32(vecs[0]); err == nil {
 			vecRows, err := s.db.QueryContext(ctx,
 				`SELECT c.id, c.content FROM doc_chunks_vec v JOIN doc_chunks c ON c.id = v.rowid
@@ -249,6 +288,116 @@ func topN(ranks map[int64]float64, contents map[int64]string, limit int) []types
 		out = out[:limit]
 	}
 	return out
+}
+
+// chunkContent splits a document into chunks per the configured strategy.
+// "semadj" embeds each sentence and cuts where adjacent sentences diverge;
+// it falls back to mechanical rune-window chunking when the text has too little
+// sentence structure or embedding fails, and hard-splits any oversized chunk so
+// every chunk stays within the embedding server's batch.
+func (s *Store) chunkContent(ctx context.Context, text string) ([]string, error) {
+	if s.chunk.Strategy != "semadj" {
+		return chunkText(text), nil
+	}
+	sents := splitSentences(text)
+	if len(sents) <= s.chunk.MinSentences {
+		return chunkText(text), nil
+	}
+	vecs, err := s.embedder.Embed(ctx, sents)
+	if err != nil || len(vecs) != len(sents) {
+		return chunkText(text), nil
+	}
+	raw := semAdjacentChunks(sents, vecs, s.chunk.SemAdjGate, s.chunk.MaxChunkRunes, s.chunk.MinSentences)
+	var out []string
+	for _, c := range raw {
+		if len([]rune(c)) > s.chunk.MaxChunkRunes {
+			out = append(out, chunkText(c)...) // single mega-sentence: hard-split
+		} else {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+// semAdjacentChunks groups consecutive sentences, cutting before sentence i when
+// its embedding diverges from the previous sentence by more than gate
+// (drift = 1 - cosine), or when the chunk would exceed maxRunes. minSent avoids
+// singleton fragments. vecs is parallel to sents.
+func semAdjacentChunks(sents []string, vecs [][]float32, gate float64, maxRunes, minSent int) []string {
+	var chunks, cur []string
+	curRunes := 0
+	for i, sent := range sents {
+		sr := len([]rune(sent))
+		if len(cur) > 0 {
+			overCap := curRunes+1+sr > maxRunes
+			drift := 1.0 - cosine(vecs[i-1], vecs[i])
+			bigShift := drift > gate && len(cur) >= minSent
+			if overCap || bigShift {
+				chunks = append(chunks, strings.Join(cur, " "))
+				cur, curRunes = nil, 0
+			}
+		}
+		cur = append(cur, sent)
+		curRunes += sr + 1
+	}
+	if len(cur) > 0 {
+		chunks = append(chunks, strings.Join(cur, " "))
+	}
+	return chunks
+}
+
+func cosine(a, b []float32) float64 {
+	if len(a) != len(b) || len(a) == 0 {
+		return 0
+	}
+	var dot, na, nb float64
+	for i := range a {
+		dot += float64(a[i]) * float64(b[i])
+		na += float64(a[i]) * float64(a[i])
+		nb += float64(b[i]) * float64(b[i])
+	}
+	if na == 0 || nb == 0 {
+		return 0
+	}
+	return dot / (math.Sqrt(na) * math.Sqrt(nb))
+}
+
+// splitSentences is a lightweight sentence segmenter: it breaks after . ! or ?
+// when the next non-space character starts a new sentence (capital, digit, quote
+// or opening paren) or at end of text. Good enough for general prose; it does not
+// special-case abbreviations.
+func splitSentences(text string) []string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	runes := []rune(text)
+	var out []string
+	var b strings.Builder
+	for i, r := range runes {
+		b.WriteRune(r)
+		if r == '.' || r == '!' || r == '?' {
+			j := i + 1
+			for j < len(runes) && unicode.IsSpace(runes[j]) {
+				j++
+			}
+			if j >= len(runes) || isSentenceStart(runes[j]) {
+				if s := strings.TrimSpace(b.String()); s != "" {
+					out = append(out, s)
+				}
+				b.Reset()
+			}
+		}
+	}
+	if s := strings.TrimSpace(b.String()); s != "" {
+		out = append(out, s)
+	}
+	return out
+}
+
+func isSentenceStart(r rune) bool {
+	return unicode.IsUpper(r) || unicode.IsDigit(r) || r == '"' || r == '\'' ||
+		r == '(' || r == '“' || r == '‘'
 }
 
 // chunkText splits text into overlapping rune windows.

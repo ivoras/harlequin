@@ -112,7 +112,7 @@ func main() {
 	}
 	router := llm.NewRoutingProvider(providers, cfg.Routing.DefaultProvider, cfg.Routing.FallbackOrder, cfg.Routing.ModelRules, ctxWindows, nil)
 
-	embedder := embed.New(cfg.Embeddings.BaseURL, cfg.Embeddings.APIKey, cfg.Embeddings.Model, cfg.Embeddings.Dim)
+	embedder := embed.New(cfg.Embeddings.BaseURL, cfg.Embeddings.APIKey, cfg.Embeddings.Model, cfg.Embeddings.Dim, cfg.Embeddings.QueryPrefix, cfg.Embeddings.DocPrefix)
 
 	skillRunner := jsrun.New(jsrun.Options{
 		Timeout:        cfg.Agent.SkillRenderTimeout.D(),
@@ -127,6 +127,12 @@ func main() {
 		memStore.SetConflictJudge(router, cfg.Memory.ConflictCandidates)
 	}
 	docStore := documents.NewStore(store.Shared, embedder)
+	docStore.SetChunkConfig(documents.ChunkConfig{
+		Strategy:      cfg.Documents.Chunker,
+		SemAdjGate:    cfg.Documents.SemAdjGate,
+		MaxChunkRunes: cfg.Documents.MaxChunkRunes,
+		MinSentences:  cfg.Documents.MinSentences,
+	})
 	sessStore := session.NewStore()
 	auditStore := audit.NewStore()
 	sessionLog := sessionlog.New(cfg.SessionsDir(), cfg.Sessions.EnabledValue(), cfg.Sessions.LogTokens, cfg.Sessions.Redact)

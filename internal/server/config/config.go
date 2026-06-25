@@ -47,6 +47,7 @@ type Config struct {
 	Prices         map[string]Price `yaml:"prices"`
 	ContextWindows map[string]int   `yaml:"context_windows"` // model id -> max input tokens
 	Embeddings     EmbeddingsConfig `yaml:"embeddings"`
+	Documents      DocumentsConfig  `yaml:"documents"`
 	Agent          AgentConfig      `yaml:"agent"`
 	Memory         MemoryConfig     `yaml:"memory"`
 	Sessions       SessionsConfig   `yaml:"sessions"`
@@ -141,8 +142,29 @@ type EmbeddingsConfig struct {
 	Model     string `yaml:"model"`
 	Dim       int    `yaml:"dim"`
 	APIKeyEnv string `yaml:"api_key_env"`
+	// Prompt conventions of the embedding model. Asymmetric retrieval models
+	// prepend an instruction to queries (and sometimes a tag to documents);
+	// e.g. snowflake-arctic-embed wants query_prefix "query: " and no doc
+	// prefix. Leave both empty for symmetric models (raw text both sides).
+	QueryPrefix string `yaml:"query_prefix"`
+	DocPrefix   string `yaml:"doc_prefix"`
 
 	APIKey string `yaml:"-"`
+}
+
+// DocumentsConfig selects the document chunker for RAG ingestion.
+type DocumentsConfig struct {
+	// Chunker is "overlap" (mechanical rune windows, the default) or "semadj"
+	// (adjacent-sentence semantic chunking).
+	Chunker string `yaml:"chunker"`
+	// SemAdjGate is the adjacent-sentence cosine-distance cut threshold for
+	// "semadj" (model-specific; snowflake-arctic ~0.43). Ignored otherwise.
+	SemAdjGate float64 `yaml:"semadj_gate"`
+	// MaxChunkRunes caps a chunk so it fits the embedding server's physical
+	// batch. Must stay under the embedding server's ubatch token limit.
+	MaxChunkRunes int `yaml:"max_chunk_runes"`
+	// MinSentences avoids singleton chunks under "semadj".
+	MinSentences int `yaml:"min_sentences"`
 }
 
 // AgentConfig controls the agent loop and JS sandbox.

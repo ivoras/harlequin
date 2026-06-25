@@ -23,12 +23,15 @@ const dim = 8
 type stubEmbedder struct{}
 
 func (stubEmbedder) Dim() int { return dim }
-func (stubEmbedder) Embed(_ context.Context, inputs []string) ([][]float32, error) {
+func (s stubEmbedder) Embed(_ context.Context, inputs []string) ([][]float32, error) {
 	out := make([][]float32, len(inputs))
 	for i := range out {
 		out[i] = make([]float32, dim)
 	}
 	return out, nil
+}
+func (s stubEmbedder) EmbedQuery(ctx context.Context, inputs []string) ([][]float32, error) {
+	return s.Embed(ctx, inputs)
 }
 
 func main() {
