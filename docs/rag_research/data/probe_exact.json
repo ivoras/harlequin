@@ -1,0 +1,1781 @@
+{
+ "questions": [
+  {
+   "id": 0,
+   "q": "10 % progressively subscribed reserve",
+   "token": "10 %",
+   "kind": "percent",
+   "support_sent": 1476,
+   "acc": [
+    1476
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 1,
+   "q": "100 % shareholders transferred distributed",
+   "token": "100 %",
+   "kind": "percent",
+   "support_sent": 1210,
+   "acc": [
+    1210
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 2,
+   "q": "20 % shareholders transferred distributed",
+   "token": "20 %",
+   "kind": "percent",
+   "support_sent": 1210,
+   "acc": [
+    1210
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 3,
+   "q": "250 % outstanding guarantees subscribed",
+   "token": "250 %",
+   "kind": "percent",
+   "support_sent": 1431,
+   "acc": [
+    1431
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 4,
+   "q": "3 % contracting functioning provisions",
+   "token": "3 %",
+   "kind": "percent",
+   "support_sent": 1583,
+   "acc": [
+    1583
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 5,
+   "q": "5 % subscribed capital average",
+   "token": "5 %",
+   "kind": "percent",
+   "support_sent": 1355,
+   "acc": [
+    1355
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 6,
+   "q": "50 % establishment subscription established",
+   "token": "50 %",
+   "kind": "percent",
+   "support_sent": 1157,
+   "acc": [
+    1157,
+    1368
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 7,
+   "q": "55 % representing comprising population",
+   "token": "55 %",
+   "kind": "percent",
+   "support_sent": 314,
+   "acc": [
+    314,
+    681,
+    1878
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 8,
+   "q": "60 % contracting functioning provisions",
+   "token": "60 %",
+   "kind": "percent",
+   "support_sent": 1583,
+   "acc": [
+    1583
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 9,
+   "q": "62 % comprising population qualified",
+   "token": "62 %",
+   "kind": "percent",
+   "support_sent": 1831,
+   "acc": [
+    1831
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 10,
+   "q": "65 % representing comprising population",
+   "token": "65 %",
+   "kind": "percent",
+   "support_sent": 314,
+   "acc": [
+    314
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 11,
+   "q": "68 % subscribed qualified majority",
+   "token": "68 %",
+   "kind": "percent",
+   "support_sent": 1369,
+   "acc": [
+    1369
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 12,
+   "q": "90 % consolidating participation contributions",
+   "token": "90 %",
+   "kind": "percent",
+   "support_sent": 1772,
+   "acc": [
+    1772
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 13,
+   "q": "Article 10(1) transitional declaration appropriate",
+   "token": "Article 10(1)",
+   "kind": "article_para",
+   "support_sent": 2033,
+   "acc": [
+    2033
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 14,
+   "q": "Article 10(3) transitional declaration appropriate",
+   "token": "Article 10(3)",
+   "kind": "article_para",
+   "support_sent": 2033,
+   "acc": [
+    2033
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 15,
+   "q": "Article 107(2) declaration functioning european",
+   "token": "Article 107(2)",
+   "kind": "article_para",
+   "support_sent": 121,
+   "acc": [
+    121,
+    1967
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 16,
+   "q": "Article 108(2) jurisdiction institutions subparagraph",
+   "token": "Article 108(2)",
+   "kind": "article_para",
+   "support_sent": 842,
+   "acc": [
+    842
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 17,
+   "q": "Article 11(1) subparagraph appointment territories",
+   "token": "Article 11(1)",
+   "kind": "article_para",
+   "support_sent": 1365,
+   "acc": [
+    1365
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 18,
+   "q": "Article 121(2) guidelines generally adoption",
+   "token": "Article 121(2)",
+   "kind": "article_para",
+   "support_sent": 1608,
+   "acc": [
+    1608
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 19,
+   "q": "Article 126(2) contracting functioning provisions",
+   "token": "Article 126(2)",
+   "kind": "article_para",
+   "support_sent": 1583,
+   "acc": [
+    1583
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 20,
+   "q": "Article 126(6) examination government criterion",
+   "token": "Article 126(6)",
+   "kind": "article_para",
+   "support_sent": 1591,
+   "acc": [
+    1591
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 21,
+   "q": "Article 127(1) functioning objectives accordance",
+   "token": "Article 127(1)",
+   "kind": "article_para",
+   "support_sent": 968,
+   "acc": [
+    968
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 22,
+   "q": "Article 127(2) functioning accordance operations",
+   "token": "Article 127(2)",
+   "kind": "article_para",
+   "support_sent": 972,
+   "acc": [
+    972,
+    994
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 23,
+   "q": "Article 127(3) functioning accordance european",
+   "token": "Article 127(3)",
+   "kind": "article_para",
+   "support_sent": 973,
+   "acc": [
+    973
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 24,
+   "q": "Article 127(4) institutions functioning authorities",
+   "token": "Article 127(4)",
+   "kind": "article_para",
+   "support_sent": 976,
+   "acc": [
+    976
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 25,
+   "q": "Article 127(5) institutions functioning authorities",
+   "token": "Article 127(5)",
+   "kind": "article_para",
+   "support_sent": 975,
+   "acc": [
+    975
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 26,
+   "q": "Article 127(6) institutions undertakings functioning",
+   "token": "Article 127(6)",
+   "kind": "article_para",
+   "support_sent": 1125,
+   "acc": [
+    1125
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 27,
+   "q": "Article 128(1) functioning accordance banknotes",
+   "token": "Article 128(1)",
+   "kind": "article_para",
+   "support_sent": 1096,
+   "acc": [
+    1096
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 28,
+   "q": "Article 129(1) functioning accordance governing",
+   "token": "Article 129(1)",
+   "kind": "article_para",
+   "support_sent": 996,
+   "acc": [
+    996,
+    1299
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 29,
+   "q": "Article 129(3) functioning accordance european",
+   "token": "Article 129(3)",
+   "kind": "article_para",
+   "support_sent": 1249,
+   "acc": [
+    1249
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 30,
+   "q": "Article 129(4) recommendation complementary legislation",
+   "token": "Article 129(4)",
+   "kind": "article_para",
+   "support_sent": 1265,
+   "acc": [
+    1265
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 31,
+   "q": "Article 139(1) functioning derogation specified",
+   "token": "Article 139(1)",
+   "kind": "article_para",
+   "support_sent": 1279,
+   "acc": [
+    1279,
+    1470
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 32,
+   "q": "Article 139(4) subparagraph functioning suspended",
+   "token": "Article 139(4)",
+   "kind": "article_para",
+   "support_sent": 1613,
+   "acc": [
+    1613,
+    1614
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 33,
+   "q": "Article 14(2) parliamentary provisionally establishing",
+   "token": "Article 14(2)",
+   "kind": "article_para",
+   "support_sent": 1821,
+   "acc": [
+    1821,
+    1823
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 34,
+   "q": "Article 14(3) legislation designation derogation",
+   "token": "Article 14(3)",
+   "kind": "article_para",
+   "support_sent": 1822,
+   "acc": [
+    1822
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 35,
+   "q": "Article 140(3) preparations irrevocably functioning",
+   "token": "Article 140(3)",
+   "kind": "article_para",
+   "support_sent": 1323,
+   "acc": [
+    1323,
+    1633
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 36,
+   "q": "Article 141(1) functioning derogation amendments",
+   "token": "Article 141(1)",
+   "kind": "article_para",
+   "support_sent": 1626,
+   "acc": [
+    1626
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 37,
+   "q": "Article 141(2) transitional introduction functioning",
+   "token": "Article 141(2)",
+   "kind": "article_para",
+   "support_sent": 1296,
+   "acc": [
+    1296
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 38,
+   "q": "Article 15(4) implementation modification deliberation",
+   "token": "Article 15(4)",
+   "kind": "article_para",
+   "support_sent": 1577,
+   "acc": [
+    1577,
+    1950
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 39,
+   "q": "Article 15(5) declaration european treaty",
+   "token": "Article 15(5)",
+   "kind": "article_para",
+   "support_sent": 75,
+   "acc": [
+    75,
+    1871
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 40,
+   "q": "Article 16(1) subparagraph appointment territories",
+   "token": "Article 16(1)",
+   "kind": "article_para",
+   "support_sent": 1365,
+   "acc": [
+    1365
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 41,
+   "q": "Article 16(6) configurations subparagraphs subparagraph",
+   "token": "Article 16(6)",
+   "kind": "article_para",
+   "support_sent": 1834,
+   "acc": [
+    1834
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 42,
+   "q": "Article 16(9) declaration concerning presidency",
+   "token": "Article 16(9)",
+   "kind": "article_para",
+   "support_sent": 81,
+   "acc": [
+    81,
+    1884
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 43,
+   "q": "Article 168(4) declaration functioning european",
+   "token": "Article 168(4)",
+   "kind": "article_para",
+   "support_sent": 127,
+   "acc": [
+    127,
+    1991
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 44,
+   "q": "Article 17(7) consultations subparagraph backgrounds",
+   "token": "Article 17(7)",
+   "kind": "article_para",
+   "support_sent": 1905,
+   "acc": [
+    1905
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 45,
+   "q": "Article 18(1) representative accordance procedure",
+   "token": "Article 18(1)",
+   "kind": "article_para",
+   "support_sent": 347,
+   "acc": [
+    347
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 46,
+   "q": "Article 18(2) instructions institution commission",
+   "token": "Article 18(2)",
+   "kind": "article_para",
+   "support_sent": 339,
+   "acc": [
+    339,
+    1472
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 47,
+   "q": "Article 2(2) contracting functioning competence",
+   "token": "Article 2(2)",
+   "kind": "article_para",
+   "support_sent": 1767,
+   "acc": [
+    1767
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 48,
+   "q": "Article 20(2) implementation functioning contribute",
+   "token": "Article 20(2)",
+   "kind": "article_para",
+   "support_sent": 485,
+   "acc": [
+    485
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 49,
+   "q": "Article 218(3) functioning negotiated accordance",
+   "token": "Article 218(3)",
+   "kind": "article_para",
+   "support_sent": 607,
+   "acc": [
+    607
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 50,
+   "q": "Article 22(1) representative implementing derogation",
+   "token": "Article 22(1)",
+   "kind": "article_para",
+   "support_sent": 459,
+   "acc": [
+    459
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 51,
+   "q": "Article 228(2) functioning pursuant european",
+   "token": "Article 228(2)",
+   "kind": "article_para",
+   "support_sent": 736,
+   "acc": [
+    736
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 52,
+   "q": "Article 235(1) subparagraph functioning provisions",
+   "token": "Article 235(1)",
+   "kind": "article_para",
+   "support_sent": 1828,
+   "acc": [
+    1828
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 53,
+   "q": "Article 24(3) representative international organisations",
+   "token": "Article 24(3)",
+   "kind": "article_para",
+   "support_sent": 479,
+   "acc": [
+    479
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 54,
+   "q": "Article 240(2) functioning conformity secretary",
+   "token": "Article 240(2)",
+   "kind": "article_para",
+   "support_sent": 1838,
+   "acc": [
+    1838
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 55,
+   "q": "Article 245(2) functioning pursuant european",
+   "token": "Article 245(2)",
+   "kind": "article_para",
+   "support_sent": 736,
+   "acc": [
+    736
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 56,
+   "q": "Article 256(1) jurisdiction institutions subparagraph",
+   "token": "Article 256(1)",
+   "kind": "article_para",
+   "support_sent": 842,
+   "acc": [
+    842
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 57,
+   "q": "Article 256(2) functioning consistency considers",
+   "token": "Article 256(2)",
+   "kind": "article_para",
+   "support_sent": 875,
+   "acc": [
+    875,
+    879,
+    881
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 58,
+   "q": "Article 256(3) functioning prescribed proposals",
+   "token": "Article 256(3)",
+   "kind": "article_para",
+   "support_sent": 884,
+   "acc": [
+    884
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 59,
+   "q": "Article 26(1) implementation implications participate",
+   "token": "Article 26(1)",
+   "kind": "article_para",
+   "support_sent": 1724,
+   "acc": [
+    1724
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 60,
+   "q": "Article 282(1) contracting functioning provisions",
+   "token": "Article 282(1)",
+   "kind": "article_para",
+   "support_sent": 965,
+   "acc": [
+    965
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 61,
+   "q": "Article 282(2) functioning objectives accordance",
+   "token": "Article 282(2)",
+   "kind": "article_para",
+   "support_sent": 968,
+   "acc": [
+    968
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 62,
+   "q": "Article 282(3) functioning personality proceedings",
+   "token": "Article 282(3)",
+   "kind": "article_para",
+   "support_sent": 993,
+   "acc": [
+    993
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 63,
+   "q": "Article 283(1) functioning accordance governing",
+   "token": "Article 283(1)",
+   "kind": "article_para",
+   "support_sent": 998,
+   "acc": [
+    998
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 64,
+   "q": "Article 283(2) subparagraph accordance executive",
+   "token": "Article 283(2)",
+   "kind": "article_para",
+   "support_sent": 1035,
+   "acc": [
+    1035,
+    1039,
+    1615
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 65,
+   "q": "Article 284(3) functioning accordance activities",
+   "token": "Article 284(3)",
+   "kind": "article_para",
+   "support_sent": 1093,
+   "acc": [
+    1093
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 66,
+   "q": "Article 286(6) functioning pursuant european",
+   "token": "Article 286(6)",
+   "kind": "article_para",
+   "support_sent": 736,
+   "acc": [
+    736
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 67,
+   "q": "Article 3(1) functioning objectives therefore",
+   "token": "Article 3(1)",
+   "kind": "article_para",
+   "support_sent": 2011,
+   "acc": [
+    2011
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 68,
+   "q": "Article 3(2) implementation transitional functioning",
+   "token": "Article 3(2)",
+   "kind": "article_para",
+   "support_sent": 1873,
+   "acc": [
+    1873,
+    2010
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 69,
+   "q": "Article 3(3) provisions applicable commission",
+   "token": "Article 3(3)",
+   "kind": "article_para",
+   "support_sent": 1795,
+   "acc": [
+    1795,
+    1873,
+    1922
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 70,
+   "q": "Article 3(5) declaration functioning conference",
+   "token": "Article 3(5)",
+   "kind": "article_para",
+   "support_sent": 2010,
+   "acc": [
+    2010
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 71,
+   "q": "Article 31(1) representatives implications subparagraph",
+   "token": "Article 31(1)",
+   "kind": "article_para",
+   "support_sent": 504,
+   "acc": [
+    504,
+    2012
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 72,
+   "q": "Article 312(2) subparagraph satisfactory declaration",
+   "token": "Article 312(2)",
+   "kind": "article_para",
+   "support_sent": 2065,
+   "acc": [
+    2065
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 73,
+   "q": "Article 331(1) functioning procedure provided",
+   "token": "Article 331(1)",
+   "kind": "article_para",
+   "support_sent": 1695,
+   "acc": [
+    1695,
+    1746
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 74,
+   "q": "Article 35(2) transitional institutions cooperation",
+   "token": "Article 35(2)",
+   "kind": "article_para",
+   "support_sent": 1842,
+   "acc": [
+    1842
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 75,
+   "q": "Article 352(1) declaration functioning conference",
+   "token": "Article 352(1)",
+   "kind": "article_para",
+   "support_sent": 2010,
+   "acc": [
+    2010
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 76,
+   "q": "Article 355(1) modification declaration functioning",
+   "token": "Article 355(1)",
+   "kind": "article_para",
+   "support_sent": 2017,
+   "acc": [
+    2017
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 77,
+   "q": "Article 355(6) declaration functioning european",
+   "token": "Article 355(6)",
+   "kind": "article_para",
+   "support_sent": 149,
+   "acc": [
+    149,
+    2017,
+    2067
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 78,
+   "q": "Article 4(1) subscribed capital average",
+   "token": "Article 4(1)",
+   "kind": "article_para",
+   "support_sent": 1355,
+   "acc": [
+    1355
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 79,
+   "q": "Article 4(2) consolidating participation contributions",
+   "token": "Article 4(2)",
+   "kind": "article_para",
+   "support_sent": 1772,
+   "acc": [
+    1772,
+    1806
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 80,
+   "q": "Article 4(3) subparagraph appointment territories",
+   "token": "Article 4(3)",
+   "kind": "article_para",
+   "support_sent": 1365,
+   "acc": [
+    1365
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 81,
+   "q": "Article 42(2) arrangements contracting obligations",
+   "token": "Article 42(2)",
+   "kind": "article_para",
+   "support_sent": 1582,
+   "acc": [
+    1582
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 82,
+   "q": "Article 42(3) harmonisation strengthening technological",
+   "token": "Article 42(3)",
+   "kind": "article_para",
+   "support_sent": 546,
+   "acc": [
+    546
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 83,
+   "q": "Article 42(6) representative capabilities participate",
+   "token": "Article 42(6)",
+   "kind": "article_para",
+   "support_sent": 553,
+   "acc": [
+    553,
+    1578
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 84,
+   "q": "Article 48(2) representatives governments intergovern",
+   "token": "Article 48(2)",
+   "kind": "article_para",
+   "support_sent": 1938,
+   "acc": [
+    1938
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 85,
+   "q": "Article 48(7) subparagraphs parliaments initiative",
+   "token": "Article 48(7)",
+   "kind": "article_para",
+   "support_sent": 643,
+   "acc": [
+    643
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 86,
+   "q": "Article 55(2) declaration european treaty",
+   "token": "Article 55(2)",
+   "kind": "article_para",
+   "support_sent": 95,
+   "acc": [
+    95,
+    1922,
+    1924
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 87,
+   "q": "Article 6(1) subparagraph proclaimed european",
+   "token": "Article 6(1)",
+   "kind": "article_para",
+   "support_sent": 11,
+   "acc": [
+    11,
+    1765
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 88,
+   "q": "Article 6(2) declaration european treaty",
+   "token": "Article 6(2)",
+   "kind": "article_para",
+   "support_sent": 67,
+   "acc": [
+    67,
+    1573,
+    1866
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 89,
+   "q": "Article 6(3) jurisdiction constituting contracting",
+   "token": "Article 6(3)",
+   "kind": "article_para",
+   "support_sent": 1765,
+   "acc": [
+    1765
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 90,
+   "q": "Article 7(1) consideration unilaterally accordingly",
+   "token": "Article 7(1)",
+   "kind": "article_para",
+   "support_sent": 1766,
+   "acc": [
+    1766
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 91,
+   "q": "Article 7(2) consideration unilaterally accordingly",
+   "token": "Article 7(2)",
+   "kind": "article_para",
+   "support_sent": 1766,
+   "acc": [
+    1766
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 92,
+   "q": "Article 7(3) implementation furthermore established",
+   "token": "Article 7(3)",
+   "kind": "article_para",
+   "support_sent": 1429,
+   "acc": [
+    1429,
+    1445
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 93,
+   "q": "Article 77(2) international contracting cooperation",
+   "token": "Article 77(2)",
+   "kind": "article_para",
+   "support_sent": 1764,
+   "acc": [
+    1764
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 94,
+   "q": "Article 79(2) declaration functioning legislative",
+   "token": "Article 79(2)",
+   "kind": "article_para",
+   "support_sent": 1948,
+   "acc": [
+    1948
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 95,
+   "q": "Article 85(1) subparagraph declaration european",
+   "token": "Article 85(1)",
+   "kind": "article_para",
+   "support_sent": 117,
+   "acc": [
+    117,
+    1962
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 96,
+   "q": "Article 9(1) subparagraph appointment territories",
+   "token": "Article 9(1)",
+   "kind": "article_para",
+   "support_sent": 1365,
+   "acc": [
+    1365
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 97,
+   "q": "Protocol (No 1) parliaments national european",
+   "token": "Protocol (No 1)",
+   "kind": "protocol",
+   "support_sent": 26,
+   "acc": [
+    26
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 98,
+   "q": "Protocol (No 10) cooperation established structured",
+   "token": "Protocol (No 10)",
+   "kind": "protocol",
+   "support_sent": 33,
+   "acc": [
+    33
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 99,
+   "q": "Protocol (No 11) european article treaty",
+   "token": "Protocol (No 11)",
+   "kind": "protocol",
+   "support_sent": 34,
+   "acc": [
+    34
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 100,
+   "q": "Protocol (No 12) excessive procedure deficit",
+   "token": "Protocol (No 12)",
+   "kind": "protocol",
+   "support_sent": 35,
+   "acc": [
+    35
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 101,
+   "q": "Protocol (No 13) convergence criteria",
+   "token": "Protocol (No 13)",
+   "kind": "protocol",
+   "support_sent": 36,
+   "acc": [
+    36
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 102,
+   "q": "Protocol (No 14) group",
+   "token": "Protocol (No 14)",
+   "kind": "protocol",
+   "support_sent": 37,
+   "acc": [
+    37
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 103,
+   "q": "Protocol (No 15) provisions relating northern",
+   "token": "Protocol (No 15)",
+   "kind": "protocol",
+   "support_sent": 38,
+   "acc": [
+    38
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 104,
+   "q": "Protocol (No 16) provisions relating certain",
+   "token": "Protocol (No 16)",
+   "kind": "protocol",
+   "support_sent": 39,
+   "acc": [
+    39
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 105,
+   "q": "Protocol (No 17) denmark",
+   "token": "Protocol (No 17)",
+   "kind": "protocol",
+   "support_sent": 40,
+   "acc": [
+    40
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 106,
+   "q": "Protocol (No 18) france",
+   "token": "Protocol (No 18)",
+   "kind": "protocol",
+   "support_sent": 41,
+   "acc": [
+    41
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 107,
+   "q": "Protocol (No 19) integrated framework schengen",
+   "token": "Protocol (No 19)",
+   "kind": "protocol",
+   "support_sent": 42,
+   "acc": [
+    42
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 108,
+   "q": "Protocol (No 2) subsidiarity application principles",
+   "token": "Protocol (No 2)",
+   "kind": "protocol",
+   "support_sent": 27,
+   "acc": [
+    27
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 109,
+   "q": "Protocol (No 20) application functioning european",
+   "token": "Protocol (No 20)",
+   "kind": "protocol",
+   "support_sent": 43,
+   "acc": [
+    43
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 110,
+   "q": "Protocol (No 21) position security kingdom",
+   "token": "Protocol (No 21)",
+   "kind": "protocol",
+   "support_sent": 44,
+   "acc": [
+    44
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 111,
+   "q": "Protocol (No 22) position denmark",
+   "token": "Protocol (No 22)",
+   "kind": "protocol",
+   "support_sent": 45,
+   "acc": [
+    45
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 112,
+   "q": "Protocol (No 23) relations external crossing",
+   "token": "Protocol (No 23)",
+   "kind": "protocol",
+   "support_sent": 46,
+   "acc": [
+    46
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 113,
+   "q": "Protocol (No 24) nationals european asylum",
+   "token": "Protocol (No 24)",
+   "kind": "protocol",
+   "support_sent": 47,
+   "acc": [
+    47
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 114,
+   "q": "Protocol (No 25) competence exercise shared",
+   "token": "Protocol (No 25)",
+   "kind": "protocol",
+   "support_sent": 48,
+   "acc": [
+    48
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 115,
+   "q": "Protocol (No 26) services interest general",
+   "token": "Protocol (No 26)",
+   "kind": "protocol",
+   "support_sent": 49,
+   "acc": [
+    49
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 116,
+   "q": "Protocol (No 27) competition internal market",
+   "token": "Protocol (No 27)",
+   "kind": "protocol",
+   "support_sent": 50,
+   "acc": [
+    50
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 117,
+   "q": "Protocol (No 28) territorial economic cohesion",
+   "token": "Protocol (No 28)",
+   "kind": "protocol",
+   "support_sent": 51,
+   "acc": [
+    51
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 118,
+   "q": "Protocol (No 29) broadcasting system public",
+   "token": "Protocol (No 29)",
+   "kind": "protocol",
+   "support_sent": 52,
+   "acc": [
+    52
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 119,
+   "q": "Protocol (No 3) european statute justice",
+   "token": "Protocol (No 3)",
+   "kind": "protocol",
+   "support_sent": 28,
+   "acc": [
+    28
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 120,
+   "q": "Protocol (No 30) application fundamental european",
+   "token": "Protocol (No 30)",
+   "kind": "protocol",
+   "support_sent": 53,
+   "acc": [
+    53
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 121,
+   "q": "Protocol (No 31) netherlands concerning petroleum",
+   "token": "Protocol (No 31)",
+   "kind": "protocol",
+   "support_sent": 54,
+   "acc": [
+    54
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 122,
+   "q": "Protocol (No 32) acquisition property denmark",
+   "token": "Protocol (No 32)",
+   "kind": "protocol",
+   "support_sent": 55,
+   "acc": [
+    55
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 123,
+   "q": "Protocol (No 33) functioning concerning european",
+   "token": "Protocol (No 33)",
+   "kind": "protocol",
+   "support_sent": 56,
+   "acc": [
+    56
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 124,
+   "q": "Protocol (No 34) arrangements greenland special",
+   "token": "Protocol (No 34)",
+   "kind": "protocol",
+   "support_sent": 57,
+   "acc": [
+    57
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 125,
+   "q": "Protocol (No 35) article",
+   "token": "Protocol (No 35)",
+   "kind": "protocol",
+   "support_sent": 58,
+   "acc": [
+    58
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 126,
+   "q": "Protocol (No 36) transitional provisions",
+   "token": "Protocol (No 36)",
+   "kind": "protocol",
+   "support_sent": 60,
+   "acc": [
+    60
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 127,
+   "q": "Protocol (No 37) consequences financial research",
+   "token": "Protocol (No 37)",
+   "kind": "protocol",
+   "support_sent": 61,
+   "acc": [
+    61
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 128,
+   "q": "Protocol (No 4) european statute justice",
+   "token": "Protocol (No 4)",
+   "kind": "protocol",
+   "support_sent": 28,
+   "acc": [
+    28
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 129,
+   "q": "Protocol (No 5) investment european statute",
+   "token": "Protocol (No 5)",
+   "kind": "protocol",
+   "support_sent": 29,
+   "acc": [
+    29
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 130,
+   "q": "Protocol (No 6) institutions departments privileges",
+   "token": "Protocol (No 6)",
+   "kind": "protocol",
+   "support_sent": 30,
+   "acc": [
+    30
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 131,
+   "q": "Protocol (No 7) institutions departments privileges",
+   "token": "Protocol (No 7)",
+   "kind": "protocol",
+   "support_sent": 30,
+   "acc": [
+    30
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 132,
+   "q": "Protocol (No 8) fundamental convention protection",
+   "token": "Protocol (No 8)",
+   "kind": "protocol",
+   "support_sent": 31,
+   "acc": [
+    31
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  },
+  {
+   "id": 133,
+   "q": "Protocol (No 9) implementation functioning decision",
+   "token": "Protocol (No 9)",
+   "kind": "protocol",
+   "support_sent": 32,
+   "acc": [
+    32
+   ],
+   "not_found": false,
+   "misspelled": false,
+   "category": "exact"
+  }
+ ]
+}
