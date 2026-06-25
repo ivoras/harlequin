@@ -21,32 +21,43 @@ def tokenize(text: str) -> list[str]:
 
 
 class BM25:
+    """Okapi BM25, vectorised. Per query term, the contribution to every doc is
+    computed in one numpy expression over a precomputed (term -> [(doc, tf)])
+    posting list, so scoring is fast even across many index variants × queries."""
+
     def __init__(self, docs: list[str], k1: float = 1.5, b: float = 0.75):
         self.k1, self.b = k1, b
         self.toks = [tokenize(d) for d in docs]
         self.N = len(docs)
         self.dl = np.array([len(t) for t in self.toks], dtype=np.float32)
         self.avgdl = float(self.dl.mean()) if self.N else 0.0
+        # length-normalisation denominator term, per doc (query-independent)
+        self.dnorm = self.k1 * (1 - self.b + self.b * self.dl / (self.avgdl + 1e-9))
         df = Counter()
         for t in self.toks:
             df.update(set(t))
         # idf with the standard BM25 +0.5 smoothing, floored at 0
         self.idf = {w: max(math.log((self.N - n + 0.5) / (n + 0.5) + 1.0), 0.0)
                     for w, n in df.items()}
-        self.tf = [Counter(t) for t in self.toks]
+        # posting lists: term -> (doc_index array, tf array)
+        self.post: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+        tmp: dict[str, dict[int, int]] = {}
+        for i, t in enumerate(self.toks):
+            for w, f in Counter(t).items():
+                tmp.setdefault(w, {})[i] = f
+        for w, d in tmp.items():
+            idx = np.fromiter(d.keys(), dtype=np.int64, count=len(d))
+            tf = np.fromiter(d.values(), dtype=np.float32, count=len(d))
+            self.post[w] = (idx, tf)
 
     def scores(self, query: str) -> np.ndarray:
-        q = tokenize(query)
         s = np.zeros(self.N, dtype=np.float32)
-        for w in q:
+        for w in tokenize(query):
             idf = self.idf.get(w)
             if not idf:
                 continue
-            for i in range(self.N):
-                f = self.tf[i].get(w, 0)
-                if f:
-                    denom = f + self.k1 * (1 - self.b + self.b * self.dl[i] / (self.avgdl + 1e-9))
-                    s[i] += idf * f * (self.k1 + 1) / (denom + 1e-9)
+            idx, tf = self.post[w]
+            np.add.at(s, idx, idf * tf * (self.k1 + 1) / (tf + self.dnorm[idx] + 1e-9))
         return s
 
     def topk(self, query: str, k: int = 10) -> list[tuple[int, float]]:

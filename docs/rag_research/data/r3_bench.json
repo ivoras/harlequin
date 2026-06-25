@@ -1,0 +1,47 @@
+{
+ "granite": {
+  "backend": "granite",
+  "dim": 768,
+  "n_vec": 2112,
+  "seconds": 13.651829719543457,
+  "vec_per_sec": 154.70453729557866,
+  "tok_per_sec": 6363.982102386304,
+  "tokens": 86880
+ },
+ "snowflake": {
+  "backend": "snowflake",
+  "dim": 1024,
+  "n_vec": 2112,
+  "seconds": 35.425464391708374,
+  "vec_per_sec": 59.618131653747106,
+  "tok_per_sec": 2722.9847697516134,
+  "tokens": 96463
+ },
+ "qwen06b": {
+  "backend": "qwen06b",
+  "dim": 1024,
+  "n_vec": 2112,
+  "seconds": 48.44161796569824,
+  "vec_per_sec": 43.59887404040712,
+  "tok_per_sec": 1799.1760733862131,
+  "tokens": 87155
+ },
+ "gemma": {
+  "backend": "gemma",
+  "dim": 768,
+  "n_vec": 2112,
+  "seconds": 13.956808805465698,
+  "vec_per_sec": 151.32399027870244,
+  "tok_per_sec": 6376.242681288962,
+  "tokens": 88992
+ },
+ "lfm2": {
+  "backend": "lfm2",
+  "dim": 1024,
+  "n_vec": 2112,
+  "seconds": 28.80711793899536,
+  "vec_per_sec": 73.31521342997824,
+  "tok_per_sec": 3043.206202913103,
+  "tokens": 87666
+ }
+}

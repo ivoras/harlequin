@@ -1,0 +1,80 @@
+{
+ "config": "qwen06b",
+ "model": "Qwen3-Embedding-0.6B-Q8_0.gguf",
+ "dim": 1024,
+ "n_sent": 2112,
+ "gates": [
+  0.3672,
+  0.4218,
+  0.4672,
+  0.5173,
+  0.5765,
+  0.6588,
+  0.7625
+ ],
+ "variants": {
+  "per_sentence": {
+   "n_chunks": 2112,
+   "tok_mean": 40.26657196969697
+  },
+  "mech_256": {
+   "n_chunks": 365,
+   "tok_mean": 232.9945205479452
+  },
+  "mech_512": {
+   "n_chunks": 179,
+   "tok_mean": 475.1005586592179
+  },
+  "mech_1024": {
+   "n_chunks": 88,
+   "tok_mean": 966.3977272727273
+  },
+  "mech_1500": {
+   "n_chunks": 59,
+   "tok_mean": 1441.406779661017
+  },
+  "overlap_512": {
+   "n_chunks": 179,
+   "tok_mean": 482.76536312849163
+  },
+  "overlap_1024": {
+   "n_chunks": 88,
+   "tok_mean": 974.3977272727273
+  },
+  "semadj_g0.3672": {
+   "n_chunks": 926,
+   "tok_mean": 91.83909287257019,
+   "gate": 0.3672
+  },
+  "semadj_g0.4218": {
+   "n_chunks": 840,
+   "tok_mean": 101.24166666666666,
+   "gate": 0.4218
+  },
+  "semadj_g0.4672": {
+   "n_chunks": 744,
+   "tok_mean": 114.30510752688173,
+   "gate": 0.4672
+  },
+  "semadj_g0.5173": {
+   "n_chunks": 636,
+   "tok_mean": 133.71540880503144,
+   "gate": 0.5173
+  },
+  "semadj_g0.5765": {
+   "n_chunks": 513,
+   "tok_mean": 165.77582846003898,
+   "gate": 0.5765
+  },
+  "semadj_g0.6588": {
+   "n_chunks": 396,
+   "tok_mean": 214.7550505050505,
+   "gate": 0.6588
+  },
+  "semadj_g0.7625": {
+   "n_chunks": 238,
+   "tok_mean": 357.3235294117647,
+   "gate": 0.7625
+  }
+ }
+}

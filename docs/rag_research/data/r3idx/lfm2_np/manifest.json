@@ -1,0 +1,80 @@
+{
+ "config": "lfm2_np",
+ "model": "LFM2.5-Embedding-350M-Q8_0.gguf",
+ "dim": 1024,
+ "n_sent": 2112,
+ "gates": [
+  0.4764,
+  0.5371,
+  0.5926,
+  0.6419,
+  0.6941,
+  0.7563,
+  0.9192
+ ],
+ "variants": {
+  "per_sentence": {
+   "n_chunks": 2112,
+   "tok_mean": 40.50852272727273
+  },
+  "mech_256": {
+   "n_chunks": 369,
+   "tok_mean": 231.85365853658536
+  },
+  "mech_512": {
+   "n_chunks": 180,
+   "tok_mean": 475.3
+  },
+  "mech_1024": {
+   "n_chunks": 90,
+   "tok_mean": 950.6
+  },
+  "mech_1500": {
+   "n_chunks": 60,
+   "tok_mean": 1425.9
+  },
+  "overlap_512": {
+   "n_chunks": 180,
+   "tok_mean": 482.2388888888889
+  },
+  "overlap_1024": {
+   "n_chunks": 90,
+   "tok_mean": 960.9222222222222
+  },
+  "semadj_g0.4764": {
+   "n_chunks": 920,
+   "tok_mean": 92.99347826086957,
+   "gate": 0.4764
+  },
+  "semadj_g0.5371": {
+   "n_chunks": 833,
+   "tok_mean": 102.70588235294117,
+   "gate": 0.5371
+  },
+  "semadj_g0.5926": {
+   "n_chunks": 757,
+   "tok_mean": 113.01717305151915,
+   "gate": 0.5926
+  },
+  "semadj_g0.6419": {
+   "n_chunks": 638,
+   "tok_mean": 134.09717868338558,
+   "gate": 0.6419
+  },
+  "semadj_g0.6941": {
+   "n_chunks": 532,
+   "tok_mean": 160.81578947368422,
+   "gate": 0.6941
+  },
+  "semadj_g0.7563": {
+   "n_chunks": 421,
+   "tok_mean": 203.21615201900238,
+   "gate": 0.7563
+  },
+  "semadj_g0.9192": {
+   "n_chunks": 247,
+   "tok_mean": 346.3724696356275,
+   "gate": 0.9192
+  }
+ }
+}
