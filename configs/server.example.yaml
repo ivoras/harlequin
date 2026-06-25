@@ -66,9 +66,11 @@ embeddings:
 #   max_chunk_runes: cap so a chunk fits the embed server's physical batch
 # documents:
 #   chunker: "semadj"
-#   semadj_gate: 0.4341
+#   semadj_gate: 0.3772
 #   max_chunk_runes: 1600
 #   min_sentences: 2
+#   fts5_weight: 2.0           # RRF weight of the FTS5 lexical arm (dense = 1.0)
+#   fts5_score_gate_pct: 90    # keep only the strongest FTS5 hits (top decile); 0 = all
 
 agent:
   max_steps: 50

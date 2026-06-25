@@ -45,14 +45,17 @@ func defaultChunkConfig() ChunkConfig {
 
 // Store manages documents and chunks.
 type Store struct {
-	db       *sql.DB
-	embedder embed.Embedder
-	chunk    ChunkConfig
+	db         *sql.DB
+	embedder   embed.Embedder
+	chunk      ChunkConfig
+	ftsWeight  float64 // RRF weight of the FTS5 arm (dense arm = 1.0)
+	ftsGatePct int     // keep only FTS5 hits at/above this score percentile (0 = all)
 }
 
-// NewStore constructs a documents Store with the default (overlap) chunker.
+// NewStore constructs a documents Store with the default (overlap) chunker and
+// equal-weight, ungated FTS5+vector fusion.
 func NewStore(db *sql.DB, embedder embed.Embedder) *Store {
-	return &Store{db: db, embedder: embedder, chunk: defaultChunkConfig()}
+	return &Store{db: db, embedder: embedder, chunk: defaultChunkConfig(), ftsWeight: 1.0}
 }
 
 // SetChunkConfig overrides the chunker; zero-valued fields keep their defaults.
@@ -68,6 +71,18 @@ func (s *Store) SetChunkConfig(c ChunkConfig) {
 	}
 	if c.MinSentences > 0 {
 		s.chunk.MinSentences = c.MinSentences
+	}
+}
+
+// SetFusion sets the document-search RRF fusion: the FTS5 arm's weight (dense is
+// fixed at 1.0) and an optional FTS5 score gate (keep only hits at/above this
+// score percentile per query; 0 disables). weight <= 0 keeps the default 1.0.
+func (s *Store) SetFusion(weight float64, gatePct int) {
+	if weight > 0 {
+		s.ftsWeight = weight
+	}
+	if gatePct > 0 && gatePct < 100 {
+		s.ftsGatePct = gatePct
 	}
 }
 
@@ -226,28 +241,43 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 	return tx.Commit()
 }
 
-// Search returns chunks matching the query, fused via RRF.
+type scoredHit struct {
+	id      int64
+	content string
+}
+
+// Search returns chunks matching the query, fusing the dense (vector) and FTS5
+// (lexical) arms via weighted RRF. The FTS5 arm carries ftsWeight (dense = 1.0)
+// and, if ftsGatePct > 0, is gated to its strongest hits (top 100-pct% by BM25)
+// so weak lexical matches do not pollute the fusion.
 func (s *Store) Search(ctx context.Context, query string, limit int) ([]types.SearchResult, error) {
 	if limit <= 0 {
 		limit = 8
 	}
+	depth := limit * 4
 	ranks := map[int64]float64{}
 	contents := map[int64]string{}
 
+	// FTS5 arm, ordered best-first by BM25 (f.rank), optionally score-gated.
 	ftsRows, err := s.db.QueryContext(ctx,
 		`SELECT c.id, c.content FROM doc_chunks_fts f JOIN doc_chunks c ON c.id = f.rowid
-		 WHERE doc_chunks_fts MATCH ? ORDER BY f.rank LIMIT ?`, query, limit*4)
+		 WHERE doc_chunks_fts MATCH ? ORDER BY f.rank LIMIT ?`, query, depth)
 	if err == nil {
-		fold(ftsRows, ranks, contents)
+		hits := collect(ftsRows)
+		if s.ftsGatePct > 0 {
+			hits = gateTop(hits, s.ftsGatePct)
+		}
+		fold(hits, s.ftsWeight, ranks, contents)
 	}
 
+	// dense arm, ordered best-first by cosine distance, weight 1.
 	if vecs, err := s.embedder.EmbedQuery(ctx, []string{query}); err == nil && len(vecs) == 1 {
 		if blob, err := sqlite_vec.SerializeFloat32(vecs[0]); err == nil {
 			vecRows, err := s.db.QueryContext(ctx,
 				`SELECT c.id, c.content FROM doc_chunks_vec v JOIN doc_chunks c ON c.id = v.rowid
-				 WHERE v.embedding MATCH ? AND k = ? ORDER BY v.distance`, blob, limit*4)
+				 WHERE v.embedding MATCH ? AND k = ? ORDER BY v.distance`, blob, depth)
 			if err == nil {
-				fold(vecRows, ranks, contents)
+				fold(collect(vecRows), 1.0, ranks, contents)
 			}
 		}
 	}
@@ -255,18 +285,41 @@ func (s *Store) Search(ctx context.Context, query string, limit int) ([]types.Se
 	return topN(ranks, contents, limit), nil
 }
 
-func fold(rows *sql.Rows, ranks map[int64]float64, contents map[int64]string) {
+// collect drains a (id, content) result set, preserving its order.
+func collect(rows *sql.Rows) []scoredHit {
 	defer rows.Close()
-	rank := 0
+	var out []scoredHit
 	for rows.Next() {
-		var id int64
-		var content string
-		if err := rows.Scan(&id, &content); err != nil {
-			return
+		var h scoredHit
+		if err := rows.Scan(&h.id, &h.content); err != nil {
+			return out
 		}
-		rank++
-		ranks[id] += 1.0 / (rrfK + float64(rank))
-		contents[id] = content
+		out = append(out, h)
+	}
+	return out
+}
+
+// gateTop keeps the strongest hits — the top (100-pct)% of a best-first list —
+// dropping weaker lexical matches below the pct-th score percentile.
+func gateTop(hits []scoredHit, pct int) []scoredHit {
+	if len(hits) == 0 {
+		return hits
+	}
+	keep := int(math.Ceil(float64(len(hits)) * float64(100-pct) / 100.0))
+	if keep < 1 {
+		keep = 1
+	}
+	if keep > len(hits) {
+		keep = len(hits)
+	}
+	return hits[:keep]
+}
+
+// fold adds weighted RRF contributions (weight/(k+rank)) for a best-first list.
+func fold(hits []scoredHit, weight float64, ranks map[int64]float64, contents map[int64]string) {
+	for i, h := range hits {
+		ranks[h.id] += weight / (rrfK + float64(i+1))
+		contents[h.id] = h.content
 	}
 }
 
