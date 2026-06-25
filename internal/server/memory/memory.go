@@ -243,9 +243,19 @@ func (m memDB) updateContent(ctx context.Context, local int64, content string, b
 	return true, tx.Commit()
 }
 
-// embed returns the serialized embedding for text, or nil if embedding fails.
+// embed returns the serialized embedding for text as a DOCUMENT (stored memory
+// content / slot keys), or nil if embedding fails.
 func (s *Store) embed(ctx context.Context, text string) (any, error) {
-	vecs, err := s.embedder.Embed(ctx, []string{text})
+	return s.serialize(s.embedder.Embed(ctx, []string{text}))
+}
+
+// embedQuery is like embed but treats text as a SEARCH QUERY, so asymmetric
+// models apply their query prompt prefix. Used on the memory search path only.
+func (s *Store) embedQuery(ctx context.Context, text string) (any, error) {
+	return s.serialize(s.embedder.EmbedQuery(ctx, []string{text}))
+}
+
+func (s *Store) serialize(vecs [][]float32, err error) (any, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -344,7 +354,7 @@ func (s *Store) searchTuned(ctx context.Context, userDB, projDB *sql.DB, query s
 		limit = 8
 	}
 	var blob any
-	if b, err := s.embed(ctx, query); err == nil {
+	if b, err := s.embedQuery(ctx, query); err == nil {
 		blob = b
 	}
 

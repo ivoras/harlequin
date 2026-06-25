@@ -59,7 +59,7 @@ func main() {
 	loadJSON(filepath.Join(*dataDir, "queries.json"), &queries)
 	fmt.Printf("loaded %d memories, %d queries\n", len(mems), len(queries))
 
-	embedder := embed.New(cfg.Embeddings.BaseURL, cfg.Embeddings.APIKey, cfg.Embeddings.Model, cfg.Embeddings.Dim)
+	embedder := embed.New(cfg.Embeddings.BaseURL, cfg.Embeddings.APIKey, cfg.Embeddings.Model, cfg.Embeddings.Dim, cfg.Embeddings.QueryPrefix, cfg.Embeddings.DocPrefix)
 	ctx := context.Background()
 
 	// Two index builds differing only in the slot vector's embed text:

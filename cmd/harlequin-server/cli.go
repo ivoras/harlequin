@@ -329,7 +329,7 @@ func runBackfillSlotKeys(args []string) {
 		log.Fatalf("storage: %v", err)
 	}
 	defer store.Close()
-	embedder := embed.New(cfg.Embeddings.BaseURL, cfg.Embeddings.APIKey, cfg.Embeddings.Model, cfg.Embeddings.Dim)
+	embedder := embed.New(cfg.Embeddings.BaseURL, cfg.Embeddings.APIKey, cfg.Embeddings.Model, cfg.Embeddings.Dim, cfg.Embeddings.QueryPrefix, cfg.Embeddings.DocPrefix)
 	mem := memory.NewStore(store.Shared, embedder)
 
 	ctx := context.Background()
@@ -378,7 +378,7 @@ func runReindexVectors(args []string) {
 		log.Fatalf("storage: %v", err)
 	}
 	defer store.Close()
-	embedder := embed.New(cfg.Embeddings.BaseURL, cfg.Embeddings.APIKey, cfg.Embeddings.Model, cfg.Embeddings.Dim)
+	embedder := embed.New(cfg.Embeddings.BaseURL, cfg.Embeddings.APIKey, cfg.Embeddings.Model, cfg.Embeddings.Dim, cfg.Embeddings.QueryPrefix, cfg.Embeddings.DocPrefix)
 	mem := memory.NewStore(store.Shared, embedder)
 	docs := documents.NewStore(store.Shared, embedder)
 	ctx := context.Background()
