@@ -1169,9 +1169,112 @@ prompts), adjacent-sentence semantic chunks, dense+BM25 RRF.</p>
 <td>0.878</td>
 </tr>
 </tbody></table>
-<h2>8. Model selection (composite + cost)</h2>
+<h2>8. RRF weight on the lexical (FTS5) arm</h2>
+<p>The winning lexical pipeline <code>snowflake/semadj_g0.4341/fts5_hybrid</code> fuses the dense and FTS5 arms by RRF. Here we hold the dense arm at weight 1.0 and sweep the FTS5 arm's RRF weight over [0.25, 0.5, 1.0, 2.0, 4.0] (1.0 = the equal-weight default). FTS5 is exact-token, so we score the <b>misspelled</b> (122) and <b>clean</b> (680) in-document subsets separately: lexical weight should help well-formed queries and hurt typo'd ones.</p>
+<figure><svg viewBox="0 0 660 340" role="img">
+<text x="52" y="15" class="ct">Figure 4. RRF FTS5-arm weight vs recall (clean vs misspelled)</text>
+<line x1="52" y1="298" x2="510" y2="298" class="grid"/>
+<text x="46" y="301" class="ax" text-anchor="end">0.24</text>
+<line x1="52" y1="244" x2="510" y2="244" class="grid"/>
+<text x="46" y="247" class="ax" text-anchor="end">0.38</text>
+<line x1="52" y1="190" x2="510" y2="190" class="grid"/>
+<text x="46" y="193" class="ax" text-anchor="end">0.52</text>
+<line x1="52" y1="136" x2="510" y2="136" class="grid"/>
+<text x="46" y="139" class="ax" text-anchor="end">0.66</text>
+<line x1="52" y1="82" x2="510" y2="82" class="grid"/>
+<text x="46" y="85" class="ax" text-anchor="end">0.80</text>
+<line x1="52" y1="28" x2="510" y2="28" class="grid"/>
+<text x="46" y="31" class="ax" text-anchor="end">0.94</text>
+<text x="52" y="313" class="ax" text-anchor="middle">0.25</text>
+<text x="166" y="313" class="ax" text-anchor="middle">0.5</text>
+<text x="281" y="313" class="ax" text-anchor="middle">1.0</text>
+<text x="395" y="313" class="ax" text-anchor="middle">2.0</text>
+<text x="510" y="313" class="ax" text-anchor="middle">4.0</text>
+<text x="281" y="337" class="ax" text-anchor="middle">FTS5-arm RRF weight (dense=1.0, log)</text>
+<text x="14" y="163" class="ax" text-anchor="middle" transform="rotate(-90 14 163)">recall</text>
+<polyline points="52.0,42.0 166.5,50.0 281.0,54.6 395.5,64.2 510.0,76.2" fill="none" stroke="#16a085" stroke-width="2"/>
+<circle cx="52.0" cy="42.0" r="2.6" fill="#16a085"/>
+<circle cx="166.5" cy="50.0" r="2.6" fill="#16a085"/>
+<circle cx="281.0" cy="54.6" r="2.6" fill="#16a085"/>
+<circle cx="395.5" cy="64.2" r="2.6" fill="#16a085"/>
+<circle cx="510.0" cy="76.2" r="2.6" fill="#16a085"/>
+<polyline points="52.0,140.6 166.5,147.5 281.0,153.7 395.5,161.1 510.0,166.3" fill="none" stroke="#2980b9" stroke-width="2"/>
+<circle cx="52.0" cy="140.6" r="2.6" fill="#2980b9"/>
+<circle cx="166.5" cy="147.5" r="2.6" fill="#2980b9"/>
+<circle cx="281.0" cy="153.7" r="2.6" fill="#2980b9"/>
+<circle cx="395.5" cy="161.1" r="2.6" fill="#2980b9"/>
+<circle cx="510.0" cy="166.3" r="2.6" fill="#2980b9"/>
+<polyline points="52.0,109.8 166.5,138.4 281.0,154.3 395.5,205.1 510.0,236.9" fill="none" stroke="#e67e22" stroke-width="2"/>
+<circle cx="52.0" cy="109.8" r="2.6" fill="#e67e22"/>
+<circle cx="166.5" cy="138.4" r="2.6" fill="#e67e22"/>
+<circle cx="281.0" cy="154.3" r="2.6" fill="#e67e22"/>
+<circle cx="395.5" cy="205.1" r="2.6" fill="#e67e22"/>
+<circle cx="510.0" cy="236.9" r="2.6" fill="#e67e22"/>
+<polyline points="52.0,249.6 166.5,268.6 281.0,275.0 395.5,290.9 510.0,294.1" fill="none" stroke="#c0392b" stroke-width="2"/>
+<circle cx="52.0" cy="249.6" r="2.6" fill="#c0392b"/>
+<circle cx="166.5" cy="268.6" r="2.6" fill="#c0392b"/>
+<circle cx="281.0" cy="275.0" r="2.6" fill="#c0392b"/>
+<circle cx="395.5" cy="290.9" r="2.6" fill="#c0392b"/>
+<circle cx="510.0" cy="294.1" r="2.6" fill="#c0392b"/>
+<rect x="522" y="32" width="10" height="10" fill="#16a085"/>
+<text x="536" y="41" class="leg">clean R@5</text>
+<rect x="522" y="48" width="10" height="10" fill="#2980b9"/>
+<text x="536" y="57" class="leg">clean R@1</text>
+<rect x="522" y="64" width="10" height="10" fill="#e67e22"/>
+<text x="536" y="73" class="leg">misspelled R@5</text>
+<rect x="522" y="80" width="10" height="10" fill="#c0392b"/>
+<text x="536" y="89" class="leg">misspelled R@1</text>
+</svg><figcaption>Both subsets prefer less FTS5 weight, but misspelled queries fall off far faster as the exact-token arm gains influence — a strong dense embedder wants the lexical arm down-weighted, especially when queries are noisy.</figcaption></figure>
+<table class="sortable"><caption>Table 6. FTS5-arm RRF weight sweep on snowflake/semadj_g0.4341/fts5_hybrid, clean vs misspelled queries.</caption><thead><tr><th title="RRF weight on the FTS5 lexical arm (dense arm fixed at 1.0). &gt;1 favours exact-token matches; &lt;1 favours the dense embedder">w_fts</th><th title="recall@1 on non-misspelled (clean) in-document questions">clean R@1</th><th title="recall@5 on non-misspelled questions">clean R@5</th><th title="mean reciprocal rank on non-misspelled questions">clean MRR</th><th title="recall@1 on the misspelled-query subgroup">mis R@1</th><th title="recall@5 on the misspelled-query subgroup">mis R@5</th><th title="mean reciprocal rank on the misspelled-query subgroup">mis MRR</th></tr></thead><tbody>
+<tr>
+<td>0.25</td>
+<td><b>0.650</b></td>
+<td><b>0.904</b></td>
+<td><b>0.760</b></td>
+<td><b>0.369</b></td>
+<td><b>0.730</b></td>
+<td><b>0.537</b></td>
+</tr>
+<tr>
+<td>0.50</td>
+<td>0.632</td>
+<td>0.884</td>
+<td>0.745</td>
+<td>0.320</td>
+<td>0.656</td>
+<td>0.480</td>
+</tr>
+<tr>
+<td>1.00</td>
+<td>0.616</td>
+<td>0.872</td>
+<td>0.731</td>
+<td>0.303</td>
+<td>0.615</td>
+<td>0.451</td>
+</tr>
+<tr>
+<td>2.00</td>
+<td>0.597</td>
+<td>0.847</td>
+<td>0.708</td>
+<td>0.262</td>
+<td>0.484</td>
+<td>0.366</td>
+</tr>
+<tr>
+<td>4.00</td>
+<td>0.584</td>
+<td>0.816</td>
+<td>0.690</td>
+<td>0.254</td>
+<td>0.402</td>
+<td>0.341</td>
+</tr>
+</tbody></table>
+<h2>9. Model selection (composite + cost)</h2>
 <p>Each model is represented by its own best (chunker, lexical_backend) by a pinpoint+rejection composite (z-scored R@1, MRR, AUC at 2×; R@5, ans@1024 at 1×). Models are ranked by the same composite; dimension and throughput are reported but not scored.</p>
-<table class="sortable"><caption>Table 6. Best pipeline per model, ranked by composite. Cost columns (dim, vec/s) are informational.</caption><thead><tr><th title="Overall rank by the composite score">rank</th><th title="Recommended triple: embedder/chunker/lexical_backend">label</th><th title="Embedding dimension (vector storage + cosine search cost per chunk)">dim</th><th title="Raw embedding throughput on this host: corpus sentences embedded per second">vec/s</th><th title="Answer recall@1: the #1 retrieved chunk covers an acceptable answer sentence">R@1</th><th title="Answer recall@5: an acceptable answer chunk is in the top 5">R@5</th><th title="Hit within the top chunks summing to ≤1024 tokens — equal retrieved-context budget (size-neutral)">ans@1024</th><th title="Mean reciprocal rank of the first hit within the top 10">MRR</th><th title="AUROC of the top-1 score separating in-document from out-of-domain queries (higher = better rejection)">AUC</th><th title="Equal error rate of in-doc vs out-of-domain separation (lower = better)">EER</th><th title="Pinpoint+rejection composite: weighted mean of z-scored R@1, MRR, AUC (2×) and R@5, ans@1024 (1×)">score</th></tr></thead><tbody>
+<table class="sortable"><caption>Table 7. Best pipeline per model, ranked by composite. Cost columns (dim, vec/s) are informational.</caption><thead><tr><th title="Overall rank by the composite score">rank</th><th title="Recommended triple: embedder/chunker/lexical_backend">label</th><th title="Embedding dimension (vector storage + cosine search cost per chunk)">dim</th><th title="Raw embedding throughput on this host: corpus sentences embedded per second">vec/s</th><th title="Answer recall@1: the #1 retrieved chunk covers an acceptable answer sentence">R@1</th><th title="Answer recall@5: an acceptable answer chunk is in the top 5">R@5</th><th title="Hit within the top chunks summing to ≤1024 tokens — equal retrieved-context budget (size-neutral)">ans@1024</th><th title="Mean reciprocal rank of the first hit within the top 10">MRR</th><th title="AUROC of the top-1 score separating in-document from out-of-domain queries (higher = better rejection)">AUC</th><th title="Equal error rate of in-doc vs out-of-domain separation (lower = better)">EER</th><th title="Pinpoint+rejection composite: weighted mean of z-scored R@1, MRR, AUC (2×) and R@5, ans@1024 (1×)">score</th></tr></thead><tbody>
 <tr>
 <td>1</td>
 <td>snowflake/semadj_g0.4341/dense</td>
@@ -1239,10 +1342,10 @@ prompts), adjacent-sentence semantic chunks, dense+BM25 RRF.</p>
 </tr>
 </tbody></table>
 <p><b>Recommendation.</b> The best model/chunker/lexical triple is <code>snowflake/semadj_g0.4341/dense</code> (dim 1024, recall@1 0.626, recall@5 0.873, AUC 0.960). Cost is reported alongside quality: dimension drives vec0 storage and cosine-search cost, throughput the ingestion rate. Quality decides the ranking; cost is the tie-breaker to override the pick. The cost-efficient runner-up is <code>gemma_np/semadj_g0.3415/dense</code> (dim 768, 151 vec/s vs 60, recall@1 0.590); prefer it if index size or ingest throughput dominates.</p>
-<h2>9. Generalization</h2>
+<h2>10. Generalization</h2>
 <p>Replication of the winner (<code>snowflake-arctic-embed-l-v2.0-q8_0.gguf</code>, one model the whole path) on 120 grounded questions over a contrasting non-legal corpus (Darwin, <i>Origin of Species</i>). The same size law and semantic≥random ordering hold.</p>
 <figure><svg viewBox="0 0 660 340" role="img">
-<text x="52" y="15" class="ct">Figure 4. Generalization: recall@1 vs chunk size</text>
+<text x="52" y="15" class="ct">Figure 5. Generalization: recall@1 vs chunk size</text>
 <line x1="52" y1="298" x2="510" y2="298" class="grid"/>
 <text x="46" y="301" class="ax" text-anchor="end">0.30</text>
 <line x1="52" y1="244" x2="510" y2="244" class="grid"/>
@@ -1287,7 +1390,7 @@ prompts), adjacent-sentence semantic chunks, dense+BM25 RRF.</p>
 <text x="536" y="73" class="leg">random</text>
 </svg><figcaption>The size law generalizes off legal text; semantic boundaries sit at or above random at matched size.</figcaption></figure>
 
-<h2>10. Conclusion</h2>
+<h2>11. Conclusion</h2>
 <p>For Harlequin document ingestion, adopt <code>snowflake/semadj_g0.4341/dense</code>: it leads the pinpoint+rejection composite at dimension 1024. Index small, semantically- or mechanically-bounded chunks. A lexical arm was not needed for the winner (dense alone beat both RRF hybrids on this corpus); where exact-token matching does help, custom BM25 and SQLite FTS5 are interchangeable, so FTS5 is the dependency-free choice. Prompt mode (native vs no-prefix) and the semantic gate are set per the carried decisions above &mdash; note that only snowflake&rsquo;s query prefix helped; the other asymmetric models did best on raw text, matching Harlequin&rsquo;s current no-prefix embedding.</p>
 
 <p class="fn">All figures/tables generated by <code>make_paper3.py</code> from

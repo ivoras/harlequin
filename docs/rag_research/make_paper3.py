@@ -17,6 +17,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 AGG = json.load(open(os.path.join(DATA, "r3_agg.json")))
 C2 = (json.load(open(os.path.join(DATA, "r3_corpus2.json")))
       if os.path.exists(os.path.join(DATA, "r3_corpus2.json")) else None)
+RRF = (json.load(open(os.path.join(DATA, "r3_rrf_sweep.json")))
+       if os.path.exists(os.path.join(DATA, "r3_rrf_sweep.json")) else None)
 
 # stable colour per physical model
 MC = {"granite": "#2980b9", "snowflake": "#16a085", "qwen06b": "#c0392b",
@@ -56,6 +58,13 @@ TIPS = {
     "rank": "Overall rank by the composite score",
     "label": "Recommended triple: embedder/chunker/lexical_backend",
     "carried": "✓ marks the prompt mode carried into all later chapters (the better of native vs no-prefix here)",
+    "w_fts": "RRF weight on the FTS5 lexical arm (dense arm fixed at 1.0). >1 favours exact-token matches; <1 favours the dense embedder",
+    "clean R@1": "recall@1 on non-misspelled (clean) in-document questions",
+    "clean R@5": "recall@5 on non-misspelled questions",
+    "clean MRR": "mean reciprocal rank on non-misspelled questions",
+    "mis R@1": "recall@1 on the misspelled-query subgroup",
+    "mis R@5": "recall@5 on the misspelled-query subgroup",
+    "mis MRR": "mean reciprocal rank on the misspelled-query subgroup",
 }
 
 
@@ -89,7 +98,7 @@ def table(cols, rows, caption, bold=None):
 
 
 # ---------------- charts ----------------
-def curve(series, title, xlabel, ylabel, marks=None, w=660, h=340, logx=True):
+def curve(series, title, xlabel, ylabel, marks=None, xticks=None, w=660, h=340, logx=True):
     pad_l, pad_b, pad_t, pad_r = 52, 42, 28, 150
     pw, ph = w - pad_l - pad_r, h - pad_b - pad_t
     xs = [p[0] for _, _, pts in series for p in pts]
@@ -105,8 +114,8 @@ def curve(series, title, xlabel, ylabel, marks=None, w=660, h=340, logx=True):
         yv = ylo + (yhi - ylo) * g / 5
         o.append(f'<line x1="{pad_l}" y1="{Y(yv):.0f}" x2="{pad_l+pw}" y2="{Y(yv):.0f}" class="grid"/>')
         o.append(f'<text x="{pad_l-6}" y="{Y(yv)+3:.0f}" class="ax" text-anchor="end">{yv:.2f}</text>')
-    xt = ([40, 80, 160, 320, 640, 1280] if logx else
-          sorted({round(v, 2) for v in xs}))
+    xt = (xticks if xticks is not None else
+          ([40, 80, 160, 320, 640, 1280] if logx else sorted({round(v, 2) for v in xs})))
     for tick in xt:
         if xlo <= fx(tick) <= xhi:
             o.append(f'<text x="{X(tick):.0f}" y="{h-pad_b+15}" class="ax" text-anchor="middle">{tick}</text>')
@@ -355,6 +364,56 @@ def ch_lexical():
     return "\n".join(out)
 
 
+def ch_rrf_sweep():
+    if not RRF:
+        return ""
+    rows_in = RRF["rows"]
+    # line chart: clean vs misspelled R@1/R@5 across the FTS5-arm weight
+    weights = RRF["weights"]
+    s_c1 = [(r["w_fts"], r["clean"]["recall@1"]) for r in rows_in]
+    s_c5 = [(r["w_fts"], r["clean"]["recall@5"]) for r in rows_in]
+    s_m1 = [(r["w_fts"], r["misspelled"]["recall@1"]) for r in rows_in]
+    s_m5 = [(r["w_fts"], r["misspelled"]["recall@5"]) for r in rows_in]
+    series = [("clean R@5", "#16a085", s_c5), ("clean R@1", "#2980b9", s_c1),
+              ("misspelled R@5", "#e67e22", s_m5), ("misspelled R@1", "#c0392b", s_m1)]
+    fig = curve(series, "Figure 4. RRF FTS5-arm weight vs recall (clean vs misspelled)",
+                "FTS5-arm RRF weight (dense=1.0, log)", "recall",
+                xticks=weights, logx=True)
+    # table
+    rows = []
+    for r in rows_in:
+        rows.append({"w_fts": r["w_fts"],
+                     "clean R@1": r["clean"]["recall@1"], "clean R@5": r["clean"]["recall@5"],
+                     "clean MRR": r["clean"]["mrr@10"],
+                     "mis R@1": r["misspelled"]["recall@1"], "mis R@5": r["misspelled"]["recall@5"],
+                     "mis MRR": r["misspelled"]["mrr@10"]})
+    cols = [("w_fts", "w_fts", "{:.2f}"),
+            ("clean R@1", "clean R@1", "{:.3f}"), ("clean R@5", "clean R@5", "{:.3f}"),
+            ("clean MRR", "clean MRR", "{:.3f}"),
+            ("mis R@1", "mis R@1", "{:.3f}"), ("mis R@5", "mis R@5", "{:.3f}"),
+            ("mis MRR", "mis MRR", "{:.3f}")]
+    nclean = rows_in[0]["clean"]["n"]
+    nmis = rows_in[0]["misspelled"]["n"]
+    return ("<h2>8. RRF weight on the lexical (FTS5) arm</h2>\n"
+            f"<p>The winning lexical pipeline <code>{esc(RRF['evalconfig'])}/"
+            f"{esc(RRF['variant'])}/fts5_hybrid</code> fuses the dense and FTS5 arms "
+            "by RRF. Here we hold the dense arm at weight 1.0 and sweep the FTS5 "
+            f"arm's RRF weight over {esc(str(RRF['weights']))} (1.0 = the equal-weight "
+            "default). FTS5 is exact-token, so we score the "
+            f"<b>misspelled</b> ({nmis}) and <b>clean</b> ({nclean}) in-document "
+            "subsets separately: lexical weight should help well-formed queries and "
+            "hurt typo'd ones.</p>\n"
+            f"<figure>{fig}<figcaption>Both subsets prefer less FTS5 weight, but "
+            "misspelled queries fall off far faster as the exact-token arm gains "
+            "influence — a strong dense embedder wants the lexical arm down-weighted, "
+            "especially when queries are noisy.</figcaption></figure>\n"
+            + table(cols, rows, "Table 6. FTS5-arm RRF weight sweep on "
+                    f"{esc(RRF['evalconfig'])}/{esc(RRF['variant'])}/fts5_hybrid, "
+                    "clean vs misspelled queries.",
+                    bold={"clean R@1": "max", "clean R@5": "max", "clean MRR": "max",
+                          "mis R@1": "max", "mis R@5": "max", "mis MRR": "max"}))
+
+
 def ch_selection():
     rows = []
     for r in AGG["selection"]:
@@ -389,12 +448,12 @@ def ch_selection():
                f"dimension drives vec0 storage and cosine-search cost, throughput "
                f"the ingestion rate. Quality decides the ranking; cost is the "
                f"tie-breaker to override the pick.{alt_txt}</p>")
-    return ("<h2>8. Model selection (composite + cost)</h2>\n"
+    return ("<h2>9. Model selection (composite + cost)</h2>\n"
             "<p>Each model is represented by its own best (chunker, lexical_backend) "
             "by a pinpoint+rejection composite (z-scored R@1, MRR, AUC at 2×; "
             "R@5, ans@1024 at 1×). Models are ranked by the same composite; "
             "dimension and throughput are reported but not scored.</p>\n"
-            + table(cols, rows, "Table 6. Best pipeline per model, ranked by "
+            + table(cols, rows, "Table 7. Best pipeline per model, ranked by "
                     "composite. Cost columns (dim, vec/s) are informational.")
             + "\n" + rec)
 
@@ -410,9 +469,9 @@ def ch_generalization():
         pts = [(r["tok_mean"], r["recall1"]) for r in rows if r["family"] == fam]
         if pts:
             series.append((lab, col, pts))
-    fig = curve(series, "Figure 4. Generalization: recall@1 vs chunk size",
+    fig = curve(series, "Figure 5. Generalization: recall@1 vs chunk size",
                 "mean chunk size (tokens, log)", "recall@1")
-    return ("<h2>9. Generalization</h2>\n"
+    return ("<h2>10. Generalization</h2>\n"
             f"<p>Replication of the winner (<code>{esc(C2['model'])}</code>, one "
             f"model the whole path) on {C2['n_questions']} grounded questions over "
             "a contrasting non-legal corpus (Darwin, <i>Origin of Species</i>). The "
@@ -441,7 +500,7 @@ def main():
 
     body = "\n".join([
         ch_naming(), ch_prompts(), ch_prefix_gap(), ch_gate(), ch_chunkers(),
-        ch_lexical(), ch_selection(), ch_generalization(),
+        ch_lexical(), ch_rrf_sweep(), ch_selection(), ch_generalization(),
     ])
 
     html = f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
@@ -490,7 +549,7 @@ size-normalised scoring are reused unchanged from the prior study.</p>
 
 {body}
 
-<h2>{10 if C2 else 9}. Conclusion</h2>
+<h2>{11 if C2 else 10}. Conclusion</h2>
 <p>{('For Harlequin document ingestion, adopt <code>' + esc(win['label']) + '</code>: '
      'it leads the pinpoint+rejection composite at dimension ' + str(win['dim']) + '. '
      'Index small, semantically- or mechanically-bounded chunks. A lexical arm was '
