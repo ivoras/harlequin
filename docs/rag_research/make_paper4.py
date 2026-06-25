@@ -435,7 +435,8 @@ def ch_probe():
     methods = [("dense", "dense"), ("hybrid w=0.25", "hybrid_w0.25"),
                ("hybrid w=1", "hybrid_w1.0"), ("hybrid w=2", "hybrid_w2.0"),
                ("hybrid w=4", "hybrid_w4.0"), ("gated p75 (w=1)", "gated_p75"),
-               ("gated p90 (w=1)", "gated_p90")]
+               ("gated p90 (w=1)", "gated_p90"), ("gated p75 (w=2)", "gated_p75_w2"),
+               ("gated p90 (w=2)", "gated_p90_w2")]
     rows = []
     for lbl, key in methods:
         ex, cl = PROBE["exact"].get(key), PROBE["clean"].get(key)
@@ -459,19 +460,24 @@ def ch_probe():
             "weakest; recall@1 climbs steeply with FTS5 weight), while paraphrase "
             "wants it down-weighted &mdash; one global weight cannot serve both.</p>\n"
             + table(cols, rows, "Table 7. Exact-extraction probe vs clean paraphrase: "
-                    "dense, FTS5-weight hybrids, and score-gated hybrids (weak FTS5 "
-                    "hits below a BM25 percentile floor dropped before fusion).",
+                    "dense, FTS5-weight hybrids, and score-gated hybrids (only the "
+                    "top-decile FTS5 hits per query kept before fusion; w=1 and w=2).",
                     bold={"exact R@1": "max", "exact R@5": "max",
                           "para R@1": "max", "para R@5": "max"})
-            + "\n<p><b>Score-gating resolves the tension.</b> Dropping low-BM25 FTS5 "
-            "hits before fusion (keeping only confident, rare-token matches) lifts "
-            "exact-extraction recall@5 close to the heavy-weight hybrid <i>and</i> "
-            "improves paraphrase recall@1 over the equal-weight hybrid &mdash; it is "
-            "better than a flat weight on both query types at once, because the floor "
-            "(not a fixed weight) decides per query whether lexical evidence is "
-            "trustworthy. A confidence-gated lexical arm &mdash; ideally gated "
-            "<i>and</i> up-weighted on the survivors &mdash; is the recommended "
-            "production fusion.</p>")
+            + "\n<p><b>Score-gating beats a flat weight.</b> Keeping only the "
+            "top-decile FTS5 hits per query (the confident, rare-token matches) and "
+            "then weighting them lets each query decide whether lexical evidence is "
+            "trustworthy, instead of applying one global weight. At equal weight, "
+            "<code>gated&nbsp;p90&nbsp;(w=1)</code> keeps most of the exact-extraction "
+            "gain while holding paraphrase near the dense level &mdash; the balanced "
+            "operating point. Up-weighting the survivors, "
+            "<code>gated&nbsp;p90&nbsp;(w=2)</code> gives the best exact-extraction "
+            "recall@5 in the table, at a clear paraphrase-precision cost &mdash; the "
+            "right pick when exact-token queries dominate. <b>Harlequin adopts "
+            "<code>gated p90 (w=2)</code></b> for document search (FTS5 arm gated to "
+            "its top decile, weighted 2&times;), since ingested documents are queried "
+            "heavily for exact references. The same per-query top-decile gate is what "
+            "<code>documents.Search</code> implements.</p>")
 
 
 def ch_rrf_sweep():
