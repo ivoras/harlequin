@@ -18,7 +18,7 @@ var slashHelp = map[string]string{
 	"/cron":    "list / add / manage scheduled jobs",
 	"/dismiss": "dismiss alert(s) by number (e.g. /dismiss 1 3), or all",
 	"/run":     "run the prompt carried by alert n",
-	"/docs":    "search documents; '/docs add [personal|shared|project] <path>' uploads (same as /upload)",
+	"/docs":    "documents: /docs search <q> | list | delete <scope> <id> | add [scope] <path>",
 	"/export":  "save transcript (User+Assistant; add 'raw' for everything)",
 	"/hat":     "list / show / wear hats",
 	"/help":    "show help",

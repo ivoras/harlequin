@@ -51,7 +51,9 @@ const helpText = `Commands:
   /memory delete <id>…  delete one or more memories by id (shared if admin)
   /memory conflicts     list flagged duplicate/conflicting memory pairs
   /memory resolve <id>  mark a conflict flag as resolved
-  /docs <query>            search documents (personal + shared, + project if active)
+  /docs search <query>     search documents (personal + shared, + project if active)
+  /docs list               list documents across scopes
+  /docs delete <scope> <id> delete a document
   /docs add [scope] <path> upload a .txt/.md/.html/.pdf for RAG (same as /upload)
   /upload [scope] <path>   upload a doc into personal|shared|project (default personal)
   /resume [query]       pick a session to resume (optionally filter by title)
@@ -163,33 +165,26 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 	case "/upload":
 		return m.handleUpload(args)
 	case "/docs":
-		// "/docs add [scope] <path>" is identical to "/upload" (default personal
-		// scope); otherwise the args are a document search query.
-		if len(args) >= 1 && args[0] == "add" {
-			return m.handleUpload(args[1:])
+		// Subcommands (no implicit search):
+		//   search|q <query>     search documents
+		//   list|ls              list documents (across scopes)
+		//   delete|rm <scope> <id>   delete a document
+		//   add [scope] <path>   upload (== /upload)
+		sub := ""
+		if len(args) > 0 {
+			sub = strings.ToLower(args[0])
 		}
-		q := strings.Join(args, " ")
-		return func() tea.Msg {
-			res, err := m.client.SearchDocuments(context.Background(), q)
-			if err != nil {
-				return errMsg{err}
-			}
-			if len(res) == 0 {
-				return infoMsg{fmt.Sprintf("No document results for %q.", q)}
-			}
-			var sb strings.Builder
-			fmt.Fprintf(&sb, "Document results for %q (%d):\n", q, len(res))
-			for i, r := range res {
-				src := r.Source
-				if src == "" {
-					src = "document"
-				}
-				// Each result is one chunk; collapse internal whitespace so the
-				// snippet reads as a single clean passage, then show a generous
-				// excerpt with its source and scope.
-				fmt.Fprintf(&sb, "%d. [%s] %s\n   %s\n", i+1, r.Scope, src, truncate(collapseWS(r.Content), 400))
-			}
-			return infoMsg{strings.TrimRight(sb.String(), "\n")}
+		switch sub {
+		case "add":
+			return m.handleUpload(args[1:])
+		case "search", "q":
+			return m.handleDocsSearch(strings.Join(args[1:], " "))
+		case "list", "ls":
+			return m.handleDocsList()
+		case "delete", "rm", "del":
+			return m.handleDocsDelete(args[1:])
+		default:
+			return infoCmd("usage: /docs <search|q> <query> | list | delete <scope> <id> | add [scope] <path>")
 		}
 	case "/resume":
 		// "/resume <id>" jumps straight to that session; "/resume [query]" opens the
@@ -570,6 +565,89 @@ func (m *Model) handleQueueSub(args []string) tea.Cmd {
 		return report("removed: " + truncate(removed, 60))
 	}
 	return report("usage: /queue [del <n>|clear]")
+}
+
+// handleDocsSearch runs a document search and renders ranked, scope-labelled
+// results with their source document and a clean excerpt.
+func (m *Model) handleDocsSearch(q string) tea.Cmd {
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return infoCmd("usage: /docs search <query>")
+	}
+	return func() tea.Msg {
+		res, err := m.client.SearchDocuments(context.Background(), q)
+		if err != nil {
+			return errMsg{err}
+		}
+		if len(res) == 0 {
+			return infoMsg{fmt.Sprintf("No document results for %q.", q)}
+		}
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "Document results for %q (%d):\n", q, len(res))
+		for i, r := range res {
+			src := r.Source
+			if src == "" {
+				src = "document"
+			}
+			fmt.Fprintf(&sb, "%d. [%s] %s\n   %s\n", i+1, r.Scope, src, truncate(collapseWS(r.Content), 400))
+		}
+		return infoMsg{strings.TrimRight(sb.String(), "\n")}
+	}
+}
+
+// handleDocsList lists documents in personal + shared (+ the active project).
+func (m *Model) handleDocsList() tea.Cmd {
+	pid := m.activeProjectID
+	return func() tea.Msg {
+		docs, err := m.client.ListDocuments(context.Background(), pid)
+		if err != nil {
+			return errMsg{err}
+		}
+		if len(docs) == 0 {
+			return infoMsg{"No documents. Upload one with /upload or /docs add."}
+		}
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "Documents (%d) — delete with /docs delete <scope> <id>:\n", len(docs))
+		for _, d := range docs {
+			name := d.Title
+			if name == "" {
+				name = d.OriginalName
+			}
+			fmt.Fprintf(&sb, "  [%s] #%d  %s  (%s, %d chunks)\n", d.Scope, d.ID, name, d.Mime, d.Chunks)
+		}
+		return infoMsg{strings.TrimRight(sb.String(), "\n")}
+	}
+}
+
+// handleDocsDelete deletes a document: "/docs delete <scope> <id>". project
+// scope uses the active project.
+func (m *Model) handleDocsDelete(args []string) tea.Cmd {
+	if len(args) < 2 {
+		return infoCmd("usage: /docs delete <personal|shared|project> <id>")
+	}
+	scope := strings.ToLower(args[0])
+	switch scope {
+	case "personal", "shared", "project":
+	default:
+		return func() tea.Msg { return errMsg{fmt.Errorf("scope must be personal, shared, or project")} }
+	}
+	id, err := strconv.ParseInt(args[1], 10, 64)
+	if err != nil {
+		return func() tea.Msg { return errMsg{fmt.Errorf("invalid document id %q", args[1])} }
+	}
+	var projectID int64
+	if scope == "project" {
+		if m.activeProjectID == 0 {
+			return func() tea.Msg { return errMsg{fmt.Errorf("no active project; switch to one with /project switch first")} }
+		}
+		projectID = m.activeProjectID
+	}
+	return func() tea.Msg {
+		if err := m.client.DeleteDocument(context.Background(), id, scope, projectID); err != nil {
+			return errMsg{err}
+		}
+		return infoMsg{fmt.Sprintf("deleted %s document #%d", scope, id)}
+	}
 }
 
 // handleUpload implements "/upload [personal|shared|project] <path>" (and the
