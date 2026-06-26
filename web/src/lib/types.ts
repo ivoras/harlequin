@@ -204,6 +204,8 @@ export interface SearchResult {
   content: string;
   slot_keys?: string[];
   score: number;
+  scope?: string;
+  source?: string;
 }
 export interface CreateMemoryRequest {
   scope: string;

@@ -79,7 +79,10 @@
       <button class="small" onclick={search}>Search</button>
     </div>
     {#if results.length}
-      <div class="list">{#each results as r}<div class="card small wrap">{r.content}</div>{/each}</div>
+      <div class="list">{#each results as r}<div class="card small">
+        {#if r.scope || r.source}<div class="muted" style="font-size:0.82em; margin-bottom:6px;">{#if r.scope}[{r.scope}] {/if}{r.source ?? ""}</div>{/if}
+        <div class="wrap">{r.content}</div>
+      </div>{/each}</div>
     {/if}
     <h3 class="muted small">Library</h3>
     <div class="list">
