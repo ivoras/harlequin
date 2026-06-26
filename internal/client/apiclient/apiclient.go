@@ -426,6 +426,35 @@ func (c *Client) SearchDocuments(ctx context.Context, q string) ([]types.SearchR
 	return out, c.do(ctx, http.MethodGet, "/documents/search?q="+url.QueryEscape(q), nil, &out)
 }
 
+// ListDocuments lists documents in the user's personal + shared corpora, plus
+// the project corpus when projectID > 0 (the active project). Each result is
+// tagged with its scope.
+func (c *Client) ListDocuments(ctx context.Context, projectID int64) ([]types.Document, error) {
+	path := "/documents"
+	if projectID > 0 {
+		path += "?project=" + strconv.FormatInt(projectID, 10)
+	}
+	var out []types.Document
+	return out, c.do(ctx, http.MethodGet, path, nil, &out)
+}
+
+// DeleteDocument deletes a document from a given scope ("personal"/"shared"/
+// "project"); projectID is required for project scope.
+func (c *Client) DeleteDocument(ctx context.Context, id int64, scope string, projectID int64) error {
+	v := url.Values{}
+	if scope != "" {
+		v.Set("scope", scope)
+	}
+	if projectID > 0 {
+		v.Set("project", strconv.FormatInt(projectID, 10))
+	}
+	path := fmt.Sprintf("/documents/%d", id)
+	if len(v) > 0 {
+		path += "?" + v.Encode()
+	}
+	return c.do(ctx, http.MethodDelete, path, nil, nil)
+}
+
 // UploadDocument uploads a local file (e.g. a PDF) to the org RAG corpus; the
 // server extracts its text (PDFs via PDFium) and ingests it. Uses a generous
 // timeout since server-side extraction + embedding can take a while.
