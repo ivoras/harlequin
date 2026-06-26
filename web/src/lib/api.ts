@@ -175,6 +175,7 @@ export const api = {
   createProject: (name: string) => req<Project>("POST", "/projects", { name }),
   getProject: (id: number) => req<Project>("GET", `/projects/${id}`),
   inviteToProject: (id: number, email: string) => req<void>("POST", `/projects/${id}/invite`, { email }),
+  departProject: (id: number) => req<void>("POST", `/projects/${id}/depart`),
   listProjectInvites: () => reqList<ProjectInvite>("GET", "/projects/invites"),
   acceptInvite: (inviteID: number) => req<{ project_id: number }>("POST", `/projects/invites/${inviteID}/accept`),
   listProjectSessions: (id: number) => reqList<Session>("GET", `/projects/${id}/sessions`),

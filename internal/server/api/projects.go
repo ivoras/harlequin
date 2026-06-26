@@ -87,6 +87,20 @@ func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, p)
 }
 
+// handleDepartProject removes the caller's own membership of a project (the
+// "/project depart" command). Membership-only; it does not delete the project.
+func (s *Server) handleDepartProject(w http.ResponseWriter, r *http.Request) {
+	u, id, ok := s.projectMember(w, r)
+	if !ok {
+		return
+	}
+	if err := s.Projects.RemoveMember(r.Context(), id, u.ID); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (s *Server) handleInviteProject(w http.ResponseWriter, r *http.Request) {
 	u, id, ok := s.projectMember(w, r)
 	if !ok {

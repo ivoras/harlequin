@@ -13,7 +13,8 @@ import (
 )
 
 // runProject handles the /project command and its subcommands. Project management
-// (list/create/invite/accept/members/assign/sessions) plus switch/leave, which
+// (list/create/invite/accept/members/assign/sessions) plus switch/leave/depart
+// (leave = deselect/back to personal; depart = remove your membership), which
 // enter and exit the shared project context (and its chatroom side-pane).
 func (m *Model) runProject(args []string) tea.Cmd {
 	sub := "list"
@@ -99,6 +100,31 @@ func (m *Model) runProject(args []string) tea.Cmd {
 		}
 		m.leaveProject()
 		return m.bootstrapChat()
+	case "depart":
+		// Remove the caller's membership. Targets <id> if given, else the active
+		// project; deselects (back to personal) if it was the active one.
+		id := m.activeProjectID
+		if rest != "" {
+			parsed, err := strconv.ParseInt(rest, 10, 64)
+			if err != nil {
+				return infoCmd("usage: /project depart [id]  (defaults to the active project)")
+			}
+			id = parsed
+		}
+		if id == 0 {
+			return infoCmd("usage: /project depart <id>  (or switch to a project first)")
+		}
+		depart := func() tea.Msg {
+			if err := m.client.DepartProject(context.Background(), id); err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{fmt.Sprintf("departed project #%d (membership removed)", id)}
+		}
+		if id == m.activeProjectID {
+			m.leaveProject()
+			return tea.Batch(m.bootstrapChat(), depart)
+		}
+		return depart
 	case "invite":
 		if m.activeProjectID == 0 {
 			return infoCmd("switch to a project first: /project switch <id>")

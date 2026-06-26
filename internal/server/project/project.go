@@ -135,6 +135,14 @@ func (s *Store) AddMember(ctx context.Context, projectID, userID int64) error {
 	return err
 }
 
+// RemoveMember removes a user's membership of a project (the user departs).
+// Idempotent: removing a non-member is a no-op.
+func (s *Store) RemoveMember(ctx context.Context, projectID, userID int64) error {
+	_, err := s.system.ExecContext(ctx,
+		`DELETE FROM project_members WHERE project_id = ? AND user_id = ?`, projectID, userID)
+	return err
+}
+
 // UserIDByEmail resolves an email to a user id (for invitations).
 func (s *Store) UserIDByEmail(ctx context.Context, email string) (int64, error) {
 	var id int64
