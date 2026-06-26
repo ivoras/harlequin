@@ -703,8 +703,15 @@ func trimHistory(msgs []types.Message, through int64) []types.Message {
 
 func truncate(s string, n int) string {
 	s = strings.ReplaceAll(s, "\n", " ")
-	if len(s) <= n {
+	r := []rune(s)
+	if len(r) <= n {
 		return s
 	}
-	return s[:n] + "…"
+	return string(r[:n]) + "…"
+}
+
+// collapseWS collapses every run of whitespace (incl. newlines from extracted
+// PDFs) into a single space so a chunk reads as one clean passage.
+func collapseWS(s string) string {
+	return strings.Join(strings.Fields(s), " ")
 }

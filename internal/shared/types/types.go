@@ -581,6 +581,9 @@ type SearchResult struct {
 	// Scope reports where the result was found: "personal" (the user's own
 	// data), "shared" (organisation-wide), or "project" (the active project).
 	Scope string `json:"scope,omitempty"`
+	// Source describes where a document hit came from ("<title> · chunk <n>");
+	// empty for memory results.
+	Source string `json:"source,omitempty"`
 }
 
 // UsageRecord is a per-completion accounting row.

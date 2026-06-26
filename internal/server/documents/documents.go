@@ -271,6 +271,8 @@ func (s *Store) DeleteFrom(ctx context.Context, db *sql.DB, id int64) error {
 type scoredHit struct {
 	id      int64
 	content string
+	title   string // source document title
+	ord     int    // chunk ordinal within the document
 }
 
 // Scope labels surfaced in results and used to qualify chunk ids across corpora.
@@ -341,46 +343,51 @@ func (s *Store) SearchScoped(ctx context.Context, scopes []ScopeDB, query string
 	ranks := map[string]float64{}
 	contents := map[string]string{}
 	scopeOf := map[string]string{}
+	sourceOf := map[string]string{}
 	for _, sc := range scopes {
 		if sc.DB != nil {
-			s.searchInto(ctx, sc, query, blob, depth, ranks, contents, scopeOf)
+			s.searchInto(ctx, sc, query, blob, depth, ranks, contents, scopeOf, sourceOf)
 		}
 	}
-	return topN(ranks, contents, scopeOf, limit), nil
+	return topN(ranks, contents, scopeOf, sourceOf, limit), nil
 }
 
 // searchInto runs the gated/weighted dense+FTS5 arms against one corpus, folding
 // scope-qualified RRF contributions into the shared maps.
 func (s *Store) searchInto(ctx context.Context, sc ScopeDB, query string, blob any, depth int,
-	ranks map[string]float64, contents, scopeOf map[string]string) {
+	ranks map[string]float64, contents, scopeOf, sourceOf map[string]string) {
 	key := func(local int64) string {
 		return "d." + scopePrefix(sc.Scope) + "." + strconv.FormatInt(local, 10)
 	}
 	if rows, err := sc.DB.QueryContext(ctx,
-		`SELECT c.id, c.content FROM doc_chunks_fts f JOIN doc_chunks c ON c.id = f.rowid
+		`SELECT c.id, c.content, COALESCE(d.title, ''), c.ord
+		 FROM doc_chunks_fts f JOIN doc_chunks c ON c.id = f.rowid
+		 JOIN documents d ON d.id = c.document_id
 		 WHERE doc_chunks_fts MATCH ? ORDER BY f.rank LIMIT ?`, query, depth); err == nil {
 		hits := collect(rows)
 		if s.ftsGatePct > 0 {
 			hits = gateTop(hits, s.ftsGatePct)
 		}
-		foldKeyed(hits, s.ftsWeight, sc.Scope, key, ranks, contents, scopeOf)
+		foldKeyed(hits, s.ftsWeight, sc.Scope, key, ranks, contents, scopeOf, sourceOf)
 	}
 	if blob != nil {
 		if rows, err := sc.DB.QueryContext(ctx,
-			`SELECT c.id, c.content FROM doc_chunks_vec v JOIN doc_chunks c ON c.id = v.rowid
+			`SELECT c.id, c.content, COALESCE(d.title, ''), c.ord
+			 FROM doc_chunks_vec v JOIN doc_chunks c ON c.id = v.rowid
+			 JOIN documents d ON d.id = c.document_id
 			 WHERE v.embedding MATCH ? AND k = ? ORDER BY v.distance`, blob, depth); err == nil {
-			foldKeyed(collect(rows), 1.0, sc.Scope, key, ranks, contents, scopeOf)
+			foldKeyed(collect(rows), 1.0, sc.Scope, key, ranks, contents, scopeOf, sourceOf)
 		}
 	}
 }
 
-// collect drains a (id, content) result set, preserving its order.
+// collect drains a (id, content, title, ord) result set, preserving its order.
 func collect(rows *sql.Rows) []scoredHit {
 	defer rows.Close()
 	var out []scoredHit
 	for rows.Next() {
 		var h scoredHit
-		if err := rows.Scan(&h.id, &h.content); err != nil {
+		if err := rows.Scan(&h.id, &h.content, &h.title, &h.ord); err != nil {
 			return out
 		}
 		out = append(out, h)
@@ -405,21 +412,27 @@ func gateTop(hits []scoredHit, pct int) []scoredHit {
 }
 
 // foldKeyed adds weighted RRF contributions (weight/(k+rank)) for a best-first
-// list, keyed by a scope-qualified id and tagged with the source scope.
+// list, keyed by a scope-qualified id and tagged with the source scope and a
+// human-readable source ("<title> · chunk <ord>").
 func foldKeyed(hits []scoredHit, weight float64, scope string, key func(int64) string,
-	ranks map[string]float64, contents, scopeOf map[string]string) {
+	ranks map[string]float64, contents, scopeOf, sourceOf map[string]string) {
 	for i, h := range hits {
 		k := key(h.id)
 		ranks[k] += weight / (rrfK + float64(i+1))
 		contents[k] = h.content
 		scopeOf[k] = scope
+		title := h.title
+		if title == "" {
+			title = "untitled"
+		}
+		sourceOf[k] = fmt.Sprintf("%s · chunk %d", title, h.ord)
 	}
 }
 
-func topN(ranks map[string]float64, contents, scopeOf map[string]string, limit int) []types.SearchResult {
+func topN(ranks map[string]float64, contents, scopeOf, sourceOf map[string]string, limit int) []types.SearchResult {
 	out := make([]types.SearchResult, 0, len(ranks))
 	for id, score := range ranks {
-		out = append(out, types.SearchResult{ID: id, Content: contents[id], Score: score, Scope: scopeOf[id]})
+		out = append(out, types.SearchResult{ID: id, Content: contents[id], Score: score, Scope: scopeOf[id], Source: sourceOf[id]})
 	}
 	for i := 0; i < len(out); i++ {
 		max := i
