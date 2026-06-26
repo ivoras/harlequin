@@ -564,16 +564,20 @@ func (m *Model) handleQueueSub(args []string) tea.Cmd {
 
 // handleUpload implements "/upload [personal|shared|project] <path>" (and the
 // equivalent "/docs add …"): uploads a .txt/.md/.html/.pdf file into the chosen
-// corpus for RAG (default personal). The server enforces permissions; the
-// client pre-checks for a clearer message.
+// corpus for RAG. With no explicit scope it defaults to the active project (when
+// you've switched to one), otherwise personal. The server enforces permissions;
+// the client pre-checks for a clearer message.
 func (m *Model) handleUpload(args []string) tea.Cmd {
-	usage := "usage: /upload [personal|shared|project] <path>  (default personal; formats: .txt .md .html .pdf)"
+	usage := "usage: /upload [personal|shared|project] <path>  (defaults to the active project, else personal; formats: .txt .md .html .pdf)"
 	if len(args) == 0 {
 		return func() tea.Msg { return infoMsg{usage} }
 	}
-	// Optional leading scope; defaults to personal so "/upload <path>" and
-	// "/docs add <path>" behave identically.
+	// Optional leading scope. With none, follow the working context: the active
+	// project if you've switched to one, otherwise your personal corpus.
 	scope := "personal"
+	if m.activeProjectID != 0 {
+		scope = "project"
+	}
 	rest := args
 	switch strings.ToLower(args[0]) {
 	case "personal", "shared", "project":
@@ -605,16 +609,19 @@ func (m *Model) handleUpload(args []string) tea.Cmd {
 		}
 		projectID = m.activeProjectID
 	}
+	dest := scope + " corpus"
+	if scope == "project" {
+		dest = fmt.Sprintf("project %q", m.activeProjectName)
+	}
+	// Immediate feedback: ingestion (extract → chunk → embed) is synchronous and
+	// can take a while for big PDFs, so show a status line before it starts.
+	m.appendBlock("status", fmt.Sprintf("uploading %q into the %s — extracting, chunking and embedding (this can take a while)…", filepath.Base(path), dest))
 	return func() tea.Msg {
 		d, err := m.client.UploadDocument(context.Background(), path, "", scope, projectID)
 		if err != nil {
 			return errMsg{err}
 		}
-		dest := scope + " corpus"
-		if scope == "project" {
-			dest = fmt.Sprintf("project %q", m.activeProjectName)
-		}
-		return infoMsg{fmt.Sprintf("uploaded %q (document id=%d) into the %s", d.Title, d.ID, dest)}
+		return infoMsg{fmt.Sprintf("ingested %q into the %s for RAG: %d chunks (document id=%d)", d.Title, dest, d.Chunks, d.ID)}
 	}
 }
 

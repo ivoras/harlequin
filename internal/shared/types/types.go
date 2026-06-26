@@ -552,6 +552,9 @@ type Document struct {
 	// Scope is the corpus the document lives in: "personal", "shared", or
 	// "project". Needed to address it for delete across corpora.
 	Scope string `json:"scope,omitempty"`
+	// Chunks is the number of RAG chunks (vector records) produced on ingest;
+	// surfaced so the client can report processing status.
+	Chunks int `json:"chunks,omitempty"`
 }
 
 // CreateDocumentRequest is the body of POST /documents.
