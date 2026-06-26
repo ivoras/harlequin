@@ -146,7 +146,7 @@ func (s *Store) IngestInto(ctx context.Context, db *sql.DB, req types.CreateDocu
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return &types.Document{ID: docID, Title: req.Title, URI: req.URI, Mime: mime, CreatedBy: userID}, nil
+	return &types.Document{ID: docID, Title: req.Title, URI: req.URI, Mime: mime, CreatedBy: userID, Chunks: len(chunks)}, nil
 }
 
 // ReindexChunkVectors re-embeds every chunk's content and rewrites its
