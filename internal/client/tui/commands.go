@@ -51,8 +51,9 @@ const helpText = `Commands:
   /memory delete <id>…  delete one or more memories by id (shared if admin)
   /memory conflicts     list flagged duplicate/conflicting memory pairs
   /memory resolve <id>  mark a conflict flag as resolved
-  /docs <query>         search organisation documents
-  /docs add <path>      upload a local file (e.g. a PDF) into the corpus
+  /docs <query>            search documents (personal + shared, + project if active)
+  /docs add [scope] <path> upload a .txt/.md/.html/.pdf for RAG (same as /upload)
+  /upload [scope] <path>   upload a doc into personal|shared|project (default personal)
   /resume [query]       pick a session to resume (optionally filter by title)
   /resume <id>          resume a specific session by id
   /dismiss [n ...|all]  dismiss alert(s) by number, or all (default)
@@ -162,16 +163,10 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 	case "/upload":
 		return m.handleUpload(args)
 	case "/docs":
-		// "/docs add <path>" uploads a local file (e.g. a PDF); otherwise search.
-		if len(args) >= 2 && args[0] == "add" {
-			path := strings.TrimSpace(strings.Join(args[1:], " "))
-			return func() tea.Msg {
-				d, err := m.client.UploadDocument(context.Background(), path, "", "personal", 0)
-				if err != nil {
-					return errMsg{err}
-				}
-				return infoMsg{fmt.Sprintf("uploaded %q (document id=%d) into your personal corpus", d.Title, d.ID)}
-			}
+		// "/docs add [scope] <path>" is identical to "/upload" (default personal
+		// scope); otherwise the args are a document search query.
+		if len(args) >= 1 && args[0] == "add" {
+			return m.handleUpload(args[1:])
 		}
 		q := strings.Join(args, " ")
 		return func() tea.Msg {
@@ -567,22 +562,28 @@ func (m *Model) handleQueueSub(args []string) tea.Cmd {
 	return report("usage: /queue [del <n>|clear]")
 }
 
-// handleUpload implements "/upload <personal|shared|project> <path>": uploads a
-// .txt/.md/.html/.pdf file into the chosen corpus for RAG. The server enforces
-// permissions; the client pre-checks for a clearer message.
+// handleUpload implements "/upload [personal|shared|project] <path>" (and the
+// equivalent "/docs add …"): uploads a .txt/.md/.html/.pdf file into the chosen
+// corpus for RAG (default personal). The server enforces permissions; the
+// client pre-checks for a clearer message.
 func (m *Model) handleUpload(args []string) tea.Cmd {
-	if len(args) < 2 {
-		return func() tea.Msg {
-			return infoMsg{"usage: /upload <personal|shared|project> <path>  (formats: .txt .md .html .pdf)"}
-		}
+	usage := "usage: /upload [personal|shared|project] <path>  (default personal; formats: .txt .md .html .pdf)"
+	if len(args) == 0 {
+		return func() tea.Msg { return infoMsg{usage} }
 	}
-	scope := strings.ToLower(args[0])
-	path := strings.TrimSpace(strings.Join(args[1:], " "))
-	switch scope {
+	// Optional leading scope; defaults to personal so "/upload <path>" and
+	// "/docs add <path>" behave identically.
+	scope := "personal"
+	rest := args
+	switch strings.ToLower(args[0]) {
 	case "personal", "shared", "project":
-	default:
-		return func() tea.Msg { return errMsg{fmt.Errorf("scope must be personal, shared, or project")} }
+		scope = strings.ToLower(args[0])
+		rest = args[1:]
 	}
+	if len(rest) == 0 {
+		return func() tea.Msg { return infoMsg{usage} }
+	}
+	path := strings.TrimSpace(strings.Join(rest, " "))
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".txt", ".md", ".markdown", ".html", ".htm", ".pdf":
 	default:

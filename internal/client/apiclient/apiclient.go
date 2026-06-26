@@ -263,6 +263,11 @@ func (c *Client) InviteToProject(ctx context.Context, id int64, email string) er
 	return c.do(ctx, http.MethodPost, fmt.Sprintf("/projects/%d/invite", id), types.InviteRequest{Email: email}, nil)
 }
 
+// DepartProject removes the caller's membership of a project.
+func (c *Client) DepartProject(ctx context.Context, id int64) error {
+	return c.do(ctx, http.MethodPost, fmt.Sprintf("/projects/%d/depart", id), nil, nil)
+}
+
 // ListProjectInvites returns the caller's pending invitations.
 func (c *Client) ListProjectInvites(ctx context.Context) ([]types.ProjectInvite, error) {
 	var out []types.ProjectInvite

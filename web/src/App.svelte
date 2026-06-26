@@ -196,6 +196,19 @@
     await ensureSession(); // back to a personal session
     view.set("chat");
   }
+  async function departProject() {
+    const p = $activeProject;
+    if (!p) return;
+    if (!confirm(`Depart "${p.name}"? This removes your membership.`)) return;
+    try {
+      await api.departProject(p.id);
+      toast("departed " + p.name);
+      projects = projects.filter((x) => x.id !== p.id);
+      await leaveProject();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  }
   async function inviteMember() {
     const p = $activeProject;
     const email = inviteEmail.trim();
@@ -438,6 +451,7 @@
           <div class="row" style="flex-wrap:wrap; gap:8px;">
             <button class="small" onclick={assignCurrentSession}>Assign current session</button>
             <button class="ghost small" onclick={leaveProject}>Leave project (back to personal)</button>
+            <button class="ghost small" onclick={departProject}>Depart project (remove membership)</button>
           </div>
         {/if}
       </div>
