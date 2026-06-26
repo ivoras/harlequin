@@ -254,7 +254,16 @@ func (s *Store) Search(ctx context.Context, query string, limit int) ([]types.Se
 	if limit <= 0 {
 		limit = 8
 	}
+	// Candidate pool per arm before RRF. When the FTS5 arm is score-gated it
+	// keeps only its top decile, so fuse from a deeper pool to recover recall
+	// (measured: gated R@5 ~0.77->0.81 going from depth 50 to ~200); ungated
+	// fusion gains nothing from a deeper pool, so leave it at limit*4.
 	depth := limit * 4
+	if s.ftsGatePct > 0 {
+		if depth < 200 {
+			depth = 200
+		}
+	}
 	ranks := map[int64]float64{}
 	contents := map[int64]string{}
 
