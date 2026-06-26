@@ -589,7 +589,9 @@ func (m *Model) handleDocsSearch(q string) tea.Cmd {
 			if src == "" {
 				src = "document"
 			}
-			fmt.Fprintf(&sb, "%d. [%s] %s\n   %s\n", i+1, r.Scope, src, truncate(collapseWS(r.Content), 400))
+			// Full, untruncated chunk text (whitespace collapsed so it reads as a
+			// clean passage and the terminal can wrap it).
+			fmt.Fprintf(&sb, "%d. [%s] %s\n   %s\n", i+1, r.Scope, src, collapseWS(r.Content))
 		}
 		return infoMsg{strings.TrimRight(sb.String(), "\n")}
 	}
