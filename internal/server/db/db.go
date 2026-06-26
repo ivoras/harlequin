@@ -176,6 +176,8 @@ func createVirtualTables(sqlDB *sql.DB, role Role, dim int) error {
 	case User:
 		stmts = []string{
 			`CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(content)`,
+			// Personal document corpus (searched alongside shared/project).
+			`CREATE VIRTUAL TABLE IF NOT EXISTS doc_chunks_fts USING fts5(content)`,
 		}
 	case Project:
 		// A project has both a memory store and a document corpus, like shared.
@@ -201,7 +203,7 @@ func vectorTableNames(role Role) []string {
 	case Shared:
 		return []string{"memories_vec", "memory_slots_vec", "doc_chunks_vec"}
 	case User:
-		return []string{"memories_vec", "memory_slots_vec"}
+		return []string{"memories_vec", "memory_slots_vec", "doc_chunks_vec"}
 	case Project:
 		return []string{"memories_vec", "memory_slots_vec", "doc_chunks_vec"}
 	}

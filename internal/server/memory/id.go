@@ -15,6 +15,27 @@ const (
 	scopeProject = "project"
 )
 
+// Public scope labels surfaced in search results (the user-facing names).
+const (
+	PublicPersonal = "personal"
+	PublicShared   = "shared"
+	PublicProject  = "project"
+)
+
+// PublicScope maps an internal scope (user/shared/project) to its user-facing
+// label (personal/shared/project). Unknown scopes map to "".
+func PublicScope(scope string) string {
+	switch scope {
+	case scopeUser:
+		return PublicPersonal
+	case scopeShared:
+		return PublicShared
+	case scopeProject:
+		return PublicProject
+	}
+	return ""
+}
+
 // encodeID builds a composite id from a scope and a local rowid.
 func encodeID(scope string, local int64) string {
 	prefix := "u"

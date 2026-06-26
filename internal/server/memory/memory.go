@@ -501,7 +501,8 @@ func (m memDB) collectVec(ctx context.Context, query string, args []any, weight,
 func topN(ranks map[string]float64, contents map[string]string, limit int) []types.SearchResult {
 	out := make([]types.SearchResult, 0, len(ranks))
 	for id, score := range ranks {
-		out = append(out, types.SearchResult{ID: id, Content: contents[id], Score: score})
+		sc, _, _ := decodeID(id)
+		out = append(out, types.SearchResult{ID: id, Content: contents[id], Score: score, Scope: PublicScope(sc)})
 	}
 	for i := 0; i < len(out); i++ {
 		max := i

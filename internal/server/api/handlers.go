@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/ivoras/harlequin/internal/server/auth"
 	"github.com/ivoras/harlequin/internal/server/email"
+	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
@@ -299,10 +300,21 @@ func (s *Server) handleResolveMemoryConflict(w http.ResponseWriter, r *http.Requ
 
 func (s *Server) handleSearchMemory(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
+	q := r.URL.Query().Get("q")
+	projectID, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64)
 	var res []types.SearchResult
+	// When a project is active (?project=<id>), fuse project+shared+personal;
+	// otherwise the requested scope (default personal+shared).
 	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		if projectID > 0 {
+			return s.Storage.WithProjectReadOnly(r.Context(), projectID, func(pdb *sql.DB) error {
+				var e error
+				res, e = s.Memory.SearchFused(r.Context(), udb, pdb, q, u.ID, 10)
+				return e
+			})
+		}
 		var e error
-		res, e = s.Memory.Search(r.Context(), udb, r.URL.Query().Get("q"), u.ID, r.URL.Query().Get("scope"), 10)
+		res, e = s.Memory.Search(r.Context(), udb, q, u.ID, r.URL.Query().Get("scope"), 10)
 		return e
 	})
 	if err != nil {
@@ -448,7 +460,30 @@ func (s *Server) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	d, err := s.Docs.Ingest(r.Context(), req, u.ID)
+	// Route the ingest to the requested corpus: personal (the user's own DB),
+	// project (the project's DB), or shared (default, org-wide).
+	var d *types.Document
+	var err error
+	switch req.Scope {
+	case documents.ScopePersonal:
+		err = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+			var e error
+			d, e = s.Docs.IngestInto(r.Context(), udb, req, u.ID)
+			return e
+		})
+	case documents.ScopeProject:
+		if req.ProjectID == 0 {
+			writeErr(w, http.StatusBadRequest, "project_id required for project scope")
+			return
+		}
+		err = s.Storage.WithProject(r.Context(), req.ProjectID, func(pdb *sql.DB) error {
+			var e error
+			d, e = s.Docs.IngestInto(r.Context(), pdb, req, u.ID)
+			return e
+		})
+	default:
+		d, err = s.Docs.Ingest(r.Context(), req, u.ID)
+	}
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -536,7 +571,23 @@ func (s *Server) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSearchDocuments(w http.ResponseWriter, r *http.Request) {
-	res, err := s.Docs.Search(r.Context(), r.URL.Query().Get("q"), 10)
+	u, _ := auth.UserFromContext(r.Context())
+	q := r.URL.Query().Get("q")
+	projectID, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64)
+	var res []types.SearchResult
+	// Fuse the user's personal corpus and (when ?project=<id> is set, i.e. the
+	// user has switched to a project) the project corpus with the shared corpus.
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		search := func(projDB *sql.DB) error {
+			var e error
+			res, e = s.Docs.SearchScoped(r.Context(), s.Docs.ScopesFor(udb, projDB), q, 10)
+			return e
+		}
+		if projectID > 0 {
+			return s.Storage.WithProjectReadOnly(r.Context(), projectID, search)
+		}
+		return search(nil)
+	})
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return

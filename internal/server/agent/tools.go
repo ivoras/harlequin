@@ -415,7 +415,10 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 			}),
 			handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 				q, _ := args["query"].(string)
-				res, err := a.Docs.Search(ctx, q, 6)
+				// Fuse the org corpus with the user's personal docs and, in a
+				// project session, the project corpus (rc.projectDB is set only
+				// then). Results are scope-labelled.
+				res, err := a.Docs.SearchScoped(ctx, a.Docs.ScopesFor(rc.userDB, rc.projectDB), q, 6)
 				if err != nil {
 					return "", err
 				}
@@ -766,6 +769,9 @@ func renderResults(res []types.SearchResult) string {
 	sb.WriteString("Ranked memory results (prefer #1 when it directly answers the question; use id or slot_key with memory_change/memory_delete; do not invent facts not listed here):\n")
 	for i, r := range res {
 		fmt.Fprintf(&sb, "%d. [%s", i+1, r.ID)
+		if r.Scope != "" {
+			fmt.Fprintf(&sb, " %s", r.Scope)
+		}
 		if len(r.SlotKeys) > 0 {
 			fmt.Fprintf(&sb, " {%s}", strings.Join(r.SlotKeys, ", "))
 		}
