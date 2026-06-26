@@ -433,7 +433,23 @@ func (s *Server) handleDeleteMemory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListDocuments(w http.ResponseWriter, r *http.Request) {
-	docs, err := s.Docs.List(r.Context())
+	u, _ := auth.UserFromContext(r.Context())
+	projectID, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64)
+	var docs []types.Document
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		list := func(projDB *sql.DB) error {
+			var e error
+			docs, e = s.Docs.ListScoped(r.Context(), s.Docs.ScopesFor(udb, projDB))
+			return e
+		}
+		if projectID > 0 {
+			if member, _ := s.Projects.IsMember(r.Context(), projectID, u.ID); !member {
+				return list(nil) // not a member: fall back to personal+shared
+			}
+			return s.Storage.WithProjectReadOnly(r.Context(), projectID, list)
+		}
+		return list(nil)
+	})
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -460,20 +476,36 @@ func (s *Server) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Route the ingest to the requested corpus: personal (the user's own DB),
-	// project (the project's DB), or shared (default, org-wide).
+	// Route the ingest to the requested corpus, checking permission for each:
+	//   personal (default) — any user, into their own DB
+	//   shared             — owners/admins only (org-wide)
+	//   project            — members of the project only
+	scope := req.Scope
+	if scope == "" {
+		scope = documents.ScopePersonal
+	}
 	var d *types.Document
 	var err error
-	switch req.Scope {
+	switch scope {
 	case documents.ScopePersonal:
 		err = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
 			var e error
 			d, e = s.Docs.IngestInto(r.Context(), udb, req, u.ID)
 			return e
 		})
+	case documents.ScopeShared:
+		if !types.IsElevated(u.Role) {
+			writeErr(w, http.StatusForbidden, "only owners/admins can add shared documents")
+			return
+		}
+		d, err = s.Docs.Ingest(r.Context(), req, u.ID)
 	case documents.ScopeProject:
 		if req.ProjectID == 0 {
 			writeErr(w, http.StatusBadRequest, "project_id required for project scope")
+			return
+		}
+		if member, _ := s.Projects.IsMember(r.Context(), req.ProjectID, u.ID); !member {
+			writeErr(w, http.StatusForbidden, "not a member of this project")
 			return
 		}
 		err = s.Storage.WithProject(r.Context(), req.ProjectID, func(pdb *sql.DB) error {
@@ -482,7 +514,8 @@ func (s *Server) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 			return e
 		})
 	default:
-		d, err = s.Docs.Ingest(r.Context(), req, u.ID)
+		writeErr(w, http.StatusBadRequest, "invalid scope (personal|shared|project)")
+		return
 	}
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
@@ -527,6 +560,9 @@ func (s *Server) documentFromUpload(w http.ResponseWriter, r *http.Request) (typ
 	if title == "" {
 		title = header.Filename
 	}
+	// Namespace to ingest into (permission-checked by the caller).
+	scope := r.FormValue("scope")
+	projectID, _ := strconv.ParseInt(r.FormValue("project_id"), 10, 64)
 
 	isPDF := strings.HasSuffix(strings.ToLower(header.Filename), ".pdf") ||
 		header.Header.Get("Content-Type") == "application/pdf" ||
@@ -555,15 +591,43 @@ func (s *Server) documentFromUpload(w http.ResponseWriter, r *http.Request) (typ
 		writeErr(w, http.StatusUnsupportedMediaType, "unsupported file type (only PDF and text are supported)")
 		return req, fmt.Errorf("unsupported file type")
 	}
+	req.Scope = scope
+	req.ProjectID = projectID
 	return req, nil
 }
 
 func (s *Server) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {
-	if _, ok := requireElevated(w, r); !ok {
+	u, _ := auth.UserFromContext(r.Context())
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	scope := r.URL.Query().Get("scope")
+	if scope == "" {
+		scope = documents.ScopeShared // back-compatible default
+	}
+	var err error
+	switch scope {
+	case documents.ScopePersonal:
+		err = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+			return s.Docs.DeleteFrom(r.Context(), udb, id)
+		})
+	case documents.ScopeShared:
+		if _, ok := requireElevated(w, r); !ok {
+			return
+		}
+		err = s.Docs.Delete(r.Context(), id)
+	case documents.ScopeProject:
+		projectID, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64)
+		if member, _ := s.Projects.IsMember(r.Context(), projectID, u.ID); !member {
+			writeErr(w, http.StatusForbidden, "not a member of this project")
+			return
+		}
+		err = s.Storage.WithProject(r.Context(), projectID, func(pdb *sql.DB) error {
+			return s.Docs.DeleteFrom(r.Context(), pdb, id)
+		})
+	default:
+		writeErr(w, http.StatusBadRequest, "invalid scope (personal|shared|project)")
 		return
 	}
-	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err := s.Docs.Delete(r.Context(), id); err != nil {
+	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}

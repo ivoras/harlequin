@@ -549,6 +549,9 @@ type Document struct {
 	Mime      string    `json:"mime"`
 	CreatedBy int64     `json:"created_by"`
 	CreatedAt time.Time `json:"created_at"`
+	// Scope is the corpus the document lives in: "personal", "shared", or
+	// "project". Needed to address it for delete across corpora.
+	Scope string `json:"scope,omitempty"`
 }
 
 // CreateDocumentRequest is the body of POST /documents.

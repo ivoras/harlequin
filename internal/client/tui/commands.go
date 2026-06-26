@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -158,16 +159,18 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 		return m.handleSkillSub(args)
 	case "/memory":
 		return m.handleMemorySub(args)
+	case "/upload":
+		return m.handleUpload(args)
 	case "/docs":
 		// "/docs add <path>" uploads a local file (e.g. a PDF); otherwise search.
 		if len(args) >= 2 && args[0] == "add" {
 			path := strings.TrimSpace(strings.Join(args[1:], " "))
 			return func() tea.Msg {
-				d, err := m.client.UploadDocument(context.Background(), path, "")
+				d, err := m.client.UploadDocument(context.Background(), path, "", "personal", 0)
 				if err != nil {
 					return errMsg{err}
 				}
-				return infoMsg{fmt.Sprintf("uploaded %q (document id=%d) into the org corpus", d.Title, d.ID)}
+				return infoMsg{fmt.Sprintf("uploaded %q (document id=%d) into your personal corpus", d.Title, d.ID)}
 			}
 		}
 		q := strings.Join(args, " ")
@@ -562,6 +565,56 @@ func (m *Model) handleQueueSub(args []string) tea.Cmd {
 		return report("removed: " + truncate(removed, 60))
 	}
 	return report("usage: /queue [del <n>|clear]")
+}
+
+// handleUpload implements "/upload <personal|shared|project> <path>": uploads a
+// .txt/.md/.html/.pdf file into the chosen corpus for RAG. The server enforces
+// permissions; the client pre-checks for a clearer message.
+func (m *Model) handleUpload(args []string) tea.Cmd {
+	if len(args) < 2 {
+		return func() tea.Msg {
+			return infoMsg{"usage: /upload <personal|shared|project> <path>  (formats: .txt .md .html .pdf)"}
+		}
+	}
+	scope := strings.ToLower(args[0])
+	path := strings.TrimSpace(strings.Join(args[1:], " "))
+	switch scope {
+	case "personal", "shared", "project":
+	default:
+		return func() tea.Msg { return errMsg{fmt.Errorf("scope must be personal, shared, or project")} }
+	}
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".txt", ".md", ".markdown", ".html", ".htm", ".pdf":
+	default:
+		return func() tea.Msg {
+			return errMsg{fmt.Errorf("unsupported format %q (use .txt, .md, .html, or .pdf)", filepath.Ext(path))}
+		}
+	}
+	var projectID int64
+	switch scope {
+	case "shared":
+		if m.user == nil || !types.IsElevated(m.user.Role) {
+			return func() tea.Msg { return errMsg{fmt.Errorf("only owners/admins can upload shared documents")} }
+		}
+	case "project":
+		if m.activeProjectID == 0 {
+			return func() tea.Msg {
+				return errMsg{fmt.Errorf("no active project; switch to one with /project switch first")}
+			}
+		}
+		projectID = m.activeProjectID
+	}
+	return func() tea.Msg {
+		d, err := m.client.UploadDocument(context.Background(), path, "", scope, projectID)
+		if err != nil {
+			return errMsg{err}
+		}
+		dest := scope + " corpus"
+		if scope == "project" {
+			dest = fmt.Sprintf("project %q", m.activeProjectName)
+		}
+		return infoMsg{fmt.Sprintf("uploaded %q (document id=%d) into the %s", d.Title, d.ID, dest)}
+	}
 }
 
 func (m *Model) handleMemorySub(args []string) tea.Cmd {
