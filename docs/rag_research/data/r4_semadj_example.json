@@ -1,0 +1,93 @@
+{
+ "gate": 0.3772,
+ "min_sent": 2,
+ "sentences": [
+  {
+   "id": 327,
+   "text": "The Commission shall promote the general interest of the Union and take appropriate initiatives to that end.",
+   "drift_next": 0.49555349349975586,
+   "cut_after": false
+  },
+  {
+   "id": 328,
+   "text": "It shall ensure the application of the Treaties, and of measures adopted by the institutions pursuant to them.",
+   "drift_next": 0.40491485595703125,
+   "cut_after": true
+  },
+  {
+   "id": 329,
+   "text": "It shall oversee the application of Union law under the control of the Court of Justice of the European Union.",
+   "drift_next": 0.5730979442596436,
+   "cut_after": false
+  },
+  {
+   "id": 330,
+   "text": "It shall execute the budget and manage programmes.",
+   "drift_next": 0.3457273244857788,
+   "cut_after": false
+  },
+  {
+   "id": 331,
+   "text": "It shall exercise coordinating, executive and management functions, as laid down in the Treaties.",
+   "drift_next": 0.4673764705657959,
+   "cut_after": true
+  },
+  {
+   "id": 332,
+   "text": "With the exception of the common foreign and security policy, and other cases provided for in the Treaties, it shall ensure the Union's external repre…",
+   "drift_next": 0.4813612699508667,
+   "cut_after": false
+  },
+  {
+   "id": 333,
+   "text": "It shall initiate the Union's annual and multiannual programming with a view to achieving interinstitutional agreements.",
+   "drift_next": 0.4942755699157715,
+   "cut_after": true
+  },
+  {
+   "id": 334,
+   "text": "Union legislative acts may only be adopted on the basis of a Commission proposal, except where the Treaties provide otherwise.",
+   "drift_next": null,
+   "cut_after": false
+  }
+ ],
+ "chunks": [
+  {
+   "ids": [
+    327,
+    328
+   ],
+   "n_sent": 2,
+   "preview": "The Commission shall promote the general interest of the Union and take appropriate initiatives to that end. It shall ensure the application of the Treaties, and of measures adopted by the institution…"
+  },
+  {
+   "ids": [
+    329,
+    330,
+    331
+   ],
+   "n_sent": 3,
+   "preview": "It shall oversee the application of Union law under the control of the Court of Justice of the European Union. It shall execute the budget and manage programmes. It shall exercise coordinating, execut…"
+  },
+  {
+   "ids": [
+    332,
+    333
+   ],
+   "n_sent": 2,
+   "preview": "With the exception of the common foreign and security policy, and other cases provided for in the Treaties, it shall ensure the Union's external representation. It shall initiate the Union's annual an…"
+  },
+  {
+   "ids": [
+    334
+   ],
+   "n_sent": 1,
+   "preview": "Union legislative acts may only be adopted on the basis of a Commission proposal, except where the Treaties provide otherwise.…"
+  }
+ ],
+ "drift_stats": {
+  "median": 0.5338339805603027,
+  "p25": 0.40532487630844116,
+  "p75": 0.6976187229156494
+ }
+}
