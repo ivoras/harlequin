@@ -22,6 +22,8 @@ RRF = (json.load(open(os.path.join(DATA, "r4_rrf_sweep.json")))
 PROBE = (json.load(open(os.path.join(DATA, "r4_probe_sweep.json")))
          if os.path.exists(os.path.join(DATA, "r4_probe_sweep.json")) else None)
 EVAL = json.load(open(os.path.join(DATA, "eval_questions.json")))
+SEMEX = (json.load(open(os.path.join(DATA, "r4_semadj_example.json")))
+         if os.path.exists(os.path.join(DATA, "r4_semadj_example.json")) else None)
 
 # stable colour per physical model
 MC = {"granite": "#2980b9", "snowflake": "#16a085", "qwen06b": "#c0392b",
@@ -77,6 +79,10 @@ TIPS = {
     "n": "Number of chunks/questions",
     "% in-doc": "Share of the in-document questions",
     "how grounded": "How a question's acceptable answer sentences were determined",
+    "sentence": "A sentence in the example window (truncated)",
+    "dist → next": "Cosine distance 1−cos(embedding) between this sentence and the next",
+    "decision": "What the sem_adjacent rule does at this sentence boundary",
+    "records": "Number of vector records (chunks) stored for the document under this chunker",
 }
 
 
@@ -147,6 +153,22 @@ def curve(series, title, xlabel, ylabel, marks=None, xticks=None, w=660, h=340, 
         ly = pad_t + 4 + i * 16
         o.append(f'<rect x="{lx}" y="{ly}" width="10" height="10" fill="{col}"/>')
         o.append(f'<text x="{lx+14}" y="{ly+9}" class="leg">{esc(name)}</text>')
+    o.append("</svg>")
+    return "\n".join(o)
+
+
+def hbar(rows, vmax, title, w=660, rowh=24, pad_l=130, fmt="{:.3f}"):
+    """rows: list of (label, value, colour). Horizontal bars."""
+    h = len(rows) * rowh + 40
+    pw = w - pad_l - 60
+    o = [f'<svg viewBox="0 0 {w} {h}" role="img">',
+         f'<text x="{pad_l}" y="14" class="ct">{esc(title)}</text>']
+    for i, (lab, val, col) in enumerate(rows):
+        y = 26 + i * rowh
+        bw = pw * (val or 0) / (vmax or 1)
+        o.append(f'<rect x="{pad_l}" y="{y}" width="{bw:.1f}" height="{rowh-7}" fill="{col}"/>')
+        o.append(f'<text x="{pad_l-6}" y="{y+rowh-12}" class="lbl" text-anchor="end">{esc(lab)}</text>')
+        o.append(f'<text x="{pad_l+bw+4:.1f}" y="{y+rowh-12}" class="val">{fmt.format(val)}</text>')
     o.append("</svg>")
     return "\n".join(o)
 
@@ -344,7 +366,83 @@ def ch_gate():
             ("recall@1", "R@1", "{:.3f}"), ("recall@5", "R@5", "{:.3f}"),
             ("answer@1024tok", "ans@1024", "{:.3f}"), ("ood_auc", "AUC", "{:.3f}")]
     out.append(table(cols, rows, "Table 3. Selected sem_adjacent gate per model."))
+    out.append(ch_semadj_example())
+    out.append(ch_records())
     return "\n".join(out)
+
+
+def ch_semadj_example():
+    if not SEMEX:
+        return ""
+    gate = SEMEX["gate"]
+    rows = []
+    for s in SEMEX["sentences"]:
+        d = s["drift_next"]
+        if s["cut_after"]:
+            dec = "cut → start new chunk"
+        elif d is None:
+            dec = "—"
+        elif d <= gate:
+            dec = "keep (distance ≤ gate)"
+        else:
+            dec = "keep (chunk has < 2 sentences)"
+        rows.append({"sentence": f"s{s['id']}: {s['text']}",
+                     "dist": d, "decision": dec})
+    cols = [("sentence", "sentence", None), ("dist", "dist → next", "{:.3f}"),
+            ("decision", "decision", None)]
+    bundles = "; ".join(f"<b>chunk&nbsp;{i+1}</b> = s{c['ids'][0]}"
+                        + (f"&ndash;s{c['ids'][-1]}" if c["n_sent"] > 1 else "")
+                        + f" ({c['n_sent']}&nbsp;sent.)"
+                        for i, c in enumerate(SEMEX["chunks"]))
+    ds = SEMEX["drift_stats"]
+    return ("<h3>6.1 Worked example: how sem_adjacent bundles sentences</h3>\n"
+            "<p>The chunker walks the document one sentence at a time, measuring the "
+            "<b>cosine distance</b> <code>1&minus;cos(embedding)</code> between each "
+            "sentence and the next (snowflake embeddings). It keeps appending to the "
+            f"current chunk while that distance stays at or below the gate "
+            f"(<b>{gate:.3f}</b> for snowflake), and cuts &mdash; starting a new chunk "
+            "&mdash; when the distance exceeds the gate, provided the current chunk "
+            "already holds at least two sentences (so a single outlier never makes a "
+            "one-sentence fragment). A token cap also forces a cut. The real run below "
+            "(consecutive sentences of Article&nbsp;17 TEU, on the Commission&rsquo;s "
+            "functions) shows all three behaviours:</p>\n"
+            + table(cols, rows, f"sem_adjacent on sentences "
+                    f"s{SEMEX['sentences'][0]['id']}&ndash;s{SEMEX['sentences'][-1]['id']} "
+                    f"at gate {gate:.3f}. Distance is to the next sentence; a cut "
+                    "happens after a sentence when that distance exceeds the gate and "
+                    "the chunk already has &ge;2 sentences.")
+            + f"\n<p>Result: {bundles}. Note s{SEMEX['chunks'][1]['ids'][0] if len(SEMEX['chunks'])>1 else ''}"
+            "&hellip; stay together because consecutive distances dip at or below the "
+            "gate (the sentences keep talking about the same thing), while a jump "
+            "above the gate ends the chunk. For reference, adjacent distances across "
+            f"the whole corpus have median {ds['median']:.2f} "
+            f"(p25 {ds['p25']:.2f}, p75 {ds['p75']:.2f}), so the low gate makes most "
+            "boundaries cut &mdash; chunks are small, which §6.2 quantifies.</p>")
+
+
+def ch_records():
+    crows = AGG.get("chunkers", {}).get("snowflake")
+    if not crows:
+        return ""
+    rows = sorted([{"chunker": ("sem_adjacent" if r["chunker"].startswith("sem_adjacent")
+                                else r["chunker"]),
+                    "records": r.get("n_chunks"), "tok": r.get("tok_mean")}
+                   for r in crows], key=lambda x: -(x["records"] or 0))
+    cols = [("chunker", "chunker", None), ("records", "records", "{}"),
+            ("tok", "tok", "{:.0f}")]
+    vmax = max((r["records"] or 0) for r in rows)
+    bars = [(r["chunker"], r["records"], MC["snowflake"]) for r in rows]
+    fig = hbar(bars, vmax, "Vector records per chunker (TEU document, snowflake)",
+               fmt="{:.0f}")
+    return ("<h3>6.2 Vector records per chunker</h3>\n"
+            "<p>Each chunk becomes one stored vector (and one FTS5 row), so the "
+            "chunker sets how many records the document costs to index and search. "
+            "For the 2&thinsp;112-sentence TEU under snowflake:</p>\n"
+            f"<figure>{fig}<figcaption>Records = number of chunks. per_sentence stores "
+            "one vector per sentence (most); larger mechanical caps store the fewest; "
+            "the low-gate sem_adjacent sits near the small end.</figcaption></figure>\n"
+            + table(cols, rows, "Vector records (chunks) and mean chunk size per "
+                    "chunker for the TEU document under snowflake."))
 
 
 CHUNK_COLS = [("chunker", "chunker", None), ("tok_mean", "tok", "{:.0f}"),
@@ -473,10 +571,12 @@ def ch_probe():
             "operating point. Up-weighting the survivors, "
             "<code>gated&nbsp;p90&nbsp;(w=2)</code> gives the best exact-extraction "
             "recall@5 in the table, at a clear paraphrase-precision cost &mdash; the "
-            "right pick when exact-token queries dominate. <b>Harlequin adopts "
-            "<code>gated p90 (w=2)</code></b> for document search (FTS5 arm gated to "
-            "its top decile, weighted 2&times;), since ingested documents are queried "
-            "heavily for exact references. The same per-query top-decile gate is what "
+            "right pick when exact-token queries dominate. <b>Harlequin uses the "
+            "<code>gated p90</code> fusion</b> for document search (FTS5 arm gated to "
+            "its top decile) with the FTS5 weight moderated toward 1 (default 1.5) "
+            "&mdash; between the balanced (w=1) and exact-maximising (w=2) points "
+            "above &mdash; to keep most of the exact-extraction gain without paying "
+            "the full paraphrase cost. The same per-query top-decile gate is what "
             "<code>documents.Search</code> implements.</p>")
 
 
@@ -659,6 +759,7 @@ def main():
  figcaption{{color:#666;font-size:.85rem;margin-top:.3rem}}
  .ct{{font:600 13px Georgia,serif;fill:#1a1a1a}} .grid{{stroke:#eee}}
  .ax{{font:10px ui-monospace,monospace;fill:#888}} .leg{{font:10px ui-monospace,monospace}}
+ .lbl{{font:11px ui-monospace,monospace;fill:#1a1a1a}} .val{{font:10px ui-monospace,monospace;fill:#555}}
  ul,ol{{padding-left:1.2rem}} li{{margin:.2rem 0}}
  .fn{{font-size:.85rem;color:#666;border-top:1px solid #ddd;margin-top:2.4rem;padding-top:.6rem}}
 </style></head><body>
