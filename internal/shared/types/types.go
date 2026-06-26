@@ -557,15 +557,24 @@ type CreateDocumentRequest struct {
 	URI     string `json:"uri"`
 	Mime    string `json:"mime"`
 	Content string `json:"content"`
+	// Scope selects the corpus to ingest into: "shared" (default, org-wide),
+	// "personal" (the user's own docs), or "project" (requires ProjectID).
+	Scope     string `json:"scope,omitempty"`
+	ProjectID int64  `json:"project_id,omitempty"`
 }
 
-// SearchResult is a hybrid-search hit. ID is a composite id: "u.<n>"/"s.<n>" for
-// memories, "d.<n>" for document chunks.
+// SearchResult is a hybrid-search hit. ID is a composite id encoding the scope:
+// memories use "u.<n>" (personal) / "s.<n>" (shared) / "p.<n>" (project);
+// document chunks use "d.u.<n>" / "d.s.<n>" / "d.p.<n>". The Scope field carries
+// the same information as a plain label.
 type SearchResult struct {
 	ID       string   `json:"id"`
 	Content  string   `json:"content"`
 	SlotKeys []string `json:"slot_keys,omitempty"`
 	Score    float64  `json:"score"`
+	// Scope reports where the result was found: "personal" (the user's own
+	// data), "shared" (organisation-wide), or "project" (the active project).
+	Scope string `json:"scope,omitempty"`
 }
 
 // UsageRecord is a per-completion accounting row.

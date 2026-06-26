@@ -114,6 +114,22 @@ and admins may create or delete shared memories; for ordinary users the
 `memory_write` tool refuses `shared` scope and stores the fact as a personal
 memory instead.
 
+#### Scopes (memory & documents)
+
+Both memories and the document (RAG) corpus are organised into three scopes:
+
+- **personal** — the user's own data, in `data/users/<id>/user.db`.
+- **shared** — organisation-wide data, in `data/shared.db`.
+- **project** — a project's data, in `data/projects/<id>/project.db`.
+
+By default a user works outside any project, so memory and document search fuse
+**personal + shared**. When the user switches to a project, search fuses
+**project + shared + personal**. Every search result reports which scope it came
+from (a `scope` field of `personal`, `shared`, or `project`), and writes go to
+the scope you choose (personal by default for a user; the project when one is
+active; shared for owners/admins). Projects are isolated workspaces — each has
+its own document namespace and memories.
+
 Change a user's password (revokes their existing API tokens):
 
 ```sh

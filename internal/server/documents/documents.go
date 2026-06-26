@@ -86,13 +86,19 @@ func (s *Store) SetFusion(weight float64, gatePct int) {
 	}
 }
 
-// Ingest stores a document, chunks + embeds its content, and indexes the chunks.
+// Ingest stores a document in the shared (org) corpus.
 func (s *Store) Ingest(ctx context.Context, req types.CreateDocumentRequest, userID int64) (*types.Document, error) {
+	return s.IngestInto(ctx, s.db, req, userID)
+}
+
+// IngestInto stores a document into a specific corpus (personal/shared/project
+// DB), chunks + embeds its content, and indexes the chunks there.
+func (s *Store) IngestInto(ctx context.Context, db *sql.DB, req types.CreateDocumentRequest, userID int64) (*types.Document, error) {
 	mime := req.Mime
 	if mime == "" {
 		mime = "text/plain"
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -246,52 +252,105 @@ type scoredHit struct {
 	content string
 }
 
-// Search returns chunks matching the query, fusing the dense (vector) and FTS5
-// (lexical) arms via weighted RRF. The FTS5 arm carries ftsWeight (dense = 1.0)
-// and, if ftsGatePct > 0, is gated to its strongest hits (top 100-pct% by BM25)
-// so weak lexical matches do not pollute the fusion.
+// Scope labels surfaced in results and used to qualify chunk ids across corpora.
+const (
+	ScopePersonal = "personal"
+	ScopeShared   = "shared"
+	ScopeProject  = "project"
+)
+
+// ScopeDB pairs a database with the scope label of the documents it holds.
+type ScopeDB struct {
+	Scope string
+	DB    *sql.DB
+}
+
+func scopePrefix(scope string) string {
+	switch scope {
+	case ScopePersonal:
+		return "u"
+	case ScopeProject:
+		return "p"
+	default:
+		return "s"
+	}
+}
+
+// ScopesFor builds the corpus list for a request: the active project (if any),
+// the shared/org corpus, and the user's personal corpus (if a user DB is open).
+// nil DBs are skipped.
+func (s *Store) ScopesFor(userDB, projDB *sql.DB) []ScopeDB {
+	out := make([]ScopeDB, 0, 3)
+	if projDB != nil {
+		out = append(out, ScopeDB{ScopeProject, projDB})
+	}
+	out = append(out, ScopeDB{ScopeShared, s.db})
+	if userDB != nil {
+		out = append(out, ScopeDB{ScopePersonal, userDB})
+	}
+	return out
+}
+
+// Search fuses the dense (vector) and FTS5 (lexical) arms of the shared corpus
+// via weighted RRF (back-compatible single-scope search).
 func (s *Store) Search(ctx context.Context, query string, limit int) ([]types.SearchResult, error) {
+	return s.SearchScoped(ctx, []ScopeDB{{ScopeShared, s.db}}, query, limit)
+}
+
+// SearchScoped fuses the dense+FTS5 arms across several scope corpora and labels
+// each hit with the scope it came from. The FTS5 arm carries ftsWeight (dense =
+// 1.0) and, if ftsGatePct > 0, is gated per corpus to its strongest hits.
+func (s *Store) SearchScoped(ctx context.Context, scopes []ScopeDB, query string, limit int) ([]types.SearchResult, error) {
 	if limit <= 0 {
 		limit = 8
 	}
-	// Candidate pool per arm before RRF. When the FTS5 arm is score-gated it
-	// keeps only its top decile, so fuse from a deeper pool to recover recall
-	// (measured: gated R@5 ~0.77->0.81 going from depth 50 to ~200); ungated
-	// fusion gains nothing from a deeper pool, so leave it at limit*4.
+	// When the FTS5 arm is score-gated it keeps only its top decile, so fuse
+	// from a deeper pool to recover recall; ungated fusion stays at limit*4.
 	depth := limit * 4
-	if s.ftsGatePct > 0 {
-		if depth < 200 {
-			depth = 200
+	if s.ftsGatePct > 0 && depth < 200 {
+		depth = 200
+	}
+	// Embed the query once for the dense arm of every scope.
+	var blob any
+	if vecs, err := s.embedder.EmbedQuery(ctx, []string{query}); err == nil && len(vecs) == 1 {
+		if b, err := sqlite_vec.SerializeFloat32(vecs[0]); err == nil {
+			blob = b
 		}
 	}
-	ranks := map[int64]float64{}
-	contents := map[int64]string{}
+	ranks := map[string]float64{}
+	contents := map[string]string{}
+	scopeOf := map[string]string{}
+	for _, sc := range scopes {
+		if sc.DB != nil {
+			s.searchInto(ctx, sc, query, blob, depth, ranks, contents, scopeOf)
+		}
+	}
+	return topN(ranks, contents, scopeOf, limit), nil
+}
 
-	// FTS5 arm, ordered best-first by BM25 (f.rank), optionally score-gated.
-	ftsRows, err := s.db.QueryContext(ctx,
+// searchInto runs the gated/weighted dense+FTS5 arms against one corpus, folding
+// scope-qualified RRF contributions into the shared maps.
+func (s *Store) searchInto(ctx context.Context, sc ScopeDB, query string, blob any, depth int,
+	ranks map[string]float64, contents, scopeOf map[string]string) {
+	key := func(local int64) string {
+		return "d." + scopePrefix(sc.Scope) + "." + strconv.FormatInt(local, 10)
+	}
+	if rows, err := sc.DB.QueryContext(ctx,
 		`SELECT c.id, c.content FROM doc_chunks_fts f JOIN doc_chunks c ON c.id = f.rowid
-		 WHERE doc_chunks_fts MATCH ? ORDER BY f.rank LIMIT ?`, query, depth)
-	if err == nil {
-		hits := collect(ftsRows)
+		 WHERE doc_chunks_fts MATCH ? ORDER BY f.rank LIMIT ?`, query, depth); err == nil {
+		hits := collect(rows)
 		if s.ftsGatePct > 0 {
 			hits = gateTop(hits, s.ftsGatePct)
 		}
-		fold(hits, s.ftsWeight, ranks, contents)
+		foldKeyed(hits, s.ftsWeight, sc.Scope, key, ranks, contents, scopeOf)
 	}
-
-	// dense arm, ordered best-first by cosine distance, weight 1.
-	if vecs, err := s.embedder.EmbedQuery(ctx, []string{query}); err == nil && len(vecs) == 1 {
-		if blob, err := sqlite_vec.SerializeFloat32(vecs[0]); err == nil {
-			vecRows, err := s.db.QueryContext(ctx,
-				`SELECT c.id, c.content FROM doc_chunks_vec v JOIN doc_chunks c ON c.id = v.rowid
-				 WHERE v.embedding MATCH ? AND k = ? ORDER BY v.distance`, blob, depth)
-			if err == nil {
-				fold(collect(vecRows), 1.0, ranks, contents)
-			}
+	if blob != nil {
+		if rows, err := sc.DB.QueryContext(ctx,
+			`SELECT c.id, c.content FROM doc_chunks_vec v JOIN doc_chunks c ON c.id = v.rowid
+			 WHERE v.embedding MATCH ? AND k = ? ORDER BY v.distance`, blob, depth); err == nil {
+			foldKeyed(collect(rows), 1.0, sc.Scope, key, ranks, contents, scopeOf)
 		}
 	}
-
-	return topN(ranks, contents, limit), nil
 }
 
 // collect drains a (id, content) result set, preserving its order.
@@ -324,18 +383,22 @@ func gateTop(hits []scoredHit, pct int) []scoredHit {
 	return hits[:keep]
 }
 
-// fold adds weighted RRF contributions (weight/(k+rank)) for a best-first list.
-func fold(hits []scoredHit, weight float64, ranks map[int64]float64, contents map[int64]string) {
+// foldKeyed adds weighted RRF contributions (weight/(k+rank)) for a best-first
+// list, keyed by a scope-qualified id and tagged with the source scope.
+func foldKeyed(hits []scoredHit, weight float64, scope string, key func(int64) string,
+	ranks map[string]float64, contents, scopeOf map[string]string) {
 	for i, h := range hits {
-		ranks[h.id] += weight / (rrfK + float64(i+1))
-		contents[h.id] = h.content
+		k := key(h.id)
+		ranks[k] += weight / (rrfK + float64(i+1))
+		contents[k] = h.content
+		scopeOf[k] = scope
 	}
 }
 
-func topN(ranks map[int64]float64, contents map[int64]string, limit int) []types.SearchResult {
+func topN(ranks map[string]float64, contents, scopeOf map[string]string, limit int) []types.SearchResult {
 	out := make([]types.SearchResult, 0, len(ranks))
 	for id, score := range ranks {
-		out = append(out, types.SearchResult{ID: "d." + strconv.FormatInt(id, 10), Content: contents[id], Score: score})
+		out = append(out, types.SearchResult{ID: id, Content: contents[id], Score: score, Scope: scopeOf[id]})
 	}
 	for i := 0; i < len(out); i++ {
 		max := i

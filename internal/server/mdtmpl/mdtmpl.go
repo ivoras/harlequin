@@ -38,7 +38,11 @@ func New(mem *memory.Store, docs *documents.Store, store *storage.Manager) Conte
 				return contents(res)
 			},
 			SearchDocs: func(q string) []string {
-				res, _ := docs.Search(context.Background(), q, 5)
+				var res []types.SearchResult
+				_ = store.WithUser(context.Background(), userID, func(udb *sql.DB) error {
+					res, _ = docs.SearchScoped(context.Background(), docs.ScopesFor(udb, nil), q, 5)
+					return nil
+				})
 				return contents(res)
 			},
 			MemoryGlob: func(glob string) []map[string]string {
