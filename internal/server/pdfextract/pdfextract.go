@@ -51,6 +51,40 @@ var mu sync.Mutex
 
 // Text extracts the plain text of every page, joined with blank lines. It returns
 // the text and the page count.
+// Pages extracts the text of each page separately (so the caller can map chunks
+// back to a page). The concatenation of the result, joined by "\n\n", equals
+// Text's output.
+func (e *Extractor) Pages(data []byte) ([]string, error) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	inst, err := e.pool.GetInstance(instanceTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("pdfextract: get instance: %w", err)
+	}
+	defer inst.Close()
+	doc, err := inst.OpenDocument(&requests.OpenDocument{File: &data})
+	if err != nil {
+		return nil, fmt.Errorf("pdfextract: open document: %w", err)
+	}
+	defer inst.FPDF_CloseDocument(&requests.FPDF_CloseDocument{Document: doc.Document})
+	pc, err := inst.FPDF_GetPageCount(&requests.FPDF_GetPageCount{Document: doc.Document})
+	if err != nil {
+		return nil, fmt.Errorf("pdfextract: page count: %w", err)
+	}
+	pages := make([]string, 0, pc.PageCount)
+	for i := 0; i < pc.PageCount; i++ {
+		pt, err := inst.GetPageText(&requests.GetPageText{
+			Page: requests.Page{ByIndex: &requests.PageByIndex{Document: doc.Document, Index: i}},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("pdfextract: page %d text: %w", i, err)
+		}
+		pages = append(pages, pt.Text)
+	}
+	return pages, nil
+}
+
 func (e *Extractor) Text(data []byte) (string, int, error) {
 	mu.Lock()
 	defer mu.Unlock()

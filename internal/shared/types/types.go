@@ -575,6 +575,9 @@ type CreateDocumentRequest struct {
 	// OriginalName is set server-side from an uploaded file's name (the stored
 	// original filename). Ignored on JSON (raw-text) ingests.
 	OriginalName string `json:"-"`
+	// PageStarts are the rune offsets at which each page of Content begins
+	// (set server-side for PDFs), used to assign a page to each chunk.
+	PageStarts []int `json:"-"`
 }
 
 // SearchResult is a hybrid-search hit. ID is a composite id encoding the scope:
