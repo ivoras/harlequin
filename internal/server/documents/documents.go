@@ -14,6 +14,7 @@ import (
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	"github.com/ivoras/harlequin/internal/server/embed"
 	"github.com/ivoras/harlequin/internal/shared/types"
+	"golang.org/x/text/unicode/norm"
 )
 
 const (
@@ -86,6 +87,36 @@ func (s *Store) SetFusion(weight float64, gatePct int) {
 	}
 }
 
+// AsciiName transliterates a filename to a safe 7-bit ASCII form for on-disk
+// storage (the original is kept in the DB). Accents are decomposed and dropped,
+// other non-ASCII and unsafe characters become "_", runs of "_" are collapsed.
+func AsciiName(name string) string {
+	var b strings.Builder
+	for _, r := range norm.NFKD.String(name) {
+		switch {
+		case unicode.Is(unicode.Mn, r): // combining mark from decomposition: drop
+		case r < unicode.MaxASCII && (unicode.IsLetter(r) || unicode.IsDigit(r) || r == '.' || r == '-' || r == '_'):
+			b.WriteRune(r)
+		default:
+			b.WriteRune('_')
+		}
+	}
+	out := strings.Trim(b.String(), "_.")
+	for strings.Contains(out, "__") {
+		out = strings.ReplaceAll(out, "__", "_")
+	}
+	if out == "" {
+		out = "file"
+	}
+	return out
+}
+
+// SetStoredPath records the on-disk path of a document's persisted file.
+func (s *Store) SetStoredPath(ctx context.Context, db *sql.DB, id int64, path string) error {
+	_, err := db.ExecContext(ctx, `UPDATE documents SET stored_path = ? WHERE id = ?`, path, id)
+	return err
+}
+
 // Ingest stores a document in the shared (org) corpus.
 func (s *Store) Ingest(ctx context.Context, req types.CreateDocumentRequest, userID int64) (*types.Document, error) {
 	return s.IngestInto(ctx, s.db, req, userID)
@@ -105,8 +136,8 @@ func (s *Store) IngestInto(ctx context.Context, db *sql.DB, req types.CreateDocu
 	defer tx.Rollback()
 
 	res, err := tx.ExecContext(ctx,
-		`INSERT INTO documents(title, uri, mime, created_by) VALUES (?, ?, ?, ?)`,
-		req.Title, req.URI, mime, userID)
+		`INSERT INTO documents(title, uri, mime, created_by, original_name) VALUES (?, ?, ?, ?, ?)`,
+		req.Title, req.URI, mime, userID, req.OriginalName)
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +177,7 @@ func (s *Store) IngestInto(ctx context.Context, db *sql.DB, req types.CreateDocu
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return &types.Document{ID: docID, Title: req.Title, URI: req.URI, Mime: mime, CreatedBy: userID, Chunks: len(chunks)}, nil
+	return &types.Document{ID: docID, Title: req.Title, URI: req.URI, Mime: mime, CreatedBy: userID, Chunks: len(chunks), OriginalName: req.OriginalName}, nil
 }
 
 // ReindexChunkVectors re-embeds every chunk's content and rewrites its
@@ -211,13 +242,16 @@ func (s *Store) ListScoped(ctx context.Context, scopes []ScopeDB) ([]types.Docum
 			continue
 		}
 		rows, err := sc.DB.QueryContext(ctx,
-			`SELECT id, title, uri, mime, COALESCE(created_by, 0), created_at FROM documents ORDER BY id DESC`)
+			`SELECT id, title, uri, mime, COALESCE(created_by, 0), created_at,
+			        COALESCE(original_name, ''), COALESCE(stored_path, '')
+			 FROM documents ORDER BY id DESC`)
 		if err != nil {
 			return nil, err
 		}
 		for rows.Next() {
 			var d types.Document
-			if err := rows.Scan(&d.ID, &d.Title, &d.URI, &d.Mime, &d.CreatedBy, &d.CreatedAt); err != nil {
+			if err := rows.Scan(&d.ID, &d.Title, &d.URI, &d.Mime, &d.CreatedBy, &d.CreatedAt,
+				&d.OriginalName, &d.StoredPath); err != nil {
 				rows.Close()
 				return nil, err
 			}

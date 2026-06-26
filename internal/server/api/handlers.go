@@ -9,6 +9,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -464,16 +466,36 @@ func (s *Server) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 
 	var req types.CreateDocumentRequest
+	var raw []byte // raw uploaded bytes (nil for raw-text JSON ingests), persisted to disk
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
 		// File upload: extract text from the file (PDF via PDFium-wasm) and ingest.
 		var err error
-		req, err = s.documentFromUpload(w, r)
+		req, raw, err = s.documentFromUpload(w, r)
 		if err != nil {
 			return // documentFromUpload already wrote the error
 		}
 	} else if err := decode(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
+	}
+
+	// ingestAndStore ingests into a corpus, then persists the uploaded file under
+	// that scope's files/ directory with a 7-bit ASCII name (the original name is
+	// kept in the DB) and records the on-disk path.
+	ingestAndStore := func(ctx context.Context, db *sql.DB, filesDir string, dirErr error) (*types.Document, error) {
+		doc, err := s.Docs.IngestInto(ctx, db, req, u.ID)
+		if err != nil || doc == nil || len(raw) == 0 || dirErr != nil || filesDir == "" {
+			return doc, err
+		}
+		name := fmt.Sprintf("%d-%s", doc.ID, documents.AsciiName(req.OriginalName))
+		if werr := os.WriteFile(filepath.Join(filesDir, name), raw, 0o600); werr != nil {
+			log.Printf("documents: persist upload %q: %v", name, werr)
+			return doc, err
+		}
+		if serr := s.Docs.SetStoredPath(ctx, db, doc.ID, name); serr == nil {
+			doc.StoredPath = name
+		}
+		return doc, err
 	}
 
 	// Route the ingest to the requested corpus, checking permission for each:
@@ -489,8 +511,9 @@ func (s *Server) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 	switch scope {
 	case documents.ScopePersonal:
 		err = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+			dir, dErr := s.Storage.UserFilesDir(u.ID)
 			var e error
-			d, e = s.Docs.IngestInto(r.Context(), udb, req, u.ID)
+			d, e = ingestAndStore(r.Context(), udb, dir, dErr)
 			return e
 		})
 	case documents.ScopeShared:
@@ -498,7 +521,8 @@ func (s *Server) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusForbidden, "only owners/admins can add shared documents")
 			return
 		}
-		d, err = s.Docs.Ingest(r.Context(), req, u.ID)
+		dir, dErr := s.Storage.SharedFilesDir()
+		d, err = ingestAndStore(r.Context(), s.Storage.Shared, dir, dErr)
 	case documents.ScopeProject:
 		if req.ProjectID == 0 {
 			writeErr(w, http.StatusBadRequest, "project_id required for project scope")
@@ -509,8 +533,9 @@ func (s *Server) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		err = s.Storage.WithProject(r.Context(), req.ProjectID, func(pdb *sql.DB) error {
+			dir, dErr := s.Storage.ProjectFilesDir(req.ProjectID)
 			var e error
-			d, e = s.Docs.IngestInto(r.Context(), pdb, req, u.ID)
+			d, e = ingestAndStore(r.Context(), pdb, dir, dErr)
 			return e
 		})
 	default:
@@ -537,23 +562,24 @@ func (s *Server) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 // documentFromUpload reads a multipart "file" field, extracts its text (PDFs go
 // through PDFium-wasm; text-like files are used as-is), and builds an ingest
 // request. On failure it writes the HTTP error and returns a non-nil error.
-func (s *Server) documentFromUpload(w http.ResponseWriter, r *http.Request) (types.CreateDocumentRequest, error) {
+// It also returns the raw uploaded bytes so the caller can persist the file.
+func (s *Server) documentFromUpload(w http.ResponseWriter, r *http.Request) (types.CreateDocumentRequest, []byte, error) {
 	var req types.CreateDocumentRequest
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid upload: "+err.Error())
-		return req, err
+		return req, nil, err
 	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "missing file field")
-		return req, err
+		return req, nil, err
 	}
 	defer file.Close()
 	data, err := io.ReadAll(file)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, "read file: "+err.Error())
-		return req, err
+		return req, nil, err
 	}
 
 	title := r.FormValue("title")
@@ -572,16 +598,16 @@ func (s *Server) documentFromUpload(w http.ResponseWriter, r *http.Request) (typ
 	case isPDF:
 		if s.PDFExtract == nil {
 			writeErr(w, http.StatusUnsupportedMediaType, "PDF extraction is not available on this server")
-			return req, fmt.Errorf("no pdf extractor")
+			return req, nil, fmt.Errorf("no pdf extractor")
 		}
 		text, pages, err := s.PDFExtract.Text(data)
 		if err != nil {
 			writeErr(w, http.StatusUnprocessableEntity, "PDF extraction failed: "+err.Error())
-			return req, err
+			return req, nil, err
 		}
 		if strings.TrimSpace(text) == "" {
 			writeErr(w, http.StatusUnprocessableEntity, "no extractable text in PDF (it may be scanned images)")
-			return req, fmt.Errorf("empty pdf text")
+			return req, nil, fmt.Errorf("empty pdf text")
 		}
 		log.Printf("documents: extracted %d chars from %q (%d pages) for user", len(text), header.Filename, pages)
 		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: "application/pdf", Content: text}
@@ -589,11 +615,12 @@ func (s *Server) documentFromUpload(w http.ResponseWriter, r *http.Request) (typ
 		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: "text/plain", Content: string(data)}
 	default:
 		writeErr(w, http.StatusUnsupportedMediaType, "unsupported file type (only PDF and text are supported)")
-		return req, fmt.Errorf("unsupported file type")
+		return req, nil, fmt.Errorf("unsupported file type")
 	}
 	req.Scope = scope
 	req.ProjectID = projectID
-	return req, nil
+	req.OriginalName = header.Filename
+	return req, data, nil
 }
 
 func (s *Server) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {

@@ -555,6 +555,11 @@ type Document struct {
 	// Chunks is the number of RAG chunks (vector records) produced on ingest;
 	// surfaced so the client can report processing status.
 	Chunks int `json:"chunks,omitempty"`
+	// OriginalName is the uploaded file's original (UTF-8) name; StoredPath is
+	// its on-disk path (7-bit ASCII transliteration) relative to the scope's
+	// files/ directory. Empty for documents ingested as raw text (no file).
+	OriginalName string `json:"original_name,omitempty"`
+	StoredPath   string `json:"stored_path,omitempty"`
 }
 
 // CreateDocumentRequest is the body of POST /documents.
@@ -567,6 +572,9 @@ type CreateDocumentRequest struct {
 	// "personal" (the user's own docs), or "project" (requires ProjectID).
 	Scope     string `json:"scope,omitempty"`
 	ProjectID int64  `json:"project_id,omitempty"`
+	// OriginalName is set server-side from an uploaded file's name (the stored
+	// original filename). Ignored on JSON (raw-text) ingests.
+	OriginalName string `json:"-"`
 }
 
 // SearchResult is a hybrid-search hit. ID is a composite id encoding the scope:
