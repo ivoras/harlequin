@@ -367,7 +367,6 @@ def ch_gate():
             ("answer@1024tok", "ans@1024", "{:.3f}"), ("ood_auc", "AUC", "{:.3f}")]
     out.append(table(cols, rows, "Table 3. Selected sem_adjacent gate per model."))
     out.append(ch_semadj_example())
-    out.append(ch_records())
     return "\n".join(out)
 
 
@@ -417,7 +416,7 @@ def ch_semadj_example():
             "above the gate ends the chunk. For reference, adjacent distances across "
             f"the whole corpus have median {ds['median']:.2f} "
             f"(p25 {ds['p25']:.2f}, p75 {ds['p75']:.2f}), so the low gate makes most "
-            "boundaries cut &mdash; chunks are small, which §6.2 quantifies.</p>")
+            "boundaries cut &mdash; chunks are small, which §7.6 quantifies.</p>")
 
 
 def ch_records():
@@ -434,7 +433,7 @@ def ch_records():
     bars = [(r["chunker"], r["records"], MC["snowflake"]) for r in rows]
     fig = hbar(bars, vmax, "Vector records per chunker (TEU document, snowflake)",
                fmt="{:.0f}")
-    return ("<h3>6.2 Vector records per chunker</h3>\n"
+    return ("<h3>7.6 Vector records per chunker</h3>\n"
             "<p>Each chunk becomes one stored vector (and one FTS5 row), so the "
             "chunker sets how many records the document costs to index and search. "
             "For the 2&thinsp;112-sentence TEU under snowflake:</p>\n"
@@ -498,6 +497,7 @@ def ch_chunkers():
                    f"Table 4.{MODELS.index(m)+1}. Chunkers under {esc(PRETTY[m])}, dense.",
                    bold={"recall@1": "max", "recall@5": "max", "answer@1024tok": "max",
                          "mrr@10": "max", "ood_auc": "max", "eer": "min"}))
+    out.append(ch_records())
     return "\n".join(out)
 
 

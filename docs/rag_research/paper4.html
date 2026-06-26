@@ -432,78 +432,7 @@ prompts), adjacent-sentence semantic chunks, dense+BM25 RRF.</p>
 <td>—</td>
 </tr>
 </tbody></table>
-<p>Result: <b>chunk&nbsp;1</b> = s327&ndash;s328 (2&nbsp;sent.); <b>chunk&nbsp;2</b> = s329&ndash;s331 (3&nbsp;sent.); <b>chunk&nbsp;3</b> = s332&ndash;s333 (2&nbsp;sent.); <b>chunk&nbsp;4</b> = s334 (1&nbsp;sent.). Note s329&hellip; stay together because consecutive distances dip at or below the gate (the sentences keep talking about the same thing), while a jump above the gate ends the chunk. For reference, adjacent distances across the whole corpus have median 0.53 (p25 0.41, p75 0.70), so the low gate makes most boundaries cut &mdash; chunks are small, which §6.2 quantifies.</p>
-<h3>6.2 Vector records per chunker</h3>
-<p>Each chunk becomes one stored vector (and one FTS5 row), so the chunker sets how many records the document costs to index and search. For the 2&thinsp;112-sentence TEU under snowflake:</p>
-<figure><svg viewBox="0 0 660 232" role="img">
-<text x="130" y="14" class="ct">Vector records per chunker (TEU document, snowflake)</text>
-<rect x="130" y="26" width="470.0" height="17" fill="#16a085"/>
-<text x="124" y="38" class="lbl" text-anchor="end">per_sentence</text>
-<text x="604.0" y="38" class="val">2112</text>
-<rect x="130" y="50" width="205.4" height="17" fill="#16a085"/>
-<text x="124" y="62" class="lbl" text-anchor="end">sem_adjacent</text>
-<text x="339.4" y="62" class="val">923</text>
-<rect x="130" y="74" width="91.2" height="17" fill="#16a085"/>
-<text x="124" y="86" class="lbl" text-anchor="end">mech_256</text>
-<text x="225.2" y="86" class="val">410</text>
-<rect x="130" y="98" width="43.8" height="17" fill="#16a085"/>
-<text x="124" y="110" class="lbl" text-anchor="end">mech_512</text>
-<text x="177.8" y="110" class="val">197</text>
-<rect x="130" y="122" width="43.8" height="17" fill="#16a085"/>
-<text x="124" y="134" class="lbl" text-anchor="end">overlap_512</text>
-<text x="177.8" y="134" class="val">197</text>
-<rect x="130" y="146" width="21.4" height="17" fill="#16a085"/>
-<text x="124" y="158" class="lbl" text-anchor="end">mech_1024</text>
-<text x="155.4" y="158" class="val">96</text>
-<rect x="130" y="170" width="21.4" height="17" fill="#16a085"/>
-<text x="124" y="182" class="lbl" text-anchor="end">overlap_1024</text>
-<text x="155.4" y="182" class="val">96</text>
-<rect x="130" y="194" width="14.5" height="17" fill="#16a085"/>
-<text x="124" y="206" class="lbl" text-anchor="end">mech_1500</text>
-<text x="148.5" y="206" class="val">65</text>
-</svg><figcaption>Records = number of chunks. per_sentence stores one vector per sentence (most); larger mechanical caps store the fewest; the low-gate sem_adjacent sits near the small end.</figcaption></figure>
-<table class="sortable"><caption>Vector records (chunks) and mean chunk size per chunker for the TEU document under snowflake.</caption><thead><tr><th title="Chunking rule and target size">chunker</th><th title="Number of vector records (chunks) stored for the document under this chunker">records</th><th title="Mean chunk size in this model's own tokens">tok</th></tr></thead><tbody>
-<tr>
-<td class="m">per_sentence</td>
-<td>2112</td>
-<td>44</td>
-</tr>
-<tr>
-<td class="m">sem_adjacent</td>
-<td>923</td>
-<td>100</td>
-</tr>
-<tr>
-<td class="m">mech_256</td>
-<td>410</td>
-<td>225</td>
-</tr>
-<tr>
-<td class="m">mech_512</td>
-<td>197</td>
-<td>468</td>
-</tr>
-<tr>
-<td class="m">overlap_512</td>
-<td>197</td>
-<td>478</td>
-</tr>
-<tr>
-<td class="m">mech_1024</td>
-<td>96</td>
-<td>961</td>
-</tr>
-<tr>
-<td class="m">overlap_1024</td>
-<td>96</td>
-<td>973</td>
-</tr>
-<tr>
-<td class="m">mech_1500</td>
-<td>65</td>
-<td>1419</td>
-</tr>
-</tbody></table>
+<p>Result: <b>chunk&nbsp;1</b> = s327&ndash;s328 (2&nbsp;sent.); <b>chunk&nbsp;2</b> = s329&ndash;s331 (3&nbsp;sent.); <b>chunk&nbsp;3</b> = s332&ndash;s333 (2&nbsp;sent.); <b>chunk&nbsp;4</b> = s334 (1&nbsp;sent.). Note s329&hellip; stay together because consecutive distances dip at or below the gate (the sentences keep talking about the same thing), while a jump above the gate ends the chunk. For reference, adjacent distances across the whole corpus have median 0.53 (p25 0.41, p75 0.70), so the low gate makes most boundaries cut &mdash; chunks are small, which §7.6 quantifies.</p>
 <h2>7. Chunker comparison</h2>
 <p>Eight chunkers per model, dense retrieval, carried prompt mode: per-sentence, four mechanical token caps, two overlapping caps, and the model's selected <code>sem_adjacent</code>. Smaller chunks win on pinpoint metrics and OOD rejection; larger caps trade that for deep recall. <code>answer@B</code> compares at an equal retrieved-token budget.</p>
 <p><b>How a chunk is indexed.</b> Every chunker emits the same kind of object: a contiguous run of whole sentences that becomes one <i>atomic record</i>, keyed by a shared chunk id across all three structures &mdash; the <code>chunks</code> table (text + sentence-span provenance), the sqlite-vec <code>vec0</code> index (one cosine vector), and an FTS5 row (a single <code>text</code> field, <code>rowid</code> = chunk id). The chunker decides only <i>what a record is</i> &mdash; where the boundaries fall &mdash; while that same record is what dense, BM25 and FTS5 each retrieve; because the id is shared, their ranked lists fuse directly by id under RRF (§8). A chunker therefore affects retrieval only by changing record boundaries and sizes, which is exactly what the table below isolates.</p>
@@ -1073,6 +1002,77 @@ prompts), adjacent-sentence semantic chunks, dense+BM25 RRF.</p>
 <td><b>0.626</b></td>
 <td>0.931</td>
 <td>0.139</td>
+</tr>
+</tbody></table>
+<h3>7.6 Vector records per chunker</h3>
+<p>Each chunk becomes one stored vector (and one FTS5 row), so the chunker sets how many records the document costs to index and search. For the 2&thinsp;112-sentence TEU under snowflake:</p>
+<figure><svg viewBox="0 0 660 232" role="img">
+<text x="130" y="14" class="ct">Vector records per chunker (TEU document, snowflake)</text>
+<rect x="130" y="26" width="470.0" height="17" fill="#16a085"/>
+<text x="124" y="38" class="lbl" text-anchor="end">per_sentence</text>
+<text x="604.0" y="38" class="val">2112</text>
+<rect x="130" y="50" width="205.4" height="17" fill="#16a085"/>
+<text x="124" y="62" class="lbl" text-anchor="end">sem_adjacent</text>
+<text x="339.4" y="62" class="val">923</text>
+<rect x="130" y="74" width="91.2" height="17" fill="#16a085"/>
+<text x="124" y="86" class="lbl" text-anchor="end">mech_256</text>
+<text x="225.2" y="86" class="val">410</text>
+<rect x="130" y="98" width="43.8" height="17" fill="#16a085"/>
+<text x="124" y="110" class="lbl" text-anchor="end">mech_512</text>
+<text x="177.8" y="110" class="val">197</text>
+<rect x="130" y="122" width="43.8" height="17" fill="#16a085"/>
+<text x="124" y="134" class="lbl" text-anchor="end">overlap_512</text>
+<text x="177.8" y="134" class="val">197</text>
+<rect x="130" y="146" width="21.4" height="17" fill="#16a085"/>
+<text x="124" y="158" class="lbl" text-anchor="end">mech_1024</text>
+<text x="155.4" y="158" class="val">96</text>
+<rect x="130" y="170" width="21.4" height="17" fill="#16a085"/>
+<text x="124" y="182" class="lbl" text-anchor="end">overlap_1024</text>
+<text x="155.4" y="182" class="val">96</text>
+<rect x="130" y="194" width="14.5" height="17" fill="#16a085"/>
+<text x="124" y="206" class="lbl" text-anchor="end">mech_1500</text>
+<text x="148.5" y="206" class="val">65</text>
+</svg><figcaption>Records = number of chunks. per_sentence stores one vector per sentence (most); larger mechanical caps store the fewest; the low-gate sem_adjacent sits near the small end.</figcaption></figure>
+<table class="sortable"><caption>Vector records (chunks) and mean chunk size per chunker for the TEU document under snowflake.</caption><thead><tr><th title="Chunking rule and target size">chunker</th><th title="Number of vector records (chunks) stored for the document under this chunker">records</th><th title="Mean chunk size in this model's own tokens">tok</th></tr></thead><tbody>
+<tr>
+<td class="m">per_sentence</td>
+<td>2112</td>
+<td>44</td>
+</tr>
+<tr>
+<td class="m">sem_adjacent</td>
+<td>923</td>
+<td>100</td>
+</tr>
+<tr>
+<td class="m">mech_256</td>
+<td>410</td>
+<td>225</td>
+</tr>
+<tr>
+<td class="m">mech_512</td>
+<td>197</td>
+<td>468</td>
+</tr>
+<tr>
+<td class="m">overlap_512</td>
+<td>197</td>
+<td>478</td>
+</tr>
+<tr>
+<td class="m">mech_1024</td>
+<td>96</td>
+<td>961</td>
+</tr>
+<tr>
+<td class="m">overlap_1024</td>
+<td>96</td>
+<td>973</td>
+</tr>
+<tr>
+<td class="m">mech_1500</td>
+<td>65</td>
+<td>1419</td>
 </tr>
 </tbody></table>
 <h2>8. Lexical backend: BM25 vs FTS5 (+RRF)</h2>
