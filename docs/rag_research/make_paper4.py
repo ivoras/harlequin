@@ -715,6 +715,10 @@ def main():
     carried = AGG.get("carried", {})
     nat = [PRETTY[m] for m in MODELS if m != "granite" and not carried.get(m, "").endswith("_np")]
     npx = [PRETTY[m] for m in MODELS if m != "granite" and carried.get(m, "").endswith("_np")]
+    pe = (PROBE or {}).get("exact", {})         # §9.1 exact-extraction probe R@5s
+    g_dense = pe.get("dense", {}).get("recall@5")
+    g_w1 = pe.get("gated_p90", {}).get("recall@5")
+    g_w2 = pe.get("gated_p90_w2", {}).get("recall@5")
     abstract = (
         "We select a single embedding model for Harlequin document ingestion by "
         "evaluating five small open embedders &mdash; granite-311M, "
@@ -792,11 +796,16 @@ duplicate-aware and size-normalised with bootstrap confidence intervals.</p>
      'dense+lexical fusion</b>: with a realistic 30% exact-extraction load (§2), '
      'the winner&rsquo;s lexical arm is <code>'
      + esc(win['lexical']) + '</code> &mdash; the FTS5 hybrid earns '
-     'its place on article numbers, figures and named entities, beating dense alone. A fixed global FTS5 '
-     'weight is a compromise (§9); <b>score-gated fusion</b> (drop low-BM25 hits, '
-     'up-weight the confident survivors, §9.1) is the recommended production scheme. '
-     'BM25 and SQLite FTS5 are interchangeable, so FTS5 is the dependency-free '
-     'choice. Prompt mode is per the carried decisions: '
+     'its place on article numbers, figures and named entities, beating dense alone. '
+     '<b>Fuse the FTS5 arm with RRF weight 1.5</b> (dense fixed at 1.0; between the '
+     'balanced w=1 and exact-maximising w=2 of §9.1) and <b>score-gate it to its top '
+     'decile (p90)</b>, dropping weak lexical matches and fusing from a deeper '
+     'candidate pool. '
+     + ((f'On the exact-extraction probe this lifts recall@5 from {g_dense:.2f} '
+         f'(dense alone) to {g_w1:.2f}&ndash;{g_w2:.2f} (gated p90 at w=1&ndash;2, '
+         '§9.1), at a modest paraphrase cost. ') if (g_dense and g_w1 and g_w2) else '')
+     + 'BM25 and SQLite FTS5 are interchangeable (within ~0.003 R@5), so FTS5 is the '
+     'dependency-free choice. Prompt mode is per the carried decisions: '
      + (', '.join(nat) + ' do best with their native query prefix' if nat else '')
      + ('; ' + ', '.join(npx) + ' on raw text' if npx else '') + '.') if win
    else 'Pending full results.'}</p>
