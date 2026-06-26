@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -423,7 +424,7 @@ func (c *Client) SearchDocuments(ctx context.Context, q string) ([]types.SearchR
 // UploadDocument uploads a local file (e.g. a PDF) to the org RAG corpus; the
 // server extracts its text (PDFs via PDFium) and ingests it. Uses a generous
 // timeout since server-side extraction + embedding can take a while.
-func (c *Client) UploadDocument(ctx context.Context, path, title string) (*types.Document, error) {
+func (c *Client) UploadDocument(ctx context.Context, path, title, scope string, projectID int64) (*types.Document, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -434,6 +435,12 @@ func (c *Client) UploadDocument(ctx context.Context, path, title string) (*types
 	mw := multipart.NewWriter(&buf)
 	if title != "" {
 		_ = mw.WriteField("title", title)
+	}
+	if scope != "" {
+		_ = mw.WriteField("scope", scope)
+	}
+	if projectID != 0 {
+		_ = mw.WriteField("project_id", strconv.FormatInt(projectID, 10))
 	}
 	fw, err := mw.CreateFormFile("file", filepath.Base(path))
 	if err != nil {

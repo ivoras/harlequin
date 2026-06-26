@@ -9,7 +9,7 @@ import (
 var slashCommands = []string{
 	"/alert", "/config", "/cron", "/dismiss", "/docs", "/export", "/hat", "/help", "/mcp",
 	"/memory", "/new", "/project", "/queue", "/quit", "/reload", "/resume", "/run", "/say",
-	"/skill", "/skills", "/usage",
+	"/skill", "/skills", "/upload", "/usage",
 }
 
 var slashHelp = map[string]string{
@@ -33,6 +33,7 @@ var slashHelp = map[string]string{
 	"/resume":  "resume a session (picker, or /resume <id>)",
 	"/skill":   "pull / push / reset / diff / new a skill",
 	"/skills":  "list available skills",
+	"/upload":  "upload a doc for RAG: /upload <personal|shared|project> <path> (.txt/.md/.html/.pdf)",
 	"/usage":   "show token/cost usage",
 }
 

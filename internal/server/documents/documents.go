@@ -197,28 +197,49 @@ func (s *Store) ReindexChunkVectors(ctx context.Context) (int, error) {
 	return n, nil
 }
 
-// List returns all documents (newest first).
+// List returns all documents in the shared corpus (newest first).
 func (s *Store) List(ctx context.Context) ([]types.Document, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, title, uri, mime, COALESCE(created_by, 0), created_at FROM documents ORDER BY id DESC`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []types.Document
-	for rows.Next() {
-		var d types.Document
-		if err := rows.Scan(&d.ID, &d.Title, &d.URI, &d.Mime, &d.CreatedBy, &d.CreatedAt); err != nil {
-			return nil, err
-		}
-		out = append(out, d)
-	}
-	return out, rows.Err()
+	return s.ListScoped(ctx, []ScopeDB{{ScopeShared, s.db}})
 }
 
-// Delete removes a document and its chunks/index rows.
+// ListScoped returns the documents across several corpora, each tagged with its
+// scope (newest first within each, scopes concatenated in the given order).
+func (s *Store) ListScoped(ctx context.Context, scopes []ScopeDB) ([]types.Document, error) {
+	var out []types.Document
+	for _, sc := range scopes {
+		if sc.DB == nil {
+			continue
+		}
+		rows, err := sc.DB.QueryContext(ctx,
+			`SELECT id, title, uri, mime, COALESCE(created_by, 0), created_at FROM documents ORDER BY id DESC`)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var d types.Document
+			if err := rows.Scan(&d.ID, &d.Title, &d.URI, &d.Mime, &d.CreatedBy, &d.CreatedAt); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			d.Scope = sc.Scope
+			out = append(out, d)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// Delete removes a document (and its chunks/index rows) from the shared corpus.
 func (s *Store) Delete(ctx context.Context, id int64) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	return s.DeleteFrom(ctx, s.db, id)
+}
+
+// DeleteFrom removes a document and its chunks/index rows from a specific corpus.
+func (s *Store) DeleteFrom(ctx context.Context, db *sql.DB, id int64) error {
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
