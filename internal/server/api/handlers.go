@@ -594,22 +594,37 @@ func (s *Server) documentFromUpload(w http.ResponseWriter, r *http.Request) (typ
 		header.Header.Get("Content-Type") == "application/pdf" ||
 		bytes.HasPrefix(data, []byte("%PDF-"))
 
+	var pageStarts []int
 	switch {
 	case isPDF:
 		if s.PDFExtract == nil {
 			writeErr(w, http.StatusUnsupportedMediaType, "PDF extraction is not available on this server")
 			return req, nil, fmt.Errorf("no pdf extractor")
 		}
-		text, pages, err := s.PDFExtract.Text(data)
+		pages, err := s.PDFExtract.Pages(data)
 		if err != nil {
 			writeErr(w, http.StatusUnprocessableEntity, "PDF extraction failed: "+err.Error())
 			return req, nil, err
 		}
+		// Join pages (matching Text's "\n\n" separator) and record the rune offset
+		// at which each page begins so chunks can be mapped back to a page.
+		var sb strings.Builder
+		runeOff := 0
+		for i, pg := range pages {
+			if i > 0 {
+				sb.WriteString("\n\n")
+				runeOff += 2
+			}
+			pageStarts = append(pageStarts, runeOff)
+			sb.WriteString(pg)
+			runeOff += utf8.RuneCountInString(pg)
+		}
+		text := sb.String()
 		if strings.TrimSpace(text) == "" {
 			writeErr(w, http.StatusUnprocessableEntity, "no extractable text in PDF (it may be scanned images)")
 			return req, nil, fmt.Errorf("empty pdf text")
 		}
-		log.Printf("documents: extracted %d chars from %q (%d pages) for user", len(text), header.Filename, pages)
+		log.Printf("documents: extracted %d chars from %q (%d pages) for user", len(text), header.Filename, len(pages))
 		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: "application/pdf", Content: text}
 	case utf8.Valid(data):
 		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: "text/plain", Content: string(data)}
@@ -620,6 +635,7 @@ func (s *Server) documentFromUpload(w http.ResponseWriter, r *http.Request) (typ
 	req.Scope = scope
 	req.ProjectID = projectID
 	req.OriginalName = header.Filename
+	req.PageStarts = pageStarts
 	return req, data, nil
 }
 

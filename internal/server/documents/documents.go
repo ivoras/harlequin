@@ -148,18 +148,23 @@ func (s *Store) IngestInto(ctx context.Context, db *sql.DB, req types.CreateDocu
 		return nil, fmt.Errorf("chunk document: %w", err)
 	}
 	if len(chunks) > 0 {
-		vecs, err := s.embedder.Embed(ctx, chunks)
+		texts := make([]string, len(chunks))
+		for i, c := range chunks {
+			texts[i] = c.text
+		}
+		vecs, err := s.embedder.Embed(ctx, texts)
 		if err != nil {
 			return nil, fmt.Errorf("embed document: %w", err)
 		}
 		for i, c := range chunks {
+			page := pageFor(c.start, req.PageStarts) // 0 when the source has no pages
 			r, err := tx.ExecContext(ctx,
-				`INSERT INTO doc_chunks(document_id, ord, content) VALUES (?, ?, ?)`, docID, i, c)
+				`INSERT INTO doc_chunks(document_id, ord, content, page) VALUES (?, ?, ?, ?)`, docID, i, c.text, page)
 			if err != nil {
 				return nil, err
 			}
 			chunkID, _ := r.LastInsertId()
-			if _, err := tx.ExecContext(ctx, `INSERT INTO doc_chunks_fts(rowid, content) VALUES (?, ?)`, chunkID, c); err != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO doc_chunks_fts(rowid, content) VALUES (?, ?)`, chunkID, c.text); err != nil {
 				return nil, err
 			}
 			if i < len(vecs) {
@@ -307,6 +312,7 @@ type scoredHit struct {
 	content string
 	title   string // source document title
 	ord     int    // chunk ordinal within the document
+	page    int    // 1-based source page (0 = no page structure)
 }
 
 // Scope labels surfaced in results and used to qualify chunk ids across corpora.
@@ -394,7 +400,7 @@ func (s *Store) searchInto(ctx context.Context, sc ScopeDB, query string, blob a
 		return "d." + scopePrefix(sc.Scope) + "." + strconv.FormatInt(local, 10)
 	}
 	if rows, err := sc.DB.QueryContext(ctx,
-		`SELECT c.id, c.content, COALESCE(d.title, ''), c.ord
+		`SELECT c.id, c.content, COALESCE(d.title, ''), c.ord, c.page
 		 FROM doc_chunks_fts f JOIN doc_chunks c ON c.id = f.rowid
 		 JOIN documents d ON d.id = c.document_id
 		 WHERE doc_chunks_fts MATCH ? ORDER BY f.rank LIMIT ?`, query, depth); err == nil {
@@ -406,7 +412,7 @@ func (s *Store) searchInto(ctx context.Context, sc ScopeDB, query string, blob a
 	}
 	if blob != nil {
 		if rows, err := sc.DB.QueryContext(ctx,
-			`SELECT c.id, c.content, COALESCE(d.title, ''), c.ord
+			`SELECT c.id, c.content, COALESCE(d.title, ''), c.ord, c.page
 			 FROM doc_chunks_vec v JOIN doc_chunks c ON c.id = v.rowid
 			 JOIN documents d ON d.id = c.document_id
 			 WHERE v.embedding MATCH ? AND k = ? ORDER BY v.distance`, blob, depth); err == nil {
@@ -421,7 +427,7 @@ func collect(rows *sql.Rows) []scoredHit {
 	var out []scoredHit
 	for rows.Next() {
 		var h scoredHit
-		if err := rows.Scan(&h.id, &h.content, &h.title, &h.ord); err != nil {
+		if err := rows.Scan(&h.id, &h.content, &h.title, &h.ord, &h.page); err != nil {
 			return out
 		}
 		out = append(out, h)
@@ -459,7 +465,11 @@ func foldKeyed(hits []scoredHit, weight float64, scope string, key func(int64) s
 		if title == "" {
 			title = "untitled"
 		}
-		sourceOf[k] = fmt.Sprintf("%s · chunk %d", title, h.ord)
+		if h.page > 0 {
+			sourceOf[k] = fmt.Sprintf("%s · p.%d", title, h.page)
+		} else {
+			sourceOf[k] = fmt.Sprintf("%s · chunk %d", title, h.ord)
+		}
 	}
 }
 
@@ -488,23 +498,39 @@ func topN(ranks map[string]float64, contents, scopeOf, sourceOf map[string]strin
 // it falls back to mechanical rune-window chunking when the text has too little
 // sentence structure or embedding fails, and hard-splits any oversized chunk so
 // every chunk stays within the embedding server's batch.
-func (s *Store) chunkContent(ctx context.Context, text string) ([]string, error) {
+// chunkRec is a chunk plus its rune offset in the source text (for page mapping).
+type chunkRec struct {
+	text  string
+	start int
+}
+
+// sentRec is a sentence plus its rune offset in the source text.
+type sentRec struct {
+	text  string
+	start int
+}
+
+func (s *Store) chunkContent(ctx context.Context, text string) ([]chunkRec, error) {
 	if s.chunk.Strategy != "semadj" {
-		return chunkText(text), nil
+		return chunkText(text, 0), nil
 	}
 	sents := splitSentences(text)
 	if len(sents) <= s.chunk.MinSentences {
-		return chunkText(text), nil
+		return chunkText(text, 0), nil
 	}
-	vecs, err := s.embedder.Embed(ctx, sents)
+	texts := make([]string, len(sents))
+	for i, sr := range sents {
+		texts[i] = sr.text
+	}
+	vecs, err := s.embedder.Embed(ctx, texts)
 	if err != nil || len(vecs) != len(sents) {
-		return chunkText(text), nil
+		return chunkText(text, 0), nil
 	}
 	raw := semAdjacentChunks(sents, vecs, s.chunk.SemAdjGate, s.chunk.MaxChunkRunes, s.chunk.MinSentences)
-	var out []string
+	var out []chunkRec
 	for _, c := range raw {
-		if len([]rune(c)) > s.chunk.MaxChunkRunes {
-			out = append(out, chunkText(c)...) // single mega-sentence: hard-split
+		if len([]rune(c.text)) > s.chunk.MaxChunkRunes {
+			out = append(out, chunkText(c.text, c.start)...) // single mega-sentence: hard-split
 		} else {
 			out = append(out, c)
 		}
@@ -512,30 +538,54 @@ func (s *Store) chunkContent(ctx context.Context, text string) ([]string, error)
 	return out, nil
 }
 
+// pageFor maps a rune offset to a 1-based page number given the rune offsets at
+// which each page starts. Returns 0 when the source has no page structure.
+func pageFor(offset int, pageStarts []int) int {
+	if len(pageStarts) == 0 {
+		return 0
+	}
+	page := 1
+	for i, st := range pageStarts {
+		if offset >= st {
+			page = i + 1
+		} else {
+			break
+		}
+	}
+	return page
+}
+
 // semAdjacentChunks groups consecutive sentences, cutting before sentence i when
 // its embedding diverges from the previous sentence by more than gate
 // (drift = 1 - cosine), or when the chunk would exceed maxRunes. minSent avoids
 // singleton fragments. vecs is parallel to sents.
-func semAdjacentChunks(sents []string, vecs [][]float32, gate float64, maxRunes, minSent int) []string {
-	var chunks, cur []string
-	curRunes := 0
-	for i, sent := range sents {
-		sr := len([]rune(sent))
+func semAdjacentChunks(sents []sentRec, vecs [][]float32, gate float64, maxRunes, minSent int) []chunkRec {
+	var chunks []chunkRec
+	var cur []string
+	curRunes, curStart := 0, 0
+	flush := func() {
 		if len(cur) > 0 {
-			overCap := curRunes+1+sr > maxRunes
+			chunks = append(chunks, chunkRec{text: strings.Join(cur, " "), start: curStart})
+		}
+	}
+	for i, sr := range sents {
+		rl := len([]rune(sr.text))
+		if len(cur) > 0 {
+			overCap := curRunes+1+rl > maxRunes
 			drift := 1.0 - cosine(vecs[i-1], vecs[i])
 			bigShift := drift > gate && len(cur) >= minSent
 			if overCap || bigShift {
-				chunks = append(chunks, strings.Join(cur, " "))
+				flush()
 				cur, curRunes = nil, 0
 			}
 		}
-		cur = append(cur, sent)
-		curRunes += sr + 1
+		if len(cur) == 0 {
+			curStart = sr.start
+		}
+		cur = append(cur, sr.text)
+		curRunes += rl + 1
 	}
-	if len(cur) > 0 {
-		chunks = append(chunks, strings.Join(cur, " "))
-	}
+	flush()
 	return chunks
 }
 
@@ -559,15 +609,18 @@ func cosine(a, b []float32) float64 {
 // when the next non-space character starts a new sentence (capital, digit, quote
 // or opening paren) or at end of text. Good enough for general prose; it does not
 // special-case abbreviations.
-func splitSentences(text string) []string {
-	text = strings.TrimSpace(text)
-	if text == "" {
+func splitSentences(text string) []sentRec {
+	if strings.TrimSpace(text) == "" {
 		return nil
 	}
-	runes := []rune(text)
-	var out []string
+	runes := []rune(text) // NOT trimmed, so recorded offsets align with the source
+	var out []sentRec
 	var b strings.Builder
+	segStart := 0
 	for i, r := range runes {
+		if b.Len() == 0 {
+			segStart = i
+		}
 		b.WriteRune(r)
 		if r == '.' || r == '!' || r == '?' {
 			j := i + 1
@@ -576,14 +629,14 @@ func splitSentences(text string) []string {
 			}
 			if j >= len(runes) || isSentenceStart(runes[j]) {
 				if s := strings.TrimSpace(b.String()); s != "" {
-					out = append(out, s)
+					out = append(out, sentRec{text: s, start: segStart})
 				}
 				b.Reset()
 			}
 		}
 	}
 	if s := strings.TrimSpace(b.String()); s != "" {
-		out = append(out, s)
+		out = append(out, sentRec{text: s, start: segStart})
 	}
 	return out
 }
@@ -593,23 +646,24 @@ func isSentenceStart(r rune) bool {
 		r == '(' || r == '“' || r == '‘'
 }
 
-// chunkText splits text into overlapping rune windows.
-func chunkText(text string) []string {
+// chunkText splits text into overlapping rune windows. base is the rune offset
+// of `text` within the source (so the returned chunk offsets are source-relative).
+func chunkText(text string, base int) []chunkRec {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil
 	}
 	runes := []rune(text)
 	if len(runes) <= chunkRunes {
-		return []string{text}
+		return []chunkRec{{text: text, start: base}}
 	}
-	var chunks []string
+	var chunks []chunkRec
 	for start := 0; start < len(runes); start += chunkRunes - chunkOverlap {
 		end := start + chunkRunes
 		if end > len(runes) {
 			end = len(runes)
 		}
-		chunks = append(chunks, string(runes[start:end]))
+		chunks = append(chunks, chunkRec{text: string(runes[start:end]), start: base + start})
 		if end == len(runes) {
 			break
 		}
