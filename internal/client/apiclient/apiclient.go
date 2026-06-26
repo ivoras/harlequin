@@ -139,7 +139,7 @@ func (c *Client) ListSessions(ctx context.Context, q string) ([]types.Session, e
 	var out []types.Session
 	path := "/sessions"
 	if q != "" {
-		path += "?q=" + q
+		path += "?q=" + url.QueryEscape(q)
 	}
 	return out, c.do(ctx, http.MethodGet, path, nil, &out)
 }
@@ -423,7 +423,7 @@ func (c *Client) ResolveMemoryConflict(ctx context.Context, id string) error {
 // SearchDocuments searches the org RAG corpus.
 func (c *Client) SearchDocuments(ctx context.Context, q string) ([]types.SearchResult, error) {
 	var out []types.SearchResult
-	return out, c.do(ctx, http.MethodGet, "/documents/search?q="+q, nil, &out)
+	return out, c.do(ctx, http.MethodGet, "/documents/search?q="+url.QueryEscape(q), nil, &out)
 }
 
 // UploadDocument uploads a local file (e.g. a PDF) to the org RAG corpus; the
