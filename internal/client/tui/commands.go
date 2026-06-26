@@ -174,10 +174,20 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 			if err != nil {
 				return errMsg{err}
 			}
+			if len(res) == 0 {
+				return infoMsg{fmt.Sprintf("No document results for %q.", q)}
+			}
 			var sb strings.Builder
-			sb.WriteString("Document results:\n")
-			for _, r := range res {
-				fmt.Fprintf(&sb, "  - %s\n", truncate(r.Content, 160))
+			fmt.Fprintf(&sb, "Document results for %q (%d):\n", q, len(res))
+			for i, r := range res {
+				src := r.Source
+				if src == "" {
+					src = "document"
+				}
+				// Each result is one chunk; collapse internal whitespace so the
+				// snippet reads as a single clean passage, then show a generous
+				// excerpt with its source and scope.
+				fmt.Fprintf(&sb, "%d. [%s] %s\n   %s\n", i+1, r.Scope, src, truncate(collapseWS(r.Content), 400))
 			}
 			return infoMsg{strings.TrimRight(sb.String(), "\n")}
 		}
