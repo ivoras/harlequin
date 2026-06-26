@@ -729,7 +729,8 @@ def main():
         "with a cost table.")
     if win:
         abstract += (f" The recommended triple is <code>{esc(win['label'])}</code> "
-                     f"(dim {win['dim']}, recall@1 {win['recall@1']:.3f}).")
+                     f"(dim {win['dim']}, recall@1 {win['recall@1']:.3f}, "
+                     f"recall@5 {win['recall@5']:.3f}, recall@10 {win['recall@10']:.3f}).")
 
     body = "\n".join([
         ch_evalset(), ch_naming(), ch_prompts(), ch_prefix_gap(), ch_gate(), ch_chunkers(),
@@ -784,8 +785,9 @@ duplicate-aware and size-normalised with bootstrap confidence intervals.</p>
 {body}
 
 <h2>{12 if C2 else 11}. Conclusion</h2>
-<p>{('For Harlequin document ingestion, adopt <code>' + esc(win['label']) + '</code>: '
-     'it leads the pinpoint+rejection composite at dimension ' + str(win['dim']) + '. '
+<p>{('For Harlequin document ingestion, adopt <code>' + esc(win['label']) + '</code> '
+     '(recall@5 ' + ('%.3f' % win['recall@5']) + ', recall@10 ' + ('%.3f' % win['recall@10'])
+     + '): it leads the pinpoint+rejection composite at dimension ' + str(win['dim']) + '. '
      'Index small, semantically- or mechanically-bounded chunks, and <b>keep a '
      'dense+lexical fusion</b>: with a realistic 30% exact-extraction load (§2), '
      'the winner&rsquo;s lexical arm is <code>'
