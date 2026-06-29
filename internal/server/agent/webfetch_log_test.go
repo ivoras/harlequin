@@ -33,7 +33,7 @@ func TestDelegatedLLMCallIsLogged(t *testing.T) {
 	rc := &runContext{sessionID: 7, userID: 3, turn: 1, step: 2}
 	res := webfetch.Result{Markdown: "page md", FinalURL: "https://example.com/x", Title: "X"}
 
-	out, err := a.analyzeWeb(context.Background(), rc, "Summarize", res, "page md", 0, map[string]bool{})
+	out, err := a.analyzeWeb(context.Background(), rc, webFetchLabel, "Summarize", res, "page md", 0, map[string]bool{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,5 +56,29 @@ func TestDelegatedLLMCallIsLogged(t *testing.T) {
 		if !strings.Contains(log, want) {
 			t.Errorf("trajectory missing %s\n---\n%s", want, log)
 		}
+	}
+}
+
+// A WebFetchDOM-originated analysis tags its delegated calls distinctly, so the
+// client (SSE Source) and trajectory logs can tell the two apart.
+func TestDelegatedLLMCallLabeledWebFetchDOM(t *testing.T) {
+	dir := t.TempDir()
+	a := &Agent{
+		Provider:      fakeProvider{text: "ANALYSIS RESULT"},
+		Session:       sessionlog.New(dir, true, false, nil),
+		WebFetchModel: "small-model",
+	}
+	rc := &runContext{sessionID: 7, userID: 3, turn: 1, step: 2}
+	res := webfetch.Result{FinalURL: "https://example.com/x", Title: "X"}
+
+	if _, err := a.analyzeWeb(context.Background(), rc, webFetchDOMLabel, "Price?", res, "structural view", 0, map[string]bool{}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(sessionlog.TrajectoryPath(dir, 3, 7))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(raw); !strings.Contains(got, `"delegate":"web_fetch_dom"`) {
+		t.Errorf("trajectory should tag delegate web_fetch_dom\n---\n%s", got)
 	}
 }
