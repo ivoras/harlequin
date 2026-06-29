@@ -124,13 +124,28 @@ func (a *Agent) webFetch(ctx context.Context, rc *runContext, args map[string]an
 		content = content[:webFetchMaxContent] + "\n\n[content truncated]"
 	}
 
-	return a.analyzeWeb(ctx, rc, prompt, res, content, depth, seen)
+	return a.analyzeWeb(ctx, rc, webFetchLabel, prompt, res, content, depth, seen)
 }
 
-// analyzeWeb runs the small, fast analysis model over the fetched markdown. The
-// model is given the WebFetch tool only; nested calls are executed up to
-// webFetchMaxDepth so it can follow a link if needed.
-func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, prompt string, res webfetch.Result, content string, depth int, seen map[string]bool) (string, error) {
+// webDelegateLabel labels a delegated analysis call: source is the user-facing
+// SSE Source (lets the client tell which tool spawned the sub-call), delegate is
+// the stable machine tag recorded in trajectory logs.
+type webDelegateLabel struct {
+	source   string
+	delegate string
+}
+
+var (
+	webFetchLabel    = webDelegateLabel{source: "WebFetch", delegate: "web_fetch"}
+	webFetchDOMLabel = webDelegateLabel{source: "WebFetchDOM", delegate: "web_fetch_dom"}
+)
+
+// analyzeWeb runs the small, fast analysis model over the fetched content. The
+// model is given WebFetch, WebFetchDOM, and calculator; nested fetches are
+// executed up to webFetchMaxDepth so it can follow a link if needed. label
+// identifies the originating tool (WebFetch vs WebFetchDOM) for progress events
+// and logs.
+func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, label webDelegateLabel, prompt string, res webfetch.Result, content string, depth int, seen map[string]bool) (string, error) {
 	var userMsg strings.Builder
 	userMsg.WriteString(prompt)
 	userMsg.WriteString("\n\nURL: ")
@@ -147,10 +162,11 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, prompt string, r
 		{Role: llm.RoleSystem, Content: webFetchSystemPrompt},
 		{Role: llm.RoleUser, Content: userMsg.String()},
 	}
-	// Offer the analysis model WebFetch (to follow links) and calculator (for any
-	// arithmetic over figures on the page).
+	// Offer the analysis model WebFetch and WebFetchDOM (to follow links, in
+	// markdown or DOM-structured form) and calculator (for any arithmetic over
+	// figures on the page).
 	calc := a.calculatorEntry()
-	tools := []llm.Tool{webFetchToolDef(), calc.def}
+	tools := []llm.Tool{webFetchToolDef(), webFetchDOMToolDef(), calc.def}
 
 	var lastText string
 	for step := 0; step < webFetchMaxSteps; step++ {
@@ -158,7 +174,7 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, prompt string, r
 			return "", ctx.Err()
 		}
 		a.logEvent(ctx, rc, sessionlog.TypeDelegatedLLMRequest, map[string]any{
-			"delegate": "web_fetch", "model": a.WebFetchModel, "system": webFetchSystemPrompt,
+			"delegate": label.delegate, "model": a.WebFetchModel, "system": webFetchSystemPrompt,
 			"prompt": prompt, "url": res.FinalURL, "content_chars": len(content),
 			"depth": depth, "delegate_step": step + 1,
 		})
@@ -186,7 +202,7 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, prompt string, r
 				lastPPPct = pct
 				rc.emit(types.StreamEvent{
 					Type:            types.SSEPromptProgress,
-					Source:          "WebFetch",
+					Source:          label.source,
 					PromptProcessed: done,
 					PromptTotal:     total,
 				})
@@ -206,14 +222,14 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, prompt string, r
 		}
 		if err != nil {
 			a.logEvent(ctx, rc, sessionlog.TypeDelegatedLLMResponse, map[string]any{
-				"delegate": "web_fetch", "model": a.WebFetchModel, "depth": depth,
+				"delegate": label.delegate, "model": a.WebFetchModel, "depth": depth,
 				"delegate_step": step + 1, "duration_ms": callMS, "error": err.Error(),
 			})
 			log.Printf("webfetch: delegated LLM (%s) step %d failed after %s: %v", model, step+1, fmtDur(callDur), err)
 			return fmt.Sprintf("error: analysis model failed: %v", err), nil
 		}
 		a.logEvent(ctx, rc, sessionlog.TypeDelegatedLLMResponse, map[string]any{
-			"delegate": "web_fetch", "model": a.WebFetchModel, "depth": depth,
+			"delegate": label.delegate, "model": a.WebFetchModel, "depth": depth,
 			"delegate_step": step + 1, "duration_ms": callMS,
 			"content": text, "tool_calls": logToolCalls(toolCalls),
 		})
@@ -239,6 +255,12 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, prompt string, r
 					out = "error: nested WebFetch depth limit reached; do not fetch more pages, answer from the content already provided"
 				} else {
 					out, _ = a.webFetch(ctx, rc, parseToolArgs(tc.Function.Arguments), depth+1, seen)
+				}
+			case "WebFetchDOM":
+				if depth >= webFetchMaxDepth {
+					out = "error: nested fetch depth limit reached; do not fetch more pages, answer from the content already provided"
+				} else {
+					out, _ = a.webFetchDOM(ctx, rc, parseToolArgs(tc.Function.Arguments), depth+1, seen)
 				}
 			case "calculator":
 				out, _ = calc.handler(ctx, rc, parseToolArgs(tc.Function.Arguments))

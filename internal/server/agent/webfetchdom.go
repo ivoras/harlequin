@@ -13,6 +13,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/dom"
 	"github.com/ivoras/harlequin/internal/server/llm"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
+	"github.com/ivoras/harlequin/internal/server/webfetch"
 )
 
 // webFetchDOMDescription is advertised to the model.
@@ -23,6 +24,7 @@ const webFetchDOMDescription = `
 - grep="<regex>": flattens the page to one line per element (ancestor path + text) plus the page's links, and returns lines matching the case-insensitive regular expression with ±3 lines of context (use alternation, e.g. "price|€|\\$"). Best for locating one specific value.
 - To EXTRACT MANY items and filter/sort/aggregate them (e.g. "the cheapest", "all that mention X", totals) — which needs computation — parse the saved page in run_js: var h=dom.parse(tmp.read("<handle>")); var items=dom.query(h, "<selector>"). Each node has .tag/.class/.attrs/.text, .getAttribute(name), .textContent, and is itself queryable (dom.query(node, sub)). This is the right tool for computed answers; do the comparison/sort there, not by eye.
 - Pagination: a listing may span multiple pages (look for page links / "next" in the result). Fetch each page and combine — a single page is not the whole list.
+- prompt="<question>": instead of returning the structural view to you, hand it (plus any grep/selector output) to a fast analysis model with your prompt and return that model's answer — exactly like WebFetch, but over the DOM-structured view. Use this for a one-shot answer ("what's the price?") without parsing the result yourself.
 - Prefer this tool over WebFetch when you expect the result to be complex or large.
 `
 
@@ -34,6 +36,7 @@ func webFetchDOMToolDef() llm.Tool {
 		"type": "object",
 		"properties": map[string]any{
 			"url":         map[string]any{"type": "string", "format": "uri", "description": "The URL to fetch"},
+			"prompt":      map[string]any{"type": "string", "description": "If set, analyze the structural result with a fast AI model using this prompt and return its answer (like WebFetch), instead of returning the structural view to you"},
 			"grep":        map[string]any{"type": "string", "description": "Case-insensitive regular expression to find in the flattened page (one line per element: ancestor path + text); returns matching lines with context"},
 			"selector":    map[string]any{"type": "string", "description": "Comma-separated tag/class selectors (e.g. \"div.product-card, li.item\"); returns each match with parent/siblings/children as YAML"},
 			"max_depth":   map[string]any{"type": "integer", "description": "Skeleton depth when no grep/selector (default 3)"},
@@ -47,12 +50,18 @@ func webFetchDOMToolDef() llm.Tool {
 
 func (a *Agent) webFetchDOMEntry() toolEntry {
 	return toolEntry{
-		def:     webFetchDOMToolDef(),
-		handler: a.webFetchDOM,
+		def: webFetchDOMToolDef(),
+		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+			return a.webFetchDOM(ctx, rc, args, 0, map[string]bool{})
+		},
 	}
 }
 
-func (a *Agent) webFetchDOM(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+// webFetchDOM fetches the URL and returns a structural view (or, with a prompt,
+// the analysis model's answer over that view — see analyzeWeb). depth/seen bound
+// and de-duplicate nested fetches issued by the analysis model, mirroring
+// webFetch so the two tools share one fetch chain.
+func (a *Agent) webFetchDOM(ctx context.Context, rc *runContext, args map[string]any, depth int, seen map[string]bool) (string, error) {
 	if a.WebFetcher == nil {
 		return "error: web fetching is not enabled on this server", nil
 	}
@@ -60,8 +69,16 @@ func (a *Agent) webFetchDOM(ctx context.Context, rc *runContext, args map[string
 	if rawURL == "" {
 		return "error: url is required", nil
 	}
+	// Loop guard for nested calls: don't re-fetch a URL already retrieved in this
+	// chain (by either WebFetch or WebFetchDOM).
+	key := normalizeURL(rawURL)
+	if seen[key] {
+		return fmt.Sprintf("error: %s was already fetched in this chain; use the content already provided instead of fetching it again", rawURL), nil
+	}
+	seen[key] = true
 	selector := strings.TrimSpace(argString(args, "selector"))
 	grep := strings.TrimSpace(argString(args, "grep"))
+	prompt := strings.TrimSpace(argString(args, "prompt"))
 	saveFile := strings.TrimSpace(argString(args, "save_file"))
 	maxDepth := argInt(args, "max_depth", 3)
 	context := argInt(args, "context", 3)
@@ -99,10 +116,15 @@ func (a *Agent) webFetchDOM(ctx context.Context, rc *runContext, args map[string
 	a.logEvent(ctx, rc, sessionlog.TypeWebFetch, map[string]any{
 		"url": rawURL, "final_url": raw.FinalURL, "dom": true, "ok": true,
 		"cached": raw.Cached, "fetch_ms": fetchMS, "bytes": len(raw.Body),
-		"grep": grep, "selector": selector, "handle": handle,
+		"grep": grep, "selector": selector, "handle": handle, "prompt": prompt,
 	})
 	log.Printf("webfetchdom: GET %s (cached=%v, %dms, %d bytes, grep=%q, selector=%q)",
 		raw.FinalURL, raw.Cached, fetchMS, len(raw.Body), grep, selector)
+	// A redirect can land on a different URL; record it too so a nested call can't
+	// re-fetch the resolved page under its final address.
+	if raw.FinalURL != "" {
+		seen[normalizeURL(raw.FinalURL)] = true
+	}
 
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "URL: %s\n", raw.FinalURL)
@@ -167,7 +189,17 @@ func (a *Agent) webFetchDOM(ctx context.Context, rc *runContext, args map[string
 			sb.WriteString("- " + l + "\n")
 		}
 	}
-	return capStr(sb.String()), nil
+	structured := capStr(sb.String())
+
+	// With a prompt, don't hand the structural view back to the main agent: run
+	// the fast analysis model over it (same path as WebFetch) and return its
+	// answer. The analysis model gets WebFetch/WebFetchDOM/calculator and can
+	// follow links; `seen` (already holding this URL) bounds re-fetches.
+	if prompt != "" {
+		res := webfetch.Result{FinalURL: raw.FinalURL, Title: firstText(d, "title")}
+		return a.analyzeWeb(ctx, rc, webFetchDOMLabel, prompt, res, structured, depth, seen)
+	}
+	return structured, nil
 }
 
 // firstText returns the trimmed text of the first element matching selector.
