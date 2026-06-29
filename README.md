@@ -298,8 +298,9 @@ third_party/sqlite     vendored sqlite3.h (compile-time; see third_party/sqlite/
   filesystem, no network (except an allow-listed `fetch`), a hard execution timeout, and an
   output-size cap.
 - Session logs under `<data_dir>/sessions/` are plaintext and may contain sensitive conversation
-  content. A background task deletes files older than `sessions.retention_days` (default **7**;
-  set **0** to keep forever) every hour. Configure redaction in the `sessions:` config block.
+  content. A background task deletes them — along with transient per-user tmp dumps — older than
+  `data_retention_days` (default **7**; set **0** to keep forever) every hour. Configure redaction
+  in the `sessions:` config block.
 
 
 # Running with llama.cpp local models

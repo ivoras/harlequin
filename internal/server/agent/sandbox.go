@@ -3,20 +3,57 @@ package agent
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ivoras/harlequin/internal/server/jsrun"
 	"github.com/ivoras/harlequin/internal/server/sandboxfs"
 	"github.com/ivoras/harlequin/internal/server/storage"
 )
 
+// tmpDirName is the per-user transient sandbox subdirectory; SweepTmp and
+// userTmpDir must agree on it.
+const tmpDirName = ".tmp"
+
 // Per-user sandbox roots live under the user's data directory:
 //
 //	<DataDir>/users/<id>/.tmp      transient — DOM dumps, scratch
 //	<DataDir>/users/<id>/.storage  persistent — generated parsers, recipes
 func (a *Agent) userTmpDir(userID int64) string {
-	return filepath.Join(storage.UserDir(a.DataDir, userID), ".tmp")
+	return filepath.Join(storage.UserDir(a.DataDir, userID), tmpDirName)
+}
+
+// SweepTmp deletes files under every user's .tmp directory whose modtime is
+// older than retentionDays. The tmp sandbox is quota-capped (see tmpRoot) but is
+// never cleaned on its own, so without this it fills up and new saves start
+// failing ("storage limit reached"). retentionDays <= 0 disables the sweep.
+func (a *Agent) SweepTmp(retentionDays int) {
+	if retentionDays <= 0 || a.DataDir == "" {
+		return
+	}
+	cutoff := time.Now().AddDate(0, 0, -retentionDays)
+	usersDir := filepath.Join(a.DataDir, "users")
+	entries, err := os.ReadDir(usersDir)
+	if err != nil {
+		return // users dir not created yet, or unreadable
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		tmpDir := filepath.Join(usersDir, e.Name(), tmpDirName)
+		_ = filepath.Walk(tmpDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() {
+				return nil // missing .tmp (Walk's first call errors) is fine
+			}
+			if info.ModTime().Before(cutoff) {
+				_ = os.Remove(path)
+			}
+			return nil
+		})
+	}
 }
 
 func (a *Agent) userStorageDir(userID int64) string {

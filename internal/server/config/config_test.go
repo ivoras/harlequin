@@ -19,17 +19,17 @@ func TestSessionsConfigEnabledValue(t *testing.T) {
 	}
 }
 
-func TestSessionsConfigRetentionDaysValue(t *testing.T) {
+func TestDataRetentionDaysValue(t *testing.T) {
 	t.Parallel()
-	if got := (SessionsConfig{}).RetentionDaysValue(); got != 7 {
+	if got := (Config{}).DataRetentionDaysValue(); got != 7 {
 		t.Fatalf("default retention: got %d want 7", got)
 	}
 	forever := 0
-	if got := (SessionsConfig{RetentionDays: &forever}).RetentionDaysValue(); got != 0 {
+	if got := (Config{DataRetentionDays: &forever}).DataRetentionDaysValue(); got != 0 {
 		t.Fatalf("explicit 0: got %d", got)
 	}
 	custom := 14
-	if got := (SessionsConfig{RetentionDays: &custom}).RetentionDaysValue(); got != 14 {
+	if got := (Config{DataRetentionDays: &custom}).DataRetentionDaysValue(); got != 14 {
 		t.Fatalf("explicit 14: got %d", got)
 	}
 }
