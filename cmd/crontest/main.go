@@ -42,7 +42,7 @@ func main() {
 		Name:   "fzoeu",
 		Spec:   "@every 1m",
 		Kind:   types.CronKindJS,
-		Target: "skill://web-extractor/lib/check.js",
+		Target: "skill://web-monitor/lib/check.js",
 		Input:  `{"name":"fzoeu"}`,
 	})
 	if err != nil {

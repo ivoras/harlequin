@@ -61,7 +61,7 @@ render as suggested choices.
 ### `load_skill`
 **Why:** pull a skill's full instructions and resource files into context, on
 demand, so they don't bloat every prompt.
-**Example:** `load_skill({"name": "web-extractor"})`
+**Example:** `load_skill({"name": "web-monitor"})`
 
 ---
 
@@ -82,7 +82,7 @@ Helpers: `fetch(url)`, `dom.parse/query/grep/json`, per-user `tmp.*`/`storage.*`
 stores, and `load(uri)`/`include(uri)` for `skill://`/`storage://`/`tmp://` scripts.
 **Examples:**
 - inline: `run_js({"code": "var r = fetch('https://example.com'); println(r.status);"})`
-- saved script + args: `run_js({"script": "skill://web-extractor/lib/check.js", "args": {"name": "fzoeu"}})`
+- saved script + args: `run_js({"script": "skill://web-monitor/lib/check.js", "args": {"name": "fzoeu"}})`
 
 ---
 
@@ -135,7 +135,7 @@ PDFs/text) to ground answers in source material.
 AI** each time (cheap periodic checks, e.g. watching a page); `kind:"skill"` runs a
 full agent turn. `spec` is a 5-field cron, a `@descriptor`, or `@every <dur>`.
 **Example:**
-`cron_create({"name": "fzoeu", "spec": "@every 30m", "kind": "js", "target": "skill://web-extractor/lib/check.js", "input": "{\"name\":\"fzoeu\"}"})`
+`cron_create({"name": "fzoeu", "spec": "@every 30m", "kind": "js", "target": "skill://web-monitor/lib/check.js", "input": "{\"name\":\"fzoeu\"}"})`
 
 ### `cron_list`
 **Why:** see the user's scheduled jobs and their last run status.

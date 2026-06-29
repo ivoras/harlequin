@@ -1,8 +1,8 @@
-// Reusable helpers for the web-extractor skill. Runs in the jsrun sandbox (goja,
+// Reusable helpers for the web-monitor skill. Runs in the jsrun sandbox (goja,
 // ES5.1-compatible; common ES6 such as let/const, arrow functions and template
 // literals also works). These helpers stay in plain var-style for simplicity.
 //
-// Loaded with include("skill://web-extractor/lib/extract.js"), which runs this in
+// Loaded with include("skill://web-monitor/lib/extract.js"), which runs this in
 // the global scope so these functions become available to the calling script.
 
 // fetchDoc fetches a URL and returns a parsed DOM handle. It THROWS on a non-2xx

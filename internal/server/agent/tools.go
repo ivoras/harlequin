@@ -433,7 +433,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 kind "js": run a JavaScript script with NO AI each time — best for cheap periodic checks like watching a website for changes. target is a script URI (skill://<skill>/<path>, storage://<path>, tmp://<path>) or inline JS (ES5.1+); input is a JSON object exposed to the script as the global 'args'. Inline JS is the body of a function the runtime wraps for you: write top-level statements (top-level 'return' is allowed) and do NOT wrap it in 'function(){...}' (an un-called function runs nothing, and 'function() {' is a syntax error). Prefer pointing target at a saved script URI over a long inline body.
 kind "skill": run an agent turn — target is an optional skill name to use, prompt is the message.
 spec is a cron schedule: 5-field "min hour dom mon dow", a @descriptor (@hourly, @daily), or "@every 30m".
-Example (watch a saved web-extractor check every 30 min): cron_create(name="fzoeu", spec="@every 30m", kind="js", target="skill://web-extractor/lib/check.js", input="{\"name\":\"fzoeu\"}").`, map[string]any{
+Example (watch a saved web-monitor check every 30 min): cron_create(name="fzoeu", spec="@every 30m", kind="js", target="skill://web-monitor/lib/check.js", input="{\"name\":\"fzoeu\"}").`, map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"name":   map[string]any{"type": "string"},
