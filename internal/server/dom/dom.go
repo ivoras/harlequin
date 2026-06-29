@@ -778,23 +778,30 @@ func (d *Doc) Flatten() []string {
 	return out
 }
 
-// GrepFlatten greps the flattened view plus any extra lines (case-insensitive
-// substring) and returns the matching lines with contextLines of surrounding
-// lines on each side; match lines are prefixed "> ", context lines "  ", and
-// non-adjacent groups are separated by "--". Empty if nothing matches. extra is
-// appended to the flattened lines so callers can include e.g. the link list in
-// the grep corpus.
+// GrepFlatten greps the flattened view plus any extra lines and returns the
+// matching lines with contextLines of surrounding lines on each side; match
+// lines are prefixed "> ", context lines "  ", and non-adjacent groups are
+// separated by "--". Empty if nothing matches. extra is appended to the
+// flattened lines so callers can include e.g. the link list in the grep corpus.
+//
+// pattern is treated as a case-insensitive regular expression (so callers can
+// use alternation like "price|€|\\$"). If it isn't a valid regexp it falls back
+// to a literal, case-insensitive substring match so a stray metacharacter never
+// fails the whole search.
 func (d *Doc) GrepFlatten(pattern string, contextLines int, extra []string) string {
 	if contextLines < 0 {
 		contextLines = 0
 	}
 	lines := append(d.Flatten(), extra...)
-	needle := strings.ToLower(pattern)
+	re, err := regexp.Compile("(?i)" + pattern)
+	if err != nil {
+		re = regexp.MustCompile("(?i)" + regexp.QuoteMeta(pattern))
+	}
 	keep := make([]bool, len(lines))
 	match := make([]bool, len(lines))
 	found := false
 	for i, ln := range lines {
-		if strings.Contains(strings.ToLower(ln), needle) {
+		if re.MatchString(ln) {
 			match[i] = true
 			found = true
 			for j := i - contextLines; j <= i+contextLines; j++ {

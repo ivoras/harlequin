@@ -20,10 +20,10 @@ const webFetchDOMDescription = `
 - Fetches a web page, returns a structural view as the tool result, and saves the raw HTML under tmp:// (name it with save_file).
 - With NO grep/selector: returns "candidate lists" (repeating elements, each with a ready-to-use CSS selector and a text sample) plus a page skeleton — use them to pick the selector for the items you want.
 - selector="<css>" (comma-separated tag/class selectors, e.g. "div.product-card, li.item"): returns each matched element with its parent, up to 3 siblings, and up to 3 children as YAML, including text. Best for READING or LOCATING a handful of items, or confirming structure.
-- grep="<text>": flattens the page to one line per element (ancestor path + text) plus the page's links, and returns matching lines with ±3 lines of context. Best for locating one specific value.
+- grep="<regex>": flattens the page to one line per element (ancestor path + text) plus the page's links, and returns lines matching the case-insensitive regular expression with ±3 lines of context (use alternation, e.g. "price|€|\\$"). Best for locating one specific value.
 - To EXTRACT MANY items and filter/sort/aggregate them (e.g. "the cheapest", "all that mention X", totals) — which needs computation — parse the saved page in run_js: var h=dom.parse(tmp.read("<handle>")); var items=dom.query(h, "<selector>"). Each node has .tag/.class/.attrs/.text, .getAttribute(name), .textContent, and is itself queryable (dom.query(node, sub)). This is the right tool for computed answers; do the comparison/sort there, not by eye.
 - Pagination: a listing may span multiple pages (look for page links / "next" in the result). Fetch each page and combine — a single page is not the whole list.
-- Prefer this tool over WebFetch when you need specific data from a large/complex page.
+- Prefer this tool over WebFetch when you expect the result to be complex or large.
 `
 
 // webFetchDOMResultCap bounds the total result returned to the (small) model.
@@ -34,7 +34,7 @@ func webFetchDOMToolDef() llm.Tool {
 		"type": "object",
 		"properties": map[string]any{
 			"url":         map[string]any{"type": "string", "format": "uri", "description": "The URL to fetch"},
-			"grep":        map[string]any{"type": "string", "description": "Substring to find in the flattened page (one line per element: ancestor path + text); returns matching lines with context"},
+			"grep":        map[string]any{"type": "string", "description": "Case-insensitive regular expression to find in the flattened page (one line per element: ancestor path + text); returns matching lines with context"},
 			"selector":    map[string]any{"type": "string", "description": "Comma-separated tag/class selectors (e.g. \"div.product-card, li.item\"); returns each match with parent/siblings/children as YAML"},
 			"max_depth":   map[string]any{"type": "integer", "description": "Skeleton depth when no grep/selector (default 3)"},
 			"context":     map[string]any{"type": "integer", "description": "Lines of context around each grep match in the flattened view (default 3)"},
