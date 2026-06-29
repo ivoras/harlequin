@@ -11,6 +11,7 @@ server:
 
 # Directory for the SQLite DB, deployed skills, and session logs.
 data_dir: "./data"
+data_retention_days: 7     # delete session logs + per-user tmp dumps older than this; omit for default 7; 0 = keep forever
 
 # Ordered list of chat LLM providers. The router tries them according to `routing`
 # rules and falls back to the next on error/timeout.
@@ -102,7 +103,6 @@ sessions:
   enabled: true            # trajectory JSONL logs (default true; set false to disable)
   dir: ""                  # empty -> <data_dir>/sessions; files: <user>.<conv>.jsonl (zero-padded ids)
   log_tokens: false        # log per-token streaming deltas too (verbose); false logs only higher-level events
-  retention_days: 7        # omit for default 7; 0 = keep forever
   redact: []               # event data field names whose values are replaced with "[redacted]" in the logs
   idle_timeout: 30m        # live session goroutine exits after this long with no connected client and no running turn (default 30m)
 

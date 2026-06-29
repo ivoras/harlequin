@@ -42,6 +42,10 @@ func (d Duration) D() time.Duration { return time.Duration(d) }
 type Config struct {
 	Server         ServerConfig     `yaml:"server"`
 	DataDir        string           `yaml:"data_dir"`
+	// DataRetentionDays deletes aged-out on-disk data — session trajectory logs
+	// and transient per-user tmp dumps — older than this many days. Unset
+	// defaults to 7; explicit 0 keeps data forever (disables the sweeps).
+	DataRetentionDays *int             `yaml:"data_retention_days"`
 	Providers      []ProviderConfig `yaml:"providers"`
 	Routing        RoutingConfig    `yaml:"routing"`
 	Prices         map[string]Price `yaml:"prices"`
@@ -300,13 +304,10 @@ func (m MemoryConfig) SearchMaxDistanceValue() float64 {
 // live (server-side) sessions.
 type SessionsConfig struct {
 	// Enabled turns trajectory JSONL logging on (default true when omitted).
-	Enabled   *bool  `yaml:"enabled"`
-	Dir       string `yaml:"dir"`
-	LogTokens bool   `yaml:"log_tokens"`
-	// RetentionDays deletes trajectory JSONL files older than this many days.
-	// Unset defaults to 7; explicit 0 keeps files forever.
-	RetentionDays *int     `yaml:"retention_days"`
-	Redact        []string `yaml:"redact"`
+	Enabled   *bool    `yaml:"enabled"`
+	Dir       string   `yaml:"dir"`
+	LogTokens bool     `yaml:"log_tokens"`
+	Redact    []string `yaml:"redact"`
 	// IdleTimeout is how long a live session goroutine may sit with no connected
 	// client and no running turn before it exits. Default 30m.
 	IdleTimeout Duration `yaml:"idle_timeout"`
@@ -328,12 +329,13 @@ func (s SessionsConfig) EnabledValue() bool {
 	return *s.Enabled
 }
 
-// RetentionDaysValue returns how long to keep session logs (default 7; 0 = forever).
-func (s SessionsConfig) RetentionDaysValue() int {
-	if s.RetentionDays == nil {
+// DataRetentionDaysValue returns how long to keep aged-out on-disk data — session
+// logs and per-user tmp dumps (default 7; 0 = forever).
+func (c Config) DataRetentionDaysValue() int {
+	if c.DataRetentionDays == nil {
 		return 7
 	}
-	return *s.RetentionDays
+	return *c.DataRetentionDays
 }
 
 // MCPConfig controls the MCP (Model Context Protocol) client: whether external

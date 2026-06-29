@@ -269,8 +269,9 @@ func main() {
 	// attribute may not live in both scopes). Backgrounded — it may call the LLM.
 	go srv.SweepCrossScopeSlots(context.Background())
 
-	// Background maintenance: expire memories and sweep old session logs (hourly).
-	go maintenance(store, memStore, sessionLog, cfg.Sessions.RetentionDaysValue())
+	// Background maintenance: expire memories, sweep old session logs, and evict
+	// stale per-user tmp dumps (hourly).
+	go maintenance(store, memStore, sessionLog, ag, cfg.DataRetentionDaysValue())
 
 	// Start the cron scheduler (1-minute granularity; each due job runs in its
 	// own goroutine).
@@ -331,7 +332,7 @@ func (a webFetchAdapter) FetchRaw(ctx context.Context, url string) (jsrun.FetchR
 	return jsrun.FetchResult{Status: r.Status, Body: r.Body, FinalURL: r.FinalURL, ContentType: r.ContentType}, nil
 }
 
-func maintenance(store *storage.Manager, mem *memory.Store, sessionLog *sessionlog.Logger, sessionRetentionDays int) {
+func maintenance(store *storage.Manager, mem *memory.Store, sessionLog *sessionlog.Logger, ag *agent.Agent, dataRetentionDays int) {
 	const sweepInterval = time.Hour
 	ticker := time.NewTicker(sweepInterval)
 	defer ticker.Stop()
@@ -342,7 +343,8 @@ func maintenance(store *storage.Manager, mem *memory.Store, sessionLog *sessionl
 			_, _ = mem.SweepExpiredDB(ctx, udb)
 			return nil
 		})
-		sessionLog.SweepRetention(sessionRetentionDays)
+		sessionLog.SweepRetention(dataRetentionDays)
+		ag.SweepTmp(dataRetentionDays)
 	}
 	sweep() // run once at startup, then every hour
 	for range ticker.C {
