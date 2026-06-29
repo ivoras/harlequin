@@ -84,12 +84,15 @@ func (a *Agent) webFetchDOM(ctx context.Context, rc *runContext, args map[string
 	// Stash the raw HTML so the model can re-query it (or write a parser against
 	// it) without another network round-trip. save_file lets the caller choose the
 	// tmp:// name (e.g. to grep it with the Grep tool); otherwise a hashed name.
-	handle := "page-" + shortHash(raw.FinalURL) + ".html"
+	saveName := "page-" + shortHash(raw.FinalURL) + ".html"
 	if saveFile != "" {
-		handle = saveFile
+		saveName = saveFile
 	}
-	if err := a.tmpRoot(rc.userID).Write(handle, raw.Body); err != nil {
-		log.Printf("webfetchdom: could not save handle %s: %v", handle, err)
+	handle := saveName
+	var saveErr error
+	if err := a.tmpRoot(rc.userID).Write(saveName, raw.Body); err != nil {
+		log.Printf("webfetchdom: could not save handle %s: %v", saveName, err)
+		saveErr = err
 		handle = ""
 	}
 
@@ -108,6 +111,12 @@ func (a *Agent) webFetchDOM(ctx context.Context, rc *runContext, args map[string
 	}
 	if handle != "" {
 		fmt.Fprintf(&sb, "(Full page saved to tmp://%s — to extract/compare many items, parse it in run_js: dom.parse(tmp.read(%q)); or search it with the Grep tool.)\n", handle, handle)
+	} else if saveErr != nil {
+		// The save failed (e.g. the tmp sandbox hit its storage quota). Tell the
+		// model explicitly so it does NOT grep/parse a tmp://<name> that isn't
+		// there — that silent gap previously caused a cascade of "no files" /
+		// FSError retries. The structural result below is still usable.
+		fmt.Fprintf(&sb, "WARNING: could not save the page to tmp://%s: %v — do NOT grep or parse that handle (it does not exist). Use the structural result below, or fall back to WebFetch for a one-shot answer.\n", saveName, saveErr)
 	}
 
 	switch {
