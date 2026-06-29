@@ -144,6 +144,49 @@ func TestRepeatingGroups(t *testing.T) {
 	}
 }
 
+// GrepFlatten matches each flattened line against the pattern as a
+// case-insensitive regexp. The motivating bug: a caller passing an alternation
+// like "price|€|\\$" got nothing back because the pattern was matched as a
+// literal substring.
+func TestGrepFlattenRegex(t *testing.T) {
+	const shop = `<html><body>
+	  <div class="product"><span class="micro-price">148500</span></div>
+	  <div class="price"><span class="oct-price-new">¥148 500</span></div>
+	</body></html>`
+	d, err := Parse([]byte(shop))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+
+	// Alternation must match: "price" appears (in a class descriptor) and "¥..."
+	// appears as text — but neither "€" nor "$" is present.
+	res := d.GrepFlatten(`price|€|\$`, 0, nil)
+	if res == "" {
+		t.Fatal("alternation matched nothing; regex grep is broken")
+	}
+	if !strings.Contains(res, "148 500") {
+		t.Errorf("expected the price line in results, got:\n%s", res)
+	}
+
+	// Case-insensitive: uppercase pattern still matches lowercase content.
+	if d.GrepFlatten("PRICE", 0, nil) == "" {
+		t.Error("grep should be case-insensitive")
+	}
+
+	// A pattern matching nothing returns empty (not an error string).
+	if got := d.GrepFlatten("nonexistentxyz", 0, nil); got != "" {
+		t.Errorf("no-match should return empty, got %q", got)
+	}
+
+	// An invalid regexp must fall back to a literal substring match rather than
+	// erroring out the whole search. The trailing ")" is an unbalanced group, so
+	// this fails to compile; as a literal it appears in the descriptor line
+	// span(class="micro-price").
+	if d.GrepFlatten(`micro-price")`, 0, nil) == "" {
+		t.Error("invalid regexp should fall back to literal substring match")
+	}
+}
+
 func TestSkeletonDepth(t *testing.T) {
 	d := mustParse(t)
 	sk, err := d.Skeleton(SkelOptions{Selector: "ul.calls", MaxDepth: 1, Paths: true})
