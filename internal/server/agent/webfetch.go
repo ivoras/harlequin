@@ -270,7 +270,30 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, label webDelegat
 			msgs = append(msgs, llm.Message{Role: llm.RoleTool, Content: out, ToolCallID: tc.ID, Name: tc.Function.Name})
 		}
 	}
-	return lastText, nil
+	if strings.TrimSpace(lastText) != "" {
+		return lastText, nil
+	}
+	// The model exhausted its step budget while only ever calling tools (never
+	// emitting an answer) — returning "" here would hand the main agent an empty
+	// result. Do one final, tool-less completion so it must answer from what it
+	// has already gathered.
+	a.logEvent(ctx, rc, sessionlog.TypeDelegatedLLMRequest, map[string]any{
+		"delegate": label.delegate, "model": a.WebFetchModel, "depth": depth,
+		"delegate_step": webFetchMaxSteps + 1, "final": true,
+	})
+	text, _, err := a.completeOnce(ctx, llm.ChatRequest{
+		Model:       a.WebFetchModel,
+		Messages:    append(msgs, llm.Message{Role: llm.RoleUser, Content: "Answer the original question now from the information already gathered above. Do not call any more tools."}),
+		Temperature: llm.Ptr(a.WebFetchTemperature),
+	})
+	if err != nil {
+		log.Printf("webfetch: final tool-less completion failed: %v", err)
+		return "error: the analysis model kept calling tools without answering; try a narrower prompt or call WebFetch instead", nil
+	}
+	if strings.TrimSpace(text) == "" {
+		return "error: the analysis model kept calling tools without answering; try a narrower prompt or call WebFetch instead", nil
+	}
+	return text, nil
 }
 
 // normalizeURL canonicalizes a URL for "already seen" comparison: lowercased

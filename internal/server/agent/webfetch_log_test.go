@@ -59,6 +59,47 @@ func TestDelegatedLLMCallIsLogged(t *testing.T) {
 	}
 }
 
+// toolLooperProvider emits a calculator tool call on every completion that is
+// offered tools, and plain text only when tools are withheld — modeling an
+// analysis model that never answers until forced.
+type toolLooperProvider struct{ finalText string }
+
+func (p toolLooperProvider) Name() string { return "looper" }
+func (p toolLooperProvider) Chat(ctx context.Context, req llm.ChatRequest) (<-chan llm.Chunk, error) {
+	ch := make(chan llm.Chunk, 2)
+	if len(req.Tools) > 0 {
+		ch <- llm.Chunk{Done: true, Model: "fake-model", ToolCalls: []llm.ToolCall{{
+			ID: "c1", Function: llm.FunctionCall{Name: "noop", Arguments: `{}`},
+		}}}
+	} else {
+		ch <- llm.Chunk{TextDelta: p.finalText}
+		ch <- llm.Chunk{Done: true, Model: "fake-model"}
+	}
+	close(ch)
+	return ch, nil
+}
+
+// When the analysis model exhausts its step budget while only ever calling
+// tools, analyzeWeb must still return a non-empty answer (via a final tool-less
+// completion) rather than handing back "".
+func TestAnalyzeWebNeverReturnsEmptyOnToolLoop(t *testing.T) {
+	dir := t.TempDir()
+	a := &Agent{
+		Provider:      toolLooperProvider{finalText: "FORCED ANSWER"},
+		Session:       sessionlog.New(dir, true, false, nil),
+		WebFetchModel: "small-model",
+	}
+	rc := &runContext{sessionID: 1, userID: 1, turn: 1}
+	res := webfetch.Result{FinalURL: "https://example.com/x", Title: "X"}
+	out, err := a.analyzeWeb(context.Background(), rc, webFetchDOMLabel, "Price?", res, "structural view", 0, map[string]bool{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "FORCED ANSWER" {
+		t.Fatalf("expected forced final answer, got %q", out)
+	}
+}
+
 // A WebFetchDOM-originated analysis tags its delegated calls distinctly, so the
 // client (SSE Source) and trajectory logs can tell the two apart.
 func TestDelegatedLLMCallLabeledWebFetchDOM(t *testing.T) {
