@@ -29,7 +29,7 @@ the same way as the server:
   records JSON for the most descriptive list and regression-checks it end to end.
   Requires the local model to be running.
   `go run -tags sqlite_fts5 ./cmd/webdomeval <file.html>`.
-- `webextracttest` — exercises the `web-extractor` skill's JS end-to-end against a
+- `webextracttest` — exercises the `web-monitor` skill's JS end-to-end against a
   fake page (no network): runs the documented setup, baselines, mutates the page,
   and asserts the repeat check finds the change with no LLM.
 

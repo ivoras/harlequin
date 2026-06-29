@@ -1,5 +1,5 @@
 ---
-name: web-extractor
+name: web-monitor
 description: Monitor a web page for changes or new items (e.g. "tell me when there are new <items> on <url>", "check this page every N hours"). Set up once with AI, then re-check on a schedule with zero AI cost. load_skill this whenever the user asks to watch/monitor a page.
 ---
 
@@ -44,7 +44,7 @@ config as `input` (a JSON string) and the chosen `notify_channel`:
       name:           "<short-slug>",
       spec:           "<schedule>",
       kind:           "js",
-      target:         "skill://web-extractor/lib/check.js",
+      target:         "skill://web-monitor/lib/check.js",
       input:          "{\"name\":\"<short-slug>\",\"url\":\"<url>\",\"selector\":\"<selector>\",\"label\":\"<what is watched>\"}",
       notify_channel: "<inapp|email|telegram>"
     )
@@ -64,11 +64,11 @@ watched, on what schedule, where they'll be notified, and how many items are the
 
 ## Notes
 - Re-check a saved watch by hand:
-  `run_js({ script: "skill://web-extractor/lib/check.js", args: { name: "<slug>" } })`.
-- Helpers in `skill://web-extractor/lib/extract.js`: `fetchDoc`, `allTextAt`,
+  `run_js({ script: "skill://web-monitor/lib/check.js", args: { name: "<slug>" } })`.
+- Helpers in `skill://web-monitor/lib/extract.js`: `fetchDoc`, `allTextAt`,
   `attrAt`, `diffList`, `runWatch`. Sandbox JS runs on goja (ES5.1-compatible;
   common ES6 like let/const, arrow functions and template literals also works).
-- Prefer `target="skill://web-extractor/lib/check.js"` over hand-written inline JS.
+- Prefer `target="skill://web-monitor/lib/check.js"` over hand-written inline JS.
   If you ever do write inline JS for a cron job, it is the **body** of a function the
   runtime wraps for you: write top-level statements (top-level `return` is fine) and
   do **not** wrap it in `function(){...}` — an un-called function runs nothing, and

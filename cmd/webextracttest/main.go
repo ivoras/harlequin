@@ -1,4 +1,4 @@
-// Command webextracttest exercises the web-extractor skill's JS end-to-end
+// Command webextracttest exercises the web-monitor skill's JS end-to-end
 // against a fake page (no network): it runs the documented setup (save recipe +
 // parser), takes a baseline, then mutates the page and re-checks — asserting the
 // repeat check finds the change using only the shipped JS, dom, and storage.
@@ -35,7 +35,7 @@ func page(items []string) string {
 }
 
 func main() {
-	libDir := "skills/web-extractor/lib"
+	libDir := "skills/web-monitor/lib"
 	read := func(name string) string {
 		b, err := os.ReadFile(filepath.Join(libDir, name))
 		if err != nil {
@@ -57,8 +57,8 @@ func main() {
 
 	resolve := func(uri string) (string, error) {
 		switch {
-		case strings.HasPrefix(uri, "skill://web-extractor/lib/"):
-			return read(strings.TrimPrefix(uri, "skill://web-extractor/lib/")), nil
+		case strings.HasPrefix(uri, "skill://web-monitor/lib/"):
+			return read(strings.TrimPrefix(uri, "skill://web-monitor/lib/")), nil
 		case strings.HasPrefix(uri, "storage://"):
 			b, err := store.Read(strings.TrimPrefix(uri, "storage://"))
 			return string(b), err
@@ -97,7 +97,7 @@ func main() {
 	// Phase 1 setup: save recipe + the 2-line parser (exactly as SKILL.md instructs).
 	run("setup", `
 storage.write("fzoeu/recipe.json", JSON.stringify({url:"https://fzoeu.test/", selector:"ul.calls li a", label:"FZOEU calls", lastSeen:[], lastChecked:""}));
-storage.write("fzoeu/parser.js", 'include("skill://web-extractor/lib/extract.js");\ncheckWatch("fzoeu");\n');
+storage.write("fzoeu/parser.js", 'include("skill://web-monitor/lib/extract.js");\ncheckWatch("fzoeu");\n');
 println("setup done");
 `)
 
@@ -120,5 +120,5 @@ println("setup done");
 	out = runScript("recheck-after-change", "storage://fzoeu/parser.js")
 	expect("recheck-after-change", out, "No change")
 
-	fmt.Println("\nPASS: web-extractor end-to-end workflow")
+	fmt.Println("\nPASS: web-monitor end-to-end workflow")
 }

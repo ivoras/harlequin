@@ -6,10 +6,10 @@ import (
 	"testing"
 )
 
-// The baked web-extractor skill must parse: a YAML frontmatter slip would make
+// The baked web-monitor skill must parse: a YAML frontmatter slip would make
 // buildSkill error and the skill silently vanish from the catalogue.
 func TestWebExtractorSkillParses(t *testing.T) {
-	root := filepath.Join("..", "..", "..", "skills", "web-extractor")
+	root := filepath.Join("..", "..", "..", "skills", "web-monitor")
 	files := map[string]string{}
 	err := filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
@@ -30,11 +30,11 @@ func TestWebExtractorSkillParses(t *testing.T) {
 		t.Fatalf("walk skill: %v", err)
 	}
 
-	sk, err := buildSkill("web-extractor", files, "deployed")
+	sk, err := buildSkill("web-monitor", files, "deployed")
 	if err != nil {
 		t.Fatalf("buildSkill: %v", err)
 	}
-	if sk.Name != "web-extractor" {
+	if sk.Name != "web-monitor" {
 		t.Fatalf("name = %q", sk.Name)
 	}
 	if sk.Description == "" {

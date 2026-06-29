@@ -96,15 +96,15 @@ func TestIncludeDefinesGlobals(t *testing.T) {
 	r := New(Options{})
 	lib := `function add(a, b){ return a + b; }`
 	rc := RunContext{Resolve: func(uri string) (string, error) {
-		if uri == "skill://web-extractor/lib/extract.js" {
+		if uri == "skill://web-monitor/lib/extract.js" {
 			return lib, nil
 		}
 		return "", fmt.Errorf("unknown uri %q", uri)
 	}}
 	code := `
-include("skill://web-extractor/lib/extract.js");
+include("skill://web-monitor/lib/extract.js");
 println(add(2, 3));
-println(load("skill://web-extractor/lib/extract.js").length > 0);
+println(load("skill://web-monitor/lib/extract.js").length > 0);
 `
 	res, err := r.Run(code, rc)
 	if err != nil {
