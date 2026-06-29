@@ -9,6 +9,7 @@ import (
 	"log"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/ivoras/harlequin/internal/server/dom"
 	"github.com/ivoras/harlequin/internal/server/llm"
@@ -24,7 +25,7 @@ const webFetchDOMDescription = `
 - grep="<regex>": flattens the page to one line per element (ancestor path + text) plus the page's links, and returns lines matching the case-insensitive regular expression with ±3 lines of context (use alternation, e.g. "price|€|\\$"). Best for locating one specific value.
 - To EXTRACT MANY items and filter/sort/aggregate them (e.g. "the cheapest", "all that mention X", totals) — which needs computation — parse the saved page in run_js: var h=dom.parse(tmp.read("<handle>")); var items=dom.query(h, "<selector>"). Each node has .tag/.class/.attrs/.text, .getAttribute(name), .textContent, and is itself queryable (dom.query(node, sub)). This is the right tool for computed answers; do the comparison/sort there, not by eye.
 - Pagination: a listing may span multiple pages (look for page links / "next" in the result). Fetch each page and combine — a single page is not the whole list.
-- prompt="<question>" (REQUIRES grep or selector — error if used alone): runs the grep/selector result through a fast analysis model with your prompt and returns that model's answer, like WebFetch but over the targeted DOM slice. Point grep/selector at the data first, then prompt to extract it — e.g. grep="price|¥" + prompt="what's the price?". Without grep/selector it would only see the whole structural dump, which it can't reliably answer from; that's why it's rejected.
+- prompt="<question>" (best paired with grep/selector): runs the targeted DOM slice through a fast analysis model with your prompt and returns that model's answer, like WebFetch but over a focused slice. Point grep/selector at the data first — e.g. grep="price|¥" + prompt="what's the price?". If you give prompt alone, a grep is auto-derived from your prompt's keywords (fine for a specific factual question; set grep/selector yourself for anything broader, since the full page is too large to analyze whole).
 - Prefer this tool over WebFetch when you expect the result to be complex or large.
 `
 
@@ -36,7 +37,7 @@ func webFetchDOMToolDef() llm.Tool {
 		"type": "object",
 		"properties": map[string]any{
 			"url":         map[string]any{"type": "string", "format": "uri", "description": "The URL to fetch"},
-			"prompt":      map[string]any{"type": "string", "description": "If set, analyze the grep/selector result with a fast AI model using this prompt and return its answer (like WebFetch). REQUIRES grep or selector to also be set so the model sees a focused slice; using prompt alone is an error"},
+			"prompt":      map[string]any{"type": "string", "description": "If set, analyze the grep/selector result with a fast AI model using this prompt and return its answer (like WebFetch). Best paired with grep or selector; if given alone, a grep is auto-derived from the prompt's keywords"},
 			"grep":        map[string]any{"type": "string", "description": "Case-insensitive regular expression to find in the flattened page (one line per element: ancestor path + text); returns matching lines with context"},
 			"selector":    map[string]any{"type": "string", "description": "Comma-separated tag/class selectors (e.g. \"div.product-card, li.item\"); returns each match with parent/siblings/children as YAML"},
 			"max_depth":   map[string]any{"type": "integer", "description": "Skeleton depth when no grep/selector (default 3)"},
@@ -76,13 +77,20 @@ func (a *Agent) webFetchDOM(ctx context.Context, rc *runContext, args map[string
 	maxDepth := argInt(args, "max_depth", 3)
 	context := argInt(args, "context", 3)
 
-	// prompt analyzes a focused slice of the page, not the whole structural dump:
-	// require a grep or selector to point at the data first. Validate before the
-	// seen-guard/fetch so a corrected retry (same URL + grep) isn't rejected as a
-	// duplicate. (The analysis model handles a targeted slice well but thrashes on
-	// the full candidate-list/skeleton view.)
+	// prompt analyzes a focused slice of the page, not the whole structural dump
+	// (which is large — often well past the result cap — and which the small
+	// analysis model can't reliably answer from). If the caller gave a prompt but
+	// no grep/selector, derive a grep from the prompt's keywords so the call works
+	// regardless, instead of depending on the model to add one; only error if
+	// nothing usable can be extracted. Done before the seen-guard/fetch so a
+	// corrected retry on the same URL isn't rejected as a duplicate.
+	autoGrep := false
 	if prompt != "" && grep == "" && selector == "" {
-		return "error: prompt requires a query mode — also pass grep=\"<regex>\" (e.g. grep=\"price|¥\") or selector=\"<css>\" so the analysis model sees the relevant slice of the page, not the whole structural dump", nil
+		grep = deriveGrepFromPrompt(prompt)
+		if grep == "" {
+			return "error: prompt needs a focus and none could be derived from it — also pass grep=\"<regex>\" (e.g. grep=\"price|¥\") or selector=\"<css>\" so the analysis model sees the relevant slice of the page", nil
+		}
+		autoGrep = true
 	}
 
 	// Loop guard for nested calls: don't re-fetch a URL already retrieved in this
@@ -127,6 +135,7 @@ func (a *Agent) webFetchDOM(ctx context.Context, rc *runContext, args map[string
 		"url": rawURL, "final_url": raw.FinalURL, "dom": true, "ok": true,
 		"cached": raw.Cached, "fetch_ms": fetchMS, "bytes": len(raw.Body),
 		"grep": grep, "selector": selector, "handle": handle, "prompt": prompt,
+		"auto_grep": autoGrep,
 	})
 	log.Printf("webfetchdom: GET %s (cached=%v, %dms, %d bytes, grep=%q, selector=%q)",
 		raw.FinalURL, raw.Cached, fetchMS, len(raw.Body), grep, selector)
@@ -210,6 +219,42 @@ func (a *Agent) webFetchDOM(ctx context.Context, rc *runContext, args map[string
 		return a.analyzeWeb(ctx, rc, webFetchDOMLabel, prompt, res, structured, depth, seen)
 	}
 	return structured, nil
+}
+
+// promptStopwords are dropped when deriving a grep from a natural-language
+// prompt — common question/filler words that would only match noise.
+var promptStopwords = map[string]bool{
+	"the": true, "this": true, "that": true, "what": true, "whats": true, "which": true,
+	"does": true, "did": true, "can": true, "could": true, "would": true, "should": true,
+	"will": true, "how": true, "why": true, "who": true, "and": true, "for": true,
+	"are": true, "was": true, "were": true, "been": true, "its": true, "your": true,
+	"you": true, "please": true, "tell": true, "show": true, "give": true, "find": true,
+	"get": true, "about": true, "with": true, "from": true, "page": true, "site": true,
+	"have": true, "has": true, "any": true, "all": true, "there": true, "here": true,
+	"into": true, "over": true, "per": true, "value": true, "info": true, "information": true,
+}
+
+// deriveGrepFromPrompt builds a case-insensitive regex alternation from the
+// salient words of a natural-language prompt, so "what's the price?" → "price".
+// Words shorter than 3 chars and common question/filler words are dropped;
+// returns "" when nothing useful remains (e.g. an all-stopword prompt). Tokens
+// are alphanumeric (split on everything else), so the result needs no escaping.
+func deriveGrepFromPrompt(prompt string) string {
+	seen := map[string]bool{}
+	var words []string
+	for _, f := range strings.FieldsFunc(strings.ToLower(prompt), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+	}) {
+		if len(f) < 3 || promptStopwords[f] || seen[f] {
+			continue
+		}
+		seen[f] = true
+		words = append(words, f)
+		if len(words) >= 8 {
+			break
+		}
+	}
+	return strings.Join(words, "|")
 }
 
 // firstText returns the trimmed text of the first element matching selector.
