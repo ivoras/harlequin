@@ -209,10 +209,11 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, label webDelegat
 			}
 		}
 		text, toolCalls, err := a.completeOnceProgress(ctx, llm.ChatRequest{
-			Model:       a.WebFetchModel,
-			Messages:    msgs,
-			Tools:       tools,
-			Temperature: llm.Ptr(a.WebFetchTemperature),
+			Model:           a.WebFetchModel,
+			Messages:        msgs,
+			Tools:           tools,
+			Temperature:     llm.Ptr(a.WebFetchTemperature),
+			DisableThinking: true, // a tiny reasoning aux model must answer, not think
 		}, onProgress)
 		callDur := time.Since(callStart)
 		callMS := callDur.Milliseconds()
@@ -282,9 +283,10 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, label webDelegat
 		"delegate_step": webFetchMaxSteps + 1, "final": true,
 	})
 	text, _, err := a.completeOnce(ctx, llm.ChatRequest{
-		Model:       a.WebFetchModel,
-		Messages:    append(msgs, llm.Message{Role: llm.RoleUser, Content: "Answer the original question now from the information already gathered above. Do not call any more tools."}),
-		Temperature: llm.Ptr(a.WebFetchTemperature),
+		Model:           a.WebFetchModel,
+		Messages:        append(msgs, llm.Message{Role: llm.RoleUser, Content: "Answer the original question now from the information already gathered above. Do not call any more tools."}),
+		Temperature:     llm.Ptr(a.WebFetchTemperature),
+		DisableThinking: true,
 	})
 	if err != nil {
 		log.Printf("webfetch: final tool-less completion failed: %v", err)

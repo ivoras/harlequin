@@ -64,6 +64,11 @@ type ChatRequest struct {
 	Messages    []Message
 	Tools       []Tool
 	Temperature *float64 // omitted when nil (provider default)
+	// DisableThinking turns off a reasoning model's chain-of-thought for this
+	// call (llama.cpp: chat_template_kwargs.enable_thinking=false). Used for
+	// delegate calls like WebFetch analysis, where a tiny reasoning model would
+	// otherwise spend its whole budget thinking and return no answer.
+	DisableThinking bool
 }
 
 // Ptr returns a pointer to v (for optional request fields).
@@ -193,13 +198,14 @@ func (p *OpenAICompatible) Local() bool { return p.name == LocalProviderName }
 const LocalProviderName = "local"
 
 type streamRequest struct {
-	Model          string    `json:"model"`
-	Messages       []Message `json:"messages"`
-	Tools          []Tool    `json:"tools,omitempty"`
-	Stream         bool      `json:"stream"`
-	StreamOpts     streamOpt `json:"stream_options"`
-	Temperature    *float64  `json:"temperature,omitempty"`
-	ReturnProgress bool      `json:"return_progress,omitempty"`
+	Model              string         `json:"model"`
+	Messages           []Message      `json:"messages"`
+	Tools              []Tool         `json:"tools,omitempty"`
+	Stream             bool           `json:"stream"`
+	StreamOpts         streamOpt      `json:"stream_options"`
+	Temperature        *float64       `json:"temperature,omitempty"`
+	ReturnProgress     bool           `json:"return_progress,omitempty"`
+	ChatTemplateKwargs map[string]any `json:"chat_template_kwargs,omitempty"`
 }
 
 type streamOpt struct {
@@ -212,14 +218,19 @@ func (p *OpenAICompatible) Chat(ctx context.Context, req ChatRequest) (<-chan Ch
 	if model == "" {
 		model = p.model
 	}
+	var templateKwargs map[string]any
+	if req.DisableThinking {
+		templateKwargs = map[string]any{"enable_thinking": false}
+	}
 	body, err := json.Marshal(streamRequest{
-		Model:          model,
-		Messages:       req.Messages,
-		Tools:          req.Tools,
-		Stream:         true,
-		StreamOpts:     streamOpt{IncludeUsage: true},
-		Temperature:    req.Temperature,
-		ReturnProgress: p.returnProgress,
+		Model:              model,
+		Messages:           req.Messages,
+		Tools:              req.Tools,
+		Stream:             true,
+		StreamOpts:         streamOpt{IncludeUsage: true},
+		Temperature:        req.Temperature,
+		ReturnProgress:     p.returnProgress,
+		ChatTemplateKwargs: templateKwargs,
 	})
 	if err != nil {
 		return nil, err
