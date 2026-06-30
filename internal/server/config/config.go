@@ -40,25 +40,32 @@ func (d Duration) D() time.Duration { return time.Duration(d) }
 
 // Config is the full server configuration.
 type Config struct {
-	Server         ServerConfig     `yaml:"server"`
-	DataDir        string           `yaml:"data_dir"`
+	Server  ServerConfig `yaml:"server"`
+	DataDir string       `yaml:"data_dir"`
 	// DataRetentionDays deletes aged-out on-disk data — session trajectory logs
 	// and transient per-user tmp dumps — older than this many days. Unset
 	// defaults to 7; explicit 0 keeps data forever (disables the sweeps).
-	DataRetentionDays *int             `yaml:"data_retention_days"`
-	Providers      []ProviderConfig `yaml:"providers"`
-	Routing        RoutingConfig    `yaml:"routing"`
-	Prices         map[string]Price `yaml:"prices"`
-	ContextWindows map[string]int   `yaml:"context_windows"` // model id -> max input tokens
-	Embeddings     EmbeddingsConfig `yaml:"embeddings"`
-	Documents      DocumentsConfig  `yaml:"documents"`
-	Agent          AgentConfig      `yaml:"agent"`
-	Memory         MemoryConfig     `yaml:"memory"`
-	Sessions       SessionsConfig   `yaml:"sessions"`
-	MCP            MCPConfig        `yaml:"mcp"`
-	Auth           AuthConfig       `yaml:"auth"`
-	Email          email.Config     `yaml:"email"`
-	Telegram       TelegramConfig   `yaml:"telegram"`
+	DataRetentionDays *int `yaml:"data_retention_days"`
+	// ModelSuite selects the active named bundle from ModelSuites. When set, the
+	// suite's chat/aux/embed roles populate Providers, Routing, Embeddings, and
+	// the WebFetch model — so a deployment switches its whole model lineup by
+	// changing one name. When empty, the legacy top-level Providers/Routing/
+	// Embeddings below are used as-is.
+	ModelSuite     string                `yaml:"model_suite"`
+	ModelSuites    map[string]ModelSuite `yaml:"model_suites"`
+	Providers      []ProviderConfig      `yaml:"providers"`
+	Routing        RoutingConfig         `yaml:"routing"`
+	Prices         map[string]Price      `yaml:"prices"`
+	ContextWindows map[string]int        `yaml:"context_windows"` // model id -> max input tokens
+	Embeddings     EmbeddingsConfig      `yaml:"embeddings"`
+	Documents      DocumentsConfig       `yaml:"documents"`
+	Agent          AgentConfig           `yaml:"agent"`
+	Memory         MemoryConfig          `yaml:"memory"`
+	Sessions       SessionsConfig        `yaml:"sessions"`
+	MCP            MCPConfig             `yaml:"mcp"`
+	Auth           AuthConfig            `yaml:"auth"`
+	Email          email.Config          `yaml:"email"`
+	Telegram       TelegramConfig        `yaml:"telegram"`
 
 	// Secrets, populated from the environment (not YAML).
 	JWTSecret string `yaml:"-"`
@@ -108,6 +115,33 @@ type WebUIConfig struct {
 	// Dir is the filesystem path to the built SPA (e.g. "./web/dist"). Empty
 	// disables serving (e.g. when nginx serves the static files instead).
 	Dir string `yaml:"dir"`
+}
+
+// ModelSuite is a named bundle of the three model roles a deployment runs: the
+// chat model that drives conversation, a small aux model for delegate work
+// (WebFetch/WebFetchDOM analysis), and the embedding model. Selecting a suite
+// (Config.ModelSuite) swaps all three — endpoints, models, keys, and params — at
+// once. See resolveModelSuite for how it expands into providers/embeddings.
+type ModelSuite struct {
+	Chat  ModelSpec `yaml:"chat"`
+	Aux   ModelSpec `yaml:"aux"`
+	Embed ModelSpec `yaml:"embed"`
+}
+
+// ModelSpec configures one model role within a ModelSuite. The embed-only fields
+// (Dim/QueryPrefix/DocPrefix) are ignored for chat/aux; ReturnProgress/
+// ContextWindow/Temperature are ignored for embed.
+type ModelSpec struct {
+	BaseURL        string   `yaml:"base_url"`
+	Model          string   `yaml:"model"`
+	APIKeyEnv      string   `yaml:"api_key_env"`
+	ContextWindow  int      `yaml:"context_window"`
+	ReturnProgress bool     `yaml:"return_progress"`
+	Temperature    *float64 `yaml:"temperature"`
+	// Embedding-model conventions (embed role only).
+	Dim         int    `yaml:"dim"`
+	QueryPrefix string `yaml:"query_prefix"`
+	DocPrefix   string `yaml:"doc_prefix"`
 }
 
 // ProviderConfig describes one chat LLM provider.
@@ -397,6 +431,9 @@ func Load(path string) (*Config, error) {
 		}
 	}
 
+	if err := cfg.resolveModelSuite(); err != nil {
+		return nil, err
+	}
 	cfg.applyDefaults()
 	cfg.resolveSecrets()
 
@@ -404,6 +441,72 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+// resolveModelSuite expands the active named model suite into the provider,
+// routing, embeddings, and web-fetch settings the rest of the server consumes,
+// so the runtime wiring is identical whether a suite or the legacy explicit form
+// is used. No-op when ModelSuite is empty (legacy path). The chat role becomes
+// the default provider; a distinct aux role becomes a second provider that the
+// WebFetch model routes to (an aux identical to chat — same endpoint+model, e.g.
+// one hosted model serving both — just reuses the chat provider).
+func (c *Config) resolveModelSuite() error {
+	if c.ModelSuite == "" {
+		return nil
+	}
+	suite, ok := c.ModelSuites[c.ModelSuite]
+	if !ok {
+		return fmt.Errorf("model_suite %q is not defined in model_suites", c.ModelSuite)
+	}
+	chat := suite.Chat
+	if chat.BaseURL == "" || chat.Model == "" {
+		return fmt.Errorf("model_suite %q: chat needs base_url and model", c.ModelSuite)
+	}
+	if suite.Embed.BaseURL == "" || suite.Embed.Model == "" {
+		return fmt.Errorf("model_suite %q: embed needs base_url and model", c.ModelSuite)
+	}
+
+	providers := []ProviderConfig{{
+		Name: "chat", BaseURL: chat.BaseURL, Model: chat.Model, APIKeyEnv: chat.APIKeyEnv,
+		ContextWindow: chat.ContextWindow, ReturnProgress: chat.ReturnProgress,
+	}}
+	rules := map[string]string{}
+	webFetchModel := "" // empty => WebFetch uses the default (chat) provider/model
+
+	aux := suite.Aux
+	if aux.BaseURL != "" && aux.Model != "" && (aux.BaseURL != chat.BaseURL || aux.Model != chat.Model) {
+		providers = append(providers, ProviderConfig{
+			Name: "aux", BaseURL: aux.BaseURL, Model: aux.Model, APIKeyEnv: aux.APIKeyEnv,
+			ContextWindow: aux.ContextWindow, ReturnProgress: aux.ReturnProgress,
+		})
+		rules[aux.Model] = "aux"
+		webFetchModel = aux.Model
+	}
+
+	c.Providers = providers
+	c.Routing.DefaultProvider = "chat"
+	c.Routing.ModelRules = rules
+	if len(c.Routing.FallbackOrder) == 0 {
+		c.Routing.FallbackOrder = []string{"chat"}
+	}
+
+	c.Embeddings.BaseURL = suite.Embed.BaseURL
+	c.Embeddings.Model = suite.Embed.Model
+	c.Embeddings.APIKeyEnv = suite.Embed.APIKeyEnv
+	if suite.Embed.Dim > 0 {
+		c.Embeddings.Dim = suite.Embed.Dim
+	}
+	c.Embeddings.QueryPrefix = suite.Embed.QueryPrefix
+	c.Embeddings.DocPrefix = suite.Embed.DocPrefix
+
+	c.Agent.WebFetch.Model = webFetchModel
+	if chat.Temperature != nil {
+		c.Agent.Temperature = chat.Temperature
+	}
+	if aux.Temperature != nil {
+		c.Agent.WebFetch.Temperature = aux.Temperature
+	}
+	return nil
 }
 
 func (c *Config) applyDefaults() {
