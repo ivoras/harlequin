@@ -20,6 +20,7 @@ const webFetchDescription = `
 - Input: a valid URL (auto-upgrades HTTP→HTTPS) and a prompt describing desired info.
 - Fetches, converts HTML to markdown, summarizes large results.
 - Returns the AI model’s response about the page content.
+- If the answer is expected to be present LITERALLY on the page (a price, date, code, ID, amount), prefer WebFetchGrep — it greps the raw HTML with a regex and returns the exact matching text, with no AI in the loop.
 - 15-minute cache for repeated URLs.
 - Redirects: tool tells you if URL changed; call again with new URL.
 - Pagination: if a listing spans multiple pages (next/"page 2" links), fetch each page and combine — don't answer from page 1 alone.

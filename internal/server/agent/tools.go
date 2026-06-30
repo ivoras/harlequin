@@ -413,6 +413,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 	if a.WebFetcher != nil {
 		reg["WebFetch"] = a.webFetchEntry()
 		reg["WebFetchDOM"] = a.webFetchDOMEntry()
+		reg["WebFetchGrep"] = a.webFetchGrepEntry()
 	}
 
 	if a.Docs != nil {
