@@ -144,8 +144,9 @@ type webDelegateLabel struct {
 }
 
 var (
-	webFetchLabel    = webDelegateLabel{source: "WebFetch", delegate: "web_fetch"}
-	webFetchDOMLabel = webDelegateLabel{source: "WebFetchDOM", delegate: "web_fetch_dom"}
+	webFetchLabel     = webDelegateLabel{source: "WebFetch", delegate: "web_fetch"}
+	webFetchDOMLabel  = webDelegateLabel{source: "WebFetchDOM", delegate: "web_fetch_dom"}
+	webFetchGrepLabel = webDelegateLabel{source: "WebFetchGrep", delegate: "web_fetch_grep"}
 )
 
 // analyzeWeb runs the small, fast analysis model over the fetched content. The
