@@ -232,6 +232,13 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	sort.Slice(toolCatalog, func(i, j int) bool {
 		return toolCatalog[i]["name"].(string) < toolCatalog[j]["name"].(string)
 	})
+	// Sort the tool definitions sent to the model too: they are built by iterating
+	// a map above, so their order is otherwise random per request. The chat
+	// template renders tools into the prompt prefix, so a shuffled order changes
+	// the prefix every turn and defeats llama.cpp's prompt-prefix cache (the whole
+	// context gets reprocessed instead of reused). Deterministic order keeps the
+	// prefix byte-stable across turns.
+	sortToolDefs(toolDefs)
 	a.logEvent(ctx, rc, sessionlog.TypeToolsAvailable, map[string]any{
 		"count": len(toolCatalog), "tools": toolCatalog,
 	})
