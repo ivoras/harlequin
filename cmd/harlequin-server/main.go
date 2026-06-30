@@ -208,6 +208,7 @@ func main() {
 		MCP:                 mcpManager,
 		WebFetchModel:       cfg.Agent.WebFetch.Model,
 		WebFetchTemperature: cfg.Agent.WebFetch.TemperatureValue(),
+		WebFetchTools:       cfg.Agent.WebFetch.ToolsEnabledValue(),
 		ReportTiming:        cfg.Agent.ReportTiming,
 		MaxSteps:            cfg.Agent.MaxSteps,
 		Temperature:         cfg.Agent.TemperatureValue(),

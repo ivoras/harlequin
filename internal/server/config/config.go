@@ -138,6 +138,10 @@ type ModelSpec struct {
 	ContextWindow  int      `yaml:"context_window"`
 	ReturnProgress bool     `yaml:"return_progress"`
 	Temperature    *float64 `yaml:"temperature"`
+	// Tools (aux role only) offers the WebFetch analysis model tools to follow
+	// links / compute. Default enabled; set false for a small aux that answers
+	// purely from the fetched content (extraction-only). See WebFetchConfig.Tools.
+	Tools *bool `yaml:"tools"`
 	// Embedding-model conventions (embed role only).
 	Dim         int    `yaml:"dim"`
 	QueryPrefix string `yaml:"query_prefix"`
@@ -256,9 +260,20 @@ type WebFetchConfig struct {
 	// Temperature for the content-analysis call. Low for consistent extraction;
 	// pointer so an omitted key defaults via TemperatureValue (0.1).
 	Temperature *float64 `yaml:"temperature"`
+	// Tools offers the analysis model WebFetch/WebFetchDOM/calculator (follow
+	// links, compute). Pointer so an omitted key defaults to enabled; set false
+	// for a small aux model that gets distracted into spurious tool calls, so it
+	// answers purely from the fetched content (extraction-only).
+	Tools *bool `yaml:"tools"`
 	// AllowPrivate permits fetching loopback/private/link-local addresses. Off by
 	// default as an SSRF guard.
 	AllowPrivate bool `yaml:"allow_private"`
+}
+
+// ToolsEnabledValue reports whether the WebFetch analysis model gets tools
+// (default true).
+func (w WebFetchConfig) ToolsEnabledValue() bool {
+	return w.Tools == nil || *w.Tools
 }
 
 // EnabledValue reports whether the WebFetch tool is exposed (default true).
@@ -505,6 +520,9 @@ func (c *Config) resolveModelSuite() error {
 	}
 	if aux.Temperature != nil {
 		c.Agent.WebFetch.Temperature = aux.Temperature
+	}
+	if aux.Tools != nil {
+		c.Agent.WebFetch.Tools = aux.Tools
 	}
 	return nil
 }

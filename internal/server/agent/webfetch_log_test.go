@@ -88,6 +88,7 @@ func TestAnalyzeWebNeverReturnsEmptyOnToolLoop(t *testing.T) {
 		Provider:      toolLooperProvider{finalText: "FORCED ANSWER"},
 		Session:       sessionlog.New(dir, true, false, nil),
 		WebFetchModel: "small-model",
+		WebFetchTools: true, // exercise the tool-calling loop
 	}
 	rc := &runContext{sessionID: 1, userID: 1, turn: 1}
 	res := webfetch.Result{FinalURL: "https://example.com/x", Title: "X"}

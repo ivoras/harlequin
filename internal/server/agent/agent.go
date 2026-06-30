@@ -80,6 +80,11 @@ type Agent struct {
 	// WebFetchTemperature is the sampling temperature for the content-analysis
 	// call (low, for consistent extraction; separate from the chat Temperature).
 	WebFetchTemperature float64
+	// WebFetchTools offers the analysis model WebFetch/WebFetchDOM/calculator so
+	// it can follow links and compute. Turn off for a small aux model, which gets
+	// distracted into spurious tool calls; it then answers purely from the
+	// fetched content (extraction-only).
+	WebFetchTools bool
 	// ReportTiming, when true, measures and reports per-turn model operation
 	// timing (prompt processing, token generation, wall clock) to the client.
 	ReportTiming bool

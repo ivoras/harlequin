@@ -29,7 +29,14 @@ const (
 	// webFetchDefaultPrompt is used when the caller passes an empty prompt.
 	webFetchDefaultPrompt = "Extract raw facts from this scraped web page."
 	// webFetchSystemPrompt is the simplified system prompt for the analysis call.
-	webFetchSystemPrompt = "You extract information from scraped web pages. Pages usually link to related pages: whenever a link looks like it would add to your understanding of the question — more detail, supporting context, a cited source, a linked document, the next page of a list, or a section the current page only summarizes — follow it by calling the WebFetch tool again with that URL, then fold what you learn into your answer. Be deliberate, not exhaustive: follow only links that are genuinely relevant, prefer links on the same site, and stop once you can answer the question well. If neither the page nor the worthwhile links it points to contain the answer, say so plainly. For any arithmetic, use the calculator tool rather than computing it yourself."
+	// It leads with "answer directly from the content" because small analysis
+	// models otherwise get distracted into spurious tool calls (re-fetching or
+	// recomputing a value that is already on the page).
+	webFetchSystemPrompt = "You extract information from scraped web pages. FIRST read the page content and check whether it already answers the question. If it does, reply with the answer immediately and do NOT call any tools. Only when the answer is NOT in the content should you follow a relevant link by calling WebFetch with that URL (prefer same-site links, be deliberate not exhaustive, and stop once you can answer). Never call the calculator to re-derive, invert, or restate a value that is already given on the page — return that value as-is; use the calculator only for arithmetic the question genuinely requires and that the page does not already provide. If neither the page nor the worthwhile links it points to contain the answer, say so plainly."
+	// webFetchExtractPrompt is the system prompt for extraction-only mode (no
+	// tools): the model must answer purely from the supplied content. Used when
+	// WebFetchTools is off (recommended for small aux models).
+	webFetchExtractPrompt = "You extract information from a scraped web page. Read the page content and answer the question directly and concisely using only what is in that content. Return values exactly as they appear — do not convert, invert, recompute, or reformat them. If the content does not contain the answer, say so plainly."
 	// webFetchMaxDepth bounds nested WebFetch calls made by the analysis model.
 	webFetchMaxDepth = 2
 	// webFetchMaxSteps bounds the analysis tool-calling loop per fetch.
@@ -158,15 +165,22 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, label webDelegat
 	userMsg.WriteString(content)
 	userMsg.WriteString("\n--- END PAGE CONTENT ---")
 
+	// Tool-augmented analysis (follow links via WebFetch/WebFetchDOM, calculator
+	// for arithmetic) suits a capable model. A small aux model gets distracted by
+	// the tools — re-fetching or recomputing a value already on the page — so
+	// extraction-only mode (no tools, a lean prompt) is far more reliable for it;
+	// it just answers from the content. Toggled by WebFetchTools (config).
+	sysPrompt := webFetchExtractPrompt
+	calc := a.calculatorEntry()
+	var tools []llm.Tool
+	if a.WebFetchTools {
+		sysPrompt = webFetchSystemPrompt
+		tools = []llm.Tool{webFetchToolDef(), webFetchDOMToolDef(), calc.def}
+	}
 	msgs := []llm.Message{
-		{Role: llm.RoleSystem, Content: webFetchSystemPrompt},
+		{Role: llm.RoleSystem, Content: sysPrompt},
 		{Role: llm.RoleUser, Content: userMsg.String()},
 	}
-	// Offer the analysis model WebFetch and WebFetchDOM (to follow links, in
-	// markdown or DOM-structured form) and calculator (for any arithmetic over
-	// figures on the page).
-	calc := a.calculatorEntry()
-	tools := []llm.Tool{webFetchToolDef(), webFetchDOMToolDef(), calc.def}
 
 	var lastText string
 	for step := 0; step < webFetchMaxSteps; step++ {
