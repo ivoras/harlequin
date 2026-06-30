@@ -114,3 +114,22 @@ println(load("skill://web-monitor/lib/extract.js").length > 0);
 		t.Fatalf("output = %q", res.Output)
 	}
 }
+
+func TestConsoleLog(t *testing.T) {
+	r := New(Options{})
+	code := `
+console.log("hello", 42);
+console.error("oops");
+console.warn("careful");
+console.log({a: 1, b: [2, 3]});
+console.log(null, undefined, true);
+`
+	res, err := r.Run(code, RunContext{})
+	if err != nil {
+		t.Fatalf("Run: %v\noutput: %s", err, res.Output)
+	}
+	want := "hello 42\noops\ncareful\n{\"a\":1,\"b\":[2,3]}\nnull undefined true\n"
+	if res.Output != want {
+		t.Fatalf("output = %q\nwant     = %q", res.Output, want)
+	}
+}

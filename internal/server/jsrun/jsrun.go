@@ -136,6 +136,24 @@ func (r *Runner) Run(code string, rc RunContext) (res Result, err error) {
 		return goja.Undefined()
 	})
 
+	// console.* — the familiar names the model reaches for. All levels write one
+	// line to the same captured output (the sandbox has a single output stream).
+	// Objects/arrays are rendered as JSON so console.log(obj) is readable, unlike
+	// println's "[object Object]".
+	consoleLine := func(call goja.FunctionCall) goja.Value {
+		parts := make([]string, len(call.Arguments))
+		for i, a := range call.Arguments {
+			parts[i] = consoleArg(vm, a)
+		}
+		write(strings.Join(parts, " ") + "\n")
+		return goja.Undefined()
+	}
+	console := vm.NewObject()
+	for _, level := range []string{"log", "info", "debug", "warn", "error"} {
+		_ = console.Set(level, consoleLine)
+	}
+	_ = vm.Set("console", console)
+
 	baseCtx := rc.Ctx
 	if baseCtx == nil {
 		baseCtx = context.Background()
@@ -208,6 +226,32 @@ func joinArgs(args []goja.Value) string {
 		parts[i] = a.String()
 	}
 	return strings.Join(parts, " ")
+}
+
+// consoleArg renders one console.* argument: objects and arrays via JSON for
+// readability, everything else (primitives, functions, null/undefined) via its
+// normal string form. Falls back to String() if JSON.stringify isn't usable or
+// throws (e.g. a circular structure).
+func consoleArg(vm *goja.Runtime, a goja.Value) string {
+	obj, ok := a.(*goja.Object)
+	if !ok {
+		return a.String()
+	}
+	jsonVal := vm.Get("JSON")
+	if jsonVal == nil {
+		return a.String()
+	}
+	stringify, ok := goja.AssertFunction(jsonVal.ToObject(vm).Get("stringify"))
+	if !ok {
+		return a.String()
+	}
+	// JSON.stringify returns undefined for functions and other non-serializable
+	// values; use String() for those (and on any error, e.g. circular refs).
+	res, err := stringify(goja.Undefined(), obj)
+	if err != nil || res == nil || goja.IsUndefined(res) {
+		return a.String()
+	}
+	return res.String()
 }
 
 // makeFetch returns the legacy allow-listed HTTP GET helper (used only when no
