@@ -43,6 +43,29 @@ func TestResolveModelSuiteDistinctAux(t *testing.T) {
 	}
 }
 
+// aux.tools=false flows through to the WebFetch tools setting (extraction-only).
+func TestResolveModelSuiteAuxToolsFlag(t *testing.T) {
+	no := false
+	c := &Config{
+		ModelSuite: "s",
+		ModelSuites: map[string]ModelSuite{"s": {
+			Chat:  ModelSpec{BaseURL: "http://x/v1", Model: "c"},
+			Aux:   ModelSpec{BaseURL: "http://y/v1", Model: "a", Tools: &no},
+			Embed: ModelSpec{BaseURL: "http://z/v1", Model: "e"},
+		}},
+	}
+	if err := c.resolveModelSuite(); err != nil {
+		t.Fatal(err)
+	}
+	if c.Agent.WebFetch.ToolsEnabledValue() {
+		t.Fatal("aux tools=false should disable WebFetch tools")
+	}
+	// Default (unset) stays enabled.
+	if !(WebFetchConfig{}).ToolsEnabledValue() {
+		t.Fatal("WebFetch tools should default to enabled")
+	}
+}
+
 // When aux is the same endpoint+model as chat (one hosted model serving both),
 // no second provider is created and WebFetch uses the default provider/model.
 func TestResolveModelSuiteSharedAux(t *testing.T) {

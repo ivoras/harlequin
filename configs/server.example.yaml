@@ -42,6 +42,9 @@ model_suites:
       return_progress: true
       context_window: 24576
       temperature: 0.1
+      tools: false                           # extraction-only (recommended for a tiny aux): answer from the
+                                             # fetched content, no link-following/calculator. Omit/true for a
+                                             # capable aux that should follow links and compute.
     embed:
       base_url: "http://127.0.0.1:2235/v1"
       model: "local-embed"
