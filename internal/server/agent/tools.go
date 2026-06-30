@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
@@ -24,6 +25,16 @@ type toolHandler func(ctx context.Context, rc *runContext, args map[string]any) 
 type toolEntry struct {
 	def     llm.Tool
 	handler toolHandler
+}
+
+// sortToolDefs orders tool definitions by function name in place. The tools
+// array is rendered into the prompt prefix by the chat template, so a stable
+// order is required for llama.cpp's prompt-prefix cache to hit across turns
+// (the registry is a map, whose iteration order is otherwise random).
+func sortToolDefs(defs []llm.Tool) {
+	sort.Slice(defs, func(i, j int) bool {
+		return defs[i].Function.Name < defs[j].Function.Name
+	})
 }
 
 // buildTools assembles the tool registry for a request: built-ins plus any
