@@ -300,7 +300,8 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 			"type": "object", "properties": map[string]any{},
 		}),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
-			infos, err := a.Skills.EffectiveSkillInfos(ctx, rc.userDB, rc.projectDB, rc.userID, rc.username, rc.hat)
+			// Queried live (not rc.skillInfos): skills can change mid-session.
+			infos, err := a.Skills.EffectiveSkillInfos(ctx, rc.userDB, rc.projectDB, rc.hat)
 			if err != nil {
 				return "", err
 			}
@@ -612,17 +613,15 @@ Example (watch a saved web-monitor check every 30 min): cron_create(name="fzoeu"
 		}
 	}
 
-	// Skill-defined tools, namespaced <skill>.<tool>, for the visible (hat-aware) skills.
-	infos, err := a.Skills.EffectiveSkillInfos(ctx, rc.userDB, rc.projectDB, rc.userID, rc.username, rc.hat)
-	if err == nil {
-		for _, info := range infos {
-			sk, err := a.Skills.ResolveEffective(ctx, rc.userDB, rc.projectDB, info.Name, rc.userID, rc.username, rc.hat)
-			if err != nil {
-				continue
-			}
-			for _, td := range sk.Tools {
-				a.registerSkillTool(reg, sk.Name, td)
-			}
+	// Skill-defined tools, namespaced <skill>.<tool>, for the visible (hat-aware)
+	// skills (rc.skillInfos: resolved once per turn, before buildTools).
+	for _, info := range rc.skillInfos {
+		sk, err := a.Skills.ResolveEffective(ctx, rc.userDB, rc.projectDB, info.Name, rc.userID, rc.username, rc.hat)
+		if err != nil {
+			continue
+		}
+		for _, td := range sk.Tools {
+			a.registerSkillTool(reg, sk.Name, td)
 		}
 	}
 

@@ -11,37 +11,25 @@ import (
 )
 
 // seedSpec parametrizes the baked-asset seeder over the skills and hats table
-// sets. Table/column names are compile-time constants, never user input.
+// sets. Table names are compile-time constants, never user input.
 type seedSpec struct {
-	label     string // log prefix ("skills"/"hats")
-	itemTable string // skills / hats
-	fileTable string // skill_files / hat_files
-	keyCol    string // skill_name / hat_name
-	hashTable string // skill_seed_hashes / hat_seed_hashes
+	label     string     // log prefix ("skills"/"hats")
+	tables    itemTables // item/file tables shared with the CRUD layer
+	hashTable string     // skill_seed_hashes / hat_seed_hashes
 	// descOf extracts the item's listed description from its files.
 	descOf func(files map[string]string) string
-	// write replaces the whole item in the database (upsert + files).
-	write func(ctx context.Context, db *sql.DB, name, desc string, files map[string]string) error
 }
 
 var skillSeedSpec = seedSpec{
-	label: "skills", itemTable: "skills", fileTable: "skill_files",
-	keyCol: "skill_name", hashTable: "skill_seed_hashes",
+	label: "skills", tables: skillTables, hashTable: "skill_seed_hashes",
 	descOf: func(files map[string]string) string { return descriptionOf(files["SKILL.md"]) },
-	write: func(ctx context.Context, db *sql.DB, name, desc string, files map[string]string) error {
-		return writeSkill(ctx, db, name, desc, 0, files)
-	},
 }
 
 var hatSeedSpec = seedSpec{
-	label: "hats", itemTable: "hats", fileTable: "hat_files",
-	keyCol: "hat_name", hashTable: "hat_seed_hashes",
+	label: "hats", tables: hatTables, hashTable: "hat_seed_hashes",
 	descOf: func(files map[string]string) string {
 		fm, _ := splitHatFrontmatter(files[hatPromptFile])
 		return fm.Description
-	},
-	write: func(ctx context.Context, db *sql.DB, name, desc string, files map[string]string) error {
-		return writeHat(ctx, db, name, desc, 0, files)
 	},
 }
 
@@ -70,7 +58,9 @@ func SeedHats(ctx context.Context, shared *sql.DB, baked fs.FS, root string) err
 }
 
 // seedTree is the shared core: walk the baked tree, group files by item name,
-// and reconcile each item into the database per the spec.
+// and reconcile each item into the database per the spec. Any write error
+// aborts before saveSeedHashes runs, so a failed write is retried on the next
+// start instead of being misrecorded as a human edit.
 func seedTree(ctx context.Context, shared *sql.DB, baked fs.FS, root string, spec seedSpec) error {
 	// Group baked files by item name: <root>/<name>/<sub...> -> content.
 	bakedItems := map[string]map[string]string{}
@@ -109,14 +99,13 @@ func seedTree(ctx context.Context, shared *sql.DB, baked fs.FS, root string, spe
 
 	for _, name := range names {
 		files := bakedItems[name]
-		var exists int
-		if err := shared.QueryRowContext(ctx,
-			fmt.Sprintf(`SELECT COUNT(*) FROM %s WHERE name = ?`, spec.itemTable), name).Scan(&exists); err != nil {
+		existing, err := readItemFiles(ctx, shared, spec.tables, name)
+		if err != nil {
 			return err
 		}
-		if exists == 0 {
+		if existing == nil {
 			// New item: install all baked files as-is.
-			if err := spec.write(ctx, shared, name, spec.descOf(files), files); err != nil {
+			if err := writeItem(ctx, shared, spec.tables, name, spec.descOf(files), 0, files); err != nil {
 				return err
 			}
 			for sub, content := range files {
@@ -133,16 +122,22 @@ func seedTree(ctx context.Context, shared *sql.DB, baked fs.FS, root string, spe
 			bakedHash := hashBytes([]byte(content))
 			newHashes[key] = bakedHash
 
-			dbContent, present := readItemFile(ctx, shared, spec, name, sub)
+			dbContent, present := existing[sub]
 			switch {
 			case !present:
-				writeItemFile(ctx, shared, spec, name, sub, content)
+				if err := writeItemFile(ctx, shared, spec.tables, name, sub, content); err != nil {
+					return err
+				}
+				existing[sub] = content
 				changed = true
 			case hashBytes([]byte(dbContent)) == bakedHash:
 				// up to date
 			case prev[key] == hashBytes([]byte(dbContent)):
 				// unchanged since last seed → adopt the new baked version
-				writeItemFile(ctx, shared, spec, name, sub, content)
+				if err := writeItemFile(ctx, shared, spec.tables, name, sub, content); err != nil {
+					return err
+				}
+				existing[sub] = content
 				changed = true
 			default:
 				preserved = append(preserved, key)
@@ -150,10 +145,11 @@ func seedTree(ctx context.Context, shared *sql.DB, baked fs.FS, root string, spe
 		}
 		if changed {
 			// Refresh the listed description from the effective files.
-			effective, _ := readAllItemFiles(ctx, shared, spec, name)
-			_, _ = shared.ExecContext(ctx,
-				fmt.Sprintf(`UPDATE %s SET description = ? WHERE name = ?`, spec.itemTable),
-				spec.descOf(effective), name)
+			if _, err := shared.ExecContext(ctx,
+				fmt.Sprintf(`UPDATE %s SET description = ? WHERE name = ?`, spec.tables.item),
+				spec.descOf(existing), name); err != nil {
+				return err
+			}
 			updated = append(updated, name)
 		}
 	}
@@ -174,42 +170,15 @@ func descriptionOf(md string) string {
 	return fm.Description
 }
 
-func readItemFile(ctx context.Context, db *sql.DB, spec seedSpec, name, relpath string) (string, bool) {
-	var content []byte
-	err := db.QueryRowContext(ctx,
-		fmt.Sprintf(`SELECT content FROM %s WHERE %s = ? AND relpath = ?`, spec.fileTable, spec.keyCol),
-		name, relpath).Scan(&content)
-	if err != nil {
-		return "", false
-	}
-	return string(content), true
-}
-
-func readAllItemFiles(ctx context.Context, db *sql.DB, spec seedSpec, name string) (map[string]string, error) {
-	rows, err := db.QueryContext(ctx,
-		fmt.Sprintf(`SELECT relpath, content FROM %s WHERE %s = ?`, spec.fileTable, spec.keyCol), name)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	files := map[string]string{}
-	for rows.Next() {
-		var rel string
-		var content []byte
-		if err := rows.Scan(&rel, &content); err != nil {
-			return nil, err
-		}
-		files[rel] = string(content)
-	}
-	return files, rows.Err()
-}
-
-func writeItemFile(ctx context.Context, db *sql.DB, spec seedSpec, name, relpath, content string) {
-	_, _ = db.ExecContext(ctx,
+// writeItemFile upserts a single file row (used only by the seed reconciler;
+// regular writes replace the whole item via writeItem).
+func writeItemFile(ctx context.Context, db *sql.DB, t itemTables, name, relpath, content string) error {
+	_, err := db.ExecContext(ctx,
 		fmt.Sprintf(`INSERT INTO %s(%s, relpath, content) VALUES (?, ?, ?)
 		 ON CONFLICT(%s, relpath) DO UPDATE SET content = excluded.content`,
-			spec.fileTable, spec.keyCol, spec.keyCol),
+			t.files, t.key, t.key),
 		name, relpath, []byte(content))
+	return err
 }
 
 func loadSeedHashes(ctx context.Context, db *sql.DB, table string) map[string]string {

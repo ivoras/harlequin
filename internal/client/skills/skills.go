@@ -5,6 +5,7 @@ package skills
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -36,6 +37,11 @@ func (m *Manager) Pull(ctx context.Context, name string) (string, error) {
 	}
 	root := m.LocalDir(name)
 	for rel, content := range sf.Files {
+		// The server validates relpaths on write, but never trust it when
+		// writing to local disk: a "../" path must not escape the skill dir.
+		if !filepath.IsLocal(filepath.FromSlash(rel)) {
+			return "", fmt.Errorf("skill %q has unsafe file path %q", name, rel)
+		}
 		dest := filepath.Join(root, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 			return "", err
@@ -52,6 +58,9 @@ func (m *Manager) PullFile(ctx context.Context, name, relpath string) (string, e
 	content, _, err := m.client.GetSkillFile(ctx, name, relpath)
 	if err != nil {
 		return "", err
+	}
+	if !filepath.IsLocal(filepath.FromSlash(relpath)) {
+		return "", fmt.Errorf("unsafe file path %q", relpath)
 	}
 	dest := filepath.Join(m.LocalDir(name), filepath.FromSlash(relpath))
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {

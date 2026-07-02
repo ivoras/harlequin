@@ -38,7 +38,7 @@ func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
 	var infos []types.SkillInfo
 	err := s.withSkillScopes(r, u.ID, func(udb, pdb *sql.DB) error {
 		var e error
-		infos, e = s.Skills.List(r.Context(), udb, pdb, u.ID, u.Email)
+		infos, e = s.Skills.List(r.Context(), udb, pdb)
 		return e
 	})
 	if err != nil {
@@ -103,6 +103,11 @@ func (s *Server) handleDeleteSkill(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	name := chi.URLParam(r, "name")
 	scopeParam := r.URL.Query().Get("scope")
+	if scopeParam == "" {
+		// Deleting must never default to the project scope (unlike writes):
+		// a bare "/skill reset" means "remove MY copy", not the project's.
+		scopeParam = skills.ScopeUser
+	}
 	err := s.withSkillScopes(r, u.ID, func(udb, pdb *sql.DB) error {
 		db, scope, e := s.Skills.ScopeDBFor(scopeParam, udb, pdb)
 		if e != nil {

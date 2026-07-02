@@ -38,7 +38,7 @@ func TestScopePrecedence(t *testing.T) {
 	m := &Manager{shared: shared}
 
 	// user-only skill "bar" resolves from user.
-	if err := writeSkill(ctx, user, "bar", "u", 0, map[string]string{"SKILL.md": skillMD("user-bar")}); err != nil {
+	if err := writeItem(ctx, user, skillTables, "bar", "u", 0, map[string]string{"SKILL.md": skillMD("user-bar")}); err != nil {
 		t.Fatal(err)
 	}
 	if _, src, err := m.resolveRaw(ctx, user, proj, "bar"); err != nil || src != ScopeUser {
@@ -46,14 +46,14 @@ func TestScopePrecedence(t *testing.T) {
 	}
 
 	// "foo" in both user and shared → shared shadows user.
-	writeSkill(ctx, user, "foo", "u", 0, map[string]string{"SKILL.md": skillMD("user-foo")})
-	writeSkill(ctx, shared, "foo", "s", 0, map[string]string{"SKILL.md": skillMD("shared-foo")})
+	writeItem(ctx, user, skillTables, "foo", "u", 0, map[string]string{"SKILL.md": skillMD("user-foo")})
+	writeItem(ctx, shared, skillTables, "foo", "s", 0, map[string]string{"SKILL.md": skillMD("shared-foo")})
 	if _, src, err := m.resolveRaw(ctx, user, nil, "foo"); err != nil || src != ScopeShared {
 		t.Fatalf("foo (no proj): src=%q err=%v (want shared)", src, err)
 	}
 
 	// project version shadows shared and user.
-	writeSkill(ctx, proj, "foo", "p", 0, map[string]string{
+	writeItem(ctx, proj, skillTables, "foo", "p", 0, map[string]string{
 		"SKILL.md": skillMD("proj-foo"),
 		"lib/x.js": "// project x",
 	})

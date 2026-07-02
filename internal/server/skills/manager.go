@@ -65,34 +65,58 @@ func (m *Manager) scopeDBs(userDB, projDB *sql.DB) []scopeDB {
 	return out
 }
 
-// readSkillFiles reads one skill's files from a single database (relpath ->
-// contents). Returns nil (no error) when the database has no such skill.
-func readSkillFiles(ctx context.Context, db *sql.DB, name string) (map[string]string, error) {
+// itemTables names the table triple backing one kind of stored item, so the
+// read/write helpers (and the seeder) work for both skills and hats. The names
+// are compile-time constants, never user input.
+type itemTables struct {
+	item  string // skills / hats
+	files string // skill_files / hat_files
+	key   string // skill_name / hat_name
+}
+
+var (
+	skillTables = itemTables{item: "skills", files: "skill_files", key: "skill_name"}
+	hatTables   = itemTables{item: "hats", files: "hat_files", key: "hat_name"}
+)
+
+// readItemFiles reads one item's files from a database (relpath -> contents).
+// Returns nil (no error) when the database has no rows for the item — every
+// stored item carries at least one file, so "no rows" doubles as "not present"
+// and saves a separate existence probe.
+func readItemFiles(ctx context.Context, db *sql.DB, t itemTables, name string) (map[string]string, error) {
 	if db == nil {
 		return nil, nil
 	}
-	var exists int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM skills WHERE name = ?`, name).Scan(&exists); err != nil {
-		return nil, err
-	}
-	if exists == 0 {
-		return nil, nil
-	}
-	rows, err := db.QueryContext(ctx, `SELECT relpath, content FROM skill_files WHERE skill_name = ?`, name)
+	rows, err := db.QueryContext(ctx,
+		fmt.Sprintf(`SELECT relpath, content FROM %s WHERE %s = ?`, t.files, t.key), name)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	files := map[string]string{}
+	return scanFiles(rows)
+}
+
+// scanFiles collects (relpath, content) rows into a map; nil when there are none.
+func scanFiles(rows *sql.Rows) (map[string]string, error) {
+	var files map[string]string
 	for rows.Next() {
 		var rel string
 		var content []byte
 		if err := rows.Scan(&rel, &content); err != nil {
 			return nil, err
 		}
+		if files == nil {
+			files = map[string]string{}
+		}
 		files[rel] = string(content)
 	}
 	return files, rows.Err()
+}
+
+// readSkillFiles reads one skill's files from a single database (relpath ->
+// contents). Returns nil (no error) when the database has no such skill.
+func readSkillFiles(ctx context.Context, db *sql.DB, name string) (map[string]string, error) {
+	return readItemFiles(ctx, db, skillTables, name)
 }
 
 // resolveRaw returns a skill's files and the scope it resolved from, honoring
@@ -191,24 +215,35 @@ func (m *Manager) GetFile(ctx context.Context, userDB, projDB *sql.DB, name, rel
 }
 
 // List returns skill info for every skill visible to a user (across scopes),
-// each tagged with the scope it resolves from.
-func (m *Manager) List(ctx context.Context, userDB, projDB *sql.DB, userID int64, username string) ([]types.SkillInfo, error) {
-	names, err := m.allNames(ctx, userDB, projDB)
-	if err != nil {
-		return nil, err
-	}
+// each tagged with the scope it resolves from. It reads only the skills rows
+// (the description column is maintained on every write), never the file blobs.
+func (m *Manager) List(ctx context.Context, userDB, projDB *sql.DB) ([]types.SkillInfo, error) {
+	seen := map[string]bool{}
 	var out []types.SkillInfo
-	for _, n := range names {
-		files, source, err := m.resolveRaw(ctx, userDB, projDB, n)
+	for _, sc := range m.scopeDBs(userDB, projDB) {
+		rows, err := sc.db.QueryContext(ctx, `SELECT name, description FROM skills`)
 		if err != nil {
-			continue
+			return nil, err
 		}
-		sk, err := buildSkill(n, files, source)
-		if err != nil {
-			continue
+		for rows.Next() {
+			var name, desc string
+			if err := rows.Scan(&name, &desc); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			if seen[name] {
+				continue // a deeper scope already won
+			}
+			seen[name] = true
+			out = append(out, types.SkillInfo{Name: name, Description: desc, Source: sc.scope})
 		}
-		out = append(out, types.SkillInfo{Name: sk.Name, Description: sk.Description, Source: source})
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rows.Close()
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
 }
 
@@ -252,29 +287,51 @@ func (m *Manager) Save(ctx context.Context, db *sql.DB, name string, userID int6
 	if err != nil {
 		return fmt.Errorf("invalid SKILL.md: %w", err)
 	}
-	return writeSkill(ctx, db, name, fm.Description, userID, files)
+	return writeItem(ctx, db, skillTables, name, fm.Description, userID, files)
 }
 
-// writeSkill upserts a skill row and replaces its files, in one transaction.
-func writeSkill(ctx context.Context, db *sql.DB, name, description string, userID int64, files map[string]string) error {
+// validateRelpaths rejects file paths that could escape a directory when a
+// client materializes the item on disk: "." / ".." segments, absolute paths,
+// backslashes, empty segments. Clients join these paths under a local dir, so
+// this is the trust boundary for path traversal.
+func validateRelpaths(files map[string]string) error {
+	for rel := range files {
+		if rel == "" || strings.HasPrefix(rel, "/") || strings.Contains(rel, `\`) {
+			return fmt.Errorf("invalid file path %q", rel)
+		}
+		for _, seg := range strings.Split(rel, "/") {
+			if seg == "" || seg == "." || seg == ".." {
+				return fmt.Errorf("invalid file path %q", rel)
+			}
+		}
+	}
+	return nil
+}
+
+// writeItem upserts an item row and replaces its files, in one transaction.
+func writeItem(ctx context.Context, db *sql.DB, t itemTables, name, description string, userID int64, files map[string]string) error {
+	if err := validateRelpaths(files); err != nil {
+		return err
+	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO skills(name, description, updated_by, updated_at) VALUES (?, ?, ?, ?)
+		fmt.Sprintf(`INSERT INTO %s(name, description, updated_by, updated_at) VALUES (?, ?, ?, ?)
 		 ON CONFLICT(name) DO UPDATE SET description = excluded.description,
-		   updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+		   updated_by = excluded.updated_by, updated_at = excluded.updated_at`, t.item),
 		name, description, userID, time.Now()); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM skill_files WHERE skill_name = ?`, name); err != nil {
+	if _, err := tx.ExecContext(ctx,
+		fmt.Sprintf(`DELETE FROM %s WHERE %s = ?`, t.files, t.key), name); err != nil {
 		return err
 	}
 	for rel, content := range files {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO skill_files(skill_name, relpath, content) VALUES (?, ?, ?)`,
+			fmt.Sprintf(`INSERT INTO %s(%s, relpath, content) VALUES (?, ?, ?)`, t.files, t.key),
 			name, rel, []byte(content)); err != nil {
 			return err
 		}

@@ -1,5 +1,6 @@
 import { writable } from "svelte/store";
 import type { User, Project } from "./types";
+import { setActiveProject } from "./api";
 
 // The signed-in user (null = logged out).
 export const user = writable<User | null>(null);
@@ -7,6 +8,9 @@ export const user = writable<User | null>(null);
 // The active project (null = working on personal sessions). When set, the session
 // list shows the project's sessions and the chatroom side-pane appears.
 export const activeProject = writable<Project | null>(null);
+// Mirror the active project into the API client so project-scope-aware
+// endpoints (skills) carry ?project=.
+activeProject.subscribe((p) => setActiveProject(p?.id ?? 0));
 
 // Whether the /project management sheet is open.
 export const projectSheet = writable<boolean>(false);

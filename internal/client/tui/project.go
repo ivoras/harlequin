@@ -217,6 +217,7 @@ func (m *Model) enterProject(projectID int64, name string) tea.Msg {
 func (m *Model) leaveProject() {
 	m.activeProjectID = 0
 	m.activeProjectName = ""
+	m.client.SetProject(0)
 	if m.chat != nil {
 		_ = m.chat.Close()
 		m.chat = nil
