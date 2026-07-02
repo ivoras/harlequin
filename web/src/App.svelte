@@ -15,6 +15,18 @@
   import Cron from "./views/Cron.svelte";
   import Config from "./views/Config.svelte";
   import Usage from "./views/Usage.svelte";
+  // Tab / menu icons: vendored OpenMoji color SVGs (CC BY-SA 4.0, see
+  // src/assets/openmoji/LICENSE.txt) so they render identically everywhere.
+  import icChat from "./assets/openmoji/1F4AC.svg";
+  import icSkills from "./assets/openmoji/2728.svg";
+  import icHats from "./assets/openmoji/1F3AD.svg";
+  import icMemory from "./assets/openmoji/1F9E0.svg";
+  import icProjects from "./assets/openmoji/1F465.svg";
+  import icDocs from "./assets/openmoji/1F4C4.svg";
+  import icCron from "./assets/openmoji/23F0.svg";
+  import icMcp from "./assets/openmoji/1F50C.svg";
+  import icConfig from "./assets/openmoji/2699.svg";
+  import icUsage from "./assets/openmoji/1F4CA.svg";
 
   let ready = $state(false);
   let sessionDrawer = $state(false);
@@ -281,15 +293,19 @@
   }
 
   const nav: { id: View; label: string; ic: string }[] = [
-    { id: "chat", label: "Chat", ic: "💬" },
-    { id: "skills", label: "Skills", ic: "📚" },
-    { id: "hats", label: "Hats", ic: "🎩" },
-    { id: "memory", label: "Memory", ic: "🧠" },
-    { id: "projects", label: "Projects", ic: "🗂" },
-    { id: "documents", label: "Docs", ic: "📄" },
-    { id: "cron", label: "Cron", ic: "⏰" },
+    { id: "chat", label: "Chat", ic: icChat },
+    { id: "skills", label: "Skills", ic: icSkills },
+    { id: "hats", label: "Hats", ic: icHats },
+    { id: "memory", label: "Memory", ic: icMemory },
+    { id: "projects", label: "Projects", ic: icProjects },
+    { id: "documents", label: "Docs", ic: icDocs },
+    { id: "cron", label: "Cron", ic: icCron },
   ];
-  const moreViews: View[] = ["mcp", "config", "usage"];
+  const moreViews: { id: View; label: string; ic: string }[] = [
+    { id: "mcp", label: "MCP servers", ic: icMcp },
+    { id: "config", label: "Config", ic: icConfig },
+    { id: "usage", label: "Usage", ic: icUsage },
+  ];
 </script>
 
 {#if !ready}
@@ -319,7 +335,7 @@
   <nav class="tabbar">
     {#each nav as p}
       <button class:active={$view === p.id} onclick={() => view.set(p.id)} title={p.label}>
-        <span class="ic">{p.ic}</span><span class="lbl">{p.label}</span>
+        <img class="ic" src={p.ic} alt="" /><span class="lbl">{p.label}</span>
       </button>
     {/each}
   </nav>
@@ -425,7 +441,9 @@
         <div class="muted small">Signed in as {$user.email} ({$user.role})</div>
         <div class="row" style="flex-wrap:wrap; gap:8px;">
           {#each moreViews as v}
-            <button onclick={() => { view.set(v); menu = false; }}>{v}</button>
+            <button class="menuitem" onclick={() => { view.set(v.id); menu = false; }}>
+              <img class="ic" src={v.ic} alt="" /> {v.label}
+            </button>
           {/each}
         </div>
         <button class="danger" onclick={logout}>Log out</button>
