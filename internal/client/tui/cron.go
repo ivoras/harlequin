@@ -48,7 +48,7 @@ func (m *Model) handleCronSub(args []string, raw string) tea.Cmd {
 		}
 	case "add":
 		return m.handleCronAdd(raw)
-	case "del", "rm", "remove", "delete":
+	case "del":
 		id, ok := cronID(args, 1)
 		if !ok {
 			return infoCmd("usage: /cron del <id>")
