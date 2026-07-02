@@ -101,7 +101,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// stream any in-flight turn. On resume, load committed history first (which
 		// then opens the socket); otherwise open it directly.
 		if msg.resume {
-			cmds = append(cmds, m.loadHistoryCmd(msg.sessionID))
+			cmds = append(cmds, m.loadHistoryCmd(msg.sessionID), m.loadSessionHatCmd(msg.sessionID))
 		} else {
 			cmds = append(cmds, m.openSessionCmd())
 		}
@@ -251,6 +251,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.chatMessages = append(m.chatMessages, msg.m)
 		m.refreshViewport()
+		return m, nil
+
+	case sessionHatMsg:
+		if msg.sessionID == m.sessionID {
+			m.currentHat = msg.hat
+			m.refreshViewport()
+		}
 		return m, nil
 
 	case historyLoadedMsg:
@@ -668,7 +675,36 @@ func (m *Model) resumeSession(id int64) tea.Cmd {
 	m.blocks = nil
 	m.appendBlock("status", fmt.Sprintf("resuming session #%d…", id))
 	m.refreshViewport()
-	return m.loadHistoryCmd(id)
+	return tea.Batch(m.loadHistoryCmd(id), m.loadSessionHatCmd(id))
+}
+
+// loadSessionHatCmd restores the resumed session's worn hat for the header
+// indicator (the picker sets it directly; this covers "/resume <id>" and the
+// --session launch flag).
+func (m *Model) loadSessionHatCmd(id int64) tea.Cmd {
+	projectID := m.activeProjectID
+	return func() tea.Msg {
+		var ss []types.Session
+		var err error
+		if projectID > 0 {
+			ss, err = m.client.ListProjectSessions(context.Background(), projectID)
+		} else {
+			ss, err = m.client.ListSessions(context.Background(), "")
+		}
+		if err != nil {
+			return nil
+		}
+		for _, s := range ss {
+			if s.ID == id {
+				hat := ""
+				if s.Hat != nil {
+					hat = *s.Hat
+				}
+				return sessionHatMsg{sessionID: id, hat: hat}
+			}
+		}
+		return nil
+	}
 }
 
 // loadHistoryCmd fetches a session's committed messages for a resume (from the

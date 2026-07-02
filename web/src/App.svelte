@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api, getToken, setToken } from "./lib/api";
-  import { user, view, session, toasts, toast, activeProject, projectSheet, type View } from "./lib/stores";
+  import { user, view, session, wornHat, toasts, toast, activeProject, projectSheet, type View } from "./lib/stores";
   import { sc } from "./lib/session.svelte";
   import { pc } from "./lib/projectchat.svelte";
   import type { Session, Project, ProjectInvite } from "./lib/types";
@@ -57,6 +57,7 @@
       started = false;
       sc.detach();
       session.set({ id: 0, title: "" });
+      wornHat.set("");
       setSessionParam(0);
       view.set("chat");
     }
@@ -107,6 +108,7 @@
         const list = await api.listSessions();
         const found = list.find((c) => c.id === id);
         session.set({ id, title: found ? cleanTitle(found.title) : "" });
+        wornHat.set(found?.hat ?? "");
         return;
       } catch {
         /* fall through to a new session */
@@ -125,6 +127,7 @@
     try {
       const c = await api.createSession("Session", "");
       session.set({ id: c.id, title: cleanTitle(c.title) });
+      wornHat.set("");
     } catch (e) {
       toast((e as Error).message, "error");
     } finally {
@@ -183,10 +186,12 @@
       const ps = await api.listProjectSessions(p.id);
       if (ps.length > 0) {
         session.set({ id: ps[0].id, title: cleanTitle(ps[0].title) });
+        wornHat.set(ps[0].hat ?? "");
       } else {
         const c = await api.createSession("Session", "");
         const { session_id } = await api.assignSession(p.id, c.id);
         session.set({ id: session_id, title: "" });
+        wornHat.set("");
       }
     } catch (e) {
       toast((e as Error).message, "error");
@@ -233,6 +238,16 @@
       toast((e as Error).message, "error");
     }
   }
+  async function takeOffHat() {
+    if (!$session.id) return;
+    try {
+      await api.setSessionHat($session.id, "");
+      wornHat.set("");
+      toast("hat off");
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  }
   function sendChat() {
     pc.send(chatInput);
     chatInput = "";
@@ -246,6 +261,7 @@
     sessionDrawer = false;
     view.set("chat");
     session.set({ id: c.id, title: cleanTitle(c.title) });
+    wornHat.set(c.hat ?? "");
   }
   async function deleteSession(c: Session, e: Event) {
     e.stopPropagation();
@@ -287,6 +303,12 @@
       <button class="chip" onclick={() => projectSheet.set(true)} title="Project">📁 {$activeProject.name}</button>
     {/if}
     <span class="title">{$session.title || "New session"}</span>
+    {#if $wornHat}
+      <span class="chip hatchip" title="This session wears the {$wornHat} hat">
+        🎩 {$wornHat}
+        <button class="offbtn" onclick={takeOffHat} aria-label="Take off the hat">✕</button>
+      </span>
+    {/if}
     {#if $activeProject}
       <button class="iconbtn" onclick={() => (showChatPane = !showChatPane)} aria-label="Toggle chatroom">💬</button>
     {/if}

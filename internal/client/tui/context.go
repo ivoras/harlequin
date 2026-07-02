@@ -38,6 +38,14 @@ func (m *Model) renderHeaderLine() string {
 			left += m.styles.ContextMuted.Background(bg).Render(label)
 		}
 	}
+	// Persistent worn-hat indicator (take it off with /hat off).
+	if m.currentHat != "" {
+		budget := m.width*3/4 - lipgloss.Width(left)
+		if budget > 6 {
+			label := " 🎩 " + ansi.Truncate(m.currentHat, budget-5, "…") + " "
+			left += m.styles.Accent.Background(bg).Render(label)
+		}
+	}
 	leftW := lipgloss.Width(left)
 	zoneW := m.width - leftW
 	if zoneW < 1 {
