@@ -23,7 +23,7 @@ const helpText = `Commands:
   /skill edit <name> [file]            edit a skill file in the built-in editor
   /skill download <name> [file]        download a skill (or one file) for local editing
   /skill upload <name> [file]          upload a skill (or one file); scope flag as above
-  /skill reset <name>                  delete the skill from its scope (scope flag as above)
+  /skill del <name>                    delete the skill from its scope (scope flag as above)
   /skill diff <name>                   show local edits vs the server version
   /hat                  list hats (a hat = system prompt + visible skills)
   /hat show <name>      show a hat's details
@@ -34,26 +34,26 @@ const helpText = `Commands:
   /mcp add <s/name> <url> [header Name:"Value" [Name2:"Value2" ...] | oauth]  register an MCP server
   /mcp test <s/name>    connect and list the server's tools
   /mcp auth <s/name>    authorize an OAuth MCP server (prints a URL to open)
-  /mcp rm <s/name>      remove an MCP server
+  /mcp del <s/name>     remove an MCP server
   /cron                 list scheduled jobs
   /cron show <id>       show a job (incl. last run output)
   /cron add "<name>" "<spec>" js "<target>" ["<input-json>"]   schedule a JS job
   /cron add "<name>" "<spec>" skill "<skill|->" "<prompt>"     schedule a skill job
   /cron on|off <id>     enable / disable a job
   /cron run <id>        run a job now
-  /cron rm <id>         delete a job
+  /cron del <id>        delete a job
   /config               list your per-user config
   /config set <k> <v>   set a config key (e.g. telegram.chat_id 12345)
-  /config rm <key>      delete a config key
+  /config del <key>     delete a config key
   /memory [scope]       list memories with ids (scope: user|shared)
   /memory find <phrase> search memories (own + shared) by relevance
   /memory show <id>     show one memory
-  /memory delete <id>…  delete one or more memories by id (shared if admin)
+  /memory del <id>…     delete one or more memories by id (shared if admin)
   /memory conflicts     list flagged duplicate/conflicting memory pairs
   /memory resolve <id>  mark a conflict flag as resolved
   /docs search <query>     search documents (personal + shared, + project if active)
   /docs list               list documents across scopes
-  /docs delete <scope> <id> delete a document
+  /docs del <scope> <id>   delete a document
   /docs add [scope] <path> upload a .txt/.md/.html/.pdf for RAG (same as /upload)
   /upload [scope] <path>   upload a doc into personal|shared|project (default personal)
   /resume [query]       pick a session to resume (optionally filter by title)
@@ -158,7 +158,7 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 		// Subcommands (no implicit search):
 		//   search|q <query>     search documents
 		//   list|ls              list documents (across scopes)
-		//   delete|rm <scope> <id>   delete a document
+		//   del <scope> <id>     delete a document
 		//   add [scope] <path>   upload (== /upload)
 		sub := ""
 		if len(args) > 0 {
@@ -171,10 +171,10 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 			return m.handleDocsSearch(strings.Join(args[1:], " "))
 		case "list", "ls":
 			return m.handleDocsList()
-		case "delete", "rm", "del":
+		case "del", "delete", "rm":
 			return m.handleDocsDelete(args[1:])
 		default:
-			return infoCmd("usage: /docs <search|q> <query> | list | delete <scope> <id> | add [scope] <path>")
+			return infoCmd("usage: /docs <search|q> <query> | list | del <scope> <id> | add [scope] <path>")
 		}
 	case "/resume":
 		// "/resume <id>" jumps straight to that session; "/resume [query]" opens the
@@ -289,9 +289,9 @@ func (m *Model) handleMCPSub(args []string, raw string) tea.Cmd {
 		}
 	case "add":
 		return m.handleMCPAdd(args[1:], raw)
-	case "rm", "remove", "delete":
+	case "del", "rm", "remove", "delete":
 		if len(args) < 2 {
-			return infoCmd("usage: /mcp rm <scope/name>")
+			return infoCmd("usage: /mcp del <scope/name>")
 		}
 		scope, name := parseMCPRef(args[1])
 		return func() tea.Msg {
@@ -331,7 +331,7 @@ func (m *Model) handleMCPSub(args []string, raw string) tea.Cmd {
 			return infoMsg{"Open this URL in a browser to authorize, then run /mcp test " + scope + "/" + name + ":\n" + res.AuthorizeURL}
 		}
 	default:
-		return infoCmd("usage: /mcp [list|show <s/name>|add ...|test <s/name>|auth <s/name>|rm <s/name>]")
+		return infoCmd("usage: /mcp [list|show <s/name>|add ...|test <s/name>|auth <s/name>|del <s/name>]")
 	}
 }
 
@@ -615,7 +615,7 @@ func (m *Model) handleDocsList() tea.Cmd {
 // scope uses the active project.
 func (m *Model) handleDocsDelete(args []string) tea.Cmd {
 	if len(args) < 2 {
-		return infoCmd("usage: /docs delete <personal|shared|project> <id>")
+		return infoCmd("usage: /docs del <personal|shared|project> <id>")
 	}
 	scope := strings.ToLower(args[0])
 	switch scope {
@@ -728,9 +728,9 @@ func (m *Model) handleMemorySub(args []string) tea.Cmd {
 			}
 			return infoMsg{renderMemoryList(mems, m.canManageShared())}
 		}
-	case "delete", "rm", "del":
+	case "del", "delete", "rm":
 		if len(args) < 2 {
-			return infoCmd("usage: /memory delete <id> [<id> ...]  (ids like u.7 or s.3 from /memory)")
+			return infoCmd("usage: /memory del <id> [<id> ...]  (ids like u.7 or s.3 from /memory)")
 		}
 		ids := args[1:]
 		return func() tea.Msg {
@@ -770,7 +770,7 @@ func (m *Model) handleMemorySub(args []string) tea.Cmd {
 	default:
 		scope := args[0]
 		if scope != "user" && scope != "shared" {
-			return infoCmd("usage: /memory [user|shared|find|show|delete|conflicts|resolve]")
+			return infoCmd("usage: /memory [user|shared|find|show|del|conflicts|resolve]")
 		}
 		return func() tea.Msg {
 			mems, err := m.client.ListMemory(context.Background(), scope)
@@ -932,7 +932,7 @@ func skillScopeFlag(args []string) ([]string, string) {
 func (m *Model) handleSkillSub(args []string) tea.Cmd {
 	args, scope := skillScopeFlag(args)
 	if len(args) < 1 {
-		return infoCmd("usage: /skill <create|edit|download|upload|reset|diff> <name> [file] [--user|--shared|--project]")
+		return infoCmd("usage: /skill <create|edit|download|upload|del|diff> <name> [file] [--user|--shared|--project]")
 	}
 	sub := strings.ToLower(args[0])
 	if len(args) < 2 {
@@ -989,7 +989,7 @@ func (m *Model) handleSkillSub(args []string) tea.Cmd {
 			}
 			return infoMsg{"uploaded " + name + scopeLabel(scope)}
 		}
-	case "reset":
+	case "del", "reset":
 		return func() tea.Msg {
 			if err := m.skills.Reset(context.Background(), name, scope); err != nil {
 				return errMsg{err}
