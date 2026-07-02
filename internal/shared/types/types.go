@@ -131,6 +131,16 @@ type Hat struct {
 	// (files under skills/<name>/...); they take precedence over normal
 	// project/shared/user resolution while the hat is worn.
 	OverlaySkills []string `json:"overlay_skills,omitempty"`
+	// HasCustomPrompt: system_prompt.md has a non-empty body. PromptDisabled:
+	// that body is kept but inactive (use_prompt: false), so the default
+	// system prompt is used while the hat is worn.
+	HasCustomPrompt bool `json:"has_custom_prompt,omitempty"`
+	PromptDisabled  bool `json:"prompt_disabled,omitempty"`
+}
+
+// SetHatPromptRequest is the body of POST /hats/{name}/prompt.
+type SetHatPromptRequest struct {
+	Enabled bool `json:"enabled"`
 }
 
 // CreateHatRequest is the body of POST /hats.

@@ -19,6 +19,13 @@ func (m *Manager) RenderFile(name string, userID int64, username string) (string
 	return jstmpl.Render(m.runner, string(raw), m.makeCtx(userID, username, ""))
 }
 
+// BakedSystemPrompt returns the raw (unrendered) default system prompt
+// template from the binary — used to seed a hat's custom prompt editor.
+func (m *Manager) BakedSystemPrompt() (string, error) {
+	raw, err := fs.ReadFile(m.baked, "skills/system_prompt.md")
+	return string(raw), err
+}
+
 // RenderText renders arbitrary template text (e.g. a hat's stored system
 // prompt) with the same context as files.
 func (m *Manager) RenderText(text string, userID int64, username string) (string, error) {

@@ -101,7 +101,7 @@
           <div class="col" style="flex:1; min-width:0; gap:1px;">
             <div class="row" style="gap:6px;">
               <strong>{d.title}</strong>
-              <span class="pill scope-{d.scope}">{d.scope ?? "shared"}</span>
+              <span class="pill scope-{d.scope}">{d.scope === "project" ? `project: ${$activeProject?.name ?? "?"}` : (d.scope ?? "shared")}</span>
             </div>
             <span class="muted small">{d.mime} · {new Date(d.created_at).toLocaleDateString()}</span>
           </div>

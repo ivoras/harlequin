@@ -8,7 +8,7 @@
 
   let hats = $state<Hat[]>([]);
   let skills = $state<SkillInfo[]>([]);
-  let editing = $state<{ name: string; path: string } | null>(null);
+  let editing = $state<{ name: string; path: string; initial?: string } | null>(null);
   let filesOf = $state<{ name: string; files: string[] } | null>(null);
   let addSel = $state<Record<string, string>>({}); // hat -> skill picked in its add-select
 
@@ -105,6 +105,34 @@
     filesOf = null;
     editing = { name, path };
   }
+  // Open the system-prompt editor; when the hat has no custom prompt yet, seed
+  // the body with the default system prompt template so specialising starts
+  // from the real default.
+  async function editPrompt(h: Hat) {
+    if (h.has_custom_prompt) {
+      editFile(h.name, "system_prompt.md");
+      return;
+    }
+    try {
+      const [file, tpl] = await Promise.all([
+        api.getHatFile(h.name, "system_prompt.md"),
+        api.getSystemPromptTemplate(),
+      ]);
+      const seeded = file.content.replace(/\s+$/, "") + "\n" + tpl.content;
+      editing = { name: h.name, path: "system_prompt.md", initial: seeded };
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  }
+  async function togglePrompt(h: Hat) {
+    try {
+      await api.setHatPromptEnabled(h.name, !!h.prompt_disabled);
+      toast(h.prompt_disabled ? "custom prompt enabled" : "custom prompt disabled (content kept)");
+      await load();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  }
   async function onEditorClosed() {
     editing = null;
     await load();
@@ -147,6 +175,12 @@
             {/if}
           </div>
           <div class="muted small">{h.description}</div>
+          <div class="muted small">
+            prompt:
+            {#if h.has_custom_prompt && h.prompt_disabled}<span class="warn">custom, disabled — default in use</span>
+            {:else if h.has_custom_prompt}custom (replaces the default)
+            {:else}default{/if}
+          </div>
           {#if h.skills && h.skills.length}
             <div class="muted small">visible skills: {h.skills.join(", ")}</div>
           {/if}
@@ -166,7 +200,10 @@
           {/if}
           {#if admin}
             <div class="row small" style="gap:6px; flex-wrap:wrap;">
-              <button class="small" onclick={() => editFile(h.name, "system_prompt.md")} title="The hat's system_prompt.md: frontmatter (description, visible skills) + optional body that replaces the default system prompt while worn">Edit system prompt</button>
+              <button class="small" onclick={() => editPrompt(h)} title="The hat's system_prompt.md: frontmatter (description, visible skills) + optional body that replaces the default system prompt while worn. Creating one starts from a copy of the default.">{h.has_custom_prompt ? "Edit system prompt" : "Create system prompt"}</button>
+              {#if h.has_custom_prompt}
+                <button class="small" onclick={() => togglePrompt(h)}>{h.prompt_disabled ? "Enable prompt" : "Use default prompt"}</button>
+              {/if}
               <button class="small" onclick={() => showFiles(h)}>Files</button>
               <select bind:value={addSel[h.name]}>
                 <option value="">add skill overlay…</option>
@@ -207,7 +244,7 @@
 {/if}
 
 {#if editing}
-  <SkillEditor name={editing.name} path={editing.path} hat onClose={onEditorClosed} />
+  <SkillEditor name={editing.name} path={editing.path} initial={editing.initial} hat onClose={onEditorClosed} />
 {/if}
 
 <style>

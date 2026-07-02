@@ -230,6 +230,23 @@ func (c *Client) AddHatSkill(ctx context.Context, hat, skill string) error {
 		types.AddHatSkillRequest{Skill: skill}, nil)
 }
 
+// SetHatPromptEnabled toggles a hat's custom system prompt (content is kept).
+// Owner/admin only.
+func (c *Client) SetHatPromptEnabled(ctx context.Context, name string, enabled bool) error {
+	return c.do(ctx, http.MethodPost, "/hats/"+url.PathEscape(name)+"/prompt",
+		types.SetHatPromptRequest{Enabled: enabled}, nil)
+}
+
+// SystemPromptTemplate returns the raw default system prompt template.
+// Owner/admin only.
+func (c *Client) SystemPromptTemplate(ctx context.Context) (string, error) {
+	var out map[string]string
+	if err := c.do(ctx, http.MethodGet, "/system-prompt", nil, &out); err != nil {
+		return "", err
+	}
+	return out["content"], nil
+}
+
 // RemoveHatSkill drops a skill's overlay from the hat. Owner/admin only.
 func (c *Client) RemoveHatSkill(ctx context.Context, hat, skill string) error {
 	return c.do(ctx, http.MethodDelete, "/hats/"+url.PathEscape(hat)+"/skills/"+url.PathEscape(skill), nil, nil)

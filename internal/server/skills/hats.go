@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/ivoras/harlequin/internal/shared/types"
@@ -30,6 +31,10 @@ var ErrHatNotFound = errors.New("hat not found")
 type hatFrontmatter struct {
 	Description string   `yaml:"description"`
 	Skills      []string `yaml:"skills"`
+	// UsePrompt gates the custom system prompt (the file body): false keeps
+	// the body around but the default system prompt is used while worn.
+	// nil/true = body active when non-empty.
+	UsePrompt *bool `yaml:"use_prompt"`
 }
 
 // hatFromPrompt builds the Hat DTO from its (possibly empty) system_prompt.md.
@@ -39,7 +44,13 @@ func hatFromPrompt(name, raw string) types.Hat {
 		fm, body := splitHatFrontmatter(raw)
 		h.Description = fm.Description
 		h.Skills = fm.Skills
-		h.SystemPrompt = strings.TrimSpace(body)
+		h.HasCustomPrompt = strings.TrimSpace(body) != ""
+		h.PromptDisabled = fm.UsePrompt != nil && !*fm.UsePrompt
+		if !h.PromptDisabled {
+			// A disabled custom prompt is kept in the file but not served, so
+			// the agent (and clients) fall back to the default system prompt.
+			h.SystemPrompt = strings.TrimSpace(body)
+		}
 	}
 	return h
 }
@@ -196,6 +207,45 @@ func (m *Manager) AddHatSkill(ctx context.Context, userDB, projDB *sql.DB, hat, 
 		files[hatSkillPrefix+skill+"/"+rel] = content
 	}
 	return m.SaveHat(ctx, hat, userID, files)
+}
+
+// SetHatPromptEnabled toggles the hat's custom system prompt via the
+// use_prompt frontmatter flag — a textual patch that preserves the body (and
+// any comments), so disabling never loses the prompt's content.
+func (m *Manager) SetHatPromptEnabled(ctx context.Context, name string, enabled bool, userID int64) error {
+	files, err := m.GetHatFiles(ctx, name)
+	if err != nil {
+		return err
+	}
+	files[hatPromptFile] = setUsePromptFlag(files[hatPromptFile], enabled)
+	return m.SaveHat(ctx, name, userID, files)
+}
+
+// setUsePromptFlag sets/replaces the use_prompt line in the YAML frontmatter,
+// creating a frontmatter block if the file has none.
+func setUsePromptFlag(content string, enabled bool) string {
+	line := "use_prompt: " + strconv.FormatBool(enabled)
+	trimmed := strings.TrimLeft(content, "\ufeff \t\r\n")
+	if strings.HasPrefix(trimmed, "---") {
+		rest := trimmed[3:]
+		if idx := strings.Index(rest, "\n---"); idx >= 0 {
+			header := rest[:idx]
+			lines := strings.Split(header, "\n")
+			replaced := false
+			for i, l := range lines {
+				if strings.HasPrefix(strings.TrimSpace(l), "use_prompt:") {
+					lines[i] = line
+					replaced = true
+					break
+				}
+			}
+			if !replaced {
+				lines = append(lines, line)
+			}
+			return "---" + strings.Join(lines, "\n") + rest[idx:]
+		}
+	}
+	return "---\n" + line + "\n---\n" + content
 }
 
 // RemoveHatSkill drops a skill's overlay from the hat (the skill then resolves

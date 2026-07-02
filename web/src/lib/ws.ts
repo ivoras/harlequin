@@ -50,6 +50,13 @@ export class SessionSocket {
   }
 
   private connect(haveSeq: number): void {
+    // Never allow two live sockets from one SessionSocket: kill any previous
+    // connection (and pending reconnect) before dialing.
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    if (this.ws) {
+      this.ws.onclose = null;
+      this.ws.close();
+    }
     const ws = new WebSocket(wsUrl(this.sessionID, this.projectID), wsProtocols());
     this.ws = ws;
 
@@ -61,6 +68,7 @@ export class SessionSocket {
       this.pending = [];
     };
     ws.onmessage = (e) => {
+      if (this.ws !== ws) return; // stale socket still draining: drop
       let ev: StreamEvent;
       try {
         ev = JSON.parse(e.data);
@@ -71,6 +79,7 @@ export class SessionSocket {
       this.onEvent(ev);
     };
     ws.onclose = () => {
+      if (this.ws !== ws) return; // superseded connection: no reconnect loop
       this.ws = null;
       if (this.closedByUser) {
         this.onStatus?.("closed");

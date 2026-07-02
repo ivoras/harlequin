@@ -132,6 +132,9 @@
           </div>
         {/if}
       {/each}
+      {#if sc.loading && sc.ppLabel}
+        <div class="muted small ppline">{sc.ppLabel}</div>
+      {/if}
       {#if sc.items.length === 0}
         <div class="muted" style="text-align:center; margin-top:18vh;">Start the session.</div>
       {/if}
@@ -188,8 +191,6 @@
     </div>
     {#if sc.reconnecting}
       <div class="container muted small" style="padding-top:2px;">Reconnecting…</div>
-    {:else if sc.loading && sc.ppLabel}
-      <div class="container muted small" style="padding-top:2px;">{sc.ppLabel}</div>
     {:else if sc.ctx}
       <div class="container muted small" style="padding-top:2px;">
         {sc.ctx.model}{#if sc.ctx.max} · {fmtk(sc.ctx.used)}/{fmtk(sc.ctx.max)} ctx{/if}

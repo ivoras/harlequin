@@ -26,6 +26,11 @@ class SessionController {
 
   private socket: SessionSocket | null = null;
   private currentId = 0;
+  // attachGen guards against overlapping attach() calls (even for the SAME
+  // session id): while the history fetch is awaited there is no socket yet, so
+  // a second attach could otherwise slip past the idempotence check and open a
+  // second WebSocket — after which every event (and message) arrives twice.
+  private attachGen = 0;
   private optimisticUser = 0; // user-message echoes to skip (rendered locally)
   private coldHistory: Message[] | null = null; // committed history awaiting the synced cut
   private streamingAssistant: Item | null = null;
@@ -38,6 +43,7 @@ class SessionController {
   // continues live. Alerts are not reset — they are user-scoped.
   async attach(id: number, projectID = 0): Promise<void> {
     if (id === this.currentId && projectID === this.projectID && this.socket) return;
+    const gen = ++this.attachGen;
     this.currentId = id;
     this.projectID = projectID;
     this.items = [];
@@ -54,13 +60,14 @@ class SessionController {
       this.coldHistory = [];
       toast((e as Error).message, "error");
     }
-    if (this.currentId !== id) return; // switched again while loading
+    if (gen !== this.attachGen) return; // a newer attach superseded this one
     this.socket = new SessionSocket(id, (ev) => this.onEvent(ev), (s) => (this.reconnecting = s === "reconnecting"), projectID);
     this.socket.open();
   }
 
   // detach tears down the connection (e.g. on logout).
   detach(): void {
+    this.attachGen++; // invalidate any attach still awaiting its history fetch
     this.socket?.close();
     this.socket = null;
     this.currentId = 0;

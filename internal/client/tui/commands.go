@@ -33,6 +33,7 @@ const helpText = `Commands:
   /hat edit <name> [file]              (admin) edit a hat file (default system_prompt.md)
   /hat files <name>     list a hat's files (prompt + skill overlays)
   /hat addskill <hat> <skill>          (admin) copy the resolved skill into the hat's overlay
+  /hat prompt <name> on|off            (admin) toggle the hat's custom prompt (content is kept)
   /hat rmskill <hat> <skill>           (admin) remove a skill overlay from the hat
   /hat del <name>       (admin) delete a hat
   /mcp                  list MCP servers (shared + your own) and status
@@ -325,6 +326,23 @@ func (m *Model) handleHatSub(args []string) tea.Cmd {
 			}
 			return infoMsg{"removed the " + skill + " overlay from hat " + hat}
 		}
+	case "prompt":
+		if !m.canManageShared() {
+			return infoCmd("/hat prompt is owner/admin only")
+		}
+		if len(args) < 3 || (args[2] != "on" && args[2] != "off") {
+			return infoCmd("usage: /hat prompt <name> on|off  (off keeps the custom prompt's content but uses the default)")
+		}
+		name, enabled := args[1], args[2] == "on"
+		return func() tea.Msg {
+			if err := m.client.SetHatPromptEnabled(context.Background(), name, enabled); err != nil {
+				return errMsg{err}
+			}
+			if enabled {
+				return infoMsg{"hat " + name + ": custom system prompt enabled"}
+			}
+			return infoMsg{"hat " + name + ": custom system prompt disabled (content kept; default prompt in use)"}
+		}
 	case "del":
 		if !m.canManageShared() {
 			return infoCmd("/hat del is owner/admin only")
@@ -340,7 +358,7 @@ func (m *Model) handleHatSub(args []string) tea.Cmd {
 			return infoMsg{"deleted hat " + name}
 		}
 	default:
-		return infoCmd("usage: /hat [list|show <name>|wear <name>|off|create|edit|files|addskill|rmskill|del]")
+		return infoCmd("usage: /hat [list|show <name>|wear <name>|off|create|edit|files|addskill|rmskill|prompt|del]")
 	}
 }
 
@@ -603,9 +621,12 @@ func renderHatDetail(h types.Hat) string {
 	if len(h.OverlaySkills) > 0 {
 		fmt.Fprintf(&sb, "  overlays:    %s\n", strings.Join(h.OverlaySkills, ", "))
 	}
-	if h.SystemPrompt != "" {
+	switch {
+	case h.HasCustomPrompt && h.PromptDisabled:
+		sb.WriteString("  prompt:      custom, DISABLED (default in use; /hat prompt " + h.Name + " on)")
+	case h.HasCustomPrompt:
 		sb.WriteString("  prompt:      custom (overrides the default)")
-	} else {
+	default:
 		sb.WriteString("  prompt:      (default)")
 	}
 	return sb.String()
