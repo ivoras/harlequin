@@ -54,9 +54,9 @@ func (m *Model) handleConfigSub(args []string) tea.Cmd {
 			}
 			return infoMsg{"set " + key}
 		}
-	case "rm", "remove", "delete", "unset":
+	case "del", "rm", "remove", "delete", "unset":
 		if len(args) < 2 {
-			return infoCmd("usage: /config rm <key>")
+			return infoCmd("usage: /config del <key>")
 		}
 		key := args[1]
 		return func() tea.Msg {

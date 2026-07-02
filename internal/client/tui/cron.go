@@ -48,10 +48,10 @@ func (m *Model) handleCronSub(args []string, raw string) tea.Cmd {
 		}
 	case "add":
 		return m.handleCronAdd(raw)
-	case "rm", "remove", "delete":
+	case "del", "rm", "remove", "delete":
 		id, ok := cronID(args, 1)
 		if !ok {
-			return infoCmd("usage: /cron rm <id>")
+			return infoCmd("usage: /cron del <id>")
 		}
 		return func() tea.Msg {
 			if err := m.client.DeleteCron(context.Background(), id); err != nil {

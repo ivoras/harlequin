@@ -45,7 +45,7 @@ They resolve across scopes: project (when one is active), then shared
 | `/skill edit <name> [file]` | Edit a skill file in the built-in editor. |
 | `/skill download <name> [file]` | Download a skill (or one file) for local editing. |
 | `/skill upload <name> [file]` | Upload a skill (or one file); scope flags as above. |
-| `/skill reset <name>` | Delete the skill from a scope (scope flags as above). |
+| `/skill del <name>` | Delete the skill from a scope (scope flags as above). |
 | `/skill diff <name>` | Show local edits vs the server version. |
 | `/hat` | List hats. A hat is an org-defined system prompt plus a visible-skills list. |
 | `/hat show <name>` | Show a hat's details. |
@@ -59,13 +59,13 @@ They resolve across scopes: project (when one is active), then shared
 | `/memory [scope]` | List memories with ids (`user` or `shared`). |
 | `/memory find <phrase>` | Search memories (your own + shared) by relevance. |
 | `/memory show <id>` | Show one memory. |
-| `/memory delete <id>…` | Delete one or more memories by id (shared ones if you're an admin). |
+| `/memory del <id>…` | Delete one or more memories by id (shared ones if you're an admin). |
 | `/memory conflicts` | List flagged duplicate/conflicting memory pairs. |
 | `/memory resolve <id>` | Mark a conflict flag as resolved. |
 | `/docs search <query>` | Search documents (personal + shared, + project if active). |
 | `/docs list` | List documents across scopes. |
 | `/docs add [scope] <path>` | Upload a `.txt`/`.md`/`.html`/`.pdf` for retrieval (same as `/upload`). |
-| `/docs delete <scope> <id>` | Delete a document. |
+| `/docs del <scope> <id>` | Delete a document. |
 | `/upload [scope] <path>` | Upload a document into `personal`, `shared`, or `project` scope (default personal). |
 
 ### Projects
@@ -88,16 +88,16 @@ memories, and a live chatroom (shown as a side pane while a project is active).
 | `/cron add "<name>" "<spec>" skill "<skill\|->" "<prompt>"` | Schedule a skill/prompt job. |
 | `/cron on\|off <id>` | Enable / disable a job. |
 | `/cron run <id>` | Run a job immediately. |
-| `/cron rm <id>` | Delete a job. |
+| `/cron del <id>` | Delete a job. |
 | `/mcp` | List MCP servers (shared + your own) with status. |
 | `/mcp show <s/name>` | Show one server (`s` is the scope: `shared` or `user`). |
 | `/mcp add <s/name> <url> [header Name:"Value" … \| oauth]` | Register an MCP server. |
 | `/mcp test <s/name>` | Connect and list the server's tools. |
 | `/mcp auth <s/name>` | Authorize an OAuth MCP server (prints a URL to open). |
-| `/mcp rm <s/name>` | Remove an MCP server. |
+| `/mcp del <s/name>` | Remove an MCP server. |
 | `/config` | List your per-user config (small key/value settings). |
 | `/config set <k> <v>` | Set a key, e.g. `/config set telegram.chat_id 12345`. |
-| `/config rm <key>` | Delete a key. |
+| `/config del <key>` | Delete a key. |
 
 ### Alerts, usage, misc
 

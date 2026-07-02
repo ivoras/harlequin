@@ -202,7 +202,7 @@ Manage it from the TUI:
 ```
 /config                              list your config
 /config set telegram.chat_id 12345   register a Telegram chat
-/config rm telegram.chat_id          remove it
+/config del telegram.chat_id         remove it
 ```
 
 ## Web UI
