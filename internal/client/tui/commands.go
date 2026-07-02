@@ -17,6 +17,7 @@ import (
 const helpText = `Commands:
   /help                 show this help
   /new                  start a new session
+  /clear                clear this session's messages (fresh context; keeps session, title, hat)
   /queue [del <n>|clear] messages typed while busy are queued; list/remove them
   /skills               list available skills
   /skill create <name> <description>   create a new skill (scope: --user|--shared|--project)
@@ -118,6 +119,17 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 				what = "full transcript"
 			}
 			return infoMsg{fmt.Sprintf("exported %s to %s", what, path)}
+		}
+	case "/clear":
+		if m.loading {
+			return infoCmd("a turn is in flight — wait for it to finish (or Esc to interrupt) before /clear")
+		}
+		sessionID, projectID := m.sessionID, m.activeProjectID
+		return func() tea.Msg {
+			if err := m.client.ClearSession(context.Background(), sessionID, projectID); err != nil {
+				return errMsg{err}
+			}
+			return sessionClearedMsg{}
 		}
 	case "/quit", "/exit":
 		return tea.Quit

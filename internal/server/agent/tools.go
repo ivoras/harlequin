@@ -420,7 +420,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 
 	if a.Docs != nil {
 		reg["search_docs"] = toolEntry{
-			def: fnTool("search_docs", "Search the organisation document corpus (RAG).", map[string]any{
+			def: fnTool("search_docs", `Search the organisation document corpus (RAG) — personal, shared, and (in a project session) project documents. Results are ranked chunks labelled with scope and document chunk id (d.u.N / d.s.N / d.p.N). If the first query returns irrelevant or empty results, retry with synonyms and related terms (e.g. HQ → headquarters, seat, Brussels) before concluding the corpus lacks the answer.`, map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"query": map[string]any{"type": "string"},
@@ -436,7 +436,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 				if err != nil {
 					return "", err
 				}
-				return renderResults(res), nil
+				return renderDocResults(res), nil
 			},
 		}
 	}
@@ -786,6 +786,25 @@ func renderResults(res []types.SearchResult) string {
 		}
 		if len(r.SlotKeys) > 0 {
 			fmt.Fprintf(&sb, " {%s}", strings.Join(r.SlotKeys, ", "))
+		}
+		fmt.Fprintf(&sb, "] %s\n", strings.TrimSpace(r.Content))
+	}
+	return sb.String()
+}
+
+func renderDocResults(res []types.SearchResult) string {
+	if len(res) == 0 {
+		return "(no document results)"
+	}
+	var sb strings.Builder
+	sb.WriteString("Ranked document results (prefer #1 when it directly answers the question; cite scope and chunk id; do not invent facts not listed here):\n")
+	for i, r := range res {
+		fmt.Fprintf(&sb, "%d. [%s", i+1, r.ID)
+		if r.Scope != "" {
+			fmt.Fprintf(&sb, " %s", r.Scope)
+		}
+		if r.Source != "" {
+			fmt.Fprintf(&sb, " · %s", r.Source)
 		}
 		fmt.Fprintf(&sb, "] %s\n", strings.TrimSpace(r.Content))
 	}

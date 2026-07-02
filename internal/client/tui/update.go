@@ -253,6 +253,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.refreshViewport()
 		return m, nil
 
+	case sessionClearedMsg:
+		m.blocks = nil
+		m.appendBlock("status", "context cleared — this session starts fresh")
+		m.refreshViewport()
+		return m, nil
+
 	case sessionHatMsg:
 		if msg.sessionID == m.sessionID {
 			m.currentHat = msg.hat

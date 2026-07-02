@@ -109,6 +109,7 @@ func (s *Server) Router() http.Handler {
 			r.Delete("/sessions/{id}", s.handleDeleteSession)
 			r.Get("/sessions/{id}/log", s.handleSessionLog)
 			r.Post("/sessions/{id}/hat", s.handleSetSessionHat)
+			r.Post("/sessions/{id}/clear", s.handleClearSession)
 
 			r.Get("/hats", s.handleListHats)
 			r.Post("/hats", s.handleCreateHat)

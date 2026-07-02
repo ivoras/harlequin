@@ -78,6 +78,26 @@ class SessionController {
     this.loading = false;
   }
 
+  // clear wipes the current session's messages server-side and resets the
+  // transcript — the next turn starts with a fresh context. Works for project
+  // sessions too (the projectID routes the clear to the project database).
+  async clear(): Promise<void> {
+    if (!this.currentId) return;
+    if (this.loading) {
+      toast("a turn is in flight — stop it before /clear", "error");
+      return;
+    }
+    try {
+      await api.clearSession(this.currentId, this.projectID);
+      this.items = [];
+      this.ctx = null;
+      this.streamingAssistant = null;
+      toast("context cleared");
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  }
+
   // send is the composer entry point: queue while a turn is in flight, else start.
   send(text: string): void {
     const t = text.trim();

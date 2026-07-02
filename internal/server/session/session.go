@@ -145,6 +145,13 @@ func (s *Store) Delete(ctx context.Context, db *sql.DB, id, userID int64) error 
 	return err
 }
 
+// ClearMessages deletes all of a session's messages (a "/clear": the session,
+// its title, and its hat survive; the next turn starts with a fresh context).
+func (s *Store) ClearMessages(ctx context.Context, db *sql.DB, sessionID int64) error {
+	_, err := db.ExecContext(ctx, `DELETE FROM messages WHERE session_id = ?`, sessionID)
+	return err
+}
+
 // AddMessage appends a message to a session and bumps updated_at.
 func (s *Store) AddMessage(ctx context.Context, db *sql.DB, sessionID int64, role, content string, toolCalls []types.ToolCall) (*types.Message, error) {
 	return s.AddMessageFull(ctx, db, sessionID, role, content, toolCalls, "", "")
