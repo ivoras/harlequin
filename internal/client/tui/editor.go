@@ -23,11 +23,14 @@ type skillEditor struct {
 	// explicit scope and more than one writable scope).
 	picking  bool
 	writable []string
+	// isHat: the buffer is a hat file (hats are shared-only, saved directly).
+	isHat bool
 }
 
 // skillEditorLoadedMsg carries a skill file fetched for editing.
 type skillEditorLoadedMsg struct {
 	name, relpath, scope, fromScope, content string
+	isHat                                    bool
 	err                                      error
 }
 
@@ -42,6 +45,14 @@ func (m *Model) openSkillEditor(name, relpath, scope string) tea.Cmd {
 	return func() tea.Msg {
 		content, fromScope, err := m.client.GetSkillFile(context.Background(), name, relpath)
 		return skillEditorLoadedMsg{name: name, relpath: relpath, scope: scope, fromScope: fromScope, content: content, err: err}
+	}
+}
+
+// openHatEditor fetches a hat file, then opens the editor overlay on it.
+func (m *Model) openHatEditor(name, relpath string) tea.Cmd {
+	return func() tea.Msg {
+		content, err := m.client.GetHatFile(context.Background(), name, relpath)
+		return skillEditorLoadedMsg{name: name, relpath: relpath, isHat: true, content: content, err: err}
 	}
 }
 
@@ -68,6 +79,7 @@ func (m *Model) startSkillEditor(msg skillEditorLoadedMsg) tea.Cmd {
 		relpath:   msg.relpath,
 		scope:     msg.scope,
 		fromScope: msg.fromScope,
+		isHat:     msg.isHat,
 	}
 	m.phase = phaseEditor
 	return m.editor.ta.Focus()
@@ -117,6 +129,9 @@ func (m *Model) handleEditorKey(msg tea.KeyPressMsg, key string) (tea.Model, tea
 	}
 	switch key {
 	case "ctrl+s":
+		if ed.isHat { // hats are shared-only: no scope to pick
+			return m, m.saveSkillEditor("")
+		}
 		if ed.scope != "" { // explicit --scope flag on /skill edit: no prompt
 			return m, m.saveSkillEditor(ed.scope)
 		}
@@ -155,9 +170,14 @@ func (m *Model) saveSkillEditor(scope string) tea.Cmd {
 		return nil
 	}
 	ed.picking = false
-	name, relpath, content := ed.name, ed.relpath, ed.ta.Value()
+	name, relpath, content, isHat := ed.name, ed.relpath, ed.ta.Value(), ed.isHat
 	return func() tea.Msg {
-		err := m.client.PutSkillFile(context.Background(), name, relpath, scope, content)
+		var err error
+		if isHat {
+			err = m.client.PutHatFile(context.Background(), name, relpath, content)
+		} else {
+			err = m.client.PutSkillFile(context.Background(), name, relpath, scope, content)
+		}
 		return skillEditorSavedMsg{name: name, relpath: relpath, err: err}
 	}
 }
@@ -168,7 +188,11 @@ func (m *Model) editorView() string {
 	if ed == nil {
 		return ""
 	}
-	title := " edit skill://" + ed.name + "/" + ed.relpath + " "
+	scheme := "skill"
+	if ed.isHat {
+		scheme = "hat"
+	}
+	title := " edit " + scheme + "://" + ed.name + "/" + ed.relpath + " "
 	header := m.styles.Header.Render(title)
 
 	var hint string
@@ -182,6 +206,8 @@ func (m *Model) editorView() string {
 			hint += " · (p)roject"
 		}
 		hint += " · Enter = " + ed.defaultScope() + " · Esc cancel"
+	case ed.isHat:
+		hint = "Ctrl-S save · Esc cancel · hat file (shared)"
 	default:
 		target := ed.scope
 		if target == "" {

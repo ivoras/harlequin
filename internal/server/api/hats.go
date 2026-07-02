@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ivoras/harlequin/internal/server/auth"
@@ -72,6 +73,128 @@ func (s *Server) handleDeleteHat(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
 		s.Audit.Log(r.Context(), udb, "hat_delete", name, nil)
+		return nil
+	})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleCreateHat scaffolds a new hat (elevated only).
+func (s *Server) handleCreateHat(w http.ResponseWriter, r *http.Request) {
+	u, ok := requireElevated(w, r)
+	if !ok {
+		return
+	}
+	var req types.CreateHatRequest
+	if err := decode(r, &req); err != nil || strings.TrimSpace(req.Name) == "" {
+		writeErr(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if err := s.Skills.CreateHat(r.Context(), req.Name, req.Description, u.ID); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		s.Audit.Log(r.Context(), udb, "hat_create", req.Name, nil)
+		return nil
+	})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleGetHatFiles returns a hat's raw files (any authenticated user).
+func (s *Server) handleGetHatFiles(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	files, err := s.Skills.GetHatFiles(r.Context(), name)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "hat not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, types.HatFiles{Name: name, Files: files})
+}
+
+// handleGetHatFile returns one file of a hat.
+func (s *Server) handleGetHatFile(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	relpath := chi.URLParam(r, "*")
+	files, err := s.Skills.GetHatFiles(r.Context(), name)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "hat not found")
+		return
+	}
+	content, ok := files[relpath]
+	if !ok {
+		writeErr(w, http.StatusNotFound, "file not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"name": name, "path": relpath, "content": content})
+}
+
+// handlePutHatFile writes one file of a hat (elevated only).
+func (s *Server) handlePutHatFile(w http.ResponseWriter, r *http.Request) {
+	u, ok := requireElevated(w, r)
+	if !ok {
+		return
+	}
+	name := chi.URLParam(r, "name")
+	relpath := chi.URLParam(r, "*")
+	var req struct {
+		Content string `json:"content"`
+	}
+	if err := decode(r, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := s.Skills.PutHatFile(r.Context(), name, relpath, req.Content, u.ID); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		s.Audit.Log(r.Context(), udb, "hat_save", name+"/"+relpath, nil)
+		return nil
+	})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleAddHatSkill copies the currently-resolved skill into the hat's overlay
+// (elevated only). The overlay copy then shadows normal resolution while worn.
+func (s *Server) handleAddHatSkill(w http.ResponseWriter, r *http.Request) {
+	u, ok := requireElevated(w, r)
+	if !ok {
+		return
+	}
+	name := chi.URLParam(r, "name")
+	var req types.AddHatSkillRequest
+	if err := decode(r, &req); err != nil || strings.TrimSpace(req.Skill) == "" {
+		writeErr(w, http.StatusBadRequest, "skill is required")
+		return
+	}
+	err := s.withSkillScopes(r, u.ID, func(udb, pdb *sql.DB) error {
+		return s.Skills.AddHatSkill(r.Context(), udb, pdb, name, req.Skill, u.ID)
+	})
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		s.Audit.Log(r.Context(), udb, "hat_add_skill", name+"/"+req.Skill, nil)
+		return nil
+	})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleRemoveHatSkill drops a skill's overlay from the hat (elevated only).
+func (s *Server) handleRemoveHatSkill(w http.ResponseWriter, r *http.Request) {
+	u, ok := requireElevated(w, r)
+	if !ok {
+		return
+	}
+	name := chi.URLParam(r, "name")
+	skill := chi.URLParam(r, "skill")
+	if err := s.Skills.RemoveHatSkill(r.Context(), name, skill); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		s.Audit.Log(r.Context(), udb, "hat_remove_skill", name+"/"+skill, nil)
 		return nil
 	})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})

@@ -25,10 +25,16 @@ const helpText = `Commands:
   /skill upload <name> [file]          upload a skill (or one file); scope flag as above
   /skill del <name>                    delete the skill from its scope (scope flag as above)
   /skill diff <name>                   show local edits vs the server version
-  /hat                  list hats (a hat = system prompt + visible skills)
-  /hat show <name>      show a hat's details
+  /hat                  list hats (a hat = overlay skills + system prompt)
+  /hat show <name>      show a hat's details (visible + overlay skills)
   /hat wear <name>      wear a hat in this session
   /hat off              remove the hat (use the default)
+  /hat create <name> [description]     (admin) create a hat
+  /hat edit <name> [file]              (admin) edit a hat file (default system_prompt.md)
+  /hat files <name>     list a hat's files (prompt + skill overlays)
+  /hat addskill <hat> <skill>          (admin) copy the resolved skill into the hat's overlay
+  /hat rmskill <hat> <skill>           (admin) remove a skill overlay from the hat
+  /hat del <name>       (admin) delete a hat
   /mcp                  list MCP servers (shared + your own) and status
   /mcp show <s/name>    show one MCP server (scope = shared|user)
   /mcp add <s/name> <url> [header Name:"Value" [Name2:"Value2" ...] | oauth]  register an MCP server
@@ -248,8 +254,93 @@ func (m *Model) handleHatSub(args []string) tea.Cmd {
 			m.currentHat = ""
 			return infoMsg{"hat removed; using the default prompt and skills"}
 		}
+	case "create":
+		if !m.canManageShared() {
+			return infoCmd("/hat create is owner/admin only")
+		}
+		if len(args) < 2 {
+			return infoCmd("usage: /hat create <name> [description…]")
+		}
+		name, desc := args[1], strings.Join(args[2:], " ")
+		return func() tea.Msg {
+			if err := m.client.CreateHat(context.Background(), name, desc); err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{"created hat " + name + " — /hat edit " + name + " to set its prompt, /hat addskill " + name + " <skill> to overlay skills"}
+		}
+	case "edit":
+		if !m.canManageShared() {
+			return infoCmd("/hat edit is owner/admin only")
+		}
+		if len(args) < 2 {
+			return infoCmd("usage: /hat edit <name> [file]  (default file: system_prompt.md; overlay files are skills/<skill>/…)")
+		}
+		name, relpath := args[1], "system_prompt.md"
+		if len(args) > 2 {
+			relpath = args[2]
+		}
+		return m.openHatEditor(name, relpath)
+	case "files":
+		if len(args) < 2 {
+			return infoCmd("usage: /hat files <name>")
+		}
+		name := args[1]
+		return func() tea.Msg {
+			files, err := m.client.GetHatFiles(context.Background(), name)
+			if err != nil {
+				return errMsg{err}
+			}
+			rels := make([]string, 0, len(files))
+			for rel := range files {
+				rels = append(rels, rel)
+			}
+			sort.Strings(rels)
+			return infoMsg{"Files of hat " + name + ":\n  " + strings.Join(rels, "\n  ")}
+		}
+	case "addskill":
+		if !m.canManageShared() {
+			return infoCmd("/hat addskill is owner/admin only")
+		}
+		if len(args) < 3 {
+			return infoCmd("usage: /hat addskill <hat> <skill>  (copies the resolved skill into the hat's overlay)")
+		}
+		hat, skill := args[1], args[2]
+		return func() tea.Msg {
+			if err := m.client.AddHatSkill(context.Background(), hat, skill); err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{"copied " + skill + " into hat " + hat + " — edit it with /hat edit " + hat + " skills/" + skill + "/SKILL.md"}
+		}
+	case "rmskill":
+		if !m.canManageShared() {
+			return infoCmd("/hat rmskill is owner/admin only")
+		}
+		if len(args) < 3 {
+			return infoCmd("usage: /hat rmskill <hat> <skill>")
+		}
+		hat, skill := args[1], args[2]
+		return func() tea.Msg {
+			if err := m.client.RemoveHatSkill(context.Background(), hat, skill); err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{"removed the " + skill + " overlay from hat " + hat}
+		}
+	case "del":
+		if !m.canManageShared() {
+			return infoCmd("/hat del is owner/admin only")
+		}
+		if len(args) < 2 {
+			return infoCmd("usage: /hat del <name>")
+		}
+		name := args[1]
+		return func() tea.Msg {
+			if err := m.client.DeleteHat(context.Background(), name); err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{"deleted hat " + name}
+		}
 	default:
-		return infoCmd("usage: /hat [list|show <name>|wear <name>|off]")
+		return infoCmd("usage: /hat [list|show <name>|wear <name>|off|create|edit|files|addskill|rmskill|del]")
 	}
 }
 
@@ -505,9 +596,12 @@ func renderHatDetail(h types.Hat) string {
 		fmt.Fprintf(&sb, "  description: %s\n", h.Description)
 	}
 	if len(h.Skills) > 0 {
-		fmt.Fprintf(&sb, "  skills:      %s\n", strings.Join(h.Skills, ", "))
+		fmt.Fprintf(&sb, "  visible:     %s\n", strings.Join(h.Skills, ", "))
 	} else {
-		sb.WriteString("  skills:      (all)\n")
+		sb.WriteString("  visible:     (all skills)\n")
+	}
+	if len(h.OverlaySkills) > 0 {
+		fmt.Fprintf(&sb, "  overlays:    %s\n", strings.Join(h.OverlaySkills, ", "))
 	}
 	if h.SystemPrompt != "" {
 		sb.WriteString("  prompt:      custom (overrides the default)")

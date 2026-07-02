@@ -47,10 +47,17 @@ They resolve across scopes: project (when one is active), then shared
 | `/skill upload <name> [file]` | Upload a skill (or one file); scope flags as above. |
 | `/skill del <name>` | Delete the skill from a scope (scope flags as above). |
 | `/skill diff <name>` | Show local edits vs the server version. |
-| `/hat` | List hats. A hat is an org-defined system prompt plus a visible-skills list. |
-| `/hat show <name>` | Show a hat's details. |
+| `/hat` | List hats. A hat is an org-defined set of specialised skills that overlay normal resolution (see the next section), plus an optional system prompt. |
+| `/hat show <name>` | Show a hat's details: its visible-skills list and the skills it overlays. |
 | `/hat wear <name>` | Wear a hat in this session. |
 | `/hat off` | Remove the hat (back to the default prompt and skill set). |
+| `/hat create <name> [description]` | (admin) Create a hat. |
+| `/hat edit <name> [file]` | (admin) Edit a hat file in the built-in editor (default `system_prompt.md`; overlays live at `skills/<skill>/…`). |
+| `/hat files <name>` | List a hat's files (prompt + skill overlays). |
+| `/hat addskill <hat> <skill>` | (admin) Copy the currently-resolved skill into the hat's overlay, ready for specialising. |
+| `/hat rmskill <hat> <skill>` | (admin) Remove a skill overlay from the hat. |
+| `/hat del <name>` | (admin) Delete a hat. |
+
 
 ### Memory and documents
 
@@ -108,3 +115,58 @@ memories, and a live chatroom (shown as a side pane while a project is active).
 | `/alert <message>` | (owner/admin) Broadcast an alert to all users. |
 | `/usage` | Show your token/cost usage. |
 | `/help` | Show the built-in command summary. |
+
+## How skills resolve (scopes, projects, hats)
+
+Skills live in three scopes at once — your **user** scope, the organisation's
+**shared** scope, and a **project** scope when you have one active. Several
+copies of the same skill can exist; when the agent loads one, exactly one copy
+wins. A worn **hat** sits on top of all of that: it carries its own copies of
+skills (its *overlay*), and those take precedence over anything the scopes
+would resolve. Hats and projects are independent — you can have neither, either,
+or both active.
+
+```
+        Skill resolution — which copy of "foo" wins
+        ═══════════════════════════════════════════
+
+               ┌────────────────────────────────┐
+   need foo ─▶ │ 1  HAT overlay      (if worn)  │─ has skills/foo/… ─▶ WINS
+               └───────────────┬────────────────┘
+                               │ no hat, or foo not in the overlay
+               ┌───────────────▼────────────────┐
+               │ 2  PROJECT scope  (if active)  │─ has foo ──────────▶ WINS
+               └───────────────┬────────────────┘
+                               │ no project, or not there
+               ┌───────────────▼────────────────┐
+               │ 3  SHARED scope   (the org)    │─ has foo ──────────▶ WINS
+               └───────────────┬────────────────┘
+                               │ not there
+               ┌───────────────▼────────────────┐
+               │ 4  USER scope     (yours)      │─ has foo ──────────▶ WINS
+               └───────────────┬────────────────┘
+                               │
+                               ▼
+                          skill not found
+```
+
+The four situations this produces:
+
+| Project active | Hat worn | Resolution order |
+|:-:|:-:|---|
+| no | no | shared → user |
+| yes | no | project → shared → user |
+| no | yes | **hat overlay** → shared → user |
+| yes | yes | **hat overlay** → project → shared → user |
+
+Two further hat effects, independent of the overlay:
+
+- **Visibility** — a hat may declare a `skills:` list in its frontmatter; while
+  worn, only those skills are offered to the agent (empty list = all skills).
+- **System prompt** — a hat with a non-empty `system_prompt.md` body replaces
+  the default system prompt entirely.
+
+Because a *deeper* scope wins (shared beats user, project beats shared), a copy
+you edit in a shallower scope can be silently invisible. `/skills` flags this:
+`web-extractor [shared, shadows user]` means a user-scope copy exists but the
+shared one is being served.

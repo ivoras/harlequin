@@ -44,6 +44,23 @@ func hatFromPrompt(name, raw string) types.Hat {
 	return h
 }
 
+// overlaySkillNames derives the overlay skill names from a hat's file relpaths.
+func overlaySkillNames(files map[string]string) []string {
+	set := map[string]bool{}
+	for rel := range files {
+		name, _, ok := strings.Cut(strings.TrimPrefix(rel, hatSkillPrefix), "/")
+		if ok && name != "" && strings.HasPrefix(rel, hatSkillPrefix) {
+			set[name] = true
+		}
+	}
+	names := make([]string, 0, len(set))
+	for n := range set {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
+
 // ListHats returns the hats in the shared database (one query: the hat rows
 // joined to their system_prompt.md, whose frontmatter carries the metadata).
 func (m *Manager) ListHats(ctx context.Context) ([]types.Hat, error) {
@@ -64,7 +81,34 @@ func (m *Manager) ListHats(ctx context.Context) ([]types.Hat, error) {
 		}
 		out = append(out, hatFromPrompt(name, string(raw)))
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// Attach each hat's overlay-skill names (one grouped query for all hats).
+	ov, err := m.shared.QueryContext(ctx,
+		`SELECT hat_name, relpath FROM hat_files WHERE relpath LIKE ?`, hatSkillPrefix+"%")
+	if err != nil {
+		return nil, err
+	}
+	defer ov.Close()
+	byHat := map[string]map[string]string{}
+	for ov.Next() {
+		var hat, rel string
+		if err := ov.Scan(&hat, &rel); err != nil {
+			return nil, err
+		}
+		if byHat[hat] == nil {
+			byHat[hat] = map[string]string{}
+		}
+		byHat[hat][rel] = ""
+	}
+	if err := ov.Err(); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].OverlaySkills = overlaySkillNames(byHat[out[i].Name])
+	}
+	return out, nil
 }
 
 // GetHat reads a hat from the shared database: its optional system-prompt body
@@ -78,6 +122,7 @@ func (m *Manager) GetHat(ctx context.Context, name string) (*types.Hat, error) {
 		return nil, ErrHatNotFound
 	}
 	h := hatFromPrompt(name, files[hatPromptFile])
+	h.OverlaySkills = overlaySkillNames(files)
 	return &h, nil
 }
 
@@ -86,6 +131,81 @@ func (m *Manager) GetHat(ctx context.Context, name string) (*types.Hat, error) {
 func (m *Manager) SaveHat(ctx context.Context, name string, userID int64, files map[string]string) error {
 	fm, _ := splitHatFrontmatter(files[hatPromptFile])
 	return writeItem(ctx, m.shared, hatTables, name, fm.Description, userID, files)
+}
+
+// CreateHat scaffolds a new hat: a system_prompt.md with frontmatter and an
+// empty body (an empty body keeps the default system prompt).
+func (m *Manager) CreateHat(ctx context.Context, name, description string, userID int64) error {
+	existing, err := readItemFiles(ctx, m.shared, hatTables, name)
+	if err != nil {
+		return err
+	}
+	if existing != nil {
+		return fmt.Errorf("hat %q already exists", name)
+	}
+	if strings.TrimSpace(description) == "" {
+		description = "TODO describe what kind of work this hat is for."
+	}
+	md := strings.Join([]string{
+		"---",
+		"description: " + description,
+		"# skills: [name, ...] restricts which skills are visible while worn (empty = all).",
+		"skills: []",
+		"---",
+		"",
+	}, "\n")
+	return writeItem(ctx, m.shared, hatTables, name, description, userID, map[string]string{hatPromptFile: md})
+}
+
+// GetHatFiles returns a hat's raw files (relpath -> content) for management UIs.
+func (m *Manager) GetHatFiles(ctx context.Context, name string) (map[string]string, error) {
+	files, err := readItemFiles(ctx, m.shared, hatTables, name)
+	if err != nil {
+		return nil, err
+	}
+	if files == nil {
+		return nil, ErrHatNotFound
+	}
+	return files, nil
+}
+
+// PutHatFile writes one file of a hat (e.g. system_prompt.md, or an overlay
+// file under skills/<skill>/...).
+func (m *Manager) PutHatFile(ctx context.Context, name, relpath, content string, userID int64) error {
+	files, err := m.GetHatFiles(ctx, name)
+	if err != nil {
+		return err
+	}
+	files[relpath] = content
+	return m.SaveHat(ctx, name, userID, files)
+}
+
+// AddHatSkill copies the currently-resolved skill into the hat's overlay
+// (skills/<skill>/...), so the hat carries its own editable variant that takes
+// precedence over normal resolution while the hat is worn.
+func (m *Manager) AddHatSkill(ctx context.Context, userDB, projDB *sql.DB, hat, skill string, userID int64) error {
+	files, err := m.GetHatFiles(ctx, hat)
+	if err != nil {
+		return err
+	}
+	src, _, err := m.resolveRaw(ctx, userDB, projDB, skill)
+	if err != nil {
+		return err
+	}
+	for rel, content := range src {
+		files[hatSkillPrefix+skill+"/"+rel] = content
+	}
+	return m.SaveHat(ctx, hat, userID, files)
+}
+
+// RemoveHatSkill drops a skill's overlay from the hat (the skill then resolves
+// normally again while the hat is worn).
+func (m *Manager) RemoveHatSkill(ctx context.Context, hat, skill string) error {
+	prefix := hatSkillPrefix + skill + "/"
+	_, err := m.shared.ExecContext(ctx,
+		`DELETE FROM hat_files WHERE hat_name = ? AND relpath LIKE ? ESCAPE '\'`,
+		hat, escapeLike(prefix)+"%")
+	return err
 }
 
 // DeleteHat removes a hat from the shared database.
