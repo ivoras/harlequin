@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api } from "../lib/api";
-  import { user, toast } from "../lib/stores";
+  import { user, activeProject, toast } from "../lib/stores";
   import { isElevated } from "../lib/types";
   import type { SkillInfo, SkillFiles } from "../lib/types";
   import SkillEditor from "../lib/SkillEditor.svelte";
@@ -10,10 +10,14 @@
   let open = $state<SkillFiles | null>(null);
   let editing = $state<{ name: string; path: string } | null>(null);
 
-  // New-skill form.
+  // New-skill form. The scope pre-selects what the server would default to:
+  // the active project when one is set, else the user scope.
   let newName = $state("");
   let newDesc = $state("");
-  let newScope = $state("");
+  let newScope = $state("user");
+  $effect(() => {
+    newScope = $activeProject ? "project" : "user";
+  });
 
   async function load() {
     try {
@@ -82,9 +86,8 @@
         <input placeholder="name" bind:value={newName} />
         <input placeholder="description" bind:value={newDesc} style="flex:1; min-width:160px;" />
         <select bind:value={newScope}>
-          <option value="">default</option>
           <option value="user">user</option>
-          <option value="project">project</option>
+          {#if $activeProject}<option value="project">project</option>{/if}
           {#if isElevated($user?.role)}<option value="shared">shared</option>{/if}
         </select>
         <button class="primary" onclick={create}>Create</button>
