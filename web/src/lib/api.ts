@@ -84,10 +84,12 @@ const withProject = (path: string) =>
 // uploadDoc posts a file as multipart/form-data (the server extracts text — PDFs
 // via PDFium — and ingests it). We must NOT set Content-Type: the browser adds
 // the multipart boundary itself.
-async function uploadDoc(file: File, title?: string): Promise<Document> {
+async function uploadDoc(file: File, title?: string, scope?: string, projectID?: number): Promise<Document> {
   const fd = new FormData();
   fd.append("file", file);
   if (title) fd.append("title", title);
+  if (scope) fd.append("scope", scope);
+  if (projectID) fd.append("project_id", String(projectID));
   const res = await fetch(apiUrl("/documents"), { method: "POST", headers: authHeaders(), body: fd });
   if (!res.ok) {
     let msg = res.status + " " + res.statusText;
@@ -152,10 +154,18 @@ export const api = {
   resolveMemoryConflict: (id: string) => req<void>("POST", `/memory/conflicts/${q(id)}/resolve`),
 
   // documents
-  listDocuments: () => reqList<Document>("GET", "/documents"),
+  listDocuments: (projectID = 0) =>
+    reqList<Document>("GET", `/documents${projectID ? `?project=${projectID}` : ""}`),
   createDocument: (r: CreateDocumentRequest) => req<Document>("POST", "/documents", r),
-  uploadDocument: (file: File, title?: string) => uploadDoc(file, title),
-  deleteDocument: (id: number) => req<void>("DELETE", `/documents/${id}`),
+  uploadDocument: (file: File, title?: string, scope?: string, projectID?: number) =>
+    uploadDoc(file, title, scope, projectID),
+  deleteDocument: (id: number, scope = "", projectID = 0) => {
+    const v = new URLSearchParams();
+    if (scope) v.set("scope", scope);
+    if (projectID) v.set("project", String(projectID));
+    const qs = v.toString();
+    return req<void>("DELETE", `/documents/${id}${qs ? `?${qs}` : ""}`);
+  },
   searchDocuments: (query: string) => reqList<SearchResult>("GET", `/documents/search?q=${q(query)}`),
 
   // mcp

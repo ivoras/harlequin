@@ -311,12 +311,16 @@ export interface Document {
   mime: string;
   created_by: number;
   created_at: string;
+  scope?: string; // personal | shared | project
+  chunks?: number;
 }
 export interface CreateDocumentRequest {
   title: string;
   uri: string;
   mime: string;
   content: string;
+  scope?: string; // shared (default) | personal | project (needs project_id)
+  project_id?: number;
 }
 
 export interface UsageRecord {

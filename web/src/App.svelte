@@ -10,6 +10,7 @@
   import Hats from "./views/Hats.svelte";
   import Memory from "./views/Memory.svelte";
   import Documents from "./views/Documents.svelte";
+  import Projects from "./views/Projects.svelte";
   import Mcp from "./views/Mcp.svelte";
   import Cron from "./views/Cron.svelte";
   import Config from "./views/Config.svelte";
@@ -268,6 +269,7 @@
     { id: "skills", label: "Skills", ic: "📚" },
     { id: "hats", label: "Hats", ic: "🎩" },
     { id: "memory", label: "Memory", ic: "🧠" },
+    { id: "projects", label: "Projects", ic: "🗂" },
     { id: "cron", label: "Cron", ic: "⏰" },
   ];
   const moreViews: View[] = ["documents", "mcp", "config", "usage"];
@@ -329,6 +331,8 @@
         <Hats />
       {:else if $view === "memory"}
         <Memory />
+      {:else if $view === "projects"}
+        <Projects />
       {:else if $view === "documents"}
         <Documents />
       {:else if $view === "mcp"}

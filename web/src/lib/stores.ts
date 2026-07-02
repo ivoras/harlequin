@@ -17,7 +17,7 @@ export const projectSheet = writable<boolean>(false);
 
 // Which top-level view is shown (chat + management panels).
 export type View =
-  | "chat" | "skills" | "hats" | "memory" | "documents"
+  | "chat" | "skills" | "hats" | "memory" | "documents" | "projects"
   | "mcp" | "cron" | "config" | "usage";
 export const view = writable<View>("chat");
 
