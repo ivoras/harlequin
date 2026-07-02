@@ -33,6 +33,7 @@ const (
 	phaseChat
 	phaseAsk      // interactive ask_user answering
 	phaseSessions // interactive session picker (resume)
+	phaseEditor   // built-in skill-file editor overlay
 )
 
 // loginPrompt is the placeholder shown at the email step of the login screen.
@@ -124,6 +125,9 @@ type Model struct {
 	activeProjectName string
 	chat              *apiclient.ProjectChat
 	chatMessages      []types.ChatMessage
+
+	// editor holds the built-in skill-file editor overlay state (phaseEditor).
+	editor *skillEditor
 
 	// ask_user interaction (phaseAsk): questions collected during a turn and the
 	// answers being assembled.

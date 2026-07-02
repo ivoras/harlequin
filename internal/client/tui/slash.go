@@ -8,7 +8,7 @@ import (
 // slashCommands are the top-level commands offered by the autocomplete menu.
 var slashCommands = []string{
 	"/alert", "/config", "/cron", "/dismiss", "/docs", "/export", "/hat", "/help", "/mcp",
-	"/memory", "/new", "/project", "/queue", "/quit", "/reload", "/resume", "/run", "/say",
+	"/memory", "/new", "/project", "/queue", "/quit", "/resume", "/run", "/say",
 	"/skill", "/skills", "/upload", "/usage",
 }
 
@@ -29,9 +29,8 @@ var slashHelp = map[string]string{
 	"/say":     "post a message to the project chatroom",
 	"/queue":   "list / del <n> / clear messages queued while busy",
 	"/quit":    "exit",
-	"/reload":  "(admin) re-read skill/prompt/hat files",
 	"/resume":  "resume a session (picker, or /resume <id>)",
-	"/skill":   "pull / push / reset / diff / new a skill",
+	"/skill":   "create / edit / download / upload / reset a skill",
 	"/skills":  "list available skills",
 	"/upload":  "upload a doc for RAG: /upload <personal|shared|project> <path> (.txt/.md/.html/.pdf)",
 	"/usage":   "show token/cost usage",

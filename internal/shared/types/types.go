@@ -118,16 +118,22 @@ type SetConfigRequest struct {
 	Value string `json:"value"`
 }
 
-// Hat is an org-defined, file-based collection of resources for a type of work:
-// an optional system prompt (empty = use the default) plus a visible-skills list
-// (which skills are available while the hat is worn; empty = all). Hats live as
-// directories under data/hats/<name>/ (system_prompt.md + optional skills/
-// overrides).
+// Hat is an org-defined collection of resources for a type of work: an optional
+// system prompt (empty = use the default) plus a visible-skills list (which
+// skills are available while the hat is worn; empty = all). Hats live in the
+// shared database (system_prompt.md + optional "skills/<name>/..." overrides).
 type Hat struct {
 	Name         string   `json:"name"`
 	Description  string   `json:"description"`
 	SystemPrompt string   `json:"system_prompt,omitempty"`
 	Skills       []string `json:"skills,omitempty"`
+}
+
+// HatFiles is the body of PUT /hats/{name}: the hat's complete file set
+// (relpath -> content; system_prompt.md plus optional skill overrides).
+type HatFiles struct {
+	Name  string            `json:"name"`
+	Files map[string]string `json:"files"`
 }
 
 // SetSessionHatRequest is the body of POST /sessions/{id}/hat.
@@ -483,12 +489,16 @@ type TurnTiming struct {
 type SkillInfo struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	Source      string `json:"source"` // "deployed" | "override" | "org"
+	Source      string `json:"source"` // "project" | "shared" | "user"
 }
 
-// SkillFiles is a map of relative path -> file contents.
+// SkillFiles is a map of relative path -> file contents. Scope selects which
+// scope a write targets ("user" | "shared" | "project"); on reads it reports the
+// scope the skill resolved from. Empty means the default (user, or project when
+// in a project session).
 type SkillFiles struct {
 	Name  string            `json:"name"`
+	Scope string            `json:"scope,omitempty"`
 	Files map[string]string `json:"files"`
 }
 

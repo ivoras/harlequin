@@ -396,17 +396,18 @@ func (s *Store) scopes(scope string, userDB *sql.DB) []memDB {
 	return s.scopesWith(scope, userDB, nil)
 }
 
-// scopesWith is scopes plus the project memDB when projDB is set (project session).
+// scopesWith is scopes plus the project memDB when projDB is set (project
+// session), ordered by resolution precedence: project → shared → user.
 func (s *Store) scopesWith(scope string, userDB, projDB *sql.DB) []memDB {
 	var out []memDB
-	if scope != scopeShared {
-		out = append(out, s.userMem(userDB))
+	if projDB != nil && (scope == "" || scope == scopeProject) {
+		out = append(out, s.projectMem(projDB))
 	}
 	if scope != scopeUser {
 		out = append(out, s.sharedMem())
 	}
-	if projDB != nil && (scope == "" || scope == scopeProject) {
-		out = append(out, s.projectMem(projDB))
+	if scope != scopeShared {
+		out = append(out, s.userMem(userDB))
 	}
 	return out
 }

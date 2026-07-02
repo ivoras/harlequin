@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/ivoras/harlequin/internal/client/apiclient"
 )
@@ -48,34 +47,52 @@ func (m *Manager) Pull(ctx context.Context, name string) (string, error) {
 	return root, nil
 }
 
-// Push reads the local skill directory and uploads it as the user's override.
-func (m *Manager) Push(ctx context.Context, name string) error {
-	root := m.LocalDir(name)
-	files := map[string]string{}
-	err := filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return err
-		}
-		rel, err := filepath.Rel(root, p)
-		if err != nil {
-			return err
-		}
-		raw, err := os.ReadFile(p)
-		if err != nil {
-			return err
-		}
-		files[filepath.ToSlash(rel)] = string(raw)
-		return nil
-	})
+// PullFile downloads one file of the effective skill into the local directory.
+func (m *Manager) PullFile(ctx context.Context, name, relpath string) (string, error) {
+	content, _, err := m.client.GetSkillFile(ctx, name, relpath)
+	if err != nil {
+		return "", err
+	}
+	dest := filepath.Join(m.LocalDir(name), filepath.FromSlash(relpath))
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(dest, []byte(content), 0o644); err != nil {
+		return "", err
+	}
+	return dest, nil
+}
+
+// Push reads the local skill directory and uploads it as a skill in scope
+// ("" = default scope).
+func (m *Manager) Push(ctx context.Context, name, scope string) error {
+	files, err := m.LocalFiles(name)
 	if err != nil {
 		return err
 	}
-	return m.client.PutSkill(ctx, name, files)
+	return m.client.PutSkill(ctx, name, scope, files)
 }
 
-// Reset removes the user's server-side override.
-func (m *Manager) Reset(ctx context.Context, name string) error {
-	return m.client.ResetSkill(ctx, name)
+// PushFile uploads a single local file of a skill into scope.
+func (m *Manager) PushFile(ctx context.Context, name, relpath, scope string) error {
+	raw, err := os.ReadFile(filepath.Join(m.LocalDir(name), filepath.FromSlash(relpath)))
+	if err != nil {
+		return err
+	}
+	return m.client.PutSkillFile(ctx, name, relpath, scope, string(raw))
+}
+
+// Create scaffolds a new skill on the server in scope, then pulls it locally.
+func (m *Manager) Create(ctx context.Context, name, description, scope string) (string, error) {
+	if err := m.client.CreateSkill(ctx, name, description, scope); err != nil {
+		return "", err
+	}
+	return m.Pull(ctx, name)
+}
+
+// Reset removes the skill from scope ("" = default scope).
+func (m *Manager) Reset(ctx context.Context, name, scope string) error {
+	return m.client.ResetSkill(ctx, name, scope)
 }
 
 // LocalFiles reads the local copy of a skill (relpath -> content), for diffing.
@@ -98,29 +115,6 @@ func (m *Manager) LocalFiles(name string) (map[string]string, error) {
 		return nil
 	})
 	return files, err
-}
-
-// Scaffold creates a new skill template locally.
-func (m *Manager) Scaffold(name string) (string, error) {
-	root := m.LocalDir(name)
-	if err := os.MkdirAll(root, 0o755); err != nil {
-		return "", err
-	}
-	tmpl := strings.Join([]string{
-		"---",
-		"name: " + name,
-		"description: TODO describe when this skill should be used.",
-		"---",
-		"# " + name,
-		"",
-		"TODO: write the skill instructions here. You can use <?js print(ctx.user); ?> for dynamic content.",
-		"",
-	}, "\n")
-	dest := filepath.Join(root, "SKILL.md")
-	if err := os.WriteFile(dest, []byte(tmpl), 0o644); err != nil {
-		return "", err
-	}
-	return root, nil
 }
 
 // SortedNames returns local skill directory names.

@@ -3,7 +3,7 @@
 // can be overridden for a standalone/decoupled deployment.
 import { INTERFACE } from "./types";
 import type {
-  LoginResponse, User, Session, Message, Hat, SkillInfo, SkillFiles,
+  LoginResponse, User, Session, Message, Hat, SkillInfo, SkillFiles, SkillFile,
   Memory, MemoryConflict, SearchResult, MCPServer, RegisterMCPRequest,
   MCPTestResult, MCPAuthStartResult, CronJob, CreateCronJobRequest,
   UpdateCronJobRequest, UsageRecord, Notification, Document, CreateDocumentRequest,
@@ -116,10 +116,17 @@ export const api = {
   // skills
   listSkills: () => reqList<SkillInfo>("GET", "/skills"),
   getSkill: (name: string) => req<SkillFiles>("GET", `/skills/${q(name)}`),
-  putSkill: (name: string, files: Record<string, string>) =>
-    req<void>("PUT", `/skills/${q(name)}`, { name, files }),
-  resetSkill: (name: string) => req<void>("DELETE", `/skills/${q(name)}`),
+  putSkill: (name: string, scope: string, files: Record<string, string>) =>
+    req<void>("PUT", `/skills/${q(name)}`, { name, scope, files }),
+  resetSkill: (name: string, scope = "") =>
+    req<void>("DELETE", `/skills/${q(name)}${scope ? `?scope=${q(scope)}` : ""}`),
   publishSkill: (name: string) => req<void>("POST", `/skills/${q(name)}/publish`),
+  createSkill: (name: string, description: string, scope = "") =>
+    req<void>("POST", "/skills", { name, description, scope }),
+  getSkillFile: (name: string, path: string) =>
+    req<SkillFile>("GET", `/skills/${q(name)}/files/${path.split("/").map(q).join("/")}`),
+  putSkillFile: (name: string, path: string, scope: string, content: string) =>
+    req<void>("PUT", `/skills/${q(name)}/files/${path.split("/").map(q).join("/")}`, { scope, content }),
 
   // memory
   listMemory: (scope = "") => reqList<Memory>("GET", "/memory" + (scope ? `?scope=${q(scope)}` : "")),
@@ -186,5 +193,4 @@ export const api = {
 
   // misc
   usage: () => reqList<UsageRecord>("GET", "/usage"),
-  reload: () => req<void>("POST", "/reload"),
 };

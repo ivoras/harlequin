@@ -19,11 +19,12 @@ const helpText = `Commands:
   /new                  start a new session
   /queue [del <n>|clear] messages typed while busy are queued; list/remove them
   /skills               list available skills
-  /skill pull <name>    download a skill for local editing
-  /skill push <name>    upload your edited skill as an override
-  /skill reset <name>   remove your override (revert to server version)
-  /skill diff <name>    show local edits vs the server version
-  /skill new <name>     scaffold a new skill locally
+  /skill create <name> <description>   create a new skill (scope: --user|--shared|--project)
+  /skill edit <name> [file]            edit a skill file in the built-in editor
+  /skill download <name> [file]        download a skill (or one file) for local editing
+  /skill upload <name> [file]          upload a skill (or one file); scope flag as above
+  /skill reset <name>                  delete the skill from its scope (scope flag as above)
+  /skill diff <name>                   show local edits vs the server version
   /hat                  list hats (a hat = system prompt + visible skills)
   /hat show <name>      show a hat's details
   /hat wear <name>      wear a hat in this session
@@ -44,7 +45,6 @@ const helpText = `Commands:
   /config               list your per-user config
   /config set <k> <v>   set a config key (e.g. telegram.chat_id 12345)
   /config rm <key>      delete a config key
-  /reload               (admin) re-read skill/prompt/hat files
   /memory [scope]       list memories with ids (scope: user|shared)
   /memory find <phrase> search memories (own + shared) by relevance
   /memory show <id>     show one memory
@@ -140,16 +140,6 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 		return m.handleConfigSub(args)
 	case "/queue":
 		return m.handleQueueSub(args)
-	case "/reload":
-		if !m.canManageShared() {
-			return infoCmd("/reload is owner/admin only")
-		}
-		return func() tea.Msg {
-			if err := m.client.Reload(context.Background()); err != nil {
-				return errMsg{err}
-			}
-			return infoMsg{"reloaded: skill, system prompt, and hat files will be re-read from disk"}
-		}
 	case "/skills":
 		return func() tea.Msg {
 			infos, err := m.client.ListSkills(context.Background())
@@ -919,41 +909,92 @@ func renderMemoryConflicts(conflicts []types.MemoryConflict) string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-func (m *Model) handleSkillSub(args []string) tea.Cmd {
-	if len(args) < 2 {
-		return infoCmd("usage: /skill <pull|push|reset|diff|new> <name>")
+// skillScopeFlag extracts a --user/--shared/--project flag from args, returning
+// the remaining positional args and the scope ("" if unset).
+func skillScopeFlag(args []string) ([]string, string) {
+	var rest []string
+	scope := ""
+	for _, a := range args {
+		switch strings.ToLower(a) {
+		case "--user", "-u":
+			scope = "user"
+		case "--shared", "-s":
+			scope = "shared"
+		case "--project", "-p":
+			scope = "project"
+		default:
+			rest = append(rest, a)
+		}
 	}
-	sub, name := strings.ToLower(args[0]), args[1]
+	return rest, scope
+}
+
+func (m *Model) handleSkillSub(args []string) tea.Cmd {
+	args, scope := skillScopeFlag(args)
+	if len(args) < 1 {
+		return infoCmd("usage: /skill <create|edit|download|upload|reset|diff> <name> [file] [--user|--shared|--project]")
+	}
+	sub := strings.ToLower(args[0])
+	if len(args) < 2 {
+		return infoCmd("usage: /skill " + sub + " <name> ...")
+	}
+	name := args[1]
 	switch sub {
-	case "pull":
+	case "create":
+		description := strings.Join(args[2:], " ")
+		return func() tea.Msg {
+			dir, err := m.skills.Create(context.Background(), name, description, scope)
+			if err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{"created " + name + scopeLabel(scope) + "; pulled to " + dir + " (edit, then /skill upload " + name + ")"}
+		}
+	case "edit":
+		relpath := "SKILL.md"
+		if len(args) > 2 {
+			relpath = args[2]
+		}
+		return m.openSkillEditor(name, relpath, scope)
+	case "download", "pull":
+		if len(args) > 2 {
+			relpath := args[2]
+			return func() tea.Msg {
+				dest, err := m.skills.PullFile(context.Background(), name, relpath)
+				if err != nil {
+					return errMsg{err}
+				}
+				return infoMsg{"downloaded " + name + "/" + relpath + " to " + dest}
+			}
+		}
 		return func() tea.Msg {
 			dir, err := m.skills.Pull(context.Background(), name)
 			if err != nil {
 				return errMsg{err}
 			}
-			return infoMsg{"pulled " + name + " to " + dir}
+			return infoMsg{"downloaded " + name + " to " + dir}
 		}
-	case "push":
+	case "upload", "push":
+		if len(args) > 2 {
+			relpath := args[2]
+			return func() tea.Msg {
+				if err := m.skills.PushFile(context.Background(), name, relpath, scope); err != nil {
+					return errMsg{err}
+				}
+				return infoMsg{"uploaded " + name + "/" + relpath + scopeLabel(scope)}
+			}
+		}
 		return func() tea.Msg {
-			if err := m.skills.Push(context.Background(), name); err != nil {
+			if err := m.skills.Push(context.Background(), name, scope); err != nil {
 				return errMsg{err}
 			}
-			return infoMsg{"pushed " + name + " — server now uses your version"}
+			return infoMsg{"uploaded " + name + scopeLabel(scope)}
 		}
 	case "reset":
 		return func() tea.Msg {
-			if err := m.skills.Reset(context.Background(), name); err != nil {
+			if err := m.skills.Reset(context.Background(), name, scope); err != nil {
 				return errMsg{err}
 			}
-			return infoMsg{"reset " + name + " to the server version"}
-		}
-	case "new":
-		return func() tea.Msg {
-			dir, err := m.skills.Scaffold(name)
-			if err != nil {
-				return errMsg{err}
-			}
-			return infoMsg{"scaffolded " + name + " at " + dir + " (edit, then /skill push " + name + ")"}
+			return infoMsg{"deleted " + name + scopeLabel(scope)}
 		}
 	case "diff":
 		return func() tea.Msg {
@@ -962,6 +1003,14 @@ func (m *Model) handleSkillSub(args []string) tea.Cmd {
 	default:
 		return infoCmd("unknown /skill subcommand: " + sub)
 	}
+}
+
+// scopeLabel renders a " (scope)" suffix, or "" when the default scope applies.
+func scopeLabel(scope string) string {
+	if scope == "" {
+		return ""
+	}
+	return " (" + scope + ")"
 }
 
 // skillDiff compares local files against the server's effective version.

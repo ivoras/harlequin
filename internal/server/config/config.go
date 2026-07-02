@@ -626,12 +626,8 @@ func (c *Config) SessionsDir() string {
 	return filepath.Join(c.DataDir, "sessions")
 }
 
-// SkillsDir returns the deployed skills directory.
-func (c *Config) SkillsDir() string {
-	return filepath.Join(c.DataDir, "skills")
-}
-
-// HatsDir returns the deployed hats directory.
+// HatsDir returns the legacy on-disk hats directory, now only read by the
+// one-time import into the shared database.
 func (c *Config) HatsDir() string {
 	return filepath.Join(c.DataDir, "hats")
 }

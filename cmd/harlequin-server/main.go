@@ -69,14 +69,6 @@ func main() {
 
 	authStore := auth.NewStore(store.System)
 
-	// Deploy baked-in skills and hats to the data dir.
-	if err := skills.Deploy(harlequin.BakedFS(), "skills", cfg.SkillsDir(), cfg.DataDir); err != nil {
-		log.Fatalf("deploy skills: %v", err)
-	}
-	if err := skills.Deploy(harlequin.BakedFS(), "hats", cfg.HatsDir(), cfg.DataDir); err != nil {
-		log.Fatalf("deploy hats: %v", err)
-	}
-
 	// Build providers and the routing provider.
 	usageStore := usage.NewStore(cfg.Prices)
 	providers := map[string]*llm.OpenAICompatible{}
@@ -141,7 +133,15 @@ func main() {
 	// The single JS-template context provider, used for every .md the server
 	// renders (skills, the system prompt, and hat prompts).
 	makeCtx := mdtmpl.New(memStore, docStore, store)
-	skillMgr := skills.NewManager(store.Shared, cfg.SkillsDir(), cfg.HatsDir(), skillRunner, makeCtx)
+	skillMgr := skills.NewManager(store.Shared, harlequin.BakedFS(), skillRunner, makeCtx)
+	// One-time import of legacy on-disk hats (<data_dir>/hats/) into the shared
+	// database, then seed baked-in skills + hats (hash-guarded; preserves edits).
+	if err := skills.ImportHatsFromDisk(context.Background(), store.Shared, cfg.HatsDir()); err != nil {
+		log.Fatalf("import hats: %v", err)
+	}
+	if err := skillMgr.Seed(context.Background()); err != nil {
+		log.Fatalf("seed skills: %v", err)
+	}
 
 	var webFetcher *webfetch.Client
 	if cfg.Agent.WebFetch.EnabledValue() {

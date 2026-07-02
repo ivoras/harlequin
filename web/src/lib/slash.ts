@@ -35,19 +35,6 @@ const commands: SlashCommand[] = [
       }
     },
   },
-  {
-    name: "/reload",
-    desc: "re-read skill/prompt/hat files",
-    admin: true,
-    run: async () => {
-      try {
-        await api.reload();
-        toast("reloaded server caches");
-      } catch (e) {
-        toast((e as Error).message, "error");
-      }
-    },
-  },
 ];
 
 // availableCommands returns the commands visible to the user (admin-gated).
