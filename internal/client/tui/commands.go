@@ -171,7 +171,7 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 			return m.handleDocsSearch(strings.Join(args[1:], " "))
 		case "list", "ls":
 			return m.handleDocsList()
-		case "del", "delete", "rm":
+		case "del":
 			return m.handleDocsDelete(args[1:])
 		default:
 			return infoCmd("usage: /docs <search|q> <query> | list | del <scope> <id> | add [scope] <path>")
@@ -289,7 +289,7 @@ func (m *Model) handleMCPSub(args []string, raw string) tea.Cmd {
 		}
 	case "add":
 		return m.handleMCPAdd(args[1:], raw)
-	case "del", "rm", "remove", "delete":
+	case "del":
 		if len(args) < 2 {
 			return infoCmd("usage: /mcp del <scope/name>")
 		}
@@ -542,7 +542,7 @@ func (m *Model) handleQueueSub(args []string) tea.Cmd {
 		n := len(m.msgQueue)
 		m.msgQueue = nil
 		return report(fmt.Sprintf("cleared %d queued message(s)", n))
-	case "del", "rm", "remove":
+	case "del":
 		if len(args) < 2 {
 			return report("usage: /queue del <n>")
 		}
@@ -728,7 +728,7 @@ func (m *Model) handleMemorySub(args []string) tea.Cmd {
 			}
 			return infoMsg{renderMemoryList(mems, m.canManageShared())}
 		}
-	case "del", "delete", "rm":
+	case "del":
 		if len(args) < 2 {
 			return infoCmd("usage: /memory del <id> [<id> ...]  (ids like u.7 or s.3 from /memory)")
 		}
@@ -989,7 +989,7 @@ func (m *Model) handleSkillSub(args []string) tea.Cmd {
 			}
 			return infoMsg{"uploaded " + name + scopeLabel(scope)}
 		}
-	case "del", "reset":
+	case "del":
 		return func() tea.Msg {
 			if err := m.skills.Reset(context.Background(), name, scope); err != nil {
 				return errMsg{err}
