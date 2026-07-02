@@ -202,6 +202,11 @@ hr { border: none; border-top: 1px solid var(--border); }
 .tabbar button.active { color: var(--accent); background: var(--surface-2);
   border-color: var(--border); box-shadow: var(--hl), var(--shadow-1); }
 .tabbar .ic { font-size: 15px; }
+/* Icon-only tabs until selected: the label collapses smoothly on the inactive
+   ones, keeping the bar compact (the title attribute still names them). */
+.tabbar .lbl { max-width: 0; overflow: hidden; white-space: nowrap; opacity: 0;
+  transition: max-width 0.18s ease, opacity 0.12s ease; }
+.tabbar button.active .lbl { max-width: 9em; opacity: 1; }
 
 /* scrollable management panels */
 .panel { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
