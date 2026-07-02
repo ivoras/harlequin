@@ -241,6 +241,12 @@ type chatReadyMsg struct {
 
 // historyLoadedMsg carries committed messages fetched for a resume; they are held
 // until the synced frame says where the in-flight turn begins.
+// sessionHatMsg restores the worn-hat indicator after a resume.
+type sessionHatMsg struct {
+	sessionID int64
+	hat       string
+}
+
 type historyLoadedMsg struct {
 	sessionID int64
 	msgs      []types.Message

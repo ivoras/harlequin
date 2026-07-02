@@ -23,6 +23,10 @@ func (m *Model) handleSessionsKey(key string) (tea.Model, tea.Cmd) {
 		if m.sessionSel >= 0 && m.sessionSel < len(m.sessionList) {
 			sel := m.sessionList[m.sessionSel]
 			m.sessTitle = cleanSessionTitle(sel.Title)
+			m.currentHat = ""
+			if sel.Hat != nil {
+				m.currentHat = *sel.Hat
+			}
 			m.phase = phaseChat
 			cmd := m.resumeSession(sel.ID)
 			return m, tea.Batch(m.input.Focus(), cmd)

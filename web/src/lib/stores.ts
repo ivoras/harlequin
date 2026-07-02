@@ -25,6 +25,10 @@ export const view = writable<View>("chat");
 // server's auto-titler via a session-title notification).
 export const session = writable<{ id: number; title: string }>({ id: 0, title: "" });
 
+// The hat worn by the active session ("" = none). Shown as a header chip with
+// a take-off button; kept in sync on wear/off and session switches.
+export const wornHat = writable<string>("");
+
 // Transient toast notifications.
 export type Toast = { id: number; text: string; kind: "info" | "error" };
 export const toasts = writable<Toast[]>([]);
