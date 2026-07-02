@@ -286,9 +286,10 @@
     { id: "hats", label: "Hats", ic: "🎩" },
     { id: "memory", label: "Memory", ic: "🧠" },
     { id: "projects", label: "Projects", ic: "🗂" },
+    { id: "documents", label: "Docs", ic: "📄" },
     { id: "cron", label: "Cron", ic: "⏰" },
   ];
-  const moreViews: View[] = ["documents", "mcp", "config", "usage"];
+  const moreViews: View[] = ["mcp", "config", "usage"];
 </script>
 
 {#if !ready}

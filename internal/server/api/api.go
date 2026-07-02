@@ -111,9 +111,15 @@ func (s *Server) Router() http.Handler {
 			r.Post("/sessions/{id}/hat", s.handleSetSessionHat)
 
 			r.Get("/hats", s.handleListHats)
+			r.Post("/hats", s.handleCreateHat)
 			r.Get("/hats/{name}", s.handleGetHat)
 			r.Put("/hats/{name}", s.handlePutHat)
 			r.Delete("/hats/{name}", s.handleDeleteHat)
+			r.Get("/hats/{name}/files", s.handleGetHatFiles)
+			r.Get("/hats/{name}/files/*", s.handleGetHatFile)
+			r.Put("/hats/{name}/files/*", s.handlePutHatFile)
+			r.Post("/hats/{name}/skills", s.handleAddHatSkill)
+			r.Delete("/hats/{name}/skills/{skill}", s.handleRemoveHatSkill)
 
 			r.Get("/skills", s.handleListSkills)
 			r.Post("/skills", s.handleCreateSkill)

@@ -10,8 +10,9 @@
   let {
     name,
     path,
+    hat = false,
     onClose,
-  }: { name: string; path: string; onClose: () => void } = $props();
+  }: { name: string; path: string; hat?: boolean; onClose: () => void } = $props();
 
   let content = $state("");
   let scope = $state("user"); // save target; defaults to the resolved scope once loaded
@@ -37,10 +38,15 @@
 
   onMount(async () => {
     try {
-      const f = await api.getSkillFile(name, path);
-      content = f.content;
-      fromScope = f.scope;
-      if (writable.includes(f.scope)) scope = f.scope;
+      if (hat) {
+        content = (await api.getHatFile(name, path)).content;
+        fromScope = "shared"; // hats are shared-only
+      } else {
+        const f = await api.getSkillFile(name, path);
+        content = f.content;
+        fromScope = f.scope;
+        if (writable.includes(f.scope)) scope = f.scope;
+      }
     } catch (e) {
       toast((e as Error).message, "error");
     } finally {
@@ -61,7 +67,8 @@
   async function save() {
     saving = true;
     try {
-      await api.putSkillFile(name, path, scope, content);
+      if (hat) await api.putHatFile(name, path, content);
+      else await api.putSkillFile(name, path, scope, content);
       toast(`saved ${name}/${path}`);
       onClose();
     } catch (e) {
@@ -84,15 +91,17 @@
 <div class="scrim" role="presentation" onclick={onClose}></div>
 <aside class="sheet right skill-editor">
   <header>
-    <strong class="mono">skill://{name}/{path}</strong>
+    <strong class="mono">{hat ? "hat" : "skill"}://{name}/{path}</strong>
     <span class="spacer"></span>
-    <label class="small muted">save to
-      <select bind:value={scope}>
-        {#each writable as w}
-          <option value={w}>{w}{w === fromScope ? " (resolved)" : ""}</option>
-        {/each}
-      </select>
-    </label>
+    {#if !hat}
+      <label class="small muted">save to
+        <select bind:value={scope}>
+          {#each writable as w}
+            <option value={w}>{w}{w === fromScope ? " (resolved)" : ""}</option>
+          {/each}
+        </select>
+      </label>
+    {/if}
     <button class="small" onclick={save} disabled={saving || loading}>Save</button>
     <button class="ghost" onclick={onClose}>Close</button>
   </header>

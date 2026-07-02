@@ -194,6 +194,47 @@ func (c *Client) DeleteHat(ctx context.Context, name string) error {
 	return c.do(ctx, http.MethodDelete, "/hats/"+url.PathEscape(name), nil, nil)
 }
 
+// CreateHat scaffolds a new hat. Owner/admin only.
+func (c *Client) CreateHat(ctx context.Context, name, description string) error {
+	return c.do(ctx, http.MethodPost, "/hats", types.CreateHatRequest{Name: name, Description: description}, nil)
+}
+
+// GetHatFiles returns a hat's raw files.
+func (c *Client) GetHatFiles(ctx context.Context, name string) (map[string]string, error) {
+	var out types.HatFiles
+	if err := c.do(ctx, http.MethodGet, "/hats/"+url.PathEscape(name)+"/files", nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Files, nil
+}
+
+// GetHatFile returns one file of a hat.
+func (c *Client) GetHatFile(ctx context.Context, name, relpath string) (string, error) {
+	var out map[string]string
+	if err := c.do(ctx, http.MethodGet, "/hats/"+url.PathEscape(name)+"/files/"+escapePathSegments(relpath), nil, &out); err != nil {
+		return "", err
+	}
+	return out["content"], nil
+}
+
+// PutHatFile writes one file of a hat. Owner/admin only.
+func (c *Client) PutHatFile(ctx context.Context, name, relpath, content string) error {
+	body := map[string]string{"content": content}
+	return c.do(ctx, http.MethodPut, "/hats/"+url.PathEscape(name)+"/files/"+escapePathSegments(relpath), body, nil)
+}
+
+// AddHatSkill copies the currently-resolved skill into the hat's overlay.
+// Owner/admin only.
+func (c *Client) AddHatSkill(ctx context.Context, hat, skill string) error {
+	return c.do(ctx, http.MethodPost, c.withProject("/hats/"+url.PathEscape(hat)+"/skills"),
+		types.AddHatSkillRequest{Skill: skill}, nil)
+}
+
+// RemoveHatSkill drops a skill's overlay from the hat. Owner/admin only.
+func (c *Client) RemoveHatSkill(ctx context.Context, hat, skill string) error {
+	return c.do(ctx, http.MethodDelete, "/hats/"+url.PathEscape(hat)+"/skills/"+url.PathEscape(skill), nil, nil)
+}
+
 // SetSessionHat sets (or clears, when hat is empty) the session's hat.
 func (c *Client) SetSessionHat(ctx context.Context, sessionID int64, hat string) error {
 	return c.do(ctx, http.MethodPost, fmt.Sprintf("/sessions/%d/hat", sessionID),

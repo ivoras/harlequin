@@ -127,6 +127,21 @@ type Hat struct {
 	Description  string   `json:"description"`
 	SystemPrompt string   `json:"system_prompt,omitempty"`
 	Skills       []string `json:"skills,omitempty"`
+	// OverlaySkills are the skills this hat carries its own variants of
+	// (files under skills/<name>/...); they take precedence over normal
+	// project/shared/user resolution while the hat is worn.
+	OverlaySkills []string `json:"overlay_skills,omitempty"`
+}
+
+// CreateHatRequest is the body of POST /hats.
+type CreateHatRequest struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// AddHatSkillRequest is the body of POST /hats/{name}/skills.
+type AddHatSkillRequest struct {
+	Skill string `json:"skill"`
 }
 
 // HatFiles is the body of PUT /hats/{name}: the hat's complete file set

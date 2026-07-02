@@ -20,7 +20,7 @@ var slashHelp = map[string]string{
 	"/run":     "run the prompt carried by alert n",
 	"/docs":    "documents: /docs search <q> | list | del <scope> <id> | add [scope] <path>",
 	"/export":  "save transcript (User+Assistant; add 'raw' for everything)",
-	"/hat":     "list / show / wear hats",
+	"/hat":     "list / wear / manage hats (overlay skill sets)",
 	"/help":    "show help",
 	"/mcp":     "list / add / test / authorize MCP servers",
 	"/memory":  "list / show / manage memories",

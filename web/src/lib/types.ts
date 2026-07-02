@@ -159,7 +159,8 @@ export interface Hat {
   name: string;
   description: string;
   system_prompt?: string;
-  skills?: string[];
+  skills?: string[]; // visibility list (empty = all)
+  overlay_skills?: string[]; // skills the hat carries its own variants of
 }
 
 export interface SkillInfo {
