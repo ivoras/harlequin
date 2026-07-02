@@ -293,8 +293,8 @@
 
   <nav class="tabbar">
     {#each nav as p}
-      <button class:active={$view === p.id} onclick={() => view.set(p.id)}>
-        <span class="ic">{p.ic}</span><span>{p.label}</span>
+      <button class:active={$view === p.id} onclick={() => view.set(p.id)} title={p.label}>
+        <span class="ic">{p.ic}</span><span class="lbl">{p.label}</span>
       </button>
     {/each}
   </nav>
