@@ -202,21 +202,26 @@
   .chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .messages { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px 0 12px; }
   .msg.user { display: flex; justify-content: flex-end; }
-  .bubble { background: var(--surface-3); border: 1px solid var(--border); border-radius: 14px 14px 4px 14px;
-    padding: 8px 12px; max-width: 85%; white-space: pre-wrap; word-break: break-word; }
+  .bubble { background: linear-gradient(to bottom, var(--surface-3), var(--surface-2));
+    border: 1px solid var(--border-soft); border-radius: 14px 14px 4px 14px;
+    padding: 8px 12px; max-width: 85%; white-space: pre-wrap; word-break: break-word;
+    box-shadow: var(--hl), var(--shadow-1); }
   .msg.assistant .md { max-width: 100%; word-break: break-word; }
   .md :global(p) { margin: 0.4em 0; }
   .md :global(pre) { white-space: pre; }
-  .thinking { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px; }
+  .thinking { background: var(--surface); border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm); padding: 6px 10px; box-shadow: var(--hl); }
   .thinking-body { white-space: pre-wrap; margin-top: 6px; }
   .tool { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .tool .args { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .tool-out { white-space: pre-wrap; width: 100%; max-height: 9em; overflow-y: auto; }
   .composer { border-top: 1px solid var(--border); background: var(--surface);
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.25); position: relative; z-index: 5;
     padding: 8px 0 max(8px, env(safe-area-inset-bottom)); }
   textarea { resize: none; max-height: 40dvh; }
   .slashmenu { max-height: 40dvh; overflow-y: auto; }
   .slashitem { width: 100%; justify-content: flex-start; gap: 10px; text-align: left;
-    background: var(--surface-3); border: 1px solid transparent; }
-  .slashitem.sel { border-color: var(--accent); }
+    background: var(--surface-2); border: 1px solid transparent; box-shadow: none; }
+  .slashitem.sel { border-color: var(--accent-dim); background: var(--surface-3);
+    box-shadow: var(--hl), var(--shadow-1); }
 </style>

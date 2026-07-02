@@ -40,9 +40,9 @@ They resolve across scopes: project (when one is active), then shared
 
 | Command | What it does |
 |---------|--------------|
-| `/skills` | List the skills available to you, with the scope each comes from. |
+| `/skills` | List the skills available to you, with the scope each comes from. Copies in shallower scopes are flagged (`shadows user`), since edits there are invisible while a deeper copy exists. |
 | `/skill create <name> <description>` | Create a new skill (add `--user`, `--shared`, or `--project` to pick the scope). |
-| `/skill edit <name> [file]` | Edit a skill file in the built-in editor. |
+| `/skill edit <name> [file]` | Edit a skill file in the built-in editor. On save you are asked which scope to save into when more than one is writable (Enter = the scope the file came from). |
 | `/skill download <name> [file]` | Download a skill (or one file) for local editing. |
 | `/skill upload <name> [file]` | Upload a skill (or one file); scope flags as above. |
 | `/skill del <name>` | Delete the skill from a scope (scope flags as above). |
