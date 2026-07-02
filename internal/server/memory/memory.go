@@ -38,12 +38,27 @@ type Store struct {
 	judge              llm.Provider
 	conflictCandidates int
 	slotSearchWeight   float64
+	ftsWeight          float64 // RRF weight of the FTS leg (default 1.0)
+	vectorWeight       float64 // RRF weight of the content-vector leg (default 1.0)
 	searchMaxDist      float64 // cosine-distance cutoff for vector/slot legs; 0 = no cutoff
 }
 
 // NewStore constructs a memory Store bound to the shared database.
 func NewStore(shared *sql.DB, embedder embed.Embedder) *Store {
-	return &Store{shared: shared, embedder: embedder}
+	return &Store{shared: shared, embedder: embedder, ftsWeight: 1.0, vectorWeight: 1.0}
+}
+
+// SetFusion sets the RRF weights of the FTS and content-vector search legs.
+// Zero disables a leg; negative values are treated as 1.0.
+func (s *Store) SetFusion(ftsWeight, vectorWeight float64) {
+	if ftsWeight < 0 {
+		ftsWeight = 1.0
+	}
+	if vectorWeight < 0 {
+		vectorWeight = 1.0
+	}
+	s.ftsWeight = ftsWeight
+	s.vectorWeight = vectorWeight
 }
 
 // SetSlotSearchWeight sets the RRF weight of the slot-key leg used by Search
@@ -361,7 +376,7 @@ func (s *Store) searchTuned(ctx context.Context, userDB, projDB *sql.DB, query s
 	ranks := map[string]float64{}
 	contents := map[string]string{}
 	for _, m := range s.scopesWith(scope, userDB, projDB) {
-		m.search(ctx, query, blob, limit, slotWeight, s.searchMaxDist, ranks, contents)
+		m.search(ctx, query, blob, limit, s.ftsWeight, s.vectorWeight, slotWeight, s.searchMaxDist, ranks, contents)
 	}
 	out := topN(ranks, contents, limit)
 	s.attachSlotsToResults(ctx, userDB, projDB, out)
@@ -414,7 +429,7 @@ func (s *Store) scopesWith(scope string, userDB, projDB *sql.DB) []memDB {
 
 // search runs the FTS + vector legs against this file, folding RRF scores keyed
 // by composite id into ranks/contents.
-func (m memDB) search(ctx context.Context, query string, blob any, limit int, slotWeight, maxDist float64, ranks map[string]float64, contents map[string]string) {
+func (m memDB) search(ctx context.Context, query string, blob any, limit int, ftsWeight, vectorWeight, slotWeight, maxDist float64, ranks map[string]float64, contents map[string]string) {
 	if m.db == nil {
 		return
 	}
@@ -423,9 +438,11 @@ func (m memDB) search(ctx context.Context, query string, blob any, limit int, sl
 		FROM memories_fts f JOIN memories m ON m.id = f.rowid
 		WHERE memories_fts MATCH ? AND ` + notExpired + `
 		ORDER BY f.rank LIMIT ?`
-	_ = m.collect(ctx, ftsSQL, []any{query, limit * 4}, 1.0, ranks, contents)
+	if ftsWeight > 0 {
+		_ = m.collect(ctx, ftsSQL, []any{query, limit * 4}, ftsWeight, ranks, contents)
+	}
 
-	if blob != nil {
+	if blob != nil && vectorWeight > 0 {
 		// Vector and slot legs are kNN with no inherent relevance floor, so a
 		// cosine-distance cutoff (maxDist; vec0 distance is cosine) drops far,
 		// irrelevant candidates before they earn an RRF score.
@@ -433,7 +450,7 @@ func (m memDB) search(ctx context.Context, query string, blob any, limit int, sl
 			FROM memories_vec v JOIN memories m ON m.id = v.rowid
 			WHERE v.embedding MATCH ? AND k = ? AND ` + notExpired + `
 			ORDER BY v.distance`
-		_ = m.collectVec(ctx, vecSQL, []any{blob, limit * 4}, 1.0, maxDist, ranks, contents)
+		_ = m.collectVec(ctx, vecSQL, []any{blob, limit * 4}, vectorWeight, maxDist, ranks, contents)
 
 		// Slot-key leg (optional): nearest slot keys by embedding, mapped back to
 		// their memories, folded in with slotWeight. Surfaces attribute matches.

@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api } from "./api";
-  import { toast } from "./stores";
+  import { toast, user, activeProject } from "./stores";
+  import { isElevated } from "./types";
 
   // A small text editor: line-number gutter, active-line highlight, and the
   // usual textarea editing operations. Loads one skill file and saves it back
@@ -13,8 +14,16 @@
   }: { name: string; path: string; onClose: () => void } = $props();
 
   let content = $state("");
-  let scope = $state(""); // save target ("" = default: your scope)
+  let scope = $state("user"); // save target; defaults to the resolved scope once loaded
   let fromScope = $state("");
+  // Scopes this user may save into: user always, shared when elevated,
+  // project when one is active. The select asks explicitly — a save into a
+  // scope shadowed by a deeper one would otherwise be silently invisible.
+  let writable = $derived([
+    "user",
+    ...(isElevated($user?.role) ? ["shared"] : []),
+    ...($activeProject ? ["project"] : []),
+  ]);
   let activeLine = $state(0);
   let scrollTop = $state(0);
   let loading = $state(true);
@@ -31,6 +40,7 @@
       const f = await api.getSkillFile(name, path);
       content = f.content;
       fromScope = f.scope;
+      if (writable.includes(f.scope)) scope = f.scope;
     } catch (e) {
       toast((e as Error).message, "error");
     } finally {
@@ -78,10 +88,9 @@
     <span class="spacer"></span>
     <label class="small muted">save to
       <select bind:value={scope}>
-        <option value="">default</option>
-        <option value="user">user</option>
-        <option value="project">project</option>
-        <option value="shared">shared</option>
+        {#each writable as w}
+          <option value={w}>{w}{w === fromScope ? " (resolved)" : ""}</option>
+        {/each}
       </select>
     </label>
     <button class="small" onclick={save} disabled={saving || loading}>Save</button>

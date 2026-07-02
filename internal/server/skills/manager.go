@@ -215,10 +215,11 @@ func (m *Manager) GetFile(ctx context.Context, userDB, projDB *sql.DB, name, rel
 }
 
 // List returns skill info for every skill visible to a user (across scopes),
-// each tagged with the scope it resolves from. It reads only the skills rows
-// (the description column is maintained on every write), never the file blobs.
+// each tagged with the scope it resolves from; scopes holding a shadowed copy
+// are reported in AlsoIn. It reads only the skills rows (the description
+// column is maintained on every write), never the file blobs.
 func (m *Manager) List(ctx context.Context, userDB, projDB *sql.DB) ([]types.SkillInfo, error) {
-	seen := map[string]bool{}
+	idx := map[string]int{}
 	var out []types.SkillInfo
 	for _, sc := range m.scopeDBs(userDB, projDB) {
 		rows, err := sc.db.QueryContext(ctx, `SELECT name, description FROM skills`)
@@ -231,10 +232,12 @@ func (m *Manager) List(ctx context.Context, userDB, projDB *sql.DB) ([]types.Ski
 				rows.Close()
 				return nil, err
 			}
-			if seen[name] {
-				continue // a deeper scope already won
+			if i, ok := idx[name]; ok {
+				// A deeper scope already won: record this copy as shadowed.
+				out[i].AlsoIn = append(out[i].AlsoIn, sc.scope)
+				continue
 			}
-			seen[name] = true
+			idx[name] = len(out)
 			out = append(out, types.SkillInfo{Name: name, Description: desc, Source: sc.scope})
 		}
 		if err := rows.Err(); err != nil {

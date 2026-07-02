@@ -158,6 +158,47 @@ func seedTree(ctx context.Context, shared *sql.DB, baked fs.FS, root string, spe
 	return saveSeedHashes(ctx, shared, spec.hashTable, newHashes)
 }
 
+// RepairDescriptions back-fills empty skill description columns from the
+// stored SKILL.md frontmatter. The 0004 migrations copied old skill_overrides
+// rows with description = '' (SQL can't parse YAML frontmatter), and listings
+// now trust the column, so empty rows must be healed once per database.
+// Idempotent; a no-op when nothing is empty.
+func RepairDescriptions(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx,
+		`SELECT s.name, f.content FROM skills s
+		 JOIN skill_files f ON f.skill_name = s.name AND f.relpath = 'SKILL.md'
+		 WHERE s.description = ''`)
+	if err != nil {
+		return err
+	}
+	fixes := map[string]string{}
+	for rows.Next() {
+		var name string
+		var md []byte
+		if err := rows.Scan(&name, &md); err != nil {
+			rows.Close()
+			return err
+		}
+		if desc := descriptionOf(string(md)); desc != "" {
+			fixes[name] = desc
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	for name, desc := range fixes {
+		if _, err := db.ExecContext(ctx, `UPDATE skills SET description = ? WHERE name = ?`, desc, name); err != nil {
+			return err
+		}
+	}
+	if len(fixes) > 0 {
+		log.Printf("skills: repaired %d empty description(s)", len(fixes))
+	}
+	return nil
+}
+
 // descriptionOf extracts the frontmatter description from a SKILL.md (best effort).
 func descriptionOf(md string) string {
 	if md == "" {
