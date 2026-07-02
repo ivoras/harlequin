@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { api } from "../lib/api";
-  import { user, toast } from "../lib/stores";
+  import { user, activeProject, toast } from "../lib/stores";
   import { isElevated } from "../lib/types";
   import type { Document, SearchResult } from "../lib/types";
 
@@ -30,14 +29,20 @@
     }
   }
 
+  // All currently visible corpora: personal + shared, plus the active
+  // project's documents when one is set. Each row is scope-tagged.
   async function load() {
     try {
-      docs = await api.listDocuments();
+      docs = await api.listDocuments($activeProject?.id ?? 0);
     } catch (e) {
       toast((e as Error).message, "error");
     }
   }
-  onMount(load);
+  // $effect runs on mount and whenever the active project changes.
+  $effect(() => {
+    void $activeProject;
+    load();
+  });
   async function search() {
     if (!q.trim()) {
       results = [];
@@ -61,10 +66,15 @@
       toast((e as Error).message, "error");
     }
   }
-  async function del(id: number) {
+  function canDelete(d: Document): boolean {
+    if (d.scope === "personal") return true; // your own corpus
+    if (d.scope === "project") return true; // any member (you can see it)
+    return isElevated($user?.role); // shared: owner/admin
+  }
+  async function del(d: Document) {
     try {
-      await api.deleteDocument(id);
-      docs = docs.filter((d) => d.id !== id);
+      await api.deleteDocument(d.id, d.scope ?? "", d.scope === "project" ? ($activeProject?.id ?? 0) : 0);
+      docs = docs.filter((x) => x !== d);
     } catch (e) {
       toast((e as Error).message, "error");
     }
@@ -89,10 +99,13 @@
       {#each docs as d}
         <div class="card row">
           <div class="col" style="flex:1; min-width:0; gap:1px;">
-            <strong>{d.title}</strong>
+            <div class="row" style="gap:6px;">
+              <strong>{d.title}</strong>
+              <span class="pill scope-{d.scope}">{d.scope ?? "shared"}</span>
+            </div>
             <span class="muted small">{d.mime} · {new Date(d.created_at).toLocaleDateString()}</span>
           </div>
-          {#if isElevated($user?.role)}<button class="ghost danger small" onclick={() => del(d.id)} aria-label="Delete">✕</button>{/if}
+          {#if canDelete(d)}<button class="ghost danger small" onclick={() => del(d)} aria-label="Delete">✕</button>{/if}
         </div>
       {/each}
       {#if docs.length === 0}<div class="muted small">Empty.</div>{/if}
