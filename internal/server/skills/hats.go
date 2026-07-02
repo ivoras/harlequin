@@ -300,7 +300,11 @@ func (m *Manager) EffectiveSkillInfos(ctx context.Context, userDB, projDB *sql.D
 			delete(byName, n)
 			continue
 		}
-		byName[n] = types.SkillInfo{Name: n, Description: o.description, Source: "hat"}
+		info := types.SkillInfo{Name: n, Description: o.description, Source: "hat"}
+		if prev, ok := byName[n]; ok {
+			info.AlsoIn = append([]string{prev.Source}, prev.AlsoIn...)
+		}
+		byName[n] = info
 	}
 	names := hat.Skills
 	if len(names) == 0 {

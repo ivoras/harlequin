@@ -96,6 +96,9 @@
         <div class="card col">
           <div class="row">
             <strong>{s.name}</strong><span class="pill">{s.source}</span>
+            {#if s.also_in?.length}
+              <span class="pill warn" title="A copy in {s.also_in.join(', ')} is shadowed by the {s.source} version — edits there are invisible.">shadows {s.also_in.join(", ")}</span>
+            {/if}
             <span class="spacer"></span>
             <button class="small" onclick={() => edit(s.name, "SKILL.md")}>Edit</button>
             <button class="small" onclick={() => viewSkill(s.name)}>Files</button>

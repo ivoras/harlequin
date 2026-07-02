@@ -306,6 +306,10 @@ type MemoryConfig struct {
 	// SlotSearchWeight is the RRF weight of the slot-key leg in memory search
 	// (0 disables it). Default 1.0. See docs/memory_experiment_key_slots.md.
 	SlotSearchWeight *float64 `yaml:"slot_search_weight"`
+	// FTSWeight is the RRF weight of the FTS lexical leg (default 1.0).
+	FTSWeight *float64 `yaml:"fts_weight"`
+	// VectorWeight is the RRF weight of the content-vector leg (default 1.0).
+	VectorWeight *float64 `yaml:"vector_weight"`
 	// ExtractFromDocuments runs memory extraction over the text of an imported
 	// document (in addition to indexing it for RAG), so uploads distill durable
 	// facts. Pointer so an omitted key defaults to enabled; set false to make
@@ -330,6 +334,22 @@ func (m MemoryConfig) ConflictCheckEnabled() bool {
 func (m MemoryConfig) SlotSearchWeightValue() float64 {
 	if m.SlotSearchWeight != nil {
 		return *m.SlotSearchWeight
+	}
+	return 1.0
+}
+
+// FTSWeightValue returns the FTS search-leg RRF weight (default 1.0).
+func (m MemoryConfig) FTSWeightValue() float64 {
+	if m.FTSWeight != nil {
+		return *m.FTSWeight
+	}
+	return 1.0
+}
+
+// VectorWeightValue returns the content-vector search-leg RRF weight (default 1.0).
+func (m MemoryConfig) VectorWeightValue() float64 {
+	if m.VectorWeight != nil {
+		return *m.VectorWeight
 	}
 	return 1.0
 }

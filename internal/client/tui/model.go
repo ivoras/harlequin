@@ -453,7 +453,12 @@ func renderSkillList(infos []types.SkillInfo) string {
 	var sb strings.Builder
 	sb.WriteString("Skills:\n")
 	for _, i := range infos {
-		fmt.Fprintf(&sb, "  %s [%s] — %s\n", i.Name, i.Source, i.Description)
+		scope := i.Source
+		if len(i.AlsoIn) > 0 {
+			// Copies in shallower scopes are shadowed — edits there are invisible.
+			scope += ", shadows " + strings.Join(i.AlsoIn, "+")
+		}
+		fmt.Fprintf(&sb, "  %s [%s] — %s\n", i.Name, scope, i.Description)
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }

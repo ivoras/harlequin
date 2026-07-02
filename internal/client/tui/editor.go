@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"slices"
 
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
@@ -15,9 +16,13 @@ type skillEditor struct {
 	ta        textarea.Model
 	name      string
 	relpath   string
-	scope     string // target scope for the save ("" = default)
-	fromScope string // scope the file resolved from (for display)
+	scope     string // target scope for the save ("" = ask / default)
+	fromScope string // scope the file resolved from (for display + default target)
 	status    string
+	// picking is set while the save-scope prompt is shown (Ctrl-S with no
+	// explicit scope and more than one writable scope).
+	picking  bool
+	writable []string
 }
 
 // skillEditorLoadedMsg carries a skill file fetched for editing.
@@ -68,34 +73,89 @@ func (m *Model) startSkillEditor(msg skillEditorLoadedMsg) tea.Cmd {
 	return m.editor.ta.Focus()
 }
 
-// handleEditorKey drives the editor overlay: Ctrl-S saves, Esc cancels, and any
-// other key edits the buffer via the textarea.
+// writableSkillScopes returns the scopes this user may save a skill into:
+// user always, shared when elevated, project when one is active.
+func (m *Model) writableSkillScopes() []string {
+	scopes := []string{"user"}
+	if m.canManageShared() {
+		scopes = append(scopes, "shared")
+	}
+	if m.activeProjectID != 0 {
+		scopes = append(scopes, "project")
+	}
+	return scopes
+}
+
+// handleEditorKey drives the editor overlay: Ctrl-S saves (asking for the
+// target scope when more than one is writable), Esc cancels, and any other key
+// edits the buffer via the textarea.
 func (m *Model) handleEditorKey(msg tea.KeyPressMsg, key string) (tea.Model, tea.Cmd) {
-	if m.editor == nil {
+	ed := m.editor
+	if ed == nil {
 		m.phase = phaseChat
 		return m, m.input.Focus()
 	}
+	if ed.picking {
+		switch key {
+		case "u":
+			return m, m.saveSkillEditor("user")
+		case "s":
+			if hasScope(ed.writable, "shared") {
+				return m, m.saveSkillEditor("shared")
+			}
+		case "p":
+			if hasScope(ed.writable, "project") {
+				return m, m.saveSkillEditor("project")
+			}
+		case "enter":
+			return m, m.saveSkillEditor(ed.defaultScope())
+		case "esc":
+			ed.picking = false
+			ed.status = ""
+		}
+		return m, nil
+	}
 	switch key {
 	case "ctrl+s":
-		return m, m.saveSkillEditor()
+		if ed.scope != "" { // explicit --scope flag on /skill edit: no prompt
+			return m, m.saveSkillEditor(ed.scope)
+		}
+		ed.writable = m.writableSkillScopes()
+		if len(ed.writable) == 1 {
+			return m, m.saveSkillEditor(ed.writable[0])
+		}
+		ed.picking = true
+		return m, nil
 	case "esc":
 		m.phase = phaseChat
 		m.editor = nil
 		return m, m.input.Focus()
 	}
 	var cmd tea.Cmd
-	m.editor.ta, cmd = m.editor.ta.Update(msg)
-	m.editor.status = ""
+	ed.ta, cmd = ed.ta.Update(msg)
+	ed.status = ""
 	return m, cmd
 }
 
-// saveSkillEditor uploads the buffer to the skill file in its target scope.
-func (m *Model) saveSkillEditor() tea.Cmd {
+// defaultScope is the prompt's Enter choice: the scope the file resolved from
+// when writable, else user.
+func (ed *skillEditor) defaultScope() string {
+	if hasScope(ed.writable, ed.fromScope) {
+		return ed.fromScope
+	}
+	return "user"
+}
+
+func hasScope(scopes []string, s string) bool { return slices.Contains(scopes, s) }
+
+// saveSkillEditor uploads the buffer to the skill file in the given scope.
+func (m *Model) saveSkillEditor(scope string) tea.Cmd {
 	ed := m.editor
 	if ed == nil {
 		return nil
 	}
-	name, relpath, scope, content := ed.name, ed.relpath, ed.scope, ed.ta.Value()
+	ed.picking = false
+	name, relpath, content := ed.name, ed.relpath, ed.ta.Value()
 	return func() tea.Msg {
 		err := m.client.PutSkillFile(context.Background(), name, relpath, scope, content)
 		return skillEditorSavedMsg{name: name, relpath: relpath, err: err}
@@ -111,11 +171,24 @@ func (m *Model) editorView() string {
 	title := " edit skill://" + ed.name + "/" + ed.relpath + " "
 	header := m.styles.Header.Render(title)
 
-	target := ed.scope
-	if target == "" {
-		target = "default"
+	var hint string
+	switch {
+	case ed.picking:
+		hint = "save to: (u)ser"
+		if hasScope(ed.writable, "shared") {
+			hint += " · (s)hared"
+		}
+		if hasScope(ed.writable, "project") {
+			hint += " · (p)roject"
+		}
+		hint += " · Enter = " + ed.defaultScope() + " · Esc cancel"
+	default:
+		target := ed.scope
+		if target == "" {
+			target = "asks on save"
+		}
+		hint = "Ctrl-S save · Esc cancel · from: " + orDash(ed.fromScope) + " · save to: " + target
 	}
-	hint := "Ctrl-S save · Esc cancel · from: " + orDash(ed.fromScope) + " · save to: " + target
 	if ed.status != "" {
 		hint = ed.status + "  ·  " + hint
 	}

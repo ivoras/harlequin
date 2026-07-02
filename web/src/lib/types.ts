@@ -165,7 +165,8 @@ export interface Hat {
 export interface SkillInfo {
   name: string;
   description: string;
-  source: string; // project | shared | user
+  source: string; // project | shared | user | hat
+  also_in?: string[]; // scopes holding a shadowed copy (edits there are invisible)
 }
 export interface SkillFiles {
   name: string;

@@ -166,33 +166,104 @@ func runMigrations(sqlDB *sql.DB, role Role) error {
 // depend on the embedding dimension, so they are created in Go rather than SQL.
 // The system database has no searchable corpus and gets none.
 func createVirtualTables(sqlDB *sql.DB, role Role, dim int) error {
-	var stmts []string
-	switch role {
-	case Shared:
-		stmts = []string{
-			`CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(content)`,
-			`CREATE VIRTUAL TABLE IF NOT EXISTS doc_chunks_fts USING fts5(content)`,
-		}
-	case User:
-		stmts = []string{
-			`CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(content)`,
-			// Personal document corpus (searched alongside shared/project).
-			`CREATE VIRTUAL TABLE IF NOT EXISTS doc_chunks_fts USING fts5(content)`,
-		}
-	case Project:
-		// A project has both a memory store and a document corpus, like shared.
-		stmts = []string{
-			`CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(content)`,
-			`CREATE VIRTUAL TABLE IF NOT EXISTS doc_chunks_fts USING fts5(content)`,
-		}
-	case System:
+	if role == System {
 		return nil
 	}
-	stmts = append(stmts, vectorTableStmts(role, dim)...)
+	if err := ensureFTSTables(sqlDB, role); err != nil {
+		return fmt.Errorf("fts tables: %w", err)
+	}
+	stmts := vectorTableStmts(role, dim)
 	for _, s := range stmts {
 		if _, err := sqlDB.Exec(s); err != nil {
 			return fmt.Errorf("%s: %w", s, err)
 		}
+	}
+	return nil
+}
+
+const ftsTokenizer = "porter"
+
+// ftsTableNames lists the FTS5 tables a searchable role uses.
+func ftsTableNames(role Role) []string {
+	switch role {
+	case Shared, User, Project:
+		return []string{"memories_fts", "doc_chunks_fts"}
+	}
+	return nil
+}
+
+func ftsCreateStmt(name string) string {
+	return fmt.Sprintf(`CREATE VIRTUAL TABLE %s USING fts5(content, tokenize='%s')`, name, ftsTokenizer)
+}
+
+// ensureFTSTables creates FTS5 tables with the porter stemmer. Existing tables
+// built without porter are dropped, recreated, and repopulated from memories /
+// doc_chunks so upgrades pick up the new tokenizer automatically.
+func ensureFTSTables(sqlDB *sql.DB, role Role) error {
+	names := ftsTableNames(role)
+	if len(names) == 0 {
+		return nil
+	}
+	for _, n := range names {
+		needs, err := ftsNeedsRebuild(sqlDB, n)
+		if err != nil {
+			return err
+		}
+		if needs {
+			return recreateFTSTables(sqlDB, role)
+		}
+	}
+	for _, n := range names {
+		var exists int
+		if err := sqlDB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?`, n).Scan(&exists); err != nil {
+			return err
+		}
+		if exists == 0 {
+			if _, err := sqlDB.Exec(ftsCreateStmt(n)); err != nil {
+				return fmt.Errorf("%s: %w", ftsCreateStmt(n), err)
+			}
+		}
+	}
+	return nil
+}
+
+func ftsNeedsRebuild(sqlDB *sql.DB, name string) (bool, error) {
+	var createSQL sql.NullString
+	err := sqlDB.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name=?`, name).Scan(&createSQL)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if !createSQL.Valid {
+		return true, nil
+	}
+	return !strings.Contains(strings.ToLower(createSQL.String), ftsTokenizer), nil
+}
+
+// RecreateFTSTables drops and recreates a role's FTS5 tables with the porter
+// stemmer and repopulates them from the base tables.
+func RecreateFTSTables(sqlDB *sql.DB, role Role) error {
+	return recreateFTSTables(sqlDB, role)
+}
+
+func recreateFTSTables(sqlDB *sql.DB, role Role) error {
+	for _, n := range ftsTableNames(role) {
+		if _, err := sqlDB.Exec("DROP TABLE IF EXISTS " + n); err != nil {
+			return fmt.Errorf("drop %s: %w", n, err)
+		}
+	}
+	for _, n := range ftsTableNames(role) {
+		if _, err := sqlDB.Exec(ftsCreateStmt(n)); err != nil {
+			return fmt.Errorf("%s: %w", ftsCreateStmt(n), err)
+		}
+	}
+	if _, err := sqlDB.Exec(`INSERT INTO memories_fts(rowid, content) SELECT id, content FROM memories`); err != nil {
+		return fmt.Errorf("repopulate memories_fts: %w", err)
+	}
+	if _, err := sqlDB.Exec(`INSERT INTO doc_chunks_fts(rowid, content) SELECT id, content FROM doc_chunks`); err != nil {
+		return fmt.Errorf("repopulate doc_chunks_fts: %w", err)
 	}
 	return nil
 }

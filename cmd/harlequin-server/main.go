@@ -113,6 +113,7 @@ func main() {
 	})
 
 	memStore := memory.NewStore(store.Shared, embedder)
+	memStore.SetFusion(cfg.Memory.FTSWeightValue(), cfg.Memory.VectorWeightValue())
 	memStore.SetSlotSearchWeight(cfg.Memory.SlotSearchWeightValue())
 	memStore.SetSearchMaxDistance(cfg.Memory.SearchMaxDistanceValue())
 	if cfg.Memory.ConflictCheckEnabled() {
@@ -142,6 +143,23 @@ func main() {
 	if err := skillMgr.Seed(context.Background()); err != nil {
 		log.Fatalf("seed skills: %v", err)
 	}
+	// Heal description columns left empty by the skill_overrides back-fill
+	// migration (listings read the column, not the SKILL.md frontmatter).
+	if err := skills.RepairDescriptions(context.Background(), store.Shared); err != nil {
+		log.Printf("repair skill descriptions (shared): %v", err)
+	}
+	_ = store.EachUser(context.Background(), func(id int64, udb *sql.DB) error {
+		if err := skills.RepairDescriptions(context.Background(), udb); err != nil {
+			log.Printf("repair skill descriptions (user %d): %v", id, err)
+		}
+		return nil
+	})
+	_ = store.EachProject(context.Background(), func(id int64, pdb *sql.DB) error {
+		if err := skills.RepairDescriptions(context.Background(), pdb); err != nil {
+			log.Printf("repair skill descriptions (project %d): %v", id, err)
+		}
+		return nil
+	})
 
 	var webFetcher *webfetch.Client
 	if cfg.Agent.WebFetch.EnabledValue() {

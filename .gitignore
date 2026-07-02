@@ -14,3 +14,7 @@ session_*.md
 ~$*
 /.venv/
 /.claude/
+
+harlequin
+harlequin-server
+

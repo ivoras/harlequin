@@ -489,7 +489,11 @@ type TurnTiming struct {
 type SkillInfo struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	Source      string `json:"source"` // "project" | "shared" | "user"
+	Source      string `json:"source"` // "project" | "shared" | "user" | "hat"
+	// AlsoIn lists further scopes holding a copy of this skill that the Source
+	// scope shadows (resolution order), so clients can surface "your edit in
+	// scope X is invisible" situations.
+	AlsoIn []string `json:"also_in,omitempty"`
 }
 
 // SkillFiles is a map of relative path -> file contents. Scope selects which
