@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api";
   import { activeProject, projectSheet, toast } from "../lib/stores";
+  import { switchToProject, leaveActiveProject } from "../lib/project";
   import type { Project, Document } from "../lib/types";
 
   // Project picker + a document file manager for the picked project. The pick
@@ -102,6 +103,14 @@
     <div class="row">
       <h3>Projects</h3>
       <span class="spacer"></span>
+      {#if selected && selected !== $activeProject?.id}
+        <button class="primary small" onclick={() => {
+          const p = projects.find((x) => x.id === selected);
+          if (p) switchToProject(p);
+        }}>Switch to {projects.find((x) => x.id === selected)?.name}</button>
+      {:else if selected && selected === $activeProject?.id}
+        <button class="small" onclick={leaveActiveProject}>Leave project</button>
+      {/if}
       <button class="small" onclick={() => projectSheet.set(true)}>Manage…</button>
     </div>
 

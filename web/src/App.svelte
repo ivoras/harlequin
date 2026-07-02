@@ -2,6 +2,7 @@
   import { api, getToken, setToken } from "./lib/api";
   import { user, view, session, wornHat, toasts, toast, activeProject, projectSheet, type View } from "./lib/stores";
   import { sc } from "./lib/session.svelte";
+  import { switchToProject as libSwitchToProject, leaveActiveProject, cleanTitle } from "./lib/project";
   import { pc } from "./lib/projectchat.svelte";
   import type { Session, Project, ProjectInvite } from "./lib/types";
   import Login from "./views/Login.svelte";
@@ -129,9 +130,6 @@
     await ensureSession();
   }
 
-  function cleanTitle(t: string): string {
-    return t === "Session" || t === "New session" || t === "New conversation" ? "" : t;
-  }
 
   async function ensureSession() {
     if (creating) return;
@@ -190,29 +188,10 @@
   async function switchToProject(p: Project) {
     projectSheet.set(false);
     sessionDrawer = false;
-    view.set("chat");
-    activeProject.set(p);
-    // Open an existing project session, or create one inside the project by
-    // assigning a fresh personal session.
-    try {
-      const ps = await api.listProjectSessions(p.id);
-      if (ps.length > 0) {
-        session.set({ id: ps[0].id, title: cleanTitle(ps[0].title) });
-        wornHat.set(ps[0].hat ?? "");
-      } else {
-        const c = await api.createSession("Session", "");
-        const { session_id } = await api.assignSession(p.id, c.id);
-        session.set({ id: session_id, title: "" });
-        wornHat.set("");
-      }
-    } catch (e) {
-      toast((e as Error).message, "error");
-    }
+    await libSwitchToProject(p);
   }
   async function leaveProject() {
-    activeProject.set(null);
-    await ensureSession(); // back to a personal session
-    view.set("chat");
+    await leaveActiveProject();
   }
   async function departProject() {
     const p = $activeProject;

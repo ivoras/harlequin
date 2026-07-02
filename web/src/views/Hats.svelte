@@ -166,7 +166,7 @@
           {/if}
           {#if admin}
             <div class="row small" style="gap:6px; flex-wrap:wrap;">
-              <button class="small" onclick={() => editFile(h.name, "system_prompt.md")}>Edit prompt</button>
+              <button class="small" onclick={() => editFile(h.name, "system_prompt.md")} title="The hat's system_prompt.md: frontmatter (description, visible skills) + optional body that replaces the default system prompt while worn">Edit system prompt</button>
               <button class="small" onclick={() => showFiles(h)}>Files</button>
               <select bind:value={addSel[h.name]}>
                 <option value="">add skill overlay…</option>
