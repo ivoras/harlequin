@@ -11,8 +11,9 @@
     name,
     path,
     hat = false,
+    initial,
     onClose,
-  }: { name: string; path: string; hat?: boolean; onClose: () => void } = $props();
+  }: { name: string; path: string; hat?: boolean; initial?: string; onClose: () => void } = $props();
 
   let content = $state("");
   let scope = $state("user"); // save target; defaults to the resolved scope once loaded
@@ -38,6 +39,13 @@
 
   onMount(async () => {
     try {
+      if (initial !== undefined) {
+        // Caller-provided starting content (e.g. a hat prompt seeded from the
+        // default system prompt template); saves still go to the real file.
+        content = initial;
+        fromScope = hat ? "shared" : fromScope;
+        return;
+      }
       if (hat) {
         content = (await api.getHatFile(name, path)).content;
         fromScope = "shared"; // hats are shared-only

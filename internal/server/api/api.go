@@ -120,6 +120,8 @@ func (s *Server) Router() http.Handler {
 			r.Put("/hats/{name}/files/*", s.handlePutHatFile)
 			r.Post("/hats/{name}/skills", s.handleAddHatSkill)
 			r.Delete("/hats/{name}/skills/{skill}", s.handleRemoveHatSkill)
+			r.Post("/hats/{name}/prompt", s.handleSetHatPrompt)
+			r.Get("/system-prompt", s.handleGetSystemPromptTemplate)
 
 			r.Get("/skills", s.handleListSkills)
 			r.Post("/skills", s.handleCreateSkill)

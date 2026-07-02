@@ -134,6 +134,9 @@ export const api = {
   putHatFile: (name: string, path: string, content: string) =>
     req<void>("PUT", `/hats/${q(name)}/files/${qpath(path)}`, { content }),
   addHatSkill: (hat: string, skill: string) => req<void>("POST", `/hats/${q(hat)}/skills`, { skill }),
+  setHatPromptEnabled: (hat: string, enabled: boolean) =>
+    req<void>("POST", `/hats/${q(hat)}/prompt`, { enabled }),
+  getSystemPromptTemplate: () => req<{ content: string }>("GET", "/system-prompt"),
   removeHatSkill: (hat: string, skill: string) => req<void>("DELETE", `/hats/${q(hat)}/skills/${q(skill)}`),
 
   // skills

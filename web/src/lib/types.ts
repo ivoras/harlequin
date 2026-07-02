@@ -161,6 +161,8 @@ export interface Hat {
   system_prompt?: string;
   skills?: string[]; // visibility list (empty = all)
   overlay_skills?: string[]; // skills the hat carries its own variants of
+  has_custom_prompt?: boolean; // system_prompt.md body is non-empty
+  prompt_disabled?: boolean; // body kept but inactive (use_prompt: false)
 }
 
 export interface SkillInfo {

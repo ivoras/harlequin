@@ -200,6 +200,44 @@ func (s *Server) handleRemoveHatSkill(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// handleSetHatPrompt enables/disables a hat's custom system prompt without
+// losing its content (elevated only).
+func (s *Server) handleSetHatPrompt(w http.ResponseWriter, r *http.Request) {
+	u, ok := requireElevated(w, r)
+	if !ok {
+		return
+	}
+	name := chi.URLParam(r, "name")
+	var req types.SetHatPromptRequest
+	if err := decode(r, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := s.Skills.SetHatPromptEnabled(r.Context(), name, req.Enabled, u.ID); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		s.Audit.Log(r.Context(), udb, "hat_prompt", name+" enabled="+strconv.FormatBool(req.Enabled), nil)
+		return nil
+	})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleGetSystemPromptTemplate returns the raw default system prompt template
+// (elevated; used to seed a hat's custom prompt editor).
+func (s *Server) handleGetSystemPromptTemplate(w http.ResponseWriter, r *http.Request) {
+	if _, ok := requireElevated(w, r); !ok {
+		return
+	}
+	content, err := s.Skills.BakedSystemPrompt()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"content": content})
+}
+
 // handleSetSessionHat sets (or clears) the hat worn by a session. The
 // hat must exist unless it is being cleared.
 func (s *Server) handleSetSessionHat(w http.ResponseWriter, r *http.Request) {

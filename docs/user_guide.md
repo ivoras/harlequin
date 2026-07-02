@@ -56,6 +56,7 @@ They resolve across scopes: project (when one is active), then shared
 | `/hat files <name>` | List a hat's files (prompt + skill overlays). |
 | `/hat addskill <hat> <skill>` | (admin) Copy the currently-resolved skill into the hat's overlay, ready for specialising. |
 | `/hat rmskill <hat> <skill>` | (admin) Remove a skill overlay from the hat. |
+| `/hat prompt <name> on\|off` | (admin) Toggle the hat's custom system prompt; `off` keeps its content but the default prompt is used. Creating a custom prompt starts from a copy of the default. |
 | `/hat del <name>` | (admin) Delete a hat. |
 
 

@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"slices"
+	"strings"
 
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
@@ -48,12 +49,36 @@ func (m *Model) openSkillEditor(name, relpath, scope string) tea.Cmd {
 	}
 }
 
-// openHatEditor fetches a hat file, then opens the editor overlay on it.
+// openHatEditor fetches a hat file, then opens the editor overlay on it. A
+// system_prompt.md whose body is still empty is seeded with the default system
+// prompt template, so a specialised prompt starts from the real default.
 func (m *Model) openHatEditor(name, relpath string) tea.Cmd {
 	return func() tea.Msg {
 		content, err := m.client.GetHatFile(context.Background(), name, relpath)
+		if err == nil && relpath == "system_prompt.md" && hatPromptBodyEmpty(content) {
+			if tpl, terr := m.client.SystemPromptTemplate(context.Background()); terr == nil && tpl != "" {
+				content = strings.TrimRight(content, "\n") + "\n" + tpl
+			}
+		}
 		return skillEditorLoadedMsg{name: name, relpath: relpath, isHat: true, content: content, err: err}
 	}
+}
+
+// hatPromptBodyEmpty reports whether a hat system_prompt.md has no body after
+// its frontmatter (i.e. the hat still uses the default system prompt).
+func hatPromptBodyEmpty(content string) bool {
+	t := strings.TrimSpace(content)
+	if !strings.HasPrefix(t, "---") {
+		return t == ""
+	}
+	rest := t[3:]
+	idx := strings.Index(rest, "\n---")
+	if idx < 0 {
+		return false // malformed; do not seed over it
+	}
+	body := rest[idx+4:]
+	body = strings.TrimPrefix(body, "-") // tolerate ---- fences
+	return strings.TrimSpace(body) == ""
 }
 
 // startSkillEditor initializes the editor overlay from a loaded file.
