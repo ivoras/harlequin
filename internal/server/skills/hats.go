@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/ivoras/harlequin/internal/shared/types"
 	"gopkg.in/yaml.v3"
@@ -33,121 +32,66 @@ type hatFrontmatter struct {
 	Skills      []string `yaml:"skills"`
 }
 
-// readHatFiles reads one hat's files from the shared database (relpath ->
-// contents). Returns nil (no error) when there is no such hat.
-func (m *Manager) readHatFiles(ctx context.Context, name string) (map[string]string, error) {
-	var exists int
-	if err := m.shared.QueryRowContext(ctx, `SELECT COUNT(*) FROM hats WHERE name = ?`, name).Scan(&exists); err != nil {
-		return nil, err
+// hatFromPrompt builds the Hat DTO from its (possibly empty) system_prompt.md.
+func hatFromPrompt(name, raw string) types.Hat {
+	h := types.Hat{Name: name}
+	if raw != "" {
+		fm, body := splitHatFrontmatter(raw)
+		h.Description = fm.Description
+		h.Skills = fm.Skills
+		h.SystemPrompt = strings.TrimSpace(body)
 	}
-	if exists == 0 {
-		return nil, nil
-	}
-	rows, err := m.shared.QueryContext(ctx, `SELECT relpath, content FROM hat_files WHERE hat_name = ?`, name)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	files := map[string]string{}
-	for rows.Next() {
-		var rel string
-		var content []byte
-		if err := rows.Scan(&rel, &content); err != nil {
-			return nil, err
-		}
-		files[rel] = string(content)
-	}
-	return files, rows.Err()
+	return h
 }
 
-// ListHats returns the hats in the shared database.
+// ListHats returns the hats in the shared database (one query: the hat rows
+// joined to their system_prompt.md, whose frontmatter carries the metadata).
 func (m *Manager) ListHats(ctx context.Context) ([]types.Hat, error) {
-	rows, err := m.shared.QueryContext(ctx, `SELECT name FROM hats ORDER BY name`)
+	rows, err := m.shared.QueryContext(ctx,
+		`SELECT h.name, COALESCE(f.content, '')
+		 FROM hats h LEFT JOIN hat_files f ON f.hat_name = h.name AND f.relpath = ?
+		 ORDER BY h.name`, hatPromptFile)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var names []string
+	var out []types.Hat
 	for rows.Next() {
-		var n string
-		if err := rows.Scan(&n); err != nil {
+		var name string
+		var raw []byte
+		if err := rows.Scan(&name, &raw); err != nil {
 			return nil, err
 		}
-		names = append(names, n)
+		out = append(out, hatFromPrompt(name, string(raw)))
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	var out []types.Hat
-	for _, n := range names {
-		h, err := m.GetHat(ctx, n)
-		if err != nil {
-			continue
-		}
-		out = append(out, *h)
-	}
-	return out, nil
+	return out, rows.Err()
 }
 
 // GetHat reads a hat from the shared database: its optional system-prompt body
 // and frontmatter (description + the skills it makes visible).
 func (m *Manager) GetHat(ctx context.Context, name string) (*types.Hat, error) {
-	files, err := m.readHatFiles(ctx, name)
+	files, err := readItemFiles(ctx, m.shared, hatTables, name)
 	if err != nil {
 		return nil, err
 	}
 	if files == nil {
 		return nil, ErrHatNotFound
 	}
-	h := &types.Hat{Name: name}
-	if raw, ok := files[hatPromptFile]; ok {
-		fm, body := splitHatFrontmatter(raw)
-		h.Description = fm.Description
-		h.Skills = fm.Skills
-		h.SystemPrompt = strings.TrimSpace(body)
-	}
-	return h, nil
+	h := hatFromPrompt(name, files[hatPromptFile])
+	return &h, nil
 }
 
 // SaveHat writes a hat (all its files) into the shared database, replacing any
 // existing version. The description is taken from system_prompt.md frontmatter.
 func (m *Manager) SaveHat(ctx context.Context, name string, userID int64, files map[string]string) error {
 	fm, _ := splitHatFrontmatter(files[hatPromptFile])
-	return writeHat(ctx, m.shared, name, fm.Description, userID, files)
+	return writeItem(ctx, m.shared, hatTables, name, fm.Description, userID, files)
 }
 
 // DeleteHat removes a hat from the shared database.
 func (m *Manager) DeleteHat(ctx context.Context, name string) error {
 	_, err := m.shared.ExecContext(ctx, `DELETE FROM hats WHERE name = ?`, name)
 	return err
-}
-
-// writeHat upserts a hat row and replaces its files, in one transaction
-// (mirrors writeSkill).
-func writeHat(ctx context.Context, db *sql.DB, name, description string, userID int64, files map[string]string) error {
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO hats(name, description, updated_by, updated_at) VALUES (?, ?, ?, ?)
-		 ON CONFLICT(name) DO UPDATE SET description = excluded.description,
-		   updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
-		name, description, userID, time.Now()); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM hat_files WHERE hat_name = ?`, name); err != nil {
-		return err
-	}
-	for rel, content := range files {
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO hat_files(hat_name, relpath, content) VALUES (?, ?, ?)`,
-			name, rel, []byte(content)); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
 }
 
 // ImportHatsFromDisk one-time-imports hats from the legacy on-disk directory
@@ -195,7 +139,7 @@ func ImportHatsFromDisk(ctx context.Context, shared *sql.DB, dir string) error {
 			return fmt.Errorf("import hat %q: %w", name, err)
 		}
 		fm, _ := splitHatFrontmatter(files[hatPromptFile])
-		if err := writeHat(ctx, shared, name, fm.Description, 0, files); err != nil {
+		if err := writeItem(ctx, shared, hatTables, name, fm.Description, 0, files); err != nil {
 			return fmt.Errorf("import hat %q: %w", name, err)
 		}
 	}
@@ -221,14 +165,23 @@ func splitHatFrontmatter(content string) (hatFrontmatter, string) {
 	return fm, body
 }
 
+// escapeLike escapes SQLite LIKE metacharacters so a literal string can be
+// used inside a pattern (paired with ESCAPE '\'). Without it, '_'/'%' in a
+// skill name would wildcard-match other skills' rows.
+func escapeLike(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `%`, `\%`)
+	return strings.ReplaceAll(s, `_`, `\_`)
+}
+
 // hatOverrideFiles returns a hat's override files for one skill (relpaths
 // relative to the skill, i.e. with the "skills/<name>/" prefix stripped), or
 // nil when the hat has no override for that skill.
 func (m *Manager) hatOverrideFiles(ctx context.Context, hat, skill string) (map[string]string, error) {
 	prefix := hatSkillPrefix + skill + "/"
 	rows, err := m.shared.QueryContext(ctx,
-		`SELECT relpath, content FROM hat_files WHERE hat_name = ? AND relpath LIKE ?`,
-		hat, prefix+"%")
+		`SELECT relpath, content FROM hat_files WHERE hat_name = ? AND relpath LIKE ? ESCAPE '\'`,
+		hat, escapeLike(prefix)+"%")
 	if err != nil {
 		return nil, err
 	}
@@ -248,35 +201,44 @@ func (m *Manager) hatOverrideFiles(ctx context.Context, hat, skill string) (map[
 	return files, rows.Err()
 }
 
-// hatOverrideSkillNames returns the names of skills a hat carries overrides for.
-func (m *Manager) hatOverrideSkillNames(ctx context.Context, hat string) ([]string, error) {
+// hatOverrideInfos returns, in one query, the skills a hat carries overrides
+// for, mapped to the override's SKILL.md description. Overrides replace the
+// whole skill wholesale, so an override without a SKILL.md marks the skill
+// unusable while the hat is worn (present in the map with ok=false).
+type hatOverride struct {
+	description string
+	hasSkillMD  bool
+}
+
+func (m *Manager) hatOverrideInfos(ctx context.Context, hat string) (map[string]hatOverride, error) {
 	rows, err := m.shared.QueryContext(ctx,
-		`SELECT DISTINCT relpath FROM hat_files WHERE hat_name = ? AND relpath LIKE ?`,
+		`SELECT relpath, content FROM hat_files WHERE hat_name = ? AND relpath LIKE ?`,
 		hat, hatSkillPrefix+"%")
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	set := map[string]bool{}
+	out := map[string]hatOverride{}
 	for rows.Next() {
 		var rel string
-		if err := rows.Scan(&rel); err != nil {
+		var content []byte
+		if err := rows.Scan(&rel, &content); err != nil {
 			return nil, err
 		}
-		name, _, ok := strings.Cut(strings.TrimPrefix(rel, hatSkillPrefix), "/")
-		if ok && name != "" {
-			set[name] = true
+		name, sub, ok := strings.Cut(strings.TrimPrefix(rel, hatSkillPrefix), "/")
+		if !ok || name == "" {
+			continue
 		}
+		o := out[name]
+		if sub == "SKILL.md" {
+			o.hasSkillMD = true
+			if fm, _, err := parseFrontmatter(string(content)); err == nil {
+				o.description = fm.Description
+			}
+		}
+		out[name] = o
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	names := make([]string, 0, len(set))
-	for n := range set {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	return names, nil
+	return out, rows.Err()
 }
 
 // resolveRawForHat resolves a skill's raw files while a hat is worn: a per-hat
@@ -315,40 +277,44 @@ func (m *Manager) ResolveEffective(ctx context.Context, userDB, projDB *sql.DB, 
 //   - hat with a skills list → exactly those (its visibility list), with per-hat
 //     overrides applied;
 //   - hat without a list → the global set plus any hat overrides.
-func (m *Manager) EffectiveSkillInfos(ctx context.Context, userDB, projDB *sql.DB, userID int64, username string, hat *types.Hat) ([]types.SkillInfo, error) {
-	if hat == nil {
-		return m.List(ctx, userDB, projDB, userID, username)
+//
+// Like List, this reads only names + stored descriptions (plus one query for
+// the hat's overrides), never the file blobs.
+func (m *Manager) EffectiveSkillInfos(ctx context.Context, userDB, projDB *sql.DB, hat *types.Hat) ([]types.SkillInfo, error) {
+	base, err := m.List(ctx, userDB, projDB)
+	if hat == nil || err != nil {
+		return base, err
+	}
+	overrides, err := m.hatOverrideInfos(ctx, hat.Name)
+	if err != nil {
+		return nil, err
+	}
+	byName := make(map[string]types.SkillInfo, len(base))
+	for _, i := range base {
+		byName[i.Name] = i
+	}
+	for n, o := range overrides {
+		if !o.hasSkillMD {
+			// Overrides replace a skill wholesale; without a SKILL.md the skill
+			// is unresolvable under this hat, so hide it (matches ResolveEffective).
+			delete(byName, n)
+			continue
+		}
+		byName[n] = types.SkillInfo{Name: n, Description: o.description, Source: "hat"}
 	}
 	names := hat.Skills
 	if len(names) == 0 {
-		set := map[string]bool{}
-		g, err := m.allNames(ctx, userDB, projDB)
-		if err != nil {
-			return nil, err
-		}
-		for _, n := range g {
-			set[n] = true
-		}
-		o, _ := m.hatOverrideSkillNames(ctx, hat.Name)
-		for _, n := range o {
-			set[n] = true
-		}
-		for n := range set {
+		names = make([]string, 0, len(byName))
+		for n := range byName {
 			names = append(names, n)
 		}
-		sort.Strings(names)
 	}
+	sort.Strings(names)
 	var out []types.SkillInfo
 	for _, n := range names {
-		files, source, err := m.resolveRawForHat(ctx, userDB, projDB, hat.Name, n)
-		if err != nil {
-			continue
+		if info, ok := byName[n]; ok {
+			out = append(out, info)
 		}
-		sk, err := buildSkill(n, files, source)
-		if err != nil {
-			continue
-		}
-		out = append(out, types.SkillInfo{Name: sk.Name, Description: sk.Description, Source: source})
 	}
 	return out, nil
 }

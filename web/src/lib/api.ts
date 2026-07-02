@@ -67,7 +67,19 @@ async function reqList<T>(method: string, path: string, body?: unknown): Promise
 }
 
 const q = (s: string) => encodeURIComponent(s);
+// Escape each segment of a file relpath, keeping the slashes routable.
+const qpath = (p: string) => p.split("/").map(q).join("/");
 const mcpRef = (scope: string, name: string) => `?scope=${q(scope)}&name=${q(name)}`;
+
+// The active project id (0 = none), appended as ?project= to project-scope-aware
+// endpoints (skills) so the server resolves the project scope. Kept in sync with
+// the activeProject store (see stores.ts).
+let activeProjectId = 0;
+export function setActiveProject(id: number): void {
+  activeProjectId = id;
+}
+const withProject = (path: string) =>
+  activeProjectId ? `${path}${path.includes("?") ? "&" : "?"}project=${activeProjectId}` : path;
 
 // uploadDoc posts a file as multipart/form-data (the server extracts text — PDFs
 // via PDFium — and ingests it). We must NOT set Content-Type: the browser adds
@@ -114,19 +126,19 @@ export const api = {
   getHat: (name: string) => req<Hat>("GET", `/hats/${q(name)}`),
 
   // skills
-  listSkills: () => reqList<SkillInfo>("GET", "/skills"),
-  getSkill: (name: string) => req<SkillFiles>("GET", `/skills/${q(name)}`),
+  listSkills: () => reqList<SkillInfo>("GET", withProject("/skills")),
+  getSkill: (name: string) => req<SkillFiles>("GET", withProject(`/skills/${q(name)}`)),
   putSkill: (name: string, scope: string, files: Record<string, string>) =>
-    req<void>("PUT", `/skills/${q(name)}`, { name, scope, files }),
+    req<void>("PUT", withProject(`/skills/${q(name)}`), { name, scope, files }),
   resetSkill: (name: string, scope = "") =>
-    req<void>("DELETE", `/skills/${q(name)}${scope ? `?scope=${q(scope)}` : ""}`),
+    req<void>("DELETE", withProject(`/skills/${q(name)}${scope ? `?scope=${q(scope)}` : ""}`)),
   publishSkill: (name: string) => req<void>("POST", `/skills/${q(name)}/publish`),
   createSkill: (name: string, description: string, scope = "") =>
-    req<void>("POST", "/skills", { name, description, scope }),
+    req<void>("POST", withProject("/skills"), { name, description, scope }),
   getSkillFile: (name: string, path: string) =>
-    req<SkillFile>("GET", `/skills/${q(name)}/files/${path.split("/").map(q).join("/")}`),
+    req<SkillFile>("GET", withProject(`/skills/${q(name)}/files/${qpath(path)}`)),
   putSkillFile: (name: string, path: string, scope: string, content: string) =>
-    req<void>("PUT", `/skills/${q(name)}/files/${path.split("/").map(q).join("/")}`, { scope, content }),
+    req<void>("PUT", withProject(`/skills/${q(name)}/files/${qpath(path)}`), { scope, content }),
 
   // memory
   listMemory: (scope = "") => reqList<Memory>("GET", "/memory" + (scope ? `?scope=${q(scope)}` : "")),

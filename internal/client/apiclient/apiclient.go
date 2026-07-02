@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -29,6 +30,27 @@ type Client struct {
 	token   string
 	iface   string // the interface this client announces (e.g. "TUI")
 	http    *http.Client
+	// project is the active project id (0 = none), appended as ?project= to
+	// project-scope-aware endpoints (skills). Atomic: commands run in goroutines
+	// while the UI switches projects. Set via SetProject on project enter/leave.
+	project atomic.Int64
+}
+
+// SetProject records the active project context (0 clears it).
+func (c *Client) SetProject(id int64) { c.project.Store(id) }
+
+// withProject appends the active project id to a path so the server resolves
+// the project scope (empty when no project is active).
+func (c *Client) withProject(path string) string {
+	id := c.project.Load()
+	if id == 0 {
+		return path
+	}
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+	return path + sep + "project=" + strconv.FormatInt(id, 10)
 }
 
 // New constructs a Client that announces itself as the given interface (e.g.
@@ -366,19 +388,19 @@ func (c *Client) Messages(ctx context.Context, id int64) ([]types.Message, error
 // ListSkills returns the skill catalogue.
 func (c *Client) ListSkills(ctx context.Context) ([]types.SkillInfo, error) {
 	var out []types.SkillInfo
-	return out, c.do(ctx, http.MethodGet, "/skills", nil, &out)
+	return out, c.do(ctx, http.MethodGet, c.withProject("/skills"), nil, &out)
 }
 
 // GetSkill downloads a skill's files.
 func (c *Client) GetSkill(ctx context.Context, name string) (*types.SkillFiles, error) {
 	var out types.SkillFiles
-	return &out, c.do(ctx, http.MethodGet, "/skills/"+url.PathEscape(name), nil, &out)
+	return &out, c.do(ctx, http.MethodGet, c.withProject("/skills/"+url.PathEscape(name)), nil, &out)
 }
 
 // PutSkill uploads a whole skill into the given scope ("" = default: project in
 // a project session, else user).
 func (c *Client) PutSkill(ctx context.Context, name, scope string, files map[string]string) error {
-	return c.do(ctx, http.MethodPut, "/skills/"+url.PathEscape(name), types.SkillFiles{Name: name, Scope: scope, Files: files}, nil)
+	return c.do(ctx, http.MethodPut, c.withProject("/skills/"+url.PathEscape(name)), types.SkillFiles{Name: name, Scope: scope, Files: files}, nil)
 }
 
 // ResetSkill deletes a skill from the given scope ("" = default scope).
@@ -387,20 +409,20 @@ func (c *Client) ResetSkill(ctx context.Context, name, scope string) error {
 	if scope != "" {
 		path += "?scope=" + scope
 	}
-	return c.do(ctx, http.MethodDelete, path, nil, nil)
+	return c.do(ctx, http.MethodDelete, c.withProject(path), nil, nil)
 }
 
 // CreateSkill scaffolds a new skill in the given scope.
 func (c *Client) CreateSkill(ctx context.Context, name, description, scope string) error {
 	body := map[string]string{"name": name, "description": description, "scope": scope}
-	return c.do(ctx, http.MethodPost, "/skills", body, nil)
+	return c.do(ctx, http.MethodPost, c.withProject("/skills"), body, nil)
 }
 
 // GetSkillFile downloads one file of the effective skill. Returns its content
 // and the scope it resolved from.
 func (c *Client) GetSkillFile(ctx context.Context, name, relpath string) (content, scope string, err error) {
 	var out map[string]string
-	if err = c.do(ctx, http.MethodGet, "/skills/"+url.PathEscape(name)+"/files/"+escapePathSegments(relpath), nil, &out); err != nil {
+	if err = c.do(ctx, http.MethodGet, c.withProject("/skills/"+url.PathEscape(name)+"/files/"+escapePathSegments(relpath)), nil, &out); err != nil {
 		return "", "", err
 	}
 	return out["content"], out["scope"], nil
@@ -409,7 +431,7 @@ func (c *Client) GetSkillFile(ctx context.Context, name, relpath string) (conten
 // PutSkillFile writes one file of a skill into the given scope.
 func (c *Client) PutSkillFile(ctx context.Context, name, relpath, scope, content string) error {
 	body := map[string]string{"scope": scope, "content": content}
-	return c.do(ctx, http.MethodPut, "/skills/"+url.PathEscape(name)+"/files/"+escapePathSegments(relpath), body, nil)
+	return c.do(ctx, http.MethodPut, c.withProject("/skills/"+url.PathEscape(name)+"/files/"+escapePathSegments(relpath)), body, nil)
 }
 
 // escapePathSegments URL-escapes each segment of a relative path (used for

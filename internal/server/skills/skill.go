@@ -1,6 +1,8 @@
-// Package skills parses, deploys, and resolves skills. The server is the single
-// source of truth: baked-in skills are deployed to the data dir on install/update,
-// users can override them, and the resolver renders <?js ?> templates on read.
+// Package skills parses, stores, and resolves skills and hats. The server is
+// the single source of truth: both live in the scoped SQLite databases (skills
+// resolve project → shared → user; hats are shared-only), baked-in copies are
+// seeded from the binary at startup, and the resolver renders <?js ?> templates
+// on read.
 package skills
 
 import (
@@ -32,7 +34,8 @@ type Skill struct {
 	Tools       []ToolDefinition
 	// Files maps relative path -> contents (includes SKILL.md).
 	Files map[string]string
-	// Source is "deployed", "override", or "org".
+	// Source is the scope the skill resolved from: "project", "shared", or
+	// "user" — or "hat" when a worn hat's override supplied it.
 	Source string
 }
 

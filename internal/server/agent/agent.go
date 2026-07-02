@@ -115,6 +115,10 @@ type runContext struct {
 	projectID  int64
 	projectDB  *sql.DB
 	hat        *types.Hat // the session's worn hat, or nil
+	// skillInfos is the hat-aware visible-skill catalogue, resolved once per
+	// turn (after loadHat) and reused by the system prompt, the catalogue log,
+	// and skill-tool registration.
+	skillInfos []types.SkillInfo
 	api        string     // transport this session arrived over (e.g. "REST")
 	iface      string     // interface/medium this session uses (e.g. "TUI")
 	turn       int
@@ -220,6 +224,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	// Resolve the session's worn hat up front: it governs the system prompt
 	// and which skills are visible (so it must be set before tools are built).
 	a.loadHat(ctx, rc)
+	rc.skillInfos, _ = a.Skills.EffectiveSkillInfos(ctx, rc.userDB, rc.projectDB, rc.hat)
 
 	tools := a.buildTools(ctx, rc)
 	toolDefs := make([]llm.Tool, 0, len(tools))
@@ -251,7 +256,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	// Log the skill catalogue offered to the model this turn (the hat-aware
 	// visible set), so "which skills did the agent see" is greppable rather than
 	// buried in the system prompt text.
-	if infos, err := a.Skills.EffectiveSkillInfos(ctx, rc.userDB, rc.projectDB, rc.userID, rc.username, rc.hat); err == nil {
+	if infos := rc.skillInfos; infos != nil {
 		skillCatalog := make([]map[string]any, 0, len(infos))
 		for _, i := range infos {
 			skillCatalog = append(skillCatalog, map[string]any{
@@ -638,10 +643,9 @@ func (a *Agent) composeSystemPrompt(ctx context.Context, rc *runContext) string 
 	if rc.hat != nil {
 		prompt += fmt.Sprintf("\n\nYou are wearing the %q hat.", rc.hat.Name)
 	}
-	infos, err := a.Skills.EffectiveSkillInfos(ctx, rc.userDB, rc.projectDB, rc.userID, rc.username, rc.hat)
-	if err == nil && len(infos) > 0 {
+	if len(rc.skillInfos) > 0 {
 		prompt += "\n\nAvailable skills (use load_skill to read full instructions):\n"
-		for _, i := range infos {
+		for _, i := range rc.skillInfos {
 			prompt += fmt.Sprintf("- %s: %s\n", i.Name, i.Description)
 		}
 	}

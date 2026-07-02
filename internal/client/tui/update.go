@@ -223,6 +223,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.activeProjectID = msg.id
 		m.activeProjectName = msg.name
+		m.client.SetProject(msg.id) // skills etc. now resolve the project scope
 		m.switchSession(msg.sessionID) // resets the socket; keeps activeProjectID
 		m.phase = phaseChat
 		m.blocks = nil
