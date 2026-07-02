@@ -241,6 +241,9 @@ type chatReadyMsg struct {
 
 // historyLoadedMsg carries committed messages fetched for a resume; they are held
 // until the synced frame says where the in-flight turn begins.
+// sessionClearedMsg confirms a /clear: the server wiped the session's messages.
+type sessionClearedMsg struct{}
+
 // sessionHatMsg restores the worn-hat indicator after a resume.
 type sessionHatMsg struct {
 	sessionID int64

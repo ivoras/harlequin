@@ -7,13 +7,14 @@ import (
 
 // slashCommands are the top-level commands offered by the autocomplete menu.
 var slashCommands = []string{
-	"/alert", "/config", "/cron", "/dismiss", "/docs", "/export", "/hat", "/help", "/mcp",
+	"/alert", "/clear", "/config", "/cron", "/dismiss", "/docs", "/export", "/hat", "/help", "/mcp",
 	"/memory", "/new", "/project", "/queue", "/quit", "/resume", "/run", "/say",
 	"/skill", "/skills", "/upload", "/usage",
 }
 
 var slashHelp = map[string]string{
 	"/alert":   "(owner/admin) broadcast an alert to all users",
+	"/clear":   "clear this session's context (messages); keeps session, title, hat",
 	"/config":  "view / set per-user config (e.g. Telegram)",
 	"/cron":    "list / add / manage scheduled jobs",
 	"/dismiss": "dismiss alert(s) by number (e.g. /dismiss 1 3), or all",

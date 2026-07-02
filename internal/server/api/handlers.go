@@ -229,6 +229,37 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// handleClearSession wipes a session's messages so the next turn starts with a
+// fresh context (the session, its title, and its hat survive). For a project
+// session pass ?project=<id>; any member may clear it.
+func (s *Server) handleClearSession(w http.ResponseWriter, r *http.Request) {
+	u, _ := auth.UserFromContext(r.Context())
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	projectID, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64)
+	var err error
+	if projectID > 0 {
+		if member, _ := s.Projects.IsMember(r.Context(), projectID, u.ID); !member {
+			writeErr(w, http.StatusForbidden, "not a member of this project")
+			return
+		}
+		err = s.Storage.WithProject(r.Context(), projectID, func(pdb *sql.DB) error {
+			return s.Sessions.ClearMessages(r.Context(), pdb, id)
+		})
+	} else {
+		err = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+			if _, e := s.Sessions.Get(r.Context(), udb, id, u.ID); e != nil {
+				return e
+			}
+			return s.Sessions.ClearMessages(r.Context(), udb, id)
+		})
+	}
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (s *Server) handleSessionLog(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)

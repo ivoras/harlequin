@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
+	"github.com/ivoras/harlequin/internal/server/documents/searchquery"
 	"github.com/ivoras/harlequin/internal/server/embed"
 	"github.com/ivoras/harlequin/internal/shared/types"
 	"golang.org/x/text/unicode/norm"
@@ -373,9 +374,12 @@ func (s *Store) SearchScoped(ctx context.Context, scopes []ScopeDB, query string
 	if s.ftsGatePct > 0 && depth < 200 {
 		depth = 200
 	}
+	ftsQuery := searchquery.FTS(query)
+	focusedFTS := searchquery.FocusedFTS(query)
+	embedQuery := searchquery.Embed(query)
 	// Embed the query once for the dense arm of every scope.
 	var blob any
-	if vecs, err := s.embedder.EmbedQuery(ctx, []string{query}); err == nil && len(vecs) == 1 {
+	if vecs, err := s.embedder.EmbedQuery(ctx, []string{embedQuery}); err == nil && len(vecs) == 1 {
 		if b, err := sqlite_vec.SerializeFloat32(vecs[0]); err == nil {
 			blob = b
 		}
@@ -386,7 +390,7 @@ func (s *Store) SearchScoped(ctx context.Context, scopes []ScopeDB, query string
 	sourceOf := map[string]string{}
 	for _, sc := range scopes {
 		if sc.DB != nil {
-			s.searchInto(ctx, sc, query, blob, depth, ranks, contents, scopeOf, sourceOf)
+			s.searchInto(ctx, sc, ftsQuery, focusedFTS, blob, depth, ranks, contents, scopeOf, sourceOf)
 		}
 	}
 	return topN(ranks, contents, scopeOf, sourceOf, limit), nil
@@ -394,21 +398,30 @@ func (s *Store) SearchScoped(ctx context.Context, scopes []ScopeDB, query string
 
 // searchInto runs the gated/weighted dense+FTS5 arms against one corpus, folding
 // scope-qualified RRF contributions into the shared maps.
-func (s *Store) searchInto(ctx context.Context, sc ScopeDB, query string, blob any, depth int,
+func (s *Store) searchInto(ctx context.Context, sc ScopeDB, ftsQuery, focusedFTS string, blob any, depth int,
 	ranks map[string]float64, contents, scopeOf, sourceOf map[string]string) {
 	key := func(local int64) string {
 		return "d." + scopePrefix(sc.Scope) + "." + strconv.FormatInt(local, 10)
 	}
-	if rows, err := sc.DB.QueryContext(ctx,
-		`SELECT c.id, c.content, COALESCE(d.title, ''), c.ord, c.page
-		 FROM doc_chunks_fts f JOIN doc_chunks c ON c.id = f.rowid
-		 JOIN documents d ON d.id = c.document_id
-		 WHERE doc_chunks_fts MATCH ? ORDER BY f.rank LIMIT ?`, query, depth); err == nil {
-		hits := collect(rows)
-		if s.ftsGatePct > 0 {
-			hits = gateTop(hits, s.ftsGatePct)
+	runFTS := func(q string, weight float64) {
+		if q == "" || weight <= 0 {
+			return
 		}
-		foldKeyed(hits, s.ftsWeight, sc.Scope, key, ranks, contents, scopeOf, sourceOf)
+		if rows, err := sc.DB.QueryContext(ctx,
+			`SELECT c.id, c.content, COALESCE(d.title, ''), c.ord, c.page
+			 FROM doc_chunks_fts f JOIN doc_chunks c ON c.id = f.rowid
+			 JOIN documents d ON d.id = c.document_id
+			 WHERE doc_chunks_fts MATCH ? ORDER BY f.rank LIMIT ?`, q, depth); err == nil {
+			hits := collect(rows)
+			if s.ftsGatePct > 0 {
+				hits = gateTop(hits, s.ftsGatePct)
+			}
+			foldKeyed(hits, weight, sc.Scope, key, ranks, contents, scopeOf, sourceOf)
+		}
+	}
+	runFTS(ftsQuery, s.ftsWeight)
+	if focusedFTS != "" && focusedFTS != ftsQuery {
+		runFTS(focusedFTS, s.ftsWeight)
 	}
 	if blob != nil {
 		if rows, err := sc.DB.QueryContext(ctx,

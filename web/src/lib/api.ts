@@ -122,6 +122,8 @@ export const api = {
   deleteSession: (id: number) => req<void>("DELETE", `/sessions/${id}`),
   setSessionHat: (id: number, hat: string) =>
     req<void>("POST", `/sessions/${id}/hat`, { hat }),
+  clearSession: (id: number, projectID = 0) =>
+    req<void>("POST", `/sessions/${id}/clear${projectID ? `?project=${projectID}` : ""}`),
 
   // hats
   listHats: () => reqList<Hat>("GET", "/hats"),

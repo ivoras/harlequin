@@ -20,6 +20,7 @@ const commands: SlashCommand[] = [
   { name: "/help", desc: "show available commands" },
   { name: "/project", desc: "manage projects (create / invite / switch)", run: () => projectSheet.set(true) },
   { name: "/export", desc: "download the session transcript", run: () => sc.exportTranscript() },
+  { name: "/clear", desc: "clear this session's context (keeps session, title, hat)", run: () => sc.clear() },
   {
     name: "/alert",
     args: "<message>",

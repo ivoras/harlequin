@@ -172,6 +172,16 @@ func (c *Client) CreateSession(ctx context.Context, title, hat string) (*types.S
 	return &sess, c.do(ctx, http.MethodPost, "/sessions", types.CreateSessionRequest{Title: title, Hat: hat}, &sess)
 }
 
+// ClearSession wipes a session's messages so the next turn starts fresh
+// (projectID > 0 for a project session).
+func (c *Client) ClearSession(ctx context.Context, id, projectID int64) error {
+	path := fmt.Sprintf("/sessions/%d/clear", id)
+	if projectID > 0 {
+		path += "?project=" + strconv.FormatInt(projectID, 10)
+	}
+	return c.do(ctx, http.MethodPost, path, nil, nil)
+}
+
 // ListHats returns the org's hats.
 func (c *Client) ListHats(ctx context.Context) ([]types.Hat, error) {
 	var out []types.Hat

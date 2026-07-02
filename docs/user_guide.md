@@ -24,6 +24,7 @@ typing to filter it, and pick a command with the arrow keys and Enter.
 | Command | What it does |
 |---------|--------------|
 | `/new` | Start a new session (keeps the currently worn hat). |
+| `/clear` | Clear the current session's messages so the next turn starts with a fresh context. The session, its title, and its hat survive; works in project sessions too (clears for all members). |
 | `/resume` | Pick an earlier session to resume from a list. |
 | `/resume <id>` | Resume a specific session by id. |
 | `/resume <query>` | Filter the session picker by title. |
