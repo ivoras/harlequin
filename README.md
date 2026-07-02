@@ -10,7 +10,7 @@ A client-server AI agent system written in Go. A REST + WebSocket **server** com
 stores data in SQLite (FTS5 + vector search), runs an agentic tool-calling loop, and manages
 skills. Chat sessions live on the server (a goroutine per active session) and stream over a
 WebSocket, so a client can disconnect mid-turn and reconnect later to resume. A beautiful Bubble
-Tea **TUI client** talks to it. Multi-user, organisation-aware.
+Tea **TUI client** and a mobile-first **web UI** talk to it. Multi-user, organisation-aware.
 
 See [AGENTS.md](AGENTS.md) for a thousand-mile architecture overview.
 
@@ -90,8 +90,9 @@ cp configs/server.example.yaml server.yaml    # adjust LLM/embeddings endpoints
 ./bin/harlequin-server --config server.yaml
 ```
 
-On first start the server creates its SQLite databases and deploys the baked-in skills into
-`<data_dir>/skills/`. Accounts are identified by **email address**. Create the first
+On first start the server creates its SQLite databases and seeds the baked-in skills into
+the shared database (your later edits to them are preserved across upgrades). Accounts are
+identified by **email address**. Create the first
 user — make it an **owner**, the highest role:
 
 ```sh
@@ -185,7 +186,8 @@ together with its **API** — the transport the request arrived over:
 | Interface | API | Notes |
 |-----------|-----|-------|
 | `TUI` | `REST` | the built-in text user interface (TUI) client |
-| `Telegram` | `Telegram` | planned: a Telegram chatbot bridge |
+| `Web` | `REST` | the browser SPA (see Web UI below) |
+| `Telegram` | `Telegram` | planned: a Telegram chatbot bridge (outbound notifications already deliver via Telegram) |
 | `Cron` | `Cron` | internal: scheduled jobs that start an agent turn |
 
 Because the REST + WebSocket API is shared by different clients, a REST client **announces
@@ -286,8 +288,10 @@ cmd/harlequin          TUI client binary
 internal/server/...    server packages
 internal/client/...    client packages
 internal/shared/types  REST DTOs shared by client and server
-migrations             embedded SQL migrations
-skills                 baked-in skills (embedded into the server binary)
+internal/server/db/migrations  embedded SQL migrations (system/shared/user/project)
+web                    browser SPA (Svelte 5 + Vite)
+skills                 baked-in skills (embedded into the server binary, seeded into the shared DB)
+hats                   baked-in hats (embedded and seeded the same way)
 third_party/sqlite     vendored sqlite3.h (compile-time; see third_party/sqlite/README.md)
 ```
 
