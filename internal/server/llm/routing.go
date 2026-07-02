@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"log"
 )
 
 // UsageRecorder is called after each completion with token usage. It is optional.
@@ -96,7 +97,7 @@ func (r *RoutingProvider) Chat(ctx context.Context, req ChatRequest) (<-chan Chu
 	}
 
 	var lastErr error
-	for _, name := range names {
+	for i, name := range names {
 		p := r.providers[name]
 		// If the request did not pin a model, use the provider's default model.
 		pr := req
@@ -106,7 +107,15 @@ func (r *RoutingProvider) Chat(ctx context.Context, req ChatRequest) (<-chan Chu
 		ch, err := p.Chat(ctx, pr)
 		if err != nil {
 			lastErr = err
+			if i+1 < len(names) {
+				log.Printf("llm: provider %q (model %s) failed: %v — falling back to %q", name, pr.Model, err, names[i+1])
+			} else {
+				log.Printf("llm: provider %q (model %s) failed: %v — no providers left", name, pr.Model, err)
+			}
 			continue
+		}
+		if i > 0 {
+			log.Printf("llm: request served by FALLBACK provider %q (model %s) instead of %q", name, pr.Model, names[0])
 		}
 		return r.wrap(ctx, ch), nil
 	}
