@@ -165,11 +165,18 @@ export interface Hat {
 export interface SkillInfo {
   name: string;
   description: string;
-  source: string; // deployed | override | org
+  source: string; // project | shared | user
 }
 export interface SkillFiles {
   name: string;
+  scope?: string;
   files: Record<string, string>;
+}
+export interface SkillFile {
+  name: string;
+  path: string;
+  scope: string;
+  content: string;
 }
 
 export interface MemorySlot {

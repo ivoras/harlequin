@@ -300,7 +300,7 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 			"type": "object", "properties": map[string]any{},
 		}),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
-			infos, err := a.Skills.EffectiveSkillInfos(ctx, rc.userDB, rc.userID, rc.username, rc.hat)
+			infos, err := a.Skills.EffectiveSkillInfos(ctx, rc.userDB, rc.projectDB, rc.userID, rc.username, rc.hat)
 			if err != nil {
 				return "", err
 			}
@@ -325,7 +325,7 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 		}),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 			name, _ := args["name"].(string)
-			sk, err := a.Skills.ResolveEffective(ctx, rc.userDB, name, rc.userID, rc.username, rc.hat)
+			sk, err := a.Skills.ResolveEffective(ctx, rc.userDB, rc.projectDB, name, rc.userID, rc.username, rc.hat)
 			if err != nil {
 				return "", err
 			}
@@ -613,10 +613,10 @@ Example (watch a saved web-monitor check every 30 min): cron_create(name="fzoeu"
 	}
 
 	// Skill-defined tools, namespaced <skill>.<tool>, for the visible (hat-aware) skills.
-	infos, err := a.Skills.EffectiveSkillInfos(ctx, rc.userDB, rc.userID, rc.username, rc.hat)
+	infos, err := a.Skills.EffectiveSkillInfos(ctx, rc.userDB, rc.projectDB, rc.userID, rc.username, rc.hat)
 	if err == nil {
 		for _, info := range infos {
-			sk, err := a.Skills.ResolveEffective(ctx, rc.userDB, info.Name, rc.userID, rc.username, rc.hat)
+			sk, err := a.Skills.ResolveEffective(ctx, rc.userDB, rc.projectDB, info.Name, rc.userID, rc.username, rc.hat)
 			if err != nil {
 				continue
 			}
@@ -801,14 +801,14 @@ func (a *Agent) resolveMemoryRef(ctx context.Context, rc *runContext, args map[s
 	id = strings.TrimSpace(id)
 	slotKey = strings.TrimSpace(slotKey)
 	if id != "" {
-		ref, err := a.Memory.ResolveRef(ctx, rc.userDB, id, rc.userID)
+		ref, err := a.Memory.ResolveRef(ctx, rc.userDB, rc.projectDB, id, rc.userID)
 		if err != nil {
 			return "", memoryRefError(err, "id", id)
 		}
 		return ref, ""
 	}
 	if slotKey != "" {
-		ref, err := a.Memory.ResolveRef(ctx, rc.userDB, slotKey, rc.userID)
+		ref, err := a.Memory.ResolveRef(ctx, rc.userDB, rc.projectDB, slotKey, rc.userID)
 		if err != nil {
 			return "", memoryRefError(err, "slot_key", slotKey)
 		}

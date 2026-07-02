@@ -16,9 +16,9 @@ func TestMatchSlashCommands(t *testing.T) {
 		{"a /hat", nil},      // slash not at char 1
 		{"/hat wear x", nil}, // has a space -> typing args, menu closed
 		{"/", slashCommands}, // all commands
-		{"/re", []string{"/reload", "/resume"}},
-		{"/RE", []string{"/reload", "/resume"}}, // case-insensitive
-		{"/reload", []string{"/reload"}},
+		{"/re", []string{"/resume"}},
+		{"/RE", []string{"/resume"}}, // case-insensitive
+		{"/resume", []string{"/resume"}},
 		{"/zzz", nil},
 		{"/skill", []string{"/skill", "/skills"}},
 	}
@@ -31,7 +31,7 @@ func TestMatchSlashCommands(t *testing.T) {
 
 func TestIsExactSlashCommand(t *testing.T) {
 	t.Parallel()
-	for _, c := range []string{"/hat", "/reload", "/quit", "/exit"} {
+	for _, c := range []string{"/hat", "/resume", "/quit", "/exit"} {
 		if !isExactSlashCommand(c) {
 			t.Errorf("%q should be exact", c)
 		}

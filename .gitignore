@@ -13,3 +13,4 @@ session_*.md
 *.tmp
 ~$*
 /.venv/
+/.claude/

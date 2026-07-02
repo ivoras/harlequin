@@ -25,7 +25,6 @@ const webFetchDOMDescription = `
 - To EXTRACT MANY items and filter/sort/aggregate them (e.g. "the cheapest", "all that mention X", totals) — which needs computation — parse the saved page in run_js: var h=dom.parse(tmp.read("<handle>")); var items=dom.query(h, "<selector>"). Each node has .tag/.class/.attrs/.text, .getAttribute(name), .textContent, and is itself queryable (dom.query(node, sub)). This is the right tool for computed answers; do the comparison/sort there, not by eye.
 - Pagination: a listing may span multiple pages (look for page links / "next" in the result). Fetch each page and combine — a single page is not the whole list.
 - prompt="<question>" (REQUIRES grep or selector — error if used alone): runs the grep/selector result through a fast analysis model with your prompt and returns that model's answer, like WebFetch but over the targeted DOM slice. Point grep/selector at the data first, then prompt to extract it — e.g. grep="price|¥" + prompt="what's the price?". Without grep/selector it would only see the whole structural dump, which it can't reliably answer from; that's why it's rejected.
-- Prefer this tool over WebFetch when you expect the result to be complex or large.
 `
 
 // webFetchDOMResultCap bounds the total result returned to the (small) model.

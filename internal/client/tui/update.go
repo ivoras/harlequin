@@ -157,6 +157,25 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.appendBlock("info", msg.text)
 		return m, nil
 
+	case skillEditorLoadedMsg:
+		if msg.err != nil {
+			m.appendBlock("error", msg.err.Error())
+			return m, nil
+		}
+		return m, m.startSkillEditor(msg)
+
+	case skillEditorSavedMsg:
+		if msg.err != nil {
+			if m.editor != nil {
+				m.editor.status = "save failed: " + msg.err.Error()
+			}
+			return m, nil
+		}
+		m.phase = phaseChat
+		m.editor = nil
+		m.appendBlock("info", "saved "+msg.name+"/"+msg.relpath)
+		return m, m.input.Focus()
+
 	case streamEventMsg:
 		return m.handleStreamEvent(msg.ev)
 
@@ -432,6 +451,8 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m.handleAskKey(msg, key)
 	case phaseSessions:
 		return m.handleSessionsKey(key)
+	case phaseEditor:
+		return m.handleEditorKey(msg, key)
 	case phaseLoginUser:
 		if key == "enter" {
 			v := strings.TrimSpace(m.input.Value())

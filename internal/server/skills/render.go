@@ -1,64 +1,18 @@
 package skills
 
 import (
-	"os"
-	"path/filepath"
-	"sync"
-	"time"
+	"crypto/sha256"
+	"encoding/hex"
+	"io/fs"
 
 	"github.com/ivoras/harlequin/internal/server/skills/jstmpl"
 )
 
-// fileCache caches deployed source files by path, keyed on mtime+size. Only the
-// raw source is cached, never the result of templating (which depends on the
-// per-request context). A changed mtime invalidates the entry.
-type fileCache struct {
-	mu sync.Mutex
-	m  map[string]cachedFile
-}
-
-type cachedFile struct {
-	mtime time.Time
-	size  int64
-	data  []byte
-}
-
-func newFileCache() *fileCache {
-	return &fileCache{m: map[string]cachedFile{}}
-}
-
-// clear drops all cached entries so the next read of any file comes from disk.
-func (c *fileCache) clear() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.m = map[string]cachedFile{}
-}
-
-// read returns the file's bytes, serving the in-memory copy when the file's
-// mtime and size are unchanged since it was last read.
-func (c *fileCache) read(path string) ([]byte, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if e, ok := c.m[path]; ok && e.mtime.Equal(info.ModTime()) && e.size == info.Size() {
-		return e.data, nil
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	c.m[path] = cachedFile{mtime: info.ModTime(), size: info.Size(), data: data}
-	return data, nil
-}
-
-// RenderFile reads a deployed file under the skills directory (e.g.
-// "system_prompt.md") — source cached by mtime — and renders its <?js ?>
+// RenderFile reads a baked asset file under the skills root (e.g.
+// "system_prompt.md") straight from the server binary and renders its <?js ?>
 // templates fresh for the given user.
 func (m *Manager) RenderFile(name string, userID int64, username string) (string, error) {
-	raw, err := m.cache.read(filepath.Join(m.skillDir, name))
+	raw, err := fs.ReadFile(m.baked, "skills/"+name)
 	if err != nil {
 		return "", err
 	}
@@ -71,8 +25,8 @@ func (m *Manager) RenderText(text string, userID int64, username string) (string
 	return jstmpl.Render(m.runner, text, m.makeCtx(userID, username, ""))
 }
 
-// ReloadCache expires the in-memory source-file cache so the next read of any
-// skill, system prompt, or hat file is loaded fresh from disk.
-func (m *Manager) ReloadCache() {
-	m.cache.clear()
+// hashBytes is the content hash used by the seed reconciler (hex SHA-256).
+func hashBytes(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
 }

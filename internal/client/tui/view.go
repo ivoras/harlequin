@@ -53,6 +53,8 @@ func (m *Model) View() tea.View {
 		content = m.askView()
 	case m.phase == phaseSessions:
 		content = m.sessionsView()
+	case m.phase == phaseEditor:
+		content = m.editorView()
 	default:
 		content = m.chatView()
 	}

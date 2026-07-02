@@ -150,13 +150,7 @@ func (c *Client) CreateSession(ctx context.Context, title, hat string) (*types.S
 	return &sess, c.do(ctx, http.MethodPost, "/sessions", types.CreateSessionRequest{Title: title, Hat: hat}, &sess)
 }
 
-// Reload expires the server's .md source-file cache (skills, system prompts,
-// hat data). Owner/admin only.
-func (c *Client) Reload(ctx context.Context) error {
-	return c.do(ctx, http.MethodPost, "/reload", nil, nil)
-}
-
-// ListHats returns the deployed hats.
+// ListHats returns the org's hats.
 func (c *Client) ListHats(ctx context.Context) ([]types.Hat, error) {
 	var out []types.Hat
 	return out, c.do(ctx, http.MethodGet, "/hats", nil, &out)
@@ -165,7 +159,17 @@ func (c *Client) ListHats(ctx context.Context) ([]types.Hat, error) {
 // GetHat returns one hat by name.
 func (c *Client) GetHat(ctx context.Context, name string) (*types.Hat, error) {
 	var out types.Hat
-	return &out, c.do(ctx, http.MethodGet, "/hats/"+name, nil, &out)
+	return &out, c.do(ctx, http.MethodGet, "/hats/"+url.PathEscape(name), nil, &out)
+}
+
+// SaveHat replaces a hat's complete file set. Owner/admin only.
+func (c *Client) SaveHat(ctx context.Context, name string, files map[string]string) error {
+	return c.do(ctx, http.MethodPut, "/hats/"+url.PathEscape(name), types.HatFiles{Name: name, Files: files}, nil)
+}
+
+// DeleteHat removes a hat. Owner/admin only.
+func (c *Client) DeleteHat(ctx context.Context, name string) error {
+	return c.do(ctx, http.MethodDelete, "/hats/"+url.PathEscape(name), nil, nil)
 }
 
 // SetSessionHat sets (or clears, when hat is empty) the session's hat.
@@ -368,17 +372,54 @@ func (c *Client) ListSkills(ctx context.Context) ([]types.SkillInfo, error) {
 // GetSkill downloads a skill's files.
 func (c *Client) GetSkill(ctx context.Context, name string) (*types.SkillFiles, error) {
 	var out types.SkillFiles
-	return &out, c.do(ctx, http.MethodGet, "/skills/"+name, nil, &out)
+	return &out, c.do(ctx, http.MethodGet, "/skills/"+url.PathEscape(name), nil, &out)
 }
 
-// PutSkill uploads a user's override.
-func (c *Client) PutSkill(ctx context.Context, name string, files map[string]string) error {
-	return c.do(ctx, http.MethodPut, "/skills/"+name, types.SkillFiles{Name: name, Files: files}, nil)
+// PutSkill uploads a whole skill into the given scope ("" = default: project in
+// a project session, else user).
+func (c *Client) PutSkill(ctx context.Context, name, scope string, files map[string]string) error {
+	return c.do(ctx, http.MethodPut, "/skills/"+url.PathEscape(name), types.SkillFiles{Name: name, Scope: scope, Files: files}, nil)
 }
 
-// ResetSkill deletes a user's override.
-func (c *Client) ResetSkill(ctx context.Context, name string) error {
-	return c.do(ctx, http.MethodDelete, "/skills/"+name, nil, nil)
+// ResetSkill deletes a skill from the given scope ("" = default scope).
+func (c *Client) ResetSkill(ctx context.Context, name, scope string) error {
+	path := "/skills/" + url.PathEscape(name)
+	if scope != "" {
+		path += "?scope=" + scope
+	}
+	return c.do(ctx, http.MethodDelete, path, nil, nil)
+}
+
+// CreateSkill scaffolds a new skill in the given scope.
+func (c *Client) CreateSkill(ctx context.Context, name, description, scope string) error {
+	body := map[string]string{"name": name, "description": description, "scope": scope}
+	return c.do(ctx, http.MethodPost, "/skills", body, nil)
+}
+
+// GetSkillFile downloads one file of the effective skill. Returns its content
+// and the scope it resolved from.
+func (c *Client) GetSkillFile(ctx context.Context, name, relpath string) (content, scope string, err error) {
+	var out map[string]string
+	if err = c.do(ctx, http.MethodGet, "/skills/"+url.PathEscape(name)+"/files/"+escapePathSegments(relpath), nil, &out); err != nil {
+		return "", "", err
+	}
+	return out["content"], out["scope"], nil
+}
+
+// PutSkillFile writes one file of a skill into the given scope.
+func (c *Client) PutSkillFile(ctx context.Context, name, relpath, scope, content string) error {
+	body := map[string]string{"scope": scope, "content": content}
+	return c.do(ctx, http.MethodPut, "/skills/"+url.PathEscape(name)+"/files/"+escapePathSegments(relpath), body, nil)
+}
+
+// escapePathSegments URL-escapes each segment of a relative path (used for
+// file relpaths in URLs, where the slashes themselves must survive).
+func escapePathSegments(relpath string) string {
+	segs := strings.Split(relpath, "/")
+	for i, s := range segs {
+		segs[i] = url.PathEscape(s)
+	}
+	return strings.Join(segs, "/")
 }
 
 // ListMemory returns memories visible to the current user.

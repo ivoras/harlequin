@@ -88,9 +88,9 @@ func (a *Agent) jsRunContext(ctx context.Context, rc *runContext) jsrun.RunConte
 }
 
 // makeResolver resolves a sandbox URI to its source text. skill:// honours the
-// worn hat's overrides (hat → user → org → deployed) via ResolveEffective, so a
-// hat can override any shipped script; storage:// and tmp:// read the per-user
-// scoped filesystems.
+// worn hat's overrides then the scope precedence (hat → project → shared → user)
+// via ResolveEffective, so a hat or a deeper scope can override any shipped
+// script; storage:// and tmp:// read the per-user scoped filesystems.
 func (a *Agent) makeResolver(ctx context.Context, rc *runContext, tmp, store *sandboxfs.Root) func(string) (string, error) {
 	return func(uri string) (string, error) {
 		uri = strings.TrimSpace(uri)
@@ -100,7 +100,7 @@ func (a *Agent) makeResolver(ctx context.Context, rc *runContext, tmp, store *sa
 			if !ok || name == "" || rel == "" {
 				return "", fmt.Errorf("skill:// URI must look like skill://<skill>/<path>")
 			}
-			sk, err := a.Skills.ResolveEffective(ctx, rc.userDB, name, rc.userID, rc.username, rc.hat)
+			sk, err := a.Skills.ResolveEffective(ctx, rc.userDB, rc.projectDB, name, rc.userID, rc.username, rc.hat)
 			if err != nil {
 				return "", fmt.Errorf("resolve skill %q: %w", name, err)
 			}

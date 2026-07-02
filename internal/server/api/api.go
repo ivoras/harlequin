@@ -112,12 +112,17 @@ func (s *Server) Router() http.Handler {
 
 			r.Get("/hats", s.handleListHats)
 			r.Get("/hats/{name}", s.handleGetHat)
+			r.Put("/hats/{name}", s.handlePutHat)
+			r.Delete("/hats/{name}", s.handleDeleteHat)
 
 			r.Get("/skills", s.handleListSkills)
+			r.Post("/skills", s.handleCreateSkill)
 			r.Get("/skills/{name}", s.handleGetSkill)
 			r.Put("/skills/{name}", s.handlePutSkill)
 			r.Delete("/skills/{name}", s.handleDeleteSkill)
 			r.Post("/skills/{name}/publish", s.handlePublishSkill)
+			r.Get("/skills/{name}/files/*", s.handleGetSkillFile)
+			r.Put("/skills/{name}/files/*", s.handlePutSkillFile)
 
 			r.Get("/memory", s.handleListMemory)
 			r.Get("/memory/conflicts", s.handleListMemoryConflicts)
@@ -185,7 +190,6 @@ func (s *Server) Router() http.Handler {
 
 			r.Get("/usage", s.handleUsage)
 			r.Get("/audit", s.handleAudit)
-			r.Post("/reload", s.handleReload)
 		})
 	})
 

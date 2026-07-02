@@ -251,7 +251,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	// Log the skill catalogue offered to the model this turn (the hat-aware
 	// visible set), so "which skills did the agent see" is greppable rather than
 	// buried in the system prompt text.
-	if infos, err := a.Skills.EffectiveSkillInfos(ctx, rc.userDB, rc.userID, rc.username, rc.hat); err == nil {
+	if infos, err := a.Skills.EffectiveSkillInfos(ctx, rc.userDB, rc.projectDB, rc.userID, rc.username, rc.hat); err == nil {
 		skillCatalog := make([]map[string]any, 0, len(infos))
 		for _, i := range infos {
 			skillCatalog = append(skillCatalog, map[string]any{
@@ -638,7 +638,7 @@ func (a *Agent) composeSystemPrompt(ctx context.Context, rc *runContext) string 
 	if rc.hat != nil {
 		prompt += fmt.Sprintf("\n\nYou are wearing the %q hat.", rc.hat.Name)
 	}
-	infos, err := a.Skills.EffectiveSkillInfos(ctx, rc.userDB, rc.userID, rc.username, rc.hat)
+	infos, err := a.Skills.EffectiveSkillInfos(ctx, rc.userDB, rc.projectDB, rc.userID, rc.username, rc.hat)
 	if err == nil && len(infos) > 0 {
 		prompt += "\n\nAvailable skills (use load_skill to read full instructions):\n"
 		for _, i := range infos {
@@ -649,13 +649,13 @@ func (a *Agent) composeSystemPrompt(ctx context.Context, rc *runContext) string 
 }
 
 // loadHat sets rc.hat from the session's worn hat (if any), reading the
-// hat definition from the deployed hats directory.
+// hat definition from the shared database.
 func (a *Agent) loadHat(ctx context.Context, rc *runContext) {
 	sess, err := a.Sessions.Get(ctx, rc.sessDB, rc.sessionID, rc.userID)
 	if err != nil || sess.Hat == nil || *sess.Hat == "" {
 		return
 	}
-	if hat, err := a.Skills.GetHat(*sess.Hat); err == nil {
+	if hat, err := a.Skills.GetHat(ctx, *sess.Hat); err == nil {
 		rc.hat = hat
 	}
 }
