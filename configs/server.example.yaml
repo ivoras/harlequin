@@ -128,6 +128,9 @@ embeddings:
 #   min_sentences: 2
 #   fts5_weight: 1.5           # RRF weight of the FTS5 lexical arm (dense = 1.0); 1-2 typical
 #   fts5_score_gate_pct: 90    # keep only the strongest FTS5 hits (top decile); 0 = all
+#   docling:                   # optional docling-serve converter for PDF/DOCX uploads
+#     base_url: "http://127.0.0.1:5001"   # empty/absent = use built-in extractors only
+#     timeout: "5m"            # per-conversion bound; fallback extractors take over on failure
 
 agent:
   max_steps: 50

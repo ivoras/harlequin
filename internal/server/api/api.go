@@ -15,6 +15,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/auth"
 	"github.com/ivoras/harlequin/internal/server/config"
 	"github.com/ivoras/harlequin/internal/server/cron"
+	"github.com/ivoras/harlequin/internal/server/docling"
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/email"
 	"github.com/ivoras/harlequin/internal/server/mcp"
@@ -55,9 +56,12 @@ type Server struct {
 	Presence   *presence.Tracker
 	Email      *email.Sender
 	PDFExtract *pdfextract.Extractor
-	Hub        *sessionhub.Hub
-	Projects   *project.Store
-	ChatHub    *projectchat.Hub
+	// Docling, if set, converts PDF/DOCX uploads to structured Markdown; on
+	// failure the built-in extractors (PDFExtract, docxextract) take over.
+	Docling  *docling.Client
+	Hub      *sessionhub.Hub
+	Projects *project.Store
+	ChatHub  *projectchat.Hub
 }
 
 // Router builds the chi router.

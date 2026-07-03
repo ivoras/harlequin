@@ -18,6 +18,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/auth"
 	"github.com/ivoras/harlequin/internal/server/config"
 	"github.com/ivoras/harlequin/internal/server/cron"
+	"github.com/ivoras/harlequin/internal/server/docling"
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/email"
 	"github.com/ivoras/harlequin/internal/server/embed"
@@ -279,6 +280,19 @@ func main() {
 	} else {
 		srv.PDFExtract = ex
 		defer ex.Close()
+	}
+
+	// Optional Docling converter for PDF/DOCX uploads. Registered even when the
+	// instance is currently down: each upload retries it and falls back to the
+	// built-in extractors on failure.
+	if base := cfg.Documents.Docling.BaseURL; base != "" {
+		dl := docling.New(base, cfg.Documents.Docling.Timeout.D())
+		if dl.Healthy(context.Background()) {
+			log.Printf("docling: converting PDF/DOCX uploads via %s", base)
+		} else {
+			log.Printf("docling: configured at %s but not responding; uploads will retry it and fall back to built-in extractors", base)
+		}
+		srv.Docling = dl
 	}
 
 	// Queue onboarding for any existing users who still need it.
