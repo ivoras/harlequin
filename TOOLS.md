@@ -126,6 +126,16 @@ stored document — without reading the whole file. `output_mode` is
 PDFs/text) to ground answers in source material.
 **Example:** `search_docs({"query": "OTC derivatives reporting obligations"})`
 
+### `align_docs`
+**Why:** compare two corpus documents without holding both in context. The
+server aligns their sections deterministically — mode `versions` diffs two
+revisions of the same text (identical sections are skipped), mode `topical`
+pairs sections of two different texts about the same subject by embedding
+similarity (leftovers are reported as present in only one document) — and
+returns the pairs in cursor batches for the model to analyse one at a time.
+**Example:** `align_docs({"doc_a": "p.3", "doc_b": "p.4", "mode": "topical"})`,
+then again with `"cursor": 5` etc. until the last batch.
+
 ---
 
 ## Scheduling (only when `cron` is enabled)
