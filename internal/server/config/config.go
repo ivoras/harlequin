@@ -215,6 +215,17 @@ type DocumentsConfig struct {
 	// lexical matches do not pollute paraphrase queries. 90 keeps the top decile;
 	// 0 disables gating (keep all). Range 0-99.
 	FTS5ScoreGatePct int `yaml:"fts5_score_gate_pct"`
+	// Docling, when base_url is set, converts PDF/DOCX uploads to structured
+	// Markdown via a docling-serve instance (layout analysis, tables, OCR). Any
+	// failure falls back to the built-in pure-Go extractors.
+	Docling DoclingConfig `yaml:"docling"`
+}
+
+// DoclingConfig points at an optional docling-serve document converter.
+type DoclingConfig struct {
+	BaseURL string `yaml:"base_url"` // e.g. "http://127.0.0.1:5001"; empty disables
+	// Timeout bounds one conversion (default 5m — layout models are per-page).
+	Timeout Duration `yaml:"timeout"`
 }
 
 // AgentConfig controls the agent loop and JS sandbox.

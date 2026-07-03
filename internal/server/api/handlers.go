@@ -19,8 +19,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ivoras/harlequin/internal/server/auth"
-	"github.com/ivoras/harlequin/internal/server/email"
 	"github.com/ivoras/harlequin/internal/server/documents"
+	"github.com/ivoras/harlequin/internal/server/docxextract"
+	"github.com/ivoras/harlequin/internal/server/email"
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/shared/types"
@@ -597,9 +598,10 @@ func (s *Server) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, d)
 }
 
-// documentFromUpload reads a multipart "file" field, extracts its text (PDFs go
-// through PDFium-wasm; text-like files are used as-is), and builds an ingest
-// request. On failure it writes the HTTP error and returns a non-nil error.
+// documentFromUpload reads a multipart "file" field, extracts its text (PDF and
+// DOCX go through Docling when configured, else PDFium-wasm / docxextract;
+// text-like files are used as-is), and builds an ingest request. On failure it
+// writes the HTTP error and returns a non-nil error.
 // It also returns the raw uploaded bytes so the caller can persist the file.
 func (s *Server) documentFromUpload(w http.ResponseWriter, r *http.Request) (types.CreateDocumentRequest, []byte, error) {
 	var req types.CreateDocumentRequest
@@ -628,46 +630,87 @@ func (s *Server) documentFromUpload(w http.ResponseWriter, r *http.Request) (typ
 	scope := r.FormValue("scope")
 	projectID, _ := strconv.ParseInt(r.FormValue("project_id"), 10, 64)
 
-	isPDF := strings.HasSuffix(strings.ToLower(header.Filename), ".pdf") ||
+	const docxMime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	lowName := strings.ToLower(header.Filename)
+	isPDF := strings.HasSuffix(lowName, ".pdf") ||
 		header.Header.Get("Content-Type") == "application/pdf" ||
 		bytes.HasPrefix(data, []byte("%PDF-"))
+	isDOCX := !isPDF && (strings.HasSuffix(lowName, ".docx") ||
+		header.Header.Get("Content-Type") == docxMime)
 
 	var pageStarts []int
 	switch {
-	case isPDF:
-		if s.PDFExtract == nil {
-			writeErr(w, http.StatusUnsupportedMediaType, "PDF extraction is not available on this server")
-			return req, nil, fmt.Errorf("no pdf extractor")
+	case isPDF, isDOCX:
+		mime := "application/pdf"
+		if isDOCX {
+			mime = docxMime
 		}
-		pages, err := s.PDFExtract.Pages(data)
-		if err != nil {
-			writeErr(w, http.StatusUnprocessableEntity, "PDF extraction failed: "+err.Error())
-			return req, nil, err
-		}
-		// Join pages (matching Text's "\n\n" separator) and record the rune offset
-		// at which each page begins so chunks can be mapped back to a page.
-		var sb strings.Builder
-		runeOff := 0
-		for i, pg := range pages {
-			if i > 0 {
-				sb.WriteString("\n\n")
-				runeOff += 2
+		// Docling first when configured: structured text (layout, tables, OCR).
+		// PDFs go through Docling's JSON format so page citations survive; DOCX
+		// (unpaged) uses plain Markdown. Any failure falls back to the built-in
+		// extractors below.
+		var text string
+		if s.Docling != nil {
+			var md string
+			var err error
+			if isPDF {
+				md, pageStarts, err = s.Docling.ConvertPaged(r.Context(), header.Filename, data)
+			} else {
+				md, err = s.Docling.Convert(r.Context(), header.Filename, data)
 			}
-			pageStarts = append(pageStarts, runeOff)
-			sb.WriteString(pg)
-			runeOff += utf8.RuneCountInString(pg)
+			if err != nil {
+				pageStarts = nil
+				log.Printf("documents: docling convert %q failed, using built-in extractor: %v", header.Filename, err)
+			} else {
+				log.Printf("documents: docling converted %q (%d chars, %d pages)", header.Filename, len(md), len(pageStarts))
+				text = md
+			}
 		}
-		text := sb.String()
+		switch {
+		case text != "":
+			// Extracted above (PDFs keep their page mapping via pageStarts).
+		case isPDF:
+			if s.PDFExtract == nil {
+				writeErr(w, http.StatusUnsupportedMediaType, "PDF extraction is not available on this server")
+				return req, nil, fmt.Errorf("no pdf extractor")
+			}
+			pages, err := s.PDFExtract.Pages(data)
+			if err != nil {
+				writeErr(w, http.StatusUnprocessableEntity, "PDF extraction failed: "+err.Error())
+				return req, nil, err
+			}
+			// Join pages (matching Text's "\n\n" separator) and record the rune
+			// offset at which each page begins so chunks can be mapped to a page.
+			var sb strings.Builder
+			runeOff := 0
+			for i, pg := range pages {
+				if i > 0 {
+					sb.WriteString("\n\n")
+					runeOff += 2
+				}
+				pageStarts = append(pageStarts, runeOff)
+				sb.WriteString(pg)
+				runeOff += utf8.RuneCountInString(pg)
+			}
+			text = sb.String()
+		default: // DOCX
+			t, err := docxextract.Text(data)
+			if err != nil {
+				writeErr(w, http.StatusUnprocessableEntity, "DOCX extraction failed: "+err.Error())
+				return req, nil, err
+			}
+			text = t
+		}
 		if strings.TrimSpace(text) == "" {
-			writeErr(w, http.StatusUnprocessableEntity, "no extractable text in PDF (it may be scanned images)")
-			return req, nil, fmt.Errorf("empty pdf text")
+			writeErr(w, http.StatusUnprocessableEntity, "no extractable text in the file (it may be scanned images)")
+			return req, nil, fmt.Errorf("empty extracted text")
 		}
-		log.Printf("documents: extracted %d chars from %q (%d pages) for user", len(text), header.Filename, len(pages))
-		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: "application/pdf", Content: text}
+		log.Printf("documents: extracted %d chars from %q for user", len(text), header.Filename)
+		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: mime, Content: text}
 	case utf8.Valid(data):
 		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: "text/plain", Content: string(data)}
 	default:
-		writeErr(w, http.StatusUnsupportedMediaType, "unsupported file type (only PDF and text are supported)")
+		writeErr(w, http.StatusUnsupportedMediaType, "unsupported file type (only PDF, DOCX and text are supported)")
 		return req, nil, fmt.Errorf("unsupported file type")
 	}
 	req.Scope = scope
