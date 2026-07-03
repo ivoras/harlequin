@@ -18,3 +18,4 @@ session_*.md
 harlequin
 harlequin-server
 
+__pycache__/
