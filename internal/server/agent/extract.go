@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"database/sql"
 	"log"
 	"strings"
@@ -46,7 +47,9 @@ func (a *Agent) extractMemories(ctx context.Context, projectID, userID int64, us
 		a.extractProjectMemories(ctx, projectID, sess, turnWritten)
 		return
 	}
-	a.distillAndStore(ctx, userID, memextract.Prompt, sess, turnWritten, canShareMemory, sessMemoryTimeout)
+	if n := a.distillAndStore(ctx, userID, memextract.Prompt, sess, turnWritten, canShareMemory, sessMemoryTimeout); n.total() > 0 {
+		log.Printf("memextract: stored %s from session turn (user %d)", n, userID)
+	}
 }
 
 // extractProjectMemories distils durable facts from a project turn and stores
@@ -109,7 +112,30 @@ func (a *Agent) ExtractMemoriesFromText(ctx context.Context, userID int64, sourc
 	}
 	input += ":\n" + text
 	n := a.distillAndStore(ctx, userID, memextract.DocumentPrompt, input, nil, canShareMemory, docMemoryTimeout)
-	log.Printf("documents: memory bridge stored %d memory(ies) from %q for user %d", n, source, userID)
+	log.Printf("documents: memory bridge stored %s from %q (uploaded by user %d)", n, source, userID)
+}
+
+// storeCounts tallies stored memories per target scope, for honest log lines
+// ("for user N" used to read as if everything landed user-scoped).
+type storeCounts struct {
+	shared, user int
+}
+
+func (c storeCounts) total() int { return c.shared + c.user }
+
+// String renders e.g. "2 memory(ies) (2 shared)" / "3 memory(ies) (1 shared, 2 user)".
+func (c storeCounts) String() string {
+	var parts []string
+	if c.shared > 0 {
+		parts = append(parts, fmt.Sprintf("%d shared", c.shared))
+	}
+	if c.user > 0 {
+		parts = append(parts, fmt.Sprintf("%d user", c.user))
+	}
+	if len(parts) == 0 {
+		return "0 memories"
+	}
+	return fmt.Sprintf("%d memory(ies) (%s)", c.total(), strings.Join(parts, ", "))
 }
 
 // distillAndStore runs the memory-extraction LLM over input, then stores each
@@ -120,8 +146,8 @@ func (a *Agent) ExtractMemoriesFromText(ctx context.Context, userID int64, sourc
 // storage would put judge completions back in parallel with the titler or a
 // live turn. A live turn preempts the job; it restarts afterwards (IsRedundant
 // makes the re-run skip anything already stored).
-func (a *Agent) distillAndStore(ctx context.Context, userID int64, systemPrompt, input string, turnWritten []string, canShareMemory bool, timeout time.Duration) int {
-	stored := 0
+func (a *Agent) distillAndStore(ctx context.Context, userID int64, systemPrompt, input string, turnWritten []string, canShareMemory bool, timeout time.Duration) storeCounts {
+	var stored storeCounts
 	if !a.RunBackgroundLLM(ctx, func(jobCtx context.Context) {
 		stored = a.distillAndStoreHoldingSlot(jobCtx, userID, systemPrompt, input, turnWritten, canShareMemory, timeout)
 	}) {
@@ -132,7 +158,7 @@ func (a *Agent) distillAndStore(ctx context.Context, userID int64, systemPrompt,
 
 // distillAndStoreHoldingSlot is the body of distillAndStore; the caller holds
 // the background-LLM slot.
-func (a *Agent) distillAndStoreHoldingSlot(ctx context.Context, userID int64, systemPrompt, input string, turnWritten []string, canShareMemory bool, timeout time.Duration) int {
+func (a *Agent) distillAndStoreHoldingSlot(ctx context.Context, userID int64, systemPrompt, input string, turnWritten []string, canShareMemory bool, timeout time.Duration) storeCounts {
 	// The extraction LLM call gets its own deadline. Storage (embedding + insert)
 	// gets a separate one derived from the parent, so a slow extraction can't
 	// starve the store step of time (which previously made every embed time out).
@@ -146,12 +172,12 @@ func (a *Agent) distillAndStoreHoldingSlot(ctx context.Context, userID int64, sy
 	})
 	cancelLLM()
 	if err != nil {
-		return 0
+		return storeCounts{}
 	}
 
 	candidates, ok := memextract.ParseResponse(text)
 	if !ok {
-		return 0
+		return storeCounts{}
 	}
 
 	var ttl *time.Time
@@ -164,7 +190,7 @@ func (a *Agent) distillAndStoreHoldingSlot(ctx context.Context, userID int64, sy
 	defer cancelStore()
 
 	// Auto-extraction runs after the request, so open the user's database here.
-	stored := 0
+	var stored storeCounts
 	_ = a.Storage.WithUser(storeCtx, userID, func(userDB *sql.DB) error {
 		for _, c := range candidates {
 			if !memextract.ShouldStore(c) {
@@ -186,8 +212,10 @@ func (a *Agent) distillAndStoreHoldingSlot(ctx context.Context, userID int64, sy
 				// The wrapped error names the failing step (e.g. "embed memory
 				// content", "insert memory row", "embed slot vector").
 				log.Printf("memextract: store memory failed (%q): %v", truncateFact(fact), err)
+			} else if scope == "shared" {
+				stored.shared++
 			} else {
-				stored++
+				stored.user++
 			}
 		}
 		return nil
