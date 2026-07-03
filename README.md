@@ -311,6 +311,10 @@ third_party/sqlite     vendored sqlite3.h (compile-time; see third_party/sqlite/
 
 These are just example command lines for starting the LLM server and the embeddings server.
 
+`scripts/llm_for_harlequin.py` launches and monitors the three llama.cpp servers Harlequin uses (chat, a tiny auxiliary model for delegate work like WebFetch analysis, and the embedding model), auto-restarting any that crash. It prints a live terminal dashboard with per-server status, memory usage, and token throughput sparklines, and lets you pause refresh or restart individual servers with a keypress.
+
+![llm_for_harlequin.py dashboard](docs/llm_for_harlequin.png)
+
 ```sh
 llama-server -m Qwen3.6-35B-A3B-IQ4_XS-3.53bpw.gguf --port 2234 --host 0.0.0.0 --metrics -c 120000 --timeout 3600 -ctk q8_0 -ctv q8_0 --kv-unified --batch-size 4096 -np 2 --presence-penalty 0.5 --repeat-penalty 1.05 --temperature 0.6 --min_p 0.05 --top_p 0.95 --reasoning-budget 3000 --chat-template-kwargs '{"preserve_thinking": true}' --spec-type ngram-mod --spec-ngram-mod-n-match 24 --spec-ngram-mod-n-min 48 --spec-ngram-mod-n-max 64
 ```
