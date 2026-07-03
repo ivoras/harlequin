@@ -11,6 +11,8 @@ It starts all three, prints a live Unicode dashboard (status, memory bars, slot
 utilisation, token counters and sparkline history (print_timing log lines; hold last
 rate for 60s when idle, then 0), and on Ctrl-C shuts all of them down cleanly.
 
+Servers launched by this script are auto-restarted on a non-zero exit (bell + alert).
+
 Use --monitor-only (or -m) to attach to servers that are already running without
 restarting them. Set HARLEQUIN_LLM_LOG_DIR if logs live outside scripts/logs/
 (default also checks ~/LLM/logs/). --model-dir (or HARLEQUIN_LLM_MODEL_DIR) sets
@@ -266,6 +268,9 @@ _TIMING_TG_LIVE_RE = re.compile(
 _TIMING_TG_EVAL_RE = re.compile(
     r"print_timing:.*\|\s+eval time =.*?,\s*([\d.]+)\s*tokens per second"
 )
+_EMBED_PROMPT_RE = re.compile(
+    r"operator\(\):.*new prompt,.*task\.n_tokens\s*=\s*(\d+)"
+)
 
 # Parsed memory is static (logged once at load), so cache it per server name.
 _mem_cache = {}
@@ -396,6 +401,17 @@ def parse_timing_rates(text):
     return pp, tg
 
 
+def parse_embed_activity(text):
+    """Count embedding requests and input tokens from slot operator() log lines."""
+    reqs = tokens = 0
+    for line in text.splitlines():
+        m = _EMBED_PROMPT_RE.search(line)
+        if m:
+            reqs += 1
+            tokens += int(m.group(1))
+    return reqs, tokens
+
+
 def find_pid_on_port(port):
     try:
         out = subprocess.check_output(
@@ -476,6 +492,36 @@ def restart_server(srv, procs, monitor_only, history=None):
         start_new_session=True,
     )
     return "restarted %s (pid %d)" % (srv["name"], procs[srv["name"]].pid)
+
+
+def check_and_restart_crashed(servers, procs, monitor_only, history, ui):
+    """Notify and restart servers that exited with a non-zero code."""
+    if monitor_only:
+        return []
+    restarted = []
+    for srv in servers:
+        proc = procs.get(srv["name"])
+        if not proc:
+            continue
+        code = proc.poll()
+        if code is None or code == 0:
+            continue
+        alert = "%s exited with code %d — restarting" % (srv["name"], code)
+        ui["alerts"].append(alert)
+        sys.stdout.write("\a")
+        sys.stdout.flush()
+        try:
+            msg = restart_server(srv, procs, monitor_only, history)
+            ui["alerts"].append(msg)
+            ui["toast"] = msg
+            ui["toast_until"] = time.time() + 5.0
+            restarted.append(srv["name"])
+        except OSError as e:
+            fail = "restart %s failed: %s" % (srv["name"], e)
+            ui["alerts"].append(fail)
+            ui["toast"] = fail
+            ui["toast_until"] = time.time() + 5.0
+    return restarted
 
 
 def check_alerts(prev, curr):
@@ -645,16 +691,20 @@ class History:
             s["name"]: {
                 "pp": deque(maxlen=maxlen),
                 "tg": deque(maxlen=maxlen),
-                "prompt_delta": deque(maxlen=maxlen),  # embed: /metrics fallback
+                "embed": deque(maxlen=maxlen),
                 "_log_pos": None,
                 "_pp_from_log": False,
                 "_tg_from_log": False,
+                "_embed_from_log": False,
                 "_last_pp": 0.0,
                 "_last_tg": 0.0,
+                "_last_embed": 0.0,
                 "_last_pp_at": None,
                 "_last_tg_at": None,
-                "_last_prompt": None,
+                "_last_embed_at": None,
+                "_last_decode": None,
                 "_last_ts": None,
+                "_last_tick_reqs": 0,
             }
             for s in servers
         }
@@ -668,6 +718,11 @@ class History:
         d["_last_tg"] = 0.0
         d["_last_pp_at"] = None
         d["_last_tg_at"] = None
+        d["_last_embed"] = 0.0
+        d["_last_embed_at"] = None
+        d["_embed_from_log"] = False
+        d["_last_decode"] = None
+        d["_last_tick_reqs"] = 0
 
     @staticmethod
     def _rate_sample(new_log, last_val, last_at, now):
@@ -682,19 +737,44 @@ class History:
         d = self.data[name]
 
         pp_log = tg_log = None
-        if log_path and kind != "embed":
+        if log_path:
             chunk, d["_log_pos"] = read_log_increment(log_path, d["_log_pos"])
+            if kind == "embed":
+                reqs, tokens = parse_embed_activity(chunk)
+                d["_last_tick_reqs"] = reqs
+                embed_rate = None
+                if d["_last_ts"] is not None:
+                    dt = now - d["_last_ts"]
+                    if dt > 0 and tokens > 0:
+                        embed_rate = tokens / dt
+                if embed_rate is None and d["_last_ts"] is not None:
+                    decode = metrics.get("llamacpp:n_decode_total")
+                    if decode is not None and d["_last_decode"] is not None:
+                        dt = now - d["_last_ts"]
+                        if dt > 0:
+                            delta = decode - d["_last_decode"]
+                            if delta > 0:
+                                embed_rate = delta / dt
+                sample, at, from_log = self._rate_sample(
+                    embed_rate, d["_last_embed"], d["_last_embed_at"], now,
+                )
+                if embed_rate is not None:
+                    d["_last_embed"] = embed_rate
+                    d["_last_embed_at"] = now
+                    d["_embed_from_log"] = tokens > 0
+                elif not from_log:
+                    d["_last_embed"] = 0.0
+                else:
+                    d["_last_embed_at"] = at
+                d["embed"].append(sample)
+                decode = metrics.get("llamacpp:n_decode_total")
+                if decode is not None:
+                    d["_last_decode"] = decode
+                d["_last_ts"] = now
+                return
             pp_log, tg_log = parse_timing_rates(chunk)
 
         if kind == "embed":
-            prompt = metrics.get("llamacpp:prompt_tokens_total")
-            if d["_last_ts"] is not None and prompt is not None and d["_last_prompt"] is not None:
-                dt = now - d["_last_ts"]
-                if dt > 0:
-                    d["prompt_delta"].append(max(0.0, (prompt - d["_last_prompt"]) / dt))
-            if prompt is not None:
-                d["_last_prompt"] = prompt
-            d["_last_ts"] = now
             return
 
         pp_sample, pp_at, pp_from_log = self._rate_sample(
@@ -903,15 +983,22 @@ def draw_frame(frame, ui=None):
         pp_spark = sparkline(list(hd["pp"]), spark_w)
         tg_spark = sparkline(list(hd["tg"]), spark_w)
         if srv["kind"] == "embed":
+            embed = hd["embed"][-1] if hd["embed"] else 0.0
+            embed_src = "log" if hd.get("_embed_from_log") else "idle"
+            tick_reqs = hd.get("_last_tick_reqs", 0)
             print(boxed_line(
-                "  %sdecode rate%s %s" % (
-                    S["cyan"], S["reset"],
-                    sparkline(list(hd["prompt_delta"]) or [0], spark_w),
+                "  %sembed%s %5s tok/s%s  %s%s%s" % (
+                    S["cyan"], S["reset"], fmt_rate(embed),
+                    S["dim"] + (" log" if embed_src == "log" else " /decode") + S["reset"],
+                    S["blue"], sparkline(list(hd["embed"]), spark_w), S["reset"],
                 ),
                 width,
             ))
             print(boxed_line(
-                "  %sn_decode%s %s" % (S["dim"], S["reset"], fmt_int(decodes)),
+                "  %srequests%s %d last tick  │  %sn_decode%s %s  │  deferred %d" % (
+                    S["dim"], S["reset"], tick_reqs,
+                    S["dim"], S["reset"], fmt_int(decodes), req_def,
+                ),
                 width,
             ))
         else:
@@ -930,13 +1017,20 @@ def draw_frame(frame, ui=None):
         row1 = "  prompt %s  │  generated %s  │  peak ctx %s" % (
             fmt_int(pr_tk), fmt_int(gen_tk), fmt_int(peak),
         )
-        row2 = "  active req %d  │  deferred %d" % (req_on, req_def)
-        if srv["kind"] != "embed" and busy_slots:
-            row2 += "  │  busy slots/decode %.2f" % busy_slots
-        if ctx_cfg:
-            row2 += "  │  n_ctx %s" % fmt_int(ctx_cfg)
-        print(boxed_line(S["dim"] + row1 + S["reset"], width))
-        print(boxed_line(S["dim"] + row2 + S["reset"], width))
+        if srv["kind"] == "embed":
+            if ctx_cfg:
+                print(boxed_line(
+                    S["dim"] + "  peak ctx %s  │  n_ctx %s" % (fmt_int(peak), fmt_int(ctx_cfg)) + S["reset"],
+                    width,
+                ))
+        else:
+            print(boxed_line(S["dim"] + row1 + S["reset"], width))
+            row2 = "  active req %d  │  deferred %d" % (req_on, req_def)
+            if busy_slots:
+                row2 += "  │  busy slots/decode %.2f" % busy_slots
+            if ctx_cfg:
+                row2 += "  │  n_ctx %s" % fmt_int(ctx_cfg)
+            print(boxed_line(S["dim"] + row2 + S["reset"], width))
 
         for sl in slot_lines[:2]:
             print(boxed_line("  " + sl, width))
@@ -977,7 +1071,7 @@ def draw_frame(frame, ui=None):
 
     legend = (
         " %s█%s model  %s▓%s KV/state  %s▒%s compute  │  "
-        "sparklines: print_timing log (%d samples ~%.0fm), hold %.0fs then 0"
+        "sparklines: print_timing / embed operator() log (%d samples ~%.0fm), hold %.0fs then 0"
     ) % (
         S["magenta"], S["reset"], S["magenta"], S["reset"],
         S["magenta"], S["reset"],
@@ -1110,10 +1204,16 @@ def handle_key(key, ui, servers, procs, monitor_only, history=None):
     ui["toast_until"] = time.time() + 3.0
 
 
-def wait_after_redraw(keys, ui, servers, procs, started_at, history, monitor_only):
+def wait_after_redraw(keys, ui, servers, procs, started_at, history, monitor_only, prev_status):
     """Hold the last frame for REFRESH_SECONDS; poll keys during the wait."""
     deadline = time.time() + REFRESH_SECONDS
     while time.time() < deadline:
+        restarted = check_and_restart_crashed(servers, procs, monitor_only, history, ui)
+        for name in restarted:
+            prev_status[name] = "START"
+        if restarted:
+            render(servers, procs, started_at, history, ui)
+            deadline = time.time() + REFRESH_SECONDS
         key = keys.read()
         if not key:
             time.sleep(0.05)
@@ -1121,6 +1221,7 @@ def wait_after_redraw(keys, ui, servers, procs, started_at, history, monitor_onl
         handle_key(key, ui, servers, procs, monitor_only, history)
         render(servers, procs, started_at, history, ui)
         deadline = time.time() + REFRESH_SECONDS
+    return prev_status
 
 
 def main():
@@ -1164,13 +1265,24 @@ def main():
             if monitor_only:
                 refresh_monitor_pids(SERVERS, procs)
 
+            restarted = check_and_restart_crashed(
+                SERVERS, procs, monitor_only, history, ui,
+            )
+            for name in restarted:
+                prev_status[name] = "START"
+            if restarted:
+                render(SERVERS, procs, started_at, history, ui)
+
             if ui.get("paused"):
                 key = keys.read()
                 if key:
                     handle_key(key, ui, SERVERS, procs, monitor_only, history)
                     if not ui.get("paused"):
                         render(SERVERS, procs, started_at, history, ui)
-                        wait_after_redraw(keys, ui, SERVERS, procs, started_at, history, monitor_only)
+                        prev_status = wait_after_redraw(
+                            keys, ui, SERVERS, procs, started_at, history,
+                            monitor_only, prev_status,
+                        )
                 else:
                     time.sleep(0.15)
                 continue
@@ -1178,7 +1290,10 @@ def main():
             frame = render(SERVERS, procs, started_at, history, ui)
             ui["alerts"].extend(check_alerts(prev_status, frame["statuses"]))
             prev_status = frame["statuses"]
-            wait_after_redraw(keys, ui, SERVERS, procs, started_at, history, monitor_only)
+            prev_status = wait_after_redraw(
+                keys, ui, SERVERS, procs, started_at, history,
+                monitor_only, prev_status,
+            )
     except KeyboardInterrupt:
         pass
     finally:
