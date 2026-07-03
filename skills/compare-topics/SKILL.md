@@ -57,3 +57,11 @@ Write a Markdown report from your finding lines (and nothing else), using the do
 5. **Only in <document B's name>** — the ONLY B findings.
 
 Ignore SPURIOUS findings in the report (they are alignment noise). If the user asked a narrower question (e.g. only about penalties), lead with the findings on that topic.
+
+## Step 6 — Save the report (default ON)
+
+Unless the user said **not** to save it, persist the report so later questions about this comparison can be answered from it:
+
+    save_doc({"title": "Comparison: <document A's name> vs <document B's name>", "content": "<the full report from Step 5>"})
+
+Keep the `[d.x.N]` citations in the saved content — they stay linked to the source documents. Then tell the user the report was saved and that they can ask follow-up questions about it later.

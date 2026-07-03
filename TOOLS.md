@@ -136,6 +136,13 @@ returns the pairs in cursor batches for the model to analyse one at a time.
 **Example:** `align_docs({"doc_a": "p.3", "doc_b": "p.4", "mode": "topical"})`,
 then again with `"cursor": 5` etc. until the last batch.
 
+### `save_doc`
+**Why:** persist a produced report/analysis into the corpus (personal, or
+project in a project session) so later sessions can answer questions about it
+via `search_docs`. Citations in the content stay linked. The compare skills use
+this to make their reports queryable afterwards.
+**Example:** `save_doc({"title": "Comparison: Regulation 2025 vs 2026", "content": "<report>"})`
+
 ---
 
 ## Scheduling (only when `cron` is enabled)
