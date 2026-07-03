@@ -4,6 +4,7 @@ package api
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 
@@ -223,6 +224,11 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func writeErr(w http.ResponseWriter, status int, msg string) {
+	// Server-side failures must be visible in the console, not only in the
+	// response body (the chi request logger prints just the status line).
+	if status >= 500 {
+		log.Printf("api: HTTP %d: %s", status, msg)
+	}
 	writeJSON(w, status, types.ErrorResponse{Error: msg})
 }
 

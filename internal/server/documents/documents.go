@@ -3,6 +3,7 @@
 package documents
 
 import (
+	"log"
 	"context"
 	"database/sql"
 	"fmt"
@@ -584,6 +585,9 @@ func (s *Store) chunkContent(ctx context.Context, text string) ([]chunkRec, erro
 	}
 	vecs, err := s.embedder.Embed(ctx, texts)
 	if err != nil || len(vecs) != len(sents) {
+		// Graceful degradation, but never a silent one: the document still
+		// ingests with plain chunking, minus the semantic boundaries.
+		log.Printf("documents: semantic chunking fell back to plain chunks (%d sentences): %v", len(sents), err)
 		return chunkText(text, 0), nil
 	}
 	raw := semAdjacentChunks(sents, vecs, s.chunk.SemAdjGate, s.chunk.MaxChunkRunes, s.chunk.MinSentences)

@@ -83,10 +83,28 @@ func (e *OpenAIEmbedder) EmbedQuery(ctx context.Context, inputs []string) ([][]f
 	return e.embed(ctx, e.queryPrefix, inputs)
 }
 
-// embed prepends prefix to every input (if non-empty) and calls the endpoint.
+// maxEmbedBatch caps inputs per embeddings request. A book-sized document
+// (10k+ sentences / 1k+ chunks) sent as one request blows the 60s client
+// timeout; sequential sub-batches keep every call comfortably under it.
+const maxEmbedBatch = 64
+
+// embed prepends prefix to every input (if non-empty) and calls the endpoint,
+// splitting large input sets into sequential sub-batches.
 func (e *OpenAIEmbedder) embed(ctx context.Context, prefix string, inputs []string) ([][]float32, error) {
 	if len(inputs) == 0 {
 		return nil, nil
+	}
+	if len(inputs) > maxEmbedBatch {
+		out := make([][]float32, 0, len(inputs))
+		for start := 0; start < len(inputs); start += maxEmbedBatch {
+			end := min(start+maxEmbedBatch, len(inputs))
+			vecs, err := e.embed(ctx, prefix, inputs[start:end])
+			if err != nil {
+				return nil, fmt.Errorf("batch %d-%d of %d: %w", start, end, len(inputs), err)
+			}
+			out = append(out, vecs...)
+		}
+		return out, nil
 	}
 	if prefix != "" {
 		prefixed := make([]string, len(inputs))
