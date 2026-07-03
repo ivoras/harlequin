@@ -7,7 +7,7 @@ import type {
   Memory, MemoryConflict, SearchResult, MCPServer, RegisterMCPRequest,
   MCPTestResult, MCPAuthStartResult, CronJob, CreateCronJobRequest,
   UpdateCronJobRequest, UsageRecord, Notification, Document, CreateDocumentRequest,
-  CreateMemoryRequest, Project, ProjectInvite,
+  CreateMemoryRequest, Project, ProjectInvite, AlignResult,
 } from "./types";
 
 const TOKEN_KEY = "harlequin.token";
@@ -181,6 +181,14 @@ export const api = {
     return req<void>("DELETE", `/documents/${id}${qs ? `?${qs}` : ""}`);
   },
   searchDocuments: (query: string) => reqList<SearchResult>("GET", `/documents/search?q=${q(query)}`),
+  // alignDocuments compares two documents (scoped refs like "u.2") and returns
+  // the full deterministic alignment for the side-by-side view.
+  alignDocuments: (a: string, b: string, mode: string, minSimilarity = 0, projectID = 0) => {
+    const v = new URLSearchParams({ a, b, mode });
+    if (minSimilarity) v.set("min_similarity", String(minSimilarity));
+    if (projectID) v.set("project", String(projectID));
+    return req<AlignResult>("GET", `/documents/align?${v.toString()}`);
+  },
   getDocChunk: (cid: string, projectID = 0) =>
     req<DocChunkInfo>("GET", `/documents/chunk/${q(cid)}${projectID ? `?project=${projectID}` : ""}`),
   // fetchDocumentFile returns the stored original as a Blob (auth rides in the

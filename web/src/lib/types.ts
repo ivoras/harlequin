@@ -326,6 +326,33 @@ export interface DocChunkInfo {
   page?: number; // 1-based; absent when the source has no pages
   has_file: boolean;
 }
+// Document alignment (the /documents/align side-by-side comparison).
+export interface AlignSection {
+  chunk_id: number;
+  ord: number;
+  page?: number;
+  text: string;
+}
+export interface AlignPair {
+  kind: string; // changed | matched | only_a | only_b
+  similarity?: number;
+  a: AlignSection[];
+  b: AlignSection[];
+}
+export interface AlignDocMeta {
+  ref: string; // scoped id, e.g. "u.2"
+  title: string;
+  scope: string;
+  sections: number;
+}
+export interface AlignResult {
+  mode: string; // versions | topical
+  min_similarity: number;
+  identical: number;
+  a: AlignDocMeta;
+  b: AlignDocMeta;
+  pairs: AlignPair[];
+}
 export interface CreateDocumentRequest {
   title: string;
   uri: string;
