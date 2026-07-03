@@ -113,7 +113,7 @@ embeddings:
   # Prompt convention of the embedding model. Asymmetric retrieval models prepend
   # an instruction to queries (and sometimes a tag to documents); e.g.
   # snowflake-arctic-embed-l-v2.0 uses query_prefix "query: " and no doc prefix.
-  # Leave empty for symmetric models (OpenAI text-embedding-*, granite).
+  # Leave empty for symmetric models (e.g. OpenAI text-embedding-*).
   query_prefix: ""
   doc_prefix: ""
 
