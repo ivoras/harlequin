@@ -11,7 +11,31 @@ export type Item =
   | { kind: "msg"; role: "user" | "assistant"; content: string }
   | { kind: "thinking"; text: string }
   | { kind: "tool"; name: string; args: string; output: string; ms: number; done: boolean }
-  | { kind: "ask"; question: string; options: string[] };
+  | { kind: "ask"; question: string; options: string[] }
+  | { kind: "stats"; text: string }; // turn-end model/PP/TG/ctx summary
+
+// fmtk renders a token count compactly (11k / 100k).
+function fmtk(n: number): string {
+  return n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
+}
+
+// turnStats builds the turn-end summary line, mirroring the TUI's formatTiming:
+// PP/TG rates + wall clock, then model (basename) and context usage.
+function turnStats(ev: StreamEvent): string {
+  const parts: string[] = [];
+  const t = ev.timing;
+  if (t) {
+    const secs = (ms: number) => (ms / 1000).toFixed(2);
+    const pp = t.pp_rate > 0 ? `${Math.round(t.pp_rate)} tok/s (${fmtk(t.prompt_tokens)} tok / ${secs(t.prefill_ms)}s)` : "—";
+    const tg = t.tg_rate > 0 ? `${t.tg_rate.toFixed(1)} tok/s (${fmtk(t.completion_tokens)} tok / ${secs(t.decode_ms)}s)` : "—";
+    parts.push(`⏱ PP ${pp} · TG ${tg} · ${secs(t.total_ms)}s total`);
+  }
+  if (ev.model) {
+    const model = ev.model.split("/").pop() || ev.model;
+    parts.push(ev.context_max ? `${model} · ${fmtk(ev.context_tokens || 0)}/${fmtk(ev.context_max)} ctx` : model);
+  }
+  return parts.join(" · ");
+}
 
 class SessionController {
   // Chat state (reset per session).
@@ -19,7 +43,6 @@ class SessionController {
   loading = $state(false);
   ppLabel = $state("");
   queue = $state<string[]>([]);
-  ctx = $state<{ model: string; used: number; max: number } | null>(null);
   reconnecting = $state(false);
   // User-scoped alerts (persist across session switches, kept until dismissed).
   alerts = $state<Notification[]>([]);
@@ -47,7 +70,6 @@ class SessionController {
     this.currentId = id;
     this.projectID = projectID;
     this.items = [];
-    this.ctx = null;
     this.loading = false;
     this.optimisticUser = 0;
     this.streamingAssistant = null;
@@ -90,8 +112,7 @@ class SessionController {
     try {
       await api.clearSession(this.currentId, this.projectID);
       this.items = [];
-      this.ctx = null;
-      this.streamingAssistant = null;
+        this.streamingAssistant = null;
       toast("context cleared");
     } catch (e) {
       toast((e as Error).message, "error");
@@ -247,8 +268,11 @@ class SessionController {
       case SSE.Error:
         toast(ev.error || "error", "error");
         break;
-      case SSE.Done:
-        if (ev.model) this.ctx = { model: ev.model, used: ev.context_tokens || 0, max: ev.context_max || 0 };
+      case SSE.Done: {
+        // Turn-end stats live inline in the transcript (like the TUI), not in
+        // a separate element below the composer.
+        const stats = turnStats(ev);
+        if (stats) this.items.push({ kind: "stats", text: stats });
         this.loading = false;
         this.ppLabel = "";
         this.streamingAssistant = null;
@@ -257,6 +281,7 @@ class SessionController {
           this.sendText(next);
         }
         break;
+      }
     }
   }
 }

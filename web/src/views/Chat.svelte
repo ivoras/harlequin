@@ -142,7 +142,6 @@
       submit();
     }
   }
-  const fmtk = (n: number) => (n >= 1000 ? Math.round(n / 1000) + "k" : "" + n);
 </script>
 
 <div class="chat">
@@ -173,6 +172,8 @@
               <span class="muted">running…</span>
             {/if}
           </div>
+        {:else if it.kind === "stats"}
+          <div class="muted small stats">{it.text}</div>
         {:else if it.kind === "ask"}
           <div class="card col ask">
             <div>{it.question}</div>
@@ -245,10 +246,6 @@
     </div>
     {#if sc.reconnecting}
       <div class="container muted small" style="padding-top:2px;">Reconnecting…</div>
-    {:else if sc.ctx}
-      <div class="container muted small" style="padding-top:2px;">
-        {sc.ctx.model}{#if sc.ctx.max} · {fmtk(sc.ctx.used)}/{fmtk(sc.ctx.max)} ctx{/if}
-      </div>
     {/if}
   </div>
 </div>
