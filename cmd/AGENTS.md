@@ -35,6 +35,10 @@ the same way as the server:
 
 ## Other subsystem harnesses
 - `agentprobe` — drives the agent like a real client (full tool-calling loop).
+- `aligntest` — exercises the `docalign` engine (the `align_docs` tool's core)
+  against a real sqlite corpus and the configured embeddings provider: ingests
+  two revisions of one text plus two different texts on the same subject, runs
+  both alignment modes, and asserts the expected pair shapes. No chat LLM.
 - `crontest` — exercises the cron Store (CRUD + scheduling math).
 - `embedsim` — embeds two strings via the configured embeddings provider and
   prints their cosine similarity (`-url`/`-model` to target an arbitrary endpoint).

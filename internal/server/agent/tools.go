@@ -419,6 +419,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 	}
 
 	if a.Docs != nil {
+		reg["align_docs"] = a.alignDocsEntry()
 		reg["search_docs"] = toolEntry{
 			def: fnTool("search_docs", `Search the organisation document corpus (RAG) — personal, shared, and (in a project session) project documents. Results are ranked chunks labelled with scope and document chunk id (d.u.N / d.s.N / d.p.N). If the first query returns irrelevant or empty results, retry with synonyms and related terms (e.g. HQ → headquarters, seat, Brussels) before concluding the corpus lacks the answer.`, map[string]any{
 				"type": "object",
