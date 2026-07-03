@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/jsrun"
 	"github.com/ivoras/harlequin/internal/server/llm"
 	"github.com/ivoras/harlequin/internal/server/memory"
@@ -442,6 +443,49 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 		}
 	}
 
+	if a.Docs != nil {
+		reg["save_doc"] = toolEntry{
+			def: fnTool("save_doc", `Save a text you produced (a report, analysis, or summary worth keeping) as a document in the corpus, so it can be found later with search_docs. Keep any [d.x.N] citations in the content — they remain linked to their source documents. Scope "personal" saves to the user's own documents; "project" (default in a project session) saves to the project corpus for all members.`, map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"title":   map[string]any{"type": "string", "description": "Document title, e.g. \"Comparison: Regulation 2025 vs 2026\""},
+					"content": map[string]any{"type": "string", "description": "The full text to save (Markdown)"},
+					"scope":   map[string]any{"type": "string", "enum": []string{"personal", "project"}},
+				},
+				"required": []string{"title", "content"},
+			}),
+			handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+				title := strings.TrimSpace(argString(args, "title"))
+				content := strings.TrimSpace(argString(args, "content"))
+				if title == "" || content == "" {
+					return "error: title and content are required", nil
+				}
+				scope, _ := args["scope"].(string)
+				if scope == "" {
+					scope = documents.ScopePersonal
+					if rc.projectDB != nil {
+						scope = documents.ScopeProject
+					}
+				}
+				db := rc.userDB
+				if scope == documents.ScopeProject {
+					if rc.projectDB == nil {
+						return "error: project scope is only available in a project session; use scope \"personal\"", nil
+					}
+					db = rc.projectDB
+				}
+				doc, err := a.Docs.IngestInto(ctx, db, types.CreateDocumentRequest{
+					Title: title, URI: "agent://save_doc", Mime: "text/markdown", Content: content,
+				}, rc.userID)
+				if err != nil {
+					return "", err
+				}
+				return fmt.Sprintf("Saved as document %s.%d (%d sections); it is now searchable with search_docs.",
+					scopeLetter(scope), doc.ID, doc.Chunks), nil
+			},
+		}
+	}
+
 	if a.Cron != nil {
 		reg["cron_create"] = toolEntry{
 			def: fnTool("cron_create", `Schedule a recurring job for the user.
@@ -809,7 +853,8 @@ func renderDocResults(res []types.SearchResult) string {
 			fmt.Fprintf(&sb, " · %s", r.Source)
 		}
 		if r.DocumentID > 0 {
-			fmt.Fprintf(&sb, " · doc %d", r.DocumentID)
+			// Scoped document id (u.N/s.N/p.N), directly usable with align_docs.
+			fmt.Fprintf(&sb, " · doc %s.%d", scopeLetter(r.Scope), r.DocumentID)
 		}
 		fmt.Fprintf(&sb, "] %s\n", strings.TrimSpace(r.Content))
 	}

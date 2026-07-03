@@ -26,7 +26,7 @@ const (
 func (a *Agent) alignDocsEntry() toolEntry {
 	return toolEntry{
 		def: fnTool("align_docs", `Align two documents from the document corpus so their differences can be analysed pair by pair. Use mode "versions" when the documents are two revisions of the same text (identical sections are skipped; you only see what changed), and mode "topical" when they are different texts about the same subject (sections are paired by meaning; sections without a counterpart are reported as present in only one document).
-Documents are referenced by scoped id: u.N (personal), s.N (shared), p.N (project), as shown by search_docs ("doc N" + scope) and the documents list; a bare N works when it is unambiguous.
+Documents are referenced by scoped id: u.N (personal), s.N (shared), p.N (project), exactly as search_docs shows them ("doc u.3"); a bare N works when it is unambiguous.
 The result is a batch of aligned pairs. Analyse each pair (state the substantive difference, or that there is none), then call align_docs again with the returned cursor for the next batch until no pairs remain. The alignment is deterministic: the same arguments always produce the same pairs and cursors.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{

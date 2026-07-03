@@ -60,3 +60,11 @@ Write a Markdown report from your finding lines (and nothing else):
 5. **Wording-only** — a single line: how many pairs differed only in wording.
 
 If there were no pairs at all, say the revisions are identical section for section.
+
+## Step 6 — Save the report (default ON)
+
+Unless the user said **not** to save it, persist the report so later questions about this comparison can be answered from it:
+
+    save_doc({"title": "Comparison: <old title> vs <new title>", "content": "<the full report from Step 5>"})
+
+Keep the `[d.x.N]` citations in the saved content — they stay linked to the source documents. Then tell the user the report was saved and that they can ask follow-up questions about it later.
