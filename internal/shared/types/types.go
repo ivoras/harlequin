@@ -634,6 +634,26 @@ type SearchResult struct {
 	// Source describes where a document hit came from ("<title> · chunk <n>");
 	// empty for memory results.
 	Source string `json:"source,omitempty"`
+	// Citation metadata (document hits only): the owning document, the 1-based
+	// page the chunk starts on (0 = unpaged), its mime, and whether the original
+	// file is stored (servable via GET /documents/{id}/file).
+	DocumentID int64  `json:"document_id,omitempty"`
+	Page       int    `json:"page,omitempty"`
+	Mime       string `json:"mime,omitempty"`
+	HasFile    bool   `json:"has_file,omitempty"`
+}
+
+// DocChunkInfo resolves a chunk citation (d.u.N / d.s.N / d.p.N) for clients:
+// which document it belongs to, where in it, and whether the original file can
+// be opened.
+type DocChunkInfo struct {
+	ID         string `json:"id"`
+	Scope      string `json:"scope"`
+	DocumentID int64  `json:"document_id"`
+	Title      string `json:"title"`
+	Mime       string `json:"mime"`
+	Page       int    `json:"page,omitempty"`
+	HasFile    bool   `json:"has_file"`
 }
 
 // UsageRecord is a per-completion accounting row.

@@ -165,6 +165,14 @@ hr { border: none; border-top: 1px solid var(--border); }
 .pill { display: inline-block; padding: 1px 9px; border-radius: 999px; background: var(--surface-3);
   color: var(--muted); font-size: 12px; box-shadow: var(--hl); }
 .pill.warn { color: var(--warn); background: rgba(232, 195, 122, 0.1); border: 1px solid rgba(232, 195, 122, 0.35); }
+/* document citations in assistant messages (d.u.939 …) */
+.cite { color: var(--accent); background: rgba(140, 233, 154, 0.07);
+  border-bottom: 1px dotted var(--accent-dim); border-radius: 4px;
+  padding: 0 3px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em; cursor: help; white-space: nowrap; }
+.cite.openable { cursor: pointer; }
+.cite:hover { background: rgba(140, 233, 154, 0.14); }
+
 /* scope tints (documents/skills listings) */
 .pill.scope-personal { color: #9ecbff; background: rgba(110, 168, 254, 0.1); border: 1px solid rgba(110, 168, 254, 0.3); }
 .pill.scope-shared { color: var(--accent); background: rgba(140, 233, 154, 0.08); border: 1px solid rgba(140, 233, 154, 0.28); }
