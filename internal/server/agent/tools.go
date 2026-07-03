@@ -797,7 +797,8 @@ func renderDocResults(res []types.SearchResult) string {
 		return "(no document results)"
 	}
 	var sb strings.Builder
-	sb.WriteString("Ranked document results (prefer #1 when it directly answers the question; cite scope and chunk id; do not invent facts not listed here):\n")
+	sb.WriteString("Ranked document results (prefer #1 when it directly answers the question; do not invent facts not listed here).\n")
+	sb.WriteString("Cite the chunk id inline immediately after any information you use, e.g. \"…is seated in Brussels [d.u.943]\". The client renders each cited id as a link to the source document and its exact position, so always carry the ids into your answer.\n")
 	for i, r := range res {
 		fmt.Fprintf(&sb, "%d. [%s", i+1, r.ID)
 		if r.Scope != "" {
@@ -805,6 +806,9 @@ func renderDocResults(res []types.SearchResult) string {
 		}
 		if r.Source != "" {
 			fmt.Fprintf(&sb, " · %s", r.Source)
+		}
+		if r.DocumentID > 0 {
+			fmt.Fprintf(&sb, " · doc %d", r.DocumentID)
 		}
 		fmt.Fprintf(&sb, "] %s\n", strings.TrimSpace(r.Content))
 	}

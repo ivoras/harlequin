@@ -3,7 +3,7 @@
 // can be overridden for a standalone/decoupled deployment.
 import { INTERFACE } from "./types";
 import type {
-  LoginResponse, User, Session, Message, Hat, SkillInfo, SkillFiles, SkillFile,
+  LoginResponse, User, Session, Message, Hat, SkillInfo, SkillFiles, SkillFile, DocChunkInfo,
   Memory, MemoryConflict, SearchResult, MCPServer, RegisterMCPRequest,
   MCPTestResult, MCPAuthStartResult, CronJob, CreateCronJobRequest,
   UpdateCronJobRequest, UsageRecord, Notification, Document, CreateDocumentRequest,
@@ -181,6 +181,18 @@ export const api = {
     return req<void>("DELETE", `/documents/${id}${qs ? `?${qs}` : ""}`);
   },
   searchDocuments: (query: string) => reqList<SearchResult>("GET", `/documents/search?q=${q(query)}`),
+  getDocChunk: (cid: string, projectID = 0) =>
+    req<DocChunkInfo>("GET", `/documents/chunk/${q(cid)}${projectID ? `?project=${projectID}` : ""}`),
+  // fetchDocumentFile returns the stored original as a Blob (auth rides in the
+  // header; the caller turns it into an object URL to open in a new window).
+  fetchDocumentFile: async (id: number, scope: string, projectID = 0): Promise<Blob> => {
+    const v = new URLSearchParams();
+    if (scope) v.set("scope", scope);
+    if (projectID) v.set("project", String(projectID));
+    const res = await fetch(apiUrl(`/documents/${id}/file?${v}`), { headers: authHeaders() });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return res.blob();
+  },
 
   // mcp
   listMCP: () => reqList<MCPServer>("GET", "/mcp"),

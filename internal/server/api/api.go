@@ -147,6 +147,8 @@ func (s *Server) Router() http.Handler {
 			r.Post("/documents", s.handleCreateDocument)
 			r.Delete("/documents/{id}", s.handleDeleteDocument)
 			r.Get("/documents/search", s.handleSearchDocuments)
+			r.Get("/documents/chunk/{cid}", s.handleGetDocChunk)
+			r.Get("/documents/{id}/file", s.handleGetDocumentFile)
 
 			if s.MCP != nil {
 				// A server is addressed by ?scope=&name= (not a path segment) so

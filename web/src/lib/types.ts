@@ -317,6 +317,15 @@ export interface Document {
   scope?: string; // personal | shared | project
   chunks?: number;
 }
+export interface DocChunkInfo {
+  id: string;
+  scope: string; // personal | shared | project
+  document_id: number;
+  title: string;
+  mime: string;
+  page?: number; // 1-based; absent when the source has no pages
+  has_file: boolean;
+}
 export interface CreateDocumentRequest {
   title: string;
   uri: string;

@@ -22,6 +22,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/email"
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/memory"
+	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
@@ -257,6 +258,12 @@ func (s *Server) handleClearSession(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "not found")
 		return
 	}
+	// Mark the clear in the trajectory log so a reader understands why the
+	// composed context shrinks from here on.
+	s.Session.Log(r.Context(), sessionlog.Event{
+		SessionID: id, UserID: u.ID, Type: sessionlog.TypeSessionCleared,
+		Data: map[string]any{"cleared_by": u.Email, "project_id": projectID},
+	})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
@@ -706,6 +713,118 @@ func (s *Server) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleGetDocChunk resolves a chunk citation id (d.u.N / d.s.N / d.p.N) to
+// its document, title, page, and file availability, so clients can render
+// citations as links. Project chunks need ?project=<id> (member only).
+func (s *Server) handleGetDocChunk(w http.ResponseWriter, r *http.Request) {
+	u, _ := auth.UserFromContext(r.Context())
+	cid := chi.URLParam(r, "cid")
+	parts := strings.Split(cid, ".")
+	if len(parts) != 3 || parts[0] != "d" {
+		writeErr(w, http.StatusBadRequest, "invalid chunk id (want d.u.N / d.s.N / d.p.N)")
+		return
+	}
+	local, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid chunk id")
+		return
+	}
+	var info *types.DocChunkInfo
+	switch parts[1] {
+	case "u":
+		err = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+			var e error
+			info, e = s.Docs.ChunkInfo(r.Context(), udb, local)
+			return e
+		})
+		if info != nil {
+			info.Scope = documents.ScopePersonal
+		}
+	case "s":
+		info, err = s.Docs.ChunkInfo(r.Context(), s.Docs.SharedDB(), local)
+		if info != nil {
+			info.Scope = documents.ScopeShared
+		}
+	case "p":
+		projectID, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64)
+		if member, _ := s.Projects.IsMember(r.Context(), projectID, u.ID); !member {
+			writeErr(w, http.StatusForbidden, "not a member of this project")
+			return
+		}
+		err = s.Storage.WithProjectReadOnly(r.Context(), projectID, func(pdb *sql.DB) error {
+			var e error
+			info, e = s.Docs.ChunkInfo(r.Context(), pdb, local)
+			return e
+		})
+		if info != nil {
+			info.Scope = documents.ScopeProject
+		}
+	default:
+		writeErr(w, http.StatusBadRequest, "invalid chunk scope")
+		return
+	}
+	if err != nil || info == nil {
+		writeErr(w, http.StatusNotFound, "chunk not found")
+		return
+	}
+	info.ID = cid
+	writeJSON(w, http.StatusOK, info)
+}
+
+// handleGetDocumentFile serves a document's stored original file (inline, with
+// its mime type) so citations can open it — e.g. a PDF at #page=N. Scope rules
+// mirror the corpora: personal = the caller's own, shared = any authenticated
+// user, project = members.
+func (s *Server) handleGetDocumentFile(w http.ResponseWriter, r *http.Request) {
+	u, _ := auth.UserFromContext(r.Context())
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	scope := r.URL.Query().Get("scope")
+	var dir, stored, mime, title string
+	var err error
+	switch scope {
+	case documents.ScopePersonal:
+		err = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+			var e error
+			stored, mime, title, e = s.Docs.StoredFile(r.Context(), udb, id)
+			return e
+		})
+		if err == nil {
+			dir, err = s.Storage.UserFilesDir(u.ID)
+		}
+	case documents.ScopeShared, "":
+		stored, mime, title, err = s.Docs.StoredFile(r.Context(), s.Docs.SharedDB(), id)
+		if err == nil {
+			dir, err = s.Storage.SharedFilesDir()
+		}
+	case documents.ScopeProject:
+		projectID, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64)
+		if member, _ := s.Projects.IsMember(r.Context(), projectID, u.ID); !member {
+			writeErr(w, http.StatusForbidden, "not a member of this project")
+			return
+		}
+		err = s.Storage.WithProjectReadOnly(r.Context(), projectID, func(pdb *sql.DB) error {
+			var e error
+			stored, mime, title, e = s.Docs.StoredFile(r.Context(), pdb, id)
+			return e
+		})
+		if err == nil {
+			dir, err = s.Storage.ProjectFilesDir(projectID)
+		}
+	default:
+		writeErr(w, http.StatusBadRequest, "invalid scope")
+		return
+	}
+	if err != nil || stored == "" || !filepath.IsLocal(stored) {
+		writeErr(w, http.StatusNotFound, "no stored file for this document")
+		return
+	}
+	if mime != "" {
+		w.Header().Set("Content-Type", mime)
+	}
+	w.Header().Set("Content-Disposition", "inline; filename=\""+documents.AsciiName(title)+"\"")
+	http.ServeFile(w, r, filepath.Join(dir, stored))
 }
 
 func (s *Server) handleSearchDocuments(w http.ResponseWriter, r *http.Request) {

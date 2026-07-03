@@ -60,6 +60,10 @@ func NewStore(db *sql.DB, embedder embed.Embedder) *Store {
 	return &Store{db: db, embedder: embedder, chunk: defaultChunkConfig(), ftsWeight: 1.0}
 }
 
+// SharedDB exposes the store's shared (org) database handle, for handlers that
+// route a citation/file lookup by scope.
+func (s *Store) SharedDB() *sql.DB { return s.db }
+
 // SetChunkConfig overrides the chunker; zero-valued fields keep their defaults.
 func (s *Store) SetChunkConfig(c ChunkConfig) {
 	if c.Strategy != "" {
@@ -110,6 +114,30 @@ func AsciiName(name string) string {
 		out = "file"
 	}
 	return out
+}
+
+// ChunkInfo resolves one chunk (by its local id in db) to citation metadata.
+func (s *Store) ChunkInfo(ctx context.Context, db *sql.DB, localID int64) (*types.DocChunkInfo, error) {
+	var info types.DocChunkInfo
+	var hasFile bool
+	err := db.QueryRowContext(ctx,
+		`SELECT c.document_id, c.page, COALESCE(d.title, ''), COALESCE(d.mime, ''), COALESCE(d.stored_path, '') != ''
+		 FROM doc_chunks c JOIN documents d ON d.id = c.document_id WHERE c.id = ?`, localID).
+		Scan(&info.DocumentID, &info.Page, &info.Title, &info.Mime, &hasFile)
+	if err != nil {
+		return nil, err
+	}
+	info.HasFile = hasFile
+	return &info, nil
+}
+
+// StoredFile returns a document's persisted-file name and mime ("" when no
+// original file was stored, e.g. raw-text ingests).
+func (s *Store) StoredFile(ctx context.Context, db *sql.DB, docID int64) (storedPath, mime, title string, err error) {
+	err = db.QueryRowContext(ctx,
+		`SELECT COALESCE(stored_path, ''), COALESCE(mime, ''), COALESCE(title, '') FROM documents WHERE id = ?`, docID).
+		Scan(&storedPath, &mime, &title)
+	return
 }
 
 // SetStoredPath records the on-disk path of a document's persisted file.
@@ -314,6 +342,9 @@ type scoredHit struct {
 	title   string // source document title
 	ord     int    // chunk ordinal within the document
 	page    int    // 1-based source page (0 = no page structure)
+	docID   int64  // owning document id (for citations)
+	mime    string
+	hasFile bool // an original file is stored (servable via /documents/{id}/file)
 }
 
 // Scope labels surfaced in results and used to qualify chunk ids across corpora.
@@ -388,18 +419,27 @@ func (s *Store) SearchScoped(ctx context.Context, scopes []ScopeDB, query string
 	contents := map[string]string{}
 	scopeOf := map[string]string{}
 	sourceOf := map[string]string{}
+	metaOf := map[string]docMeta{}
 	for _, sc := range scopes {
 		if sc.DB != nil {
-			s.searchInto(ctx, sc, ftsQuery, focusedFTS, blob, depth, ranks, contents, scopeOf, sourceOf)
+			s.searchInto(ctx, sc, ftsQuery, focusedFTS, blob, depth, ranks, contents, scopeOf, sourceOf, metaOf)
 		}
 	}
-	return topN(ranks, contents, scopeOf, sourceOf, limit), nil
+	return topN(ranks, contents, scopeOf, sourceOf, metaOf, limit), nil
 }
 
 // searchInto runs the gated/weighted dense+FTS5 arms against one corpus, folding
 // scope-qualified RRF contributions into the shared maps.
+// docMeta carries a hit's citation metadata (document id, page, mime, file).
+type docMeta struct {
+	docID   int64
+	page    int
+	mime    string
+	hasFile bool
+}
+
 func (s *Store) searchInto(ctx context.Context, sc ScopeDB, ftsQuery, focusedFTS string, blob any, depth int,
-	ranks map[string]float64, contents, scopeOf, sourceOf map[string]string) {
+	ranks map[string]float64, contents, scopeOf, sourceOf map[string]string, metaOf map[string]docMeta) {
 	key := func(local int64) string {
 		return "d." + scopePrefix(sc.Scope) + "." + strconv.FormatInt(local, 10)
 	}
@@ -408,7 +448,8 @@ func (s *Store) searchInto(ctx context.Context, sc ScopeDB, ftsQuery, focusedFTS
 			return
 		}
 		if rows, err := sc.DB.QueryContext(ctx,
-			`SELECT c.id, c.content, COALESCE(d.title, ''), c.ord, c.page
+			`SELECT c.id, c.content, COALESCE(d.title, ''), c.ord, c.page,
+			        d.id, COALESCE(d.mime, ''), COALESCE(d.stored_path, '') != ''
 			 FROM doc_chunks_fts f JOIN doc_chunks c ON c.id = f.rowid
 			 JOIN documents d ON d.id = c.document_id
 			 WHERE doc_chunks_fts MATCH ? ORDER BY f.rank LIMIT ?`, q, depth); err == nil {
@@ -416,7 +457,7 @@ func (s *Store) searchInto(ctx context.Context, sc ScopeDB, ftsQuery, focusedFTS
 			if s.ftsGatePct > 0 {
 				hits = gateTop(hits, s.ftsGatePct)
 			}
-			foldKeyed(hits, weight, sc.Scope, key, ranks, contents, scopeOf, sourceOf)
+			foldKeyed(hits, weight, sc.Scope, key, ranks, contents, scopeOf, sourceOf, metaOf)
 		}
 	}
 	runFTS(ftsQuery, s.ftsWeight)
@@ -425,11 +466,12 @@ func (s *Store) searchInto(ctx context.Context, sc ScopeDB, ftsQuery, focusedFTS
 	}
 	if blob != nil {
 		if rows, err := sc.DB.QueryContext(ctx,
-			`SELECT c.id, c.content, COALESCE(d.title, ''), c.ord, c.page
+			`SELECT c.id, c.content, COALESCE(d.title, ''), c.ord, c.page,
+			        d.id, COALESCE(d.mime, ''), COALESCE(d.stored_path, '') != ''
 			 FROM doc_chunks_vec v JOIN doc_chunks c ON c.id = v.rowid
 			 JOIN documents d ON d.id = c.document_id
 			 WHERE v.embedding MATCH ? AND k = ? ORDER BY v.distance`, blob, depth); err == nil {
-			foldKeyed(collect(rows), 1.0, sc.Scope, key, ranks, contents, scopeOf, sourceOf)
+			foldKeyed(collect(rows), 1.0, sc.Scope, key, ranks, contents, scopeOf, sourceOf, metaOf)
 		}
 	}
 }
@@ -440,7 +482,7 @@ func collect(rows *sql.Rows) []scoredHit {
 	var out []scoredHit
 	for rows.Next() {
 		var h scoredHit
-		if err := rows.Scan(&h.id, &h.content, &h.title, &h.ord, &h.page); err != nil {
+		if err := rows.Scan(&h.id, &h.content, &h.title, &h.ord, &h.page, &h.docID, &h.mime, &h.hasFile); err != nil {
 			return out
 		}
 		out = append(out, h)
@@ -468,12 +510,13 @@ func gateTop(hits []scoredHit, pct int) []scoredHit {
 // list, keyed by a scope-qualified id and tagged with the source scope and a
 // human-readable source ("<title> · chunk <ord>").
 func foldKeyed(hits []scoredHit, weight float64, scope string, key func(int64) string,
-	ranks map[string]float64, contents, scopeOf, sourceOf map[string]string) {
+	ranks map[string]float64, contents, scopeOf, sourceOf map[string]string, metaOf map[string]docMeta) {
 	for i, h := range hits {
 		k := key(h.id)
 		ranks[k] += weight / (rrfK + float64(i+1))
 		contents[k] = h.content
 		scopeOf[k] = scope
+		metaOf[k] = docMeta{docID: h.docID, page: h.page, mime: h.mime, hasFile: h.hasFile}
 		title := h.title
 		if title == "" {
 			title = "untitled"
@@ -486,10 +529,14 @@ func foldKeyed(hits []scoredHit, weight float64, scope string, key func(int64) s
 	}
 }
 
-func topN(ranks map[string]float64, contents, scopeOf, sourceOf map[string]string, limit int) []types.SearchResult {
+func topN(ranks map[string]float64, contents, scopeOf, sourceOf map[string]string, metaOf map[string]docMeta, limit int) []types.SearchResult {
 	out := make([]types.SearchResult, 0, len(ranks))
 	for id, score := range ranks {
-		out = append(out, types.SearchResult{ID: id, Content: contents[id], Score: score, Scope: scopeOf[id], Source: sourceOf[id]})
+		m := metaOf[id]
+		out = append(out, types.SearchResult{
+			ID: id, Content: contents[id], Score: score, Scope: scopeOf[id], Source: sourceOf[id],
+			DocumentID: m.docID, Page: m.page, Mime: m.mime, HasFile: m.hasFile,
+		})
 	}
 	for i := 0; i < len(out); i++ {
 		max := i

@@ -38,6 +38,10 @@ const (
 	// MCP (Model Context Protocol) external tool calls.
 	TypeMCPCall = "mcp_call"
 
+	// A "/clear": the session's messages were wiped, so the composed context
+	// visibly shrinks after this point in the trace.
+	TypeSessionCleared = "session_cleared"
+
 	// Live-session lifecycle (WebSocket sessions). TypeSessionResumed records a
 	// client (re)attaching to a live session (cold or warm). TypeSessionExpired
 	// records the idle reaper closing the session goroutine.

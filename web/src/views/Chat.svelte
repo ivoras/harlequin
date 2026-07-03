@@ -1,8 +1,10 @@
 <script lang="ts">
-  import { session, user } from "../lib/stores";
+  import { session, user, activeProject, toast } from "../lib/stores";
   import { sc } from "../lib/session.svelte";
+  import { api } from "../lib/api";
   import { renderMarkdown } from "../lib/markdown";
   import { matchSlash, runSlash, availableCommands } from "../lib/slash";
+  import type { DocChunkInfo } from "../lib/types";
 
   // Chat is a thin view over the app-scoped session controller (sc), which owns
   // the WebSocket and chat state so it survives view switches. Only view-local
@@ -20,6 +22,57 @@
   $effect(() => {
     if (slashSel >= suggestions.length) slashSel = 0;
   });
+
+  // --- Document citations (d.u.N spans produced by renderMarkdown) ---
+  // Lazily resolved and cached; hover sets a tooltip (title + scope + page),
+  // click opens the stored original (PDFs anchored to the page) in a new tab.
+  const citeCache = new Map<string, Promise<DocChunkInfo>>();
+  function resolveCite(cid: string): Promise<DocChunkInfo> {
+    let p = citeCache.get(cid);
+    if (!p) {
+      p = api.getDocChunk(cid, cid.startsWith("d.p.") ? ($activeProject?.id ?? 0) : 0);
+      citeCache.set(cid, p);
+    }
+    return p;
+  }
+  function citeTarget(e: Event): HTMLElement | null {
+    const el = (e.target as HTMLElement)?.closest?.(".cite");
+    return el instanceof HTMLElement ? el : null;
+  }
+  async function onCiteHover(e: Event) {
+    const el = citeTarget(e);
+    const cid = el?.dataset.cite;
+    if (!el || !cid || el.title) return;
+    try {
+      const info = await resolveCite(cid);
+      const page = info.page ? `, p.${info.page}` : "";
+      const open = info.has_file ? " — click to open" : "";
+      el.title = `${info.title || "untitled"} (${info.scope}${page})${open}`;
+      if (info.has_file) el.classList.add("openable");
+    } catch {
+      el.title = "unknown reference";
+    }
+  }
+  async function onCiteClick(e: Event) {
+    const el = citeTarget(e);
+    const cid = el?.dataset.cite;
+    if (!el || !cid) return;
+    try {
+      const info = await resolveCite(cid);
+      if (!info.has_file) {
+        toast(`${info.title || "untitled"} (${info.scope}) — no stored file to open`);
+        return;
+      }
+      const projectID = info.scope === "project" ? ($activeProject?.id ?? 0) : 0;
+      const blob = await api.fetchDocumentFile(info.document_id, info.scope, projectID);
+      const url = URL.createObjectURL(blob);
+      const anchor = info.mime === "application/pdf" && info.page ? `#page=${info.page}` : "";
+      window.open(url + anchor, "_blank", "noopener");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      toast((err as Error).message, "error");
+    }
+  }
 
   function scrollToBottom() {
     requestAnimationFrame(() => {
@@ -93,7 +146,8 @@
 </script>
 
 <div class="chat">
-  <div class="messages" bind:this={scrollEl}>
+  <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events, a11y_mouse_events_have_key_events -->
+  <div class="messages" bind:this={scrollEl} onclick={onCiteClick} onmouseover={onCiteHover}>
     <div class="container col" style="gap:12px;">
       {#each sc.items as it}
         {#if it.kind === "msg"}
