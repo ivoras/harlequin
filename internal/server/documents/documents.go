@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
@@ -821,6 +822,15 @@ func cosine(a, b []float32) float64 {
 // when the next non-space character starts a new sentence (capital, digit, quote
 // or opening paren) or at end of text. Good enough for general prose; it does not
 // special-case abbreviations.
+// citeAbbrevRE matches any bracketed reference abbreviation of the general
+// shape "[x.y." (e.g. "[d.p.", "[d.u.", or any other single-letter.single-
+// letter. namespace, not just the current chunk-citation scopes) right at
+// the end of the text seen so far — its trailing period looks like a
+// sentence end (period, space, digit: "[d.p. 3651]") but isn't one. Without
+// this guard, splitSentences cuts the reference in half, and FullText later
+// rejoins the pieces with a paragraph break, visibly mangling it.
+var citeAbbrevRE = regexp.MustCompile(`\[[a-zA-Z]\.[a-zA-Z]\.$`)
+
 func splitSentences(text string) []sentRec {
 	if strings.TrimSpace(text) == "" {
 		return nil
@@ -835,6 +845,9 @@ func splitSentences(text string) []sentRec {
 		}
 		b.WriteRune(r)
 		if r == '.' || r == '!' || r == '?' {
+			if r == '.' && citeAbbrevRE.MatchString(b.String()) {
+				continue
+			}
 			j := i + 1
 			for j < len(runes) && unicode.IsSpace(runes[j]) {
 				j++
