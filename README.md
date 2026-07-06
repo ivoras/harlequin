@@ -322,3 +322,35 @@ llama-server -m Qwen3.6-35B-A3B-IQ4_XS-3.53bpw.gguf --port 2234 --host 0.0.0.0 -
 ```sh
 llama-server -m granite-embedding-311M-multilingual-r2-Q8_0.gguf --embeddings -c 768 --port 2235
 ```
+
+
+# Running Docling (optional PDF/DOCX conversion)
+
+PDF and DOCX uploads normally go through pure-Go extractors (PDFium via wasm for PDF; a
+minimal DOCX reader). For higher-fidelity conversion — better handling of tables, multi-column
+layout, and scanned/OCR'd pages — Harlequin can instead route these uploads through
+[Docling](https://github.com/docling-project/docling), IBM's document-conversion toolkit, run
+as a local HTTP service ([docling-serve](https://github.com/docling-project/docling-serve)).
+This is entirely optional: if it's not configured, or the request fails, Harlequin falls back
+to the built-in extractors automatically.
+
+Install and run it (CPU-only; see the docling-serve docs for GPU images):
+
+```sh
+pip install "docling-serve[ui]"
+docling-serve run
+```
+
+By default docling-serve listens on `http://127.0.0.1:5001` (its `/ui` path serves a small
+web UI for ad-hoc testing). Point Harlequin at it in `server.yaml`:
+
+```yaml
+documents:
+  docling:
+    base_url: "http://127.0.0.1:5001"
+    timeout: "5m"    # per-conversion bound; the built-in extractor takes over if this expires
+```
+
+Large or scanned PDFs can take a while to convert on CPU — Harlequin uses docling-serve's
+async conversion endpoint and polls for completion, so slow conversions don't block the
+request beyond the configured `timeout`.
