@@ -544,8 +544,17 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 					}
 					db = rc.projectDB
 				}
+				if problems := a.VerifyCitedQuotes(ctx, rc, content); len(problems) > 0 {
+					var sb strings.Builder
+					sb.WriteString("error: not saved — problem(s) with quoted claims (every quoted excerpt needs a citation, and it must be to the exact chunk it actually came from, not a similar nearby one):\n")
+					for _, p := range problems {
+						fmt.Fprintf(&sb, "- %s\n", p)
+					}
+					sb.WriteString("Fix the citation(s) and call save_doc again.")
+					return sb.String(), nil
+				}
 				doc, err := a.Docs.IngestInto(ctx, db, types.CreateDocumentRequest{
-					Title: title, URI: "agent://save_doc", Mime: "text/markdown", Content: content,
+					Title: title, URI: "agent://save_doc", Mime: "text/plain", Content: content,
 				}, rc.userID)
 				if err != nil {
 					return "", err

@@ -163,7 +163,11 @@ is genuinely new, removed, or absent.
 **Why:** persist a produced report/analysis into the corpus (personal, or
 project in a project session) so later sessions can answer questions about it
 via `search_docs`. Citations in the content stay linked. The compare skills use
-this to make their reports queryable afterwards.
+this to make their reports queryable afterwards. Every long quoted excerpt in
+the content must be immediately followed by its `[d.x.N]` citation — `save_doc`
+verifies each one against the chunk's real text and **refuses to save** (with
+the specific mismatch) if a quote is uncited or cited to the wrong chunk; fix
+and call it again.
 **Example:** `save_doc({"title": "Comparison: Regulation 2025 vs 2026", "content": "<report>"})`
 
 ---

@@ -180,6 +180,32 @@ func titleOverlap(a, b Unit) bool {
 	return hits*2 > len(shorter)
 }
 
+// BestSemanticMatch finds the unit in others whose pooled embedding is most
+// similar to orphan's, for callers checking whether an apparently-unmatched
+// section ("only in A/B") actually has a reworded counterpart that survived
+// neither key-anchoring nor title overlap — the case where both the heading
+// and the body were rewritten enough that no shared vocabulary remains, so
+// only the underlying meaning (the embedding) still connects them. Returns
+// nil if no unit in others has both a vector and similarity >= minSim.
+func BestSemanticMatch(orphan Unit, others []Unit, minSim float64) (*Unit, float64) {
+	ov := orphan.vec()
+	if ov == nil {
+		return nil, 0
+	}
+	var best *Unit
+	bestSim := minSim
+	for i := range others {
+		v := others[i].vec()
+		if v == nil {
+			continue
+		}
+		if sim := cosine(ov, v); sim >= bestSim {
+			best, bestSim = &others[i], sim
+		}
+	}
+	return best, bestSim
+}
+
 // TitleWords is titleWords, exported for callers outside this package that
 // need a heading's descriptive terms (e.g. to phrase an authoritative
 // full-text presence check against the other document).
@@ -266,7 +292,77 @@ func Units(d *Doc) []Unit {
 		}
 	}
 	flush()
+	return mergeSplitHeadings(out)
+}
+
+// mergeSplitHeadings repairs a converter artifact where a heading's number and
+// title land in two separate markdown heading lines instead of one ("## Article
+// 9." on one line, then later "## Interest" on its own) — continueHeading only
+// completes the truncated NUMBER from the immediately following line, so the
+// title heading a line or two later still starts its own separate, keyless
+// unit. The number-only unit ends up with no real body (just the heading
+// marker and the bare digit continueHeading absorbed), while the title-only
+// unit silently holds all the article's actual content — and the empty one is
+// what an aligner tries to match, orphaning the real text.
+//
+// Detection is deliberately strict to avoid merging a genuinely short article
+// into an unrelated following heading: merge unit i into unit i+1 only when
+// (a) unit i has a key (it's a real numbered heading) and (b) unit i's entire
+// body, with its own heading line removed, is nothing but digits and
+// whitespace — i.e. it could not possibly be actual article text — and (c)
+// unit i+1 has no key (a bare markdown heading, no article/chapter/annex
+// prefix) but does have real descriptive words, not just noise.
+func mergeSplitHeadings(units []Unit) []Unit {
+	if len(units) < 2 {
+		return units
+	}
+	out := make([]Unit, 0, len(units))
+	for i := 0; i < len(units); i++ {
+		u := units[i]
+		if i+1 < len(units) && u.Key != "" && isNumericOnlyBody(u) && units[i+1].Key == "" && len(titleWords(units[i+1].Heading)) > 0 {
+			next := units[i+1]
+			out = append(out, Unit{
+				Heading: strings.TrimSpace(u.Heading) + " " + strings.TrimSpace(next.Heading),
+				Key:     u.Key,
+				Secs:    append(append([]Section{}, u.Secs...), next.Secs...),
+			})
+			i++ // consume next too
+			continue
+		}
+		out = append(out, u)
+	}
 	return out
+}
+
+// isNumericOnlyBody reports whether a unit's body — its heading's own line(s)
+// stripped out of each section's text — contains nothing but digits and
+// whitespace, meaning the unit cannot be genuine article content and is
+// purely a heading-continuation artifact.
+func isNumericOnlyBody(u Unit) bool {
+	for _, s := range u.Secs {
+		body := stripHeadingLines(s.Text)
+		if strings.TrimSpace(body) == "" {
+			continue
+		}
+		if strings.Trim(body, "0123456789 \t\r\n.") != "" {
+			return false
+		}
+	}
+	return true
+}
+
+// stripHeadingLines removes every line that is itself a heading match (the
+// "## …" or bare "article/chapter/annex NUM" form), leaving only body text.
+func stripHeadingLines(text string) string {
+	lines := strings.Split(text, "\n")
+	var kept []string
+	for _, line := range lines {
+		if headingRE.MatchString(line) {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, "\n")
 }
 
 // AlignUnits aligns two documents at unit granularity. Units whose keys are

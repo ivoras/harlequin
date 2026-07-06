@@ -99,6 +99,53 @@ func TestAppendOrphanCrossCheck(t *testing.T) {
 	}
 }
 
+// TestAppendOrphanCrossCheckSemanticFallback reproduces the residual gap the
+// literal-text layer can't close: a section moved to a different chapter
+// under a heading with NO shared vocabulary with the original — confirmed
+// necessary by directly reading the EEA test corpus's full Chapter 11 in both
+// documents (the real move there, "External monitoring" -> "Monitoring",
+// happened to share the word "monitoring" and so was already caught by
+// ordinary alignment; a more thoroughly retitled move would not be). Only the
+// embedding still connects it, so this exercises layer 2 specifically: fake
+// vectors are used directly (bypassing the zero-vector fake embedder), since
+// the real embedding call already happened at ingest time in production.
+func TestAppendOrphanCrossCheckSemanticFallback(t *testing.T) {
+	docA := &docalign.Doc{ID: 1, Title: "old", Scope: "shared"}
+	docB := &docalign.Doc{ID: 2, Title: "new", Scope: "shared"}
+	orphan := &docalign.Unit{
+		Heading: "Article 11.1 External monitoring",
+		Key:     "article 11.1",
+		Secs:    []docalign.Section{{ChunkID: 100, Text: "the FMC may select programmes for external monitoring"}},
+	}
+	orphan.Secs[0].Vec = []float32{1, 0.1}
+	// No shared title words with the orphan at all — the literal-text layer
+	// must find nothing before the semantic layer gets a chance. Raw sections
+	// (not pre-built Units) so docalign.Units(docB) parses them for real,
+	// exactly as production does.
+	docB.Sections = []docalign.Section{
+		{ChunkID: 200, Text: "## Article 10.3 Third-party oversight\nthe FMC may select programmes for oversight by external parties", Vec: []float32{0.95, 0.15}},
+		{ChunkID: 201, Text: "## Article 2.1 Thematic priorities\ncompletely unrelated content about funding priorities", Vec: []float32{-1, 0.5}},
+	}
+
+	ctx := context.Background()
+	sqlDB, err := db.Open(":memory:", db.Shared, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	a := &Agent{Docs: documents.NewStore(sqlDB, crossCheckFakeEmbedder{dim: 4})}
+
+	var sb strings.Builder
+	a.appendOrphanCrossCheck(ctx, &sb, docalign.UnitPair{Kind: docalign.OnlyA, A: orphan}, docA, sqlDB, docB, sqlDB)
+	out := sb.String()
+	if !strings.Contains(out, "WARNING") {
+		t.Fatalf("semantic layer should flag the reworded move, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Third-party oversight") {
+		t.Fatalf("warning should name the real semantic match, got:\n%s", out)
+	}
+}
+
 func docReq(content string) types.CreateDocumentRequest {
 	return types.CreateDocumentRequest{Title: "test doc", Content: content}
 }

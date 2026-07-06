@@ -1,6 +1,9 @@
 package docalign
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestHeadingOf(t *testing.T) {
 	cases := []struct {
@@ -198,6 +201,99 @@ func TestAlignUnitsSameKeyDifferentTitlesDoesNotStealSlot(t *testing.T) {
 		if p.Kind == OnlyA && p.A.Key != "article 12.6" {
 			t.Fatalf("the decoy (Reporting on progress) should be the one left orphaned, got %s", p.A.Key)
 		}
+	}
+}
+
+// TestUnitsMergesNumberOnlyHeadingWithFollowingTitle reproduces a real defect
+// found in the EEA regulation corpus, using the exact real chunk boundaries:
+// "## Article 9. 5 Forecast ...\n\n## Article 9." ends one chunk, and the next
+// chunk continues "6 Use of the euro\n\n...\n\n## Article 9." (a second
+// truncation), and the one after that continues "7\n\n## Interest\n\n- Any
+// interest...". continueHeading correctly grabs "7" from the first line, but
+// never sees that "## Interest" two lines later is the article's real title —
+// so the numbered heading ends up empty and the substantive text ends up
+// under a keyless "Interest" heading. The two must merge into one unit.
+func TestUnitsMergesNumberOnlyHeadingWithFollowingTitle(t *testing.T) {
+	d := unitDoc("x",
+		"## Article 9. 5 Forecast of likely payment applications\nbody text about forecasts.\n\n## Article 9.",
+		"6 Use of the euro\namounts shall be denominated in euro.\n\n## Article 9.",
+		"7\n\n## Interest\n\n- Any interest generated on the following bank accounts shall be regarded as a resource for the FMC.",
+	)
+	us := Units(d)
+	var interestUnit *Unit
+	for i, u := range us {
+		if strings.Contains(u.Heading, "Interest") {
+			interestUnit = &us[i]
+		}
+	}
+	if interestUnit == nil {
+		t.Fatalf("no merged Interest unit found; units: %+v", us)
+	}
+	if interestUnit.Heading != "Article 9. 7 Interest" {
+		t.Fatalf("merged heading = %q, want \"Article 9. 7 Interest\"", interestUnit.Heading)
+	}
+	if interestUnit.Key != "article 9.7" {
+		t.Fatalf("merged key = %q, want \"article 9.7\"", interestUnit.Key)
+	}
+	if !strings.Contains(interestUnit.Text(), "resource for the FMC") {
+		t.Fatalf("merged unit lost the real body text: %q", interestUnit.Text())
+	}
+	// No leftover empty "Article 9. 7" unit should survive alongside it.
+	for _, u := range us {
+		if u.Heading == "Article 9. 7" {
+			t.Fatalf("the empty number-only unit should have been merged away, found: %+v", u)
+		}
+	}
+}
+
+// TestUnitsDoesNotMergeGenuineShortArticle guards against over-merging: a
+// number-only heading whose body is real (non-numeric) text must NOT be
+// merged into whatever heading happens to follow it.
+func TestUnitsDoesNotMergeGenuineShortArticle(t *testing.T) {
+	d := unitDoc("x",
+		"## Article 5.9 Waiver\nThis Article shall apply mutatis mutandis.",
+		"## Article 5.10 Force majeure\nNeither party shall be liable for delays caused by force majeure.",
+	)
+	us := Units(d)
+	if len(us) != 2 {
+		t.Fatalf("want 2 separate units (both have real bodies), got %d: %+v", len(us), us)
+	}
+	if us[0].Heading != "Article 5.9 Waiver" || us[1].Heading != "Article 5.10 Force majeure" {
+		t.Fatalf("headings should be untouched: %+v", us)
+	}
+}
+
+// TestBestSemanticMatchCatchesFullyRewordedMove reproduces the residual gap
+// title-overlap and literal text search can't close: a section moved to a
+// different chapter under a heading with ZERO shared vocabulary with the
+// original ("External monitoring" -> "Third-party oversight"). Only the
+// embedding still connects them.
+func TestBestSemanticMatchCatchesFullyRewordedMove(t *testing.T) {
+	orphan := Unit{Heading: "Article 11.1 External monitoring", Secs: []Section{
+		{Text: "the FMC may select programmes for external monitoring", Vec: vec(1, 0.1)},
+	}}
+	others := []Unit{
+		{Heading: "Article 10.3 Third-party oversight", Secs: []Section{
+			{Text: "the FMC may select programmes for oversight by external parties", Vec: vec(0.95, 0.15)},
+		}},
+		{Heading: "Article 2.1 Thematic priorities", Secs: []Section{
+			{Text: "completely unrelated content about funding priorities", Vec: vec(-1, 0.5)},
+		}},
+	}
+	best, sim := BestSemanticMatch(orphan, others, 0.8)
+	if best == nil {
+		t.Fatal("want a semantic match above the floor, got nil")
+	}
+	if best.Heading != "Article 10.3 Third-party oversight" {
+		t.Fatalf("matched wrong unit: %q (sim %.2f)", best.Heading, sim)
+	}
+}
+
+func TestBestSemanticMatchNoneBelowFloor(t *testing.T) {
+	orphan := Unit{Heading: "x", Secs: []Section{{Text: "t", Vec: vec(1, 0)}}}
+	others := []Unit{{Heading: "y", Secs: []Section{{Text: "t", Vec: vec(0, 1)}}}}
+	if best, _ := BestSemanticMatch(orphan, others, 0.8); best != nil {
+		t.Fatalf("want no match below the floor, got %q", best.Heading)
 	}
 }
 
