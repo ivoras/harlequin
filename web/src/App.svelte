@@ -71,19 +71,21 @@
       sc.detach();
       session.set({ id: 0, title: "" });
       wornHat.set("");
-      setSessionParam(0);
+      activeProject.set(null);
+      setURLParams(0, 0);
       view.set("chat");
     }
   });
 
   // Connect the live session at app scope (survives view switches) and keep the
-  // session id in the URL (?c=) so a refresh resumes the same session. A session
-  // inside the active project attaches under that project (shared live session).
+  // session id AND active project id in the URL (?s=&p=) so a refresh resumes the
+  // same session in the same project. A session inside the active project
+  // attaches under that project (shared live session).
   $effect(() => {
     const id = $session.id;
     const pid = $activeProject?.id ?? 0;
     if (id) {
-      setSessionParam(id);
+      setURLParams(id, pid);
       sc.attach(id, pid);
     }
   });
@@ -100,22 +102,51 @@
     if ($projectSheet) loadProjects();
   });
 
-  function sessionParam(): number {
-    const v = new URLSearchParams(location.search).get("c");
+  function intParam(name: string): number {
+    const v = new URLSearchParams(location.search).get(name);
     const n = v ? parseInt(v, 10) : 0;
     return Number.isFinite(n) && n > 0 ? n : 0;
   }
-  function setSessionParam(id: number): void {
+  function setURLParams(sessionID: number, projectID: number): void {
     const url = new URL(location.href);
-    if (id) url.searchParams.set("c", String(id));
-    else url.searchParams.delete("c");
+    if (sessionID) url.searchParams.set("s", String(sessionID));
+    else url.searchParams.delete("s");
+    if (projectID) url.searchParams.set("p", String(projectID));
+    else url.searchParams.delete("p");
     history.replaceState(null, "", url);
   }
 
-  // On boot, resume the session named in the URL (?c=) if present; otherwise start
-  // a fresh one. Resuming reconnects to its live server-side goroutine.
+  // On boot, resume the project (?p=) and session (?s=) named in the URL, if
+  // present; otherwise start a fresh personal session. A project session lives
+  // in that project's own session list, not the personal one, so the project
+  // must be restored FIRST — otherwise the session lookup misses it entirely
+  // and the app silently falls back to an unrelated (or brand new) session.
   async function initSession() {
-    const id = sessionParam();
+    const pid = intParam("p");
+    const id = intParam("s");
+    if (pid) {
+      try {
+        const p = await api.getProject(pid);
+        activeProject.set(p);
+        if (id) {
+          const list = await api.listProjectSessions(pid);
+          const found = list.find((c) => c.id === id);
+          if (found) {
+            session.set({ id, title: cleanTitle(found.title) });
+            wornHat.set(found.hat ?? "");
+            return;
+          }
+          // The session named in the URL no longer belongs to this project
+          // (deleted, reassigned) — fall through to opening a project session.
+        }
+        await libSwitchToProject(p);
+        return;
+      } catch {
+        // Project gone or no longer a member: drop it and fall through to the
+        // plain personal-session path below rather than getting stuck.
+        activeProject.set(null);
+      }
+    }
     if (id) {
       try {
         const list = await api.listSessions();
