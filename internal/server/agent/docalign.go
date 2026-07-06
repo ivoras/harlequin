@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -295,15 +296,43 @@ func (a *Agent) renderUnitPairs(ctx context.Context, docA *docalign.Doc, dbA *sq
 	return sb.String()
 }
 
-// appendOrphanCrossCheck runs an automatic, deterministic full-text check for
-// an only_a/only_b pair's heading against the OTHER document, and appends the
-// result inline. This is the check_text safety net made mandatory rather than
-// optional: a model reliably reads what the tool hands it, but did not
-// reliably remember to call a separate verification tool before asserting
-// something is new/removed (confirmed by live testing — the same false
-// "removed" claim recurred even with an explicit skill instruction and an
-// available tool). Only fires for only_a/only_b pairs; changed/matched pairs
-// already show both sides.
+// orphanSemanticFloor is the cosine floor for the semantic fallback in
+// appendOrphanCrossCheck. Set conservatively high and still not fully
+// trustworthy: live testing against the EEA regulation corpus caught this
+// layer flagging a false positive at 0.86 ("Article 4 Roles and
+// responsibilities" in an MoU-template annex vs. the main body's "Article 1.5
+// The legal framework" — substantively unrelated, but both dense with shared
+// administrative vocabulary: "Beneficiary State", "Donor States", "Financial
+// Mechanism"). This is the same formulaic-boilerplate-inflates-cosine failure
+// mode that motivated title-overlap-over-cosine in the alignment pool itself
+// (see AlignUnits) — it applies here too, and a threshold alone cannot fully
+// fix it. 0.9 is a conservative guess pending a real calibration pass (an
+// eval over known true/false match pairs, as in docs/rag_research); until
+// then this layer's output should be read as "worth a second look", not
+// proof — the wording in appendOrphanCrossCheck says so explicitly.
+const orphanSemanticFloor = 0.9
+
+// appendOrphanCrossCheck runs two automatic, deterministic checks for an
+// only_a/only_b pair's heading against the OTHER document, and appends the
+// result inline — a safety net made mandatory rather than optional: a model
+// reliably reads what the tool hands it, but did not reliably remember to
+// call a separate verification tool before asserting something is new/removed
+// (confirmed by live testing — the same false "removed" claim recurred even
+// with an explicit skill instruction and an available tool). Only fires for
+// only_a/only_b pairs; changed/matched pairs already show both sides.
+//
+// Layer 1 (literal): does a title-word phrase appear verbatim elsewhere in the
+// other document? Catches a move whose wording survived even though alignment
+// failed to connect it (e.g. a coincidental renumbering stole the true slot).
+//
+// Layer 2 (semantic): if layer 1 finds nothing, does any unit's pooled
+// embedding in the other document closely resemble this orphan's? Catches a
+// move where BOTH the heading and the body were reworded enough that no
+// shared vocabulary survives — confirmed necessary live: "External
+// monitoring" (old) moved almost verbatim to "Monitoring" under a different
+// chapter, which happened to share the word "monitoring" and so was already
+// caught by ordinary title-overlap matching; a more thoroughly retitled move
+// would share nothing lexical and needs this semantic layer instead.
 func (a *Agent) appendOrphanCrossCheck(ctx context.Context, sb *strings.Builder, p docalign.UnitPair, docA *docalign.Doc, dbA *sql.DB, docB *docalign.Doc, dbB *sql.DB) {
 	var orphan *docalign.Unit
 	var otherDB *sql.DB
@@ -317,27 +346,36 @@ func (a *Agent) appendOrphanCrossCheck(ctx context.Context, sb *strings.Builder,
 		return
 	}
 	terms := docalign.TitleWords(orphan.Heading)
-	if len(terms) == 0 {
-		return
-	}
-	phrase := strings.Join(terms, " ")
-	hits, err := a.Docs.FindText(ctx, otherDB, otherDoc.ID, phrase, 2)
-	if err != nil {
-		return
-	}
-	if len(hits) == 0 {
-		fmt.Fprintf(sb, "[cross-check: %q not found anywhere in %q — this appears to be a genuine addition/removal]\n", phrase, otherDoc.Title)
-		return
-	}
-	sb.WriteString("[cross-check WARNING: this heading looked like it had no counterpart, but the text ")
-	fmt.Fprintf(sb, "%q DOES appear in %q — do NOT report this as new/removed. Read the real counterpart before writing any finding:\n", phrase, otherDoc.Title)
-	for _, h := range hits {
-		cite := fmt.Sprintf("d.%s.%d", scopeLetter(otherDoc.Scope), h.ChunkID)
-		if h.Page > 0 {
-			cite += fmt.Sprintf(" p.%d", h.Page)
+	if len(terms) > 0 {
+		phrase := strings.Join(terms, " ")
+		if hits, err := a.Docs.FindText(ctx, otherDB, otherDoc.ID, phrase, 2); err == nil && len(hits) > 0 {
+			sb.WriteString("[cross-check WARNING: this heading looked like it had no counterpart, but the text ")
+			fmt.Fprintf(sb, "%q DOES appear in %q — do NOT report this as new/removed. Read the real counterpart before writing any finding:\n", phrase, otherDoc.Title)
+			for _, h := range hits {
+				cite := fmt.Sprintf("d.%s.%d", scopeLetter(otherDoc.Scope), h.ChunkID)
+				if h.Page > 0 {
+					cite += fmt.Sprintf(" p.%d", h.Page)
+				}
+				fmt.Fprintf(sb, "  [%s] …%s…\n", cite, h.Snippet)
+			}
+			return
 		}
-		fmt.Fprintf(sb, "  [%s] …%s…\n", cite, h.Snippet)
 	}
+	// Layer 1 found nothing (or the heading had no usable title words at all):
+	// fall back to a semantic sweep over the other document's units.
+	if best, sim := docalign.BestSemanticMatch(*orphan, docalign.Units(otherDoc), orphanSemanticFloor); best != nil {
+		sb.WriteString("[cross-check WARNING: this heading looked like it had no counterpart and no matching text was found, but a section with very similar CONTENT exists under a different heading — ")
+		fmt.Fprintf(sb, "%q (similarity %.2f). Read it before reporting this as new/removed; it may be the same provision reworded:\n", best.Heading, sim)
+		if len(best.Secs) > 0 {
+			cite := fmt.Sprintf("d.%s.%d", scopeLetter(otherDoc.Scope), best.Secs[0].ChunkID)
+			if best.Secs[0].Page > 0 {
+				cite += fmt.Sprintf(" p.%d", best.Secs[0].Page)
+			}
+			fmt.Fprintf(sb, "  [%s]\n", cite)
+		}
+		return
+	}
+	fmt.Fprintf(sb, "[cross-check: not found — no matching text or similar content anywhere in %q — this appears to be a genuine addition/removal]\n", otherDoc.Title)
 }
 
 func filterNote(filter string) string {
@@ -676,6 +714,80 @@ func (a *Agent) loadDocRef(ctx context.Context, rc *runContext, ref string) (*do
 	default:
 		return nil, fmt.Sprintf("error: document id %s is ambiguous (%s) — use the scoped form", ref, strings.Join(foundIn, ", "))
 	}
+}
+
+// quoteRE finds a long double-quoted claim — long enough to read as an actual
+// verbatim excerpt of document text, not a scare-quoted word or short label
+// (those are exempt from requiring a citation).
+var quoteRE = regexp.MustCompile(`"([^"\n]{15,400})"`)
+
+// citeAfterRE matches a citation within a tight window right after a quote's
+// closing mark, so it can't accidentally pair with an unrelated citation
+// belonging to a different claim further down.
+var citeAfterRE = regexp.MustCompile(`^[^\[\n]{0,60}\[d\.([usp])\.(\d+)\]`)
+
+// VerifyCitedQuotes enforces two things about every long quoted claim in
+// content: it must be cited, and the citation must be to the chunk that
+// actually contains it (a literal, whitespace/case-insensitive substring
+// match). Both are confirmed live failure modes: a model writing several
+// similar clauses in one dense sentence sometimes drops the citation on one
+// of them entirely, or attaches a real quote to an adjacent, textually
+// similar clause's id — a synthesis-time mix-up between two real findings,
+// not a fabrication of either one. Returns a description per problem found
+// (nil if everything checks out); a citation to a chunk this session can't
+// resolve is skipped rather than flagged, so an unrelated ref quirk doesn't
+// block a save.
+func (a *Agent) VerifyCitedQuotes(ctx context.Context, rc *runContext, content string) []string {
+	var problems []string
+	for _, loc := range quoteRE.FindAllStringSubmatchIndex(content, -1) {
+		quote := content[loc[2]:loc[3]]
+		rest := content[loc[1]:]
+		m := citeAfterRE.FindStringSubmatch(rest)
+		if m == nil {
+			problems = append(problems, fmt.Sprintf(
+				"the quoted claim %q has no [d.x.N] citation right after it — every quoted excerpt must be immediately followed by the citation of the chunk it came from; add one, or remove the quotation marks if this is a paraphrase rather than a verbatim quote",
+				quote))
+			continue
+		}
+		letter, idStr := m[1], m[2]
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			continue
+		}
+		var scope string
+		switch letter {
+		case "u":
+			scope = documents.ScopePersonal
+		case "p":
+			scope = documents.ScopeProject
+		default:
+			scope = documents.ScopeShared
+		}
+		db, errMsg := a.docDBForScope(rc, scope)
+		if errMsg != "" {
+			continue
+		}
+		chunkText, err := a.Docs.ChunkContent(ctx, db, id)
+		if err != nil || strings.TrimSpace(chunkText) == "" {
+			continue
+		}
+		if !normalizedContains(chunkText, quote) {
+			preview := chunkText
+			if r := []rune(preview); len(r) > 200 {
+				preview = string(r[:200]) + "…"
+			}
+			problems = append(problems, fmt.Sprintf("quote %q is cited as [d.%s.%d], but that chunk's actual text is: %q — find the chunk that really contains this quote (search_docs or re-check the align_docs pair) and fix the citation",
+				quote, letter, id, preview))
+		}
+	}
+	return problems
+}
+
+// normalizedContains reports whether needle appears in haystack, ignoring case
+// and collapsing whitespace runs (PDF-extracted text often reflows spacing).
+func normalizedContains(haystack, needle string) bool {
+	norm := func(s string) string { return strings.Join(strings.Fields(strings.ToLower(s)), " ") }
+	return strings.Contains(norm(haystack), norm(needle))
 }
 
 // docDBForScope resolves the corpus DB backing a given scope label for this

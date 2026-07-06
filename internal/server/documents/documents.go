@@ -181,6 +181,35 @@ func (s *Store) OpeningText(ctx context.Context, db *sql.DB, docID int64, maxChu
 	return strings.Join(parts, "\n"), rows.Err()
 }
 
+// ChunkContent returns one chunk's raw text by its local (scope-relative) id.
+func (s *Store) ChunkContent(ctx context.Context, db *sql.DB, chunkID int64) (string, error) {
+	var content string
+	err := db.QueryRowContext(ctx, `SELECT content FROM doc_chunks WHERE id = ?`, chunkID).Scan(&content)
+	return content, err
+}
+
+// FullText returns a document's entire content, all chunks concatenated in
+// order. Used to view a document that has no stored original file (plain-text
+// ingests, including save_doc reports) — its only representation is the
+// chunk table.
+func (s *Store) FullText(ctx context.Context, db *sql.DB, docID int64) (string, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT content FROM doc_chunks WHERE document_id = ? ORDER BY ord`, docID)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	var parts []string
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			return "", err
+		}
+		parts = append(parts, c)
+	}
+	return strings.Join(parts, "\n\n"), rows.Err()
+}
+
 // FindText scans every chunk of a document for a literal, case-insensitive
 // substring match — deterministic and exhaustive, unlike embedding/FTS5
 // search, which can miss an exact phrase for unrelated ranking reasons. Use it
