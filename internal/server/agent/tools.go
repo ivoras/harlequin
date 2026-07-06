@@ -2,10 +2,13 @@ package agent
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -559,6 +562,11 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 				if err != nil {
 					return "", err
 				}
+				// Persist the exact text to disk too, same as PDF/DOCX uploads: view/
+				// download then serves the original bytes verbatim via /file, instead of
+				// reconstructing it from chunk boundaries (which don't preserve original
+				// whitespace and can visibly mangle content, e.g. splitting a citation).
+				a.storeSavedDocFile(ctx, db, scope, rc, doc, content)
 				return fmt.Sprintf("Saved as document %s.%d (%d sections); it is now searchable with search_docs.",
 					scopeLetter(scope), doc.ID, doc.Chunks), nil
 			},
@@ -755,6 +763,41 @@ Example (watch a saved web-monitor check every 30 min): cron_create(name="fzoeu"
 	}
 
 	return reg
+}
+
+// storeSavedDocFile persists save_doc's exact text to disk under the target
+// scope's files/ directory, mirroring how PDF/DOCX uploads are handled
+// (handleCreateDocument's ingestAndStore) — so /file can serve the original
+// bytes verbatim rather than the caller reconstructing content from chunk
+// boundaries, which drop original whitespace and can visibly mangle text
+// (e.g. splitting a citation across a paragraph break). Best-effort: a
+// failure here still leaves the document searchable via its chunks.
+func (a *Agent) storeSavedDocFile(ctx context.Context, db *sql.DB, scope string, rc *runContext, doc *types.Document, content string) {
+	if a.Storage == nil {
+		return
+	}
+	var dir string
+	var err error
+	switch scope {
+	case documents.ScopeProject:
+		dir, err = a.Storage.ProjectFilesDir(rc.projectID)
+	case documents.ScopeShared:
+		dir, err = a.Storage.SharedFilesDir()
+	default:
+		dir, err = a.Storage.UserFilesDir(rc.userID)
+	}
+	if err != nil {
+		log.Printf("save_doc: persist file: %v", err)
+		return
+	}
+	name := fmt.Sprintf("%d-%s.txt", doc.ID, documents.AsciiName(doc.Title))
+	if werr := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); werr != nil {
+		log.Printf("save_doc: write file %q: %v", name, werr)
+		return
+	}
+	if serr := a.Docs.SetStoredPath(ctx, db, doc.ID, name); serr != nil {
+		log.Printf("save_doc: set stored_path: %v", serr)
+	}
 }
 
 func (a *Agent) registerSkillTool(reg map[string]toolEntry, skillName string, td skills.ToolDefinition) {
