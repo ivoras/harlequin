@@ -27,6 +27,8 @@ type alignSectionJSON struct {
 type alignPairJSON struct {
 	Kind       string             `json:"kind"`
 	Similarity float64            `json:"similarity,omitempty"`
+	AHeading   string             `json:"a_heading,omitempty"`
+	BHeading   string             `json:"b_heading,omitempty"`
 	A          []alignSectionJSON `json:"a"`
 	B          []alignSectionJSON `json:"b"`
 }
@@ -82,6 +84,34 @@ func (s *Server) handleAlignDocuments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	out := alignResponseJSON{
+		Mode:          mode,
+		MinSimilarity: minSim,
+		A:             alignDocMeta(docA),
+		B:             alignDocMeta(docB),
+	}
+	// Unit-level (per-article) alignment for structured documents; chunk-level
+	// for documents without usable headings.
+	ur := docalign.AlignUnits(docA, docB, mode, minSim)
+	if ur.UnitsA >= 4 && ur.UnitsB >= 4 {
+		out.Identical = ur.Identical
+		out.A.Sections = ur.UnitsA
+		out.B.Sections = ur.UnitsB
+		for _, p := range ur.Pairs {
+			pj := alignPairJSON{Kind: string(p.Kind), Similarity: p.Similarity}
+			if p.A != nil {
+				pj.AHeading = p.A.Heading
+				pj.A = alignSections(p.A.Secs)
+			}
+			if p.B != nil {
+				pj.BHeading = p.B.Heading
+				pj.B = alignSections(p.B.Secs)
+			}
+			out.Pairs = append(out.Pairs, pj)
+		}
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
 	var res *docalign.Result
 	if mode == "versions" {
 		res = docalign.AlignVersions(docA, docB, minSim)
@@ -93,15 +123,8 @@ func (s *Server) handleAlignDocuments(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
-	out := alignResponseJSON{
-		Mode:          mode,
-		MinSimilarity: minSim,
-		Identical:     res.Identical,
-		A:             alignDocMeta(docA),
-		B:             alignDocMeta(docB),
-		Pairs:         make([]alignPairJSON, 0, len(res.Pairs)),
-	}
+	out.Identical = res.Identical
+	out.Pairs = make([]alignPairJSON, 0, len(res.Pairs))
 	for _, p := range res.Pairs {
 		out.Pairs = append(out.Pairs, alignPairJSON{
 			Kind:       string(p.Kind),

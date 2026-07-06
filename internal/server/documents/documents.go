@@ -141,6 +141,98 @@ func (s *Store) StoredFile(ctx context.Context, db *sql.DB, docID int64) (stored
 	return
 }
 
+// MissingDescriptions lists documents in a corpus that have no catalogue
+// description (for the startup repair sweep).
+func (s *Store) MissingDescriptions(ctx context.Context, db *sql.DB) ([]types.Document, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT id, COALESCE(title, ''), COALESCE(created_by, 0) FROM documents WHERE COALESCE(description, '') = '' ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []types.Document
+	for rows.Next() {
+		var d types.Document
+		if err := rows.Scan(&d.ID, &d.Title, &d.CreatedBy); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// OpeningText returns the concatenated content of a document's first chunks —
+// enough context to describe or identify it without loading the whole text.
+func (s *Store) OpeningText(ctx context.Context, db *sql.DB, docID int64, maxChunks int) (string, error) {
+	rows, err := db.QueryContext(ctx,
+		`SELECT content FROM doc_chunks WHERE document_id = ? ORDER BY ord LIMIT ?`, docID, maxChunks)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	var parts []string
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			return "", err
+		}
+		parts = append(parts, c)
+	}
+	return strings.Join(parts, "\n"), rows.Err()
+}
+
+// FindText scans every chunk of a document for a literal, case-insensitive
+// substring match — deterministic and exhaustive, unlike embedding/FTS5
+// search, which can miss an exact phrase for unrelated ranking reasons. Use it
+// to authoritatively confirm or rule out that specific wording exists
+// somewhere in one document (e.g. before reporting something as new/removed).
+// Returns up to maxHits (chunk id, page, a short snippet around the match).
+type TextHit struct {
+	ChunkID int64
+	Page    int
+	Snippet string
+}
+
+func (s *Store) FindText(ctx context.Context, db *sql.DB, docID int64, needle string, maxHits int) ([]TextHit, error) {
+	needle = strings.TrimSpace(needle)
+	if needle == "" {
+		return nil, nil
+	}
+	rows, err := db.QueryContext(ctx,
+		`SELECT id, page, content FROM doc_chunks WHERE document_id = ? ORDER BY ord`, docID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	low := strings.ToLower(needle)
+	var out []TextHit
+	for rows.Next() {
+		var id int64
+		var page int
+		var content string
+		if err := rows.Scan(&id, &page, &content); err != nil {
+			return nil, err
+		}
+		idx := strings.Index(strings.ToLower(content), low)
+		if idx < 0 {
+			continue
+		}
+		start := max(0, idx-60)
+		end := min(len(content), idx+len(needle)+60)
+		out = append(out, TextHit{ChunkID: id, Page: page, Snippet: strings.TrimSpace(content[start:end])})
+		if len(out) >= maxHits {
+			break
+		}
+	}
+	return out, rows.Err()
+}
+
+// SetDescription records (or repairs) a document's catalogue description.
+func (s *Store) SetDescription(ctx context.Context, db *sql.DB, id int64, desc string) error {
+	_, err := db.ExecContext(ctx, `UPDATE documents SET description = ? WHERE id = ?`, desc, id)
+	return err
+}
+
 // SetStoredPath records the on-disk path of a document's persisted file.
 func (s *Store) SetStoredPath(ctx context.Context, db *sql.DB, id int64, path string) error {
 	_, err := db.ExecContext(ctx, `UPDATE documents SET stored_path = ? WHERE id = ?`, path, id)
@@ -166,8 +258,8 @@ func (s *Store) IngestInto(ctx context.Context, db *sql.DB, req types.CreateDocu
 	defer tx.Rollback()
 
 	res, err := tx.ExecContext(ctx,
-		`INSERT INTO documents(title, uri, mime, created_by, original_name) VALUES (?, ?, ?, ?, ?)`,
-		req.Title, req.URI, mime, userID, req.OriginalName)
+		`INSERT INTO documents(title, uri, mime, created_by, original_name, description) VALUES (?, ?, ?, ?, ?, ?)`,
+		req.Title, req.URI, mime, userID, req.OriginalName, req.Description)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +370,8 @@ func (s *Store) ListScoped(ctx context.Context, scopes []ScopeDB) ([]types.Docum
 		}
 		rows, err := sc.DB.QueryContext(ctx,
 			`SELECT id, title, uri, mime, COALESCE(created_by, 0), created_at,
-			        COALESCE(original_name, ''), COALESCE(stored_path, '')
+			        COALESCE(original_name, ''), COALESCE(stored_path, ''), COALESCE(description, ''),
+			        (SELECT COUNT(*) FROM doc_chunks c WHERE c.document_id = documents.id)
 			 FROM documents ORDER BY id DESC`)
 		if err != nil {
 			return nil, err
@@ -286,7 +379,7 @@ func (s *Store) ListScoped(ctx context.Context, scopes []ScopeDB) ([]types.Docum
 		for rows.Next() {
 			var d types.Document
 			if err := rows.Scan(&d.ID, &d.Title, &d.URI, &d.Mime, &d.CreatedBy, &d.CreatedAt,
-				&d.OriginalName, &d.StoredPath); err != nil {
+				&d.OriginalName, &d.StoredPath, &d.Description, &d.Chunks); err != nil {
 				rows.Close()
 				return nil, err
 			}
@@ -397,6 +490,13 @@ func (s *Store) Search(ctx context.Context, query string, limit int) ([]types.Se
 // each hit with the scope it came from. The FTS5 arm carries ftsWeight (dense =
 // 1.0) and, if ftsGatePct > 0, is gated per corpus to its strongest hits.
 func (s *Store) SearchScoped(ctx context.Context, scopes []ScopeDB, query string, limit int) ([]types.SearchResult, error) {
+	return s.SearchScopedDocs(ctx, scopes, query, limit, nil)
+}
+
+// SearchScopedDocs is SearchScoped restricted to specific documents. docsByScope
+// maps a scope label to the document ids to search within it; scopes without an
+// entry are skipped entirely. A nil map searches everything.
+func (s *Store) SearchScopedDocs(ctx context.Context, scopes []ScopeDB, query string, limit int, docsByScope map[string][]int64) ([]types.SearchResult, error) {
 	if limit <= 0 {
 		limit = 8
 	}
@@ -422,9 +522,17 @@ func (s *Store) SearchScoped(ctx context.Context, scopes []ScopeDB, query string
 	sourceOf := map[string]string{}
 	metaOf := map[string]docMeta{}
 	for _, sc := range scopes {
-		if sc.DB != nil {
-			s.searchInto(ctx, sc, ftsQuery, focusedFTS, blob, depth, ranks, contents, scopeOf, sourceOf, metaOf)
+		if sc.DB == nil {
+			continue
 		}
+		var docFilter []int64
+		if docsByScope != nil {
+			docFilter = docsByScope[sc.Scope]
+			if len(docFilter) == 0 {
+				continue // a filter is set and this corpus isn't in it
+			}
+		}
+		s.searchInto(ctx, sc, ftsQuery, focusedFTS, blob, depth, docFilter, ranks, contents, scopeOf, sourceOf, metaOf)
 	}
 	return topN(ranks, contents, scopeOf, sourceOf, metaOf, limit), nil
 }
@@ -440,9 +548,20 @@ type docMeta struct {
 }
 
 func (s *Store) searchInto(ctx context.Context, sc ScopeDB, ftsQuery, focusedFTS string, blob any, depth int,
-	ranks map[string]float64, contents, scopeOf, sourceOf map[string]string, metaOf map[string]docMeta) {
+	docFilter []int64, ranks map[string]float64, contents, scopeOf, sourceOf map[string]string, metaOf map[string]docMeta) {
 	key := func(local int64) string {
 		return "d." + scopePrefix(sc.Scope) + "." + strconv.FormatInt(local, 10)
+	}
+	// Restricting to specific documents post-filters the ranked arms, so fetch
+	// deeper to keep recall.
+	inClause := ""
+	if len(docFilter) > 0 {
+		ids := make([]string, len(docFilter))
+		for i, id := range docFilter {
+			ids[i] = strconv.FormatInt(id, 10)
+		}
+		inClause = " AND c.document_id IN (" + strings.Join(ids, ",") + ")"
+		depth = min(depth*4, 400)
 	}
 	runFTS := func(q string, weight float64) {
 		if q == "" || weight <= 0 {
@@ -453,7 +572,7 @@ func (s *Store) searchInto(ctx context.Context, sc ScopeDB, ftsQuery, focusedFTS
 			        d.id, COALESCE(d.mime, ''), COALESCE(d.stored_path, '') != ''
 			 FROM doc_chunks_fts f JOIN doc_chunks c ON c.id = f.rowid
 			 JOIN documents d ON d.id = c.document_id
-			 WHERE doc_chunks_fts MATCH ? ORDER BY f.rank LIMIT ?`, q, depth); err == nil {
+			 WHERE doc_chunks_fts MATCH ?`+inClause+` ORDER BY f.rank LIMIT ?`, q, depth); err == nil {
 			hits := collect(rows)
 			if s.ftsGatePct > 0 {
 				hits = gateTop(hits, s.ftsGatePct)
@@ -471,7 +590,7 @@ func (s *Store) searchInto(ctx context.Context, sc ScopeDB, ftsQuery, focusedFTS
 			        d.id, COALESCE(d.mime, ''), COALESCE(d.stored_path, '') != ''
 			 FROM doc_chunks_vec v JOIN doc_chunks c ON c.id = v.rowid
 			 JOIN documents d ON d.id = c.document_id
-			 WHERE v.embedding MATCH ? AND k = ? ORDER BY v.distance`, blob, depth); err == nil {
+			 WHERE v.embedding MATCH ? AND k = ?`+inClause+` ORDER BY v.distance`, blob, depth); err == nil {
 			foldKeyed(collect(rows), 1.0, sc.Scope, key, ranks, contents, scopeOf, sourceOf, metaOf)
 		}
 	}

@@ -537,6 +537,13 @@ func (s *Server) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 		return doc, err
 	}
 
+	// Catalogue description: one small LLM call over the opening text, stored
+	// with the document so the assistant can resolve paraphrased references
+	// ("the new EEA regulation") from list_documents. Best-effort.
+	if req.Description == "" && s.Agent != nil {
+		req.Description = s.Agent.DescribeDocument(r.Context(), req.Title, req.Content)
+	}
+
 	// Route the ingest to the requested corpus, checking permission for each:
 	//   personal (default) — any user, into their own DB
 	//   shared             — owners/admins only (org-wide)
@@ -595,7 +602,45 @@ func (s *Server) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 		go s.Agent.ExtractMemoriesFromText(context.Background(), u.ID, req.Title, req.Content, types.IsElevated(u.Role))
 	}
 
+	// The synchronous description attempt can lose to model load/contention;
+	// retry in the background and repair the stored row.
+	if d != nil && req.Description == "" && s.Agent != nil {
+		s.describeLater(u.ID, scope, req.ProjectID, d.ID, req.Title, req.Content)
+	}
+
 	writeJSON(w, http.StatusCreated, d)
+}
+
+// describeLater regenerates a document's missing catalogue description in the
+// background and stores it. It runs behind the background-LLM gate, so it waits
+// out the post-upload memory-bridge job and any live turns instead of timing
+// out against them.
+func (s *Server) describeLater(userID int64, scope string, projectID, docID int64, title, content string) {
+	go func() {
+		ctx := context.Background()
+		desc := s.Agent.DescribeDocumentBackground(ctx, title, content)
+		if desc == "" {
+			return
+		}
+		var err error
+		switch scope {
+		case documents.ScopeShared:
+			err = s.Docs.SetDescription(ctx, s.Storage.Shared, docID, desc)
+		case documents.ScopeProject:
+			err = s.Storage.WithProject(ctx, projectID, func(pdb *sql.DB) error {
+				return s.Docs.SetDescription(ctx, pdb, docID, desc)
+			})
+		default:
+			err = s.Storage.WithUser(ctx, userID, func(udb *sql.DB) error {
+				return s.Docs.SetDescription(ctx, udb, docID, desc)
+			})
+		}
+		if err != nil {
+			log.Printf("documents: store retried description for %q: %v", title, err)
+			return
+		}
+		log.Printf("documents: described %q on background retry", title)
+	}()
 }
 
 // documentFromUpload reads a multipart "file" field, extracts its text (PDF and

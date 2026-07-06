@@ -599,6 +599,9 @@ type Document struct {
 	// files/ directory. Empty for documents ingested as raw text (no file).
 	OriginalName string `json:"original_name,omitempty"`
 	StoredPath   string `json:"stored_path,omitempty"`
+	// Description is a short LLM-generated catalogue line (what the document
+	// is, its subject, version hints) used to resolve paraphrased references.
+	Description string `json:"description,omitempty"`
 }
 
 // CreateDocumentRequest is the body of POST /documents.
@@ -617,6 +620,9 @@ type CreateDocumentRequest struct {
 	// PageStarts are the rune offsets at which each page of Content begins
 	// (set server-side for PDFs), used to assign a page to each chunk.
 	PageStarts []int `json:"-"`
+	// Description is the catalogue line (generated server-side at upload when
+	// empty; may be supplied explicitly on raw-text ingests).
+	Description string `json:"description,omitempty"`
 }
 
 // SearchResult is a hybrid-search hit. ID is a composite id encoding the scope:

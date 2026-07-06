@@ -144,6 +144,7 @@
               <span class="pill scope-{d.scope}">{d.scope === "project" ? `project: ${$activeProject?.name ?? "?"}` : (d.scope ?? "shared")}</span>
             </div>
             <span class="muted small">{d.mime} · {new Date(d.created_at).toLocaleDateString()}</span>
+            {#if d.description}<span class="muted small wrap">{d.description}</span>{/if}
           </div>
           {#if canDelete(d)}<button class="ghost danger small" onclick={() => del(d)} aria-label="Delete">✕</button>{/if}
         </div>
@@ -183,6 +184,9 @@
             <div class="cmp-pair kind-{p.kind}">
               <div class="cmp-meta">
                 <span class="pill">{pairLabel(p)}</span>
+                {#if p.a_heading || p.b_heading}
+                  <span class="small cmp-heading">{p.a_heading && p.b_heading && p.a_heading !== p.b_heading ? `${p.a_heading} ↔ ${p.b_heading}` : (p.a_heading || p.b_heading)}</span>
+                {/if}
                 {#if p.a.length && p.b.length}<span class="muted small">similarity {(p.similarity ?? 0).toFixed(2)}</span>{/if}
                 {#if p.a.length}<span class="muted small">A {whereOf(p.a)}</span>{/if}
                 {#if p.b.length}<span class="muted small">B {whereOf(p.b)}</span>{/if}
@@ -222,7 +226,8 @@
   .cmp-pair.kind-changed { border-left-color: #e8b34b; }
   .cmp-pair.kind-only_a { border-left-color: #d0645f; }
   .cmp-pair.kind-only_b { border-left-color: #5f93d0; }
-  .cmp-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .cmp-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
+  .cmp-heading { font-weight: 600; }
   .cmp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .cmp-cell { min-width: 0; max-height: 16em; overflow-y: auto; font-size: 0.9em; }
   .cmp-cell p { margin: 0 0 6px; white-space: pre-wrap; }

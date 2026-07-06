@@ -68,8 +68,24 @@ type convertResponse struct {
 	Errors []any  `json:"errors"`
 }
 
-// convert posts one file requesting the given output format.
+// taskStatus is docling-serve's async task envelope.
+type taskStatus struct {
+	TaskID     string `json:"task_id"`
+	TaskStatus string `json:"task_status"` // pending | started | success | failure
+	ErrorMsg   string `json:"error_message"`
+}
+
+// pollInterval paces async conversion status checks.
+const pollInterval = 3 * time.Second
+
+// convert runs one file through docling-serve's async API (the synchronous
+// endpoint enforces its own internal time limit and 504s on long documents):
+// submit, poll until terminal, fetch the result. The client timeout bounds the
+// whole exchange via ctx.
 func (c *Client) convert(ctx context.Context, filename string, data []byte, format string) (*convertResponse, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.hc.Timeout)
+	defer cancel()
+
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
 	fw, err := mw.CreateFormFile("files", filename)
@@ -85,28 +101,55 @@ func (c *Client) convert(ctx context.Context, filename string, data []byte, form
 	if err := mw.Close(); err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/convert/file", &body)
-	if err != nil {
+	var task taskStatus
+	if err := c.doJSON(ctx, http.MethodPost, "/v1/convert/file/async", &body, mw.FormDataContentType(), &task); err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-	resp, err := c.hc.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("docling: %w", err)
+	if task.TaskID == "" {
+		return nil, fmt.Errorf("docling: async submit returned no task id")
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		return nil, fmt.Errorf("docling: status %d: %s", resp.StatusCode, strings.TrimSpace(string(msg)))
+	for task.TaskStatus != "success" {
+		if task.TaskStatus == "failure" {
+			return nil, fmt.Errorf("docling: conversion failed: %s", task.ErrorMsg)
+		}
+		select {
+		case <-time.After(pollInterval):
+		case <-ctx.Done():
+			return nil, fmt.Errorf("docling: conversion did not finish in time: %w", ctx.Err())
+		}
+		if err := c.doJSON(ctx, http.MethodGet, "/v1/status/poll/"+task.TaskID, nil, "", &task); err != nil {
+			return nil, err
+		}
 	}
 	var cr convertResponse
-	if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
-		return nil, fmt.Errorf("docling: decode response: %w", err)
+	if err := c.doJSON(ctx, http.MethodGet, "/v1/result/"+task.TaskID, nil, "", &cr); err != nil {
+		return nil, err
 	}
 	if cr.Status != "success" {
 		return nil, fmt.Errorf("docling: conversion status %q (%d errors)", cr.Status, len(cr.Errors))
 	}
 	return &cr, nil
+}
+
+// doJSON performs one HTTP exchange with a JSON response.
+func (c *Client) doJSON(ctx context.Context, method, path string, body io.Reader, contentType string, out any) error {
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
+	if err != nil {
+		return err
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		return fmt.Errorf("docling: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return fmt.Errorf("docling: %s %s: status %d: %s", method, path, resp.StatusCode, strings.TrimSpace(string(msg)))
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
 }
 
 // Convert sends one file and returns its Markdown rendering (no page mapping —

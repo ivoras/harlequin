@@ -733,6 +733,9 @@ func (m *Model) handleDocsList() tea.Cmd {
 				name = d.OriginalName
 			}
 			fmt.Fprintf(&sb, "  [%s] #%d  %s  (%s, %d chunks)\n", d.Scope, d.ID, name, d.Mime, d.Chunks)
+		if d.Description != "" {
+			fmt.Fprintf(&sb, "        %s\n", d.Description)
+		}
 		}
 		return infoMsg{strings.TrimRight(sb.String(), "\n")}
 	}

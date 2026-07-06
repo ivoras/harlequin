@@ -421,20 +421,90 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 
 	if a.Docs != nil {
 		reg["align_docs"] = a.alignDocsEntry()
+		reg["list_documents"] = toolEntry{
+			def: fnTool("list_documents", `List every document in the corpus (personal, shared, and — in a project session — project documents): scoped id, title, catalogue description, size and date. Use this to resolve a document the user names loosely ("the new EEA regulation", "last year's contract") to its scoped id (u.N / s.N / p.N) before calling align_docs or search_docs with a docs filter. Prefer matching on the description, not just the title — titles are often raw filenames.`, map[string]any{
+				"type": "object", "properties": map[string]any{},
+			}),
+			handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+				docs, err := a.Docs.ListScoped(ctx, a.Docs.ScopesFor(rc.userDB, rc.projectDB))
+				if err != nil {
+					return "", err
+				}
+				if len(docs) == 0 {
+					return "(no documents)", nil
+				}
+				var sb strings.Builder
+				for _, d := range docs {
+					fmt.Fprintf(&sb, "- %s.%d %q · %d sections · %s", scopeLetter(d.Scope), d.ID, d.Title, d.Chunks, d.CreatedAt.Format("2006-01-02"))
+					if d.Description != "" {
+						fmt.Fprintf(&sb, " — %s", d.Description)
+					}
+					sb.WriteString("\n")
+				}
+				return sb.String(), nil
+			},
+		}
+		reg["check_text"] = toolEntry{
+			def: fnTool("check_text", `Authoritatively check whether an exact phrase or keyword appears anywhere in ONE document — a literal, exhaustive scan, unlike search_docs (which ranks by relevance and can miss an exact phrase). Use this BEFORE asserting a section is "new", "removed", or "only in" one document/version: a heading-only sighting in an align_docs summary is not proof of absence elsewhere. Returns every matching chunk with a citation and surrounding snippet, or "not found".`, map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"doc":  map[string]any{"type": "string", "description": "Scoped document id to search within, e.g. \"p.6\""},
+					"text": map[string]any{"type": "string", "description": "Exact phrase or keyword to look for (case-insensitive)"},
+				},
+				"required": []string{"doc", "text"},
+			}),
+			handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+				doc, errMsg := a.loadDocRef(ctx, rc, argString(args, "doc"))
+				if errMsg != "" {
+					return errMsg, nil
+				}
+				text := strings.TrimSpace(argString(args, "text"))
+				if text == "" {
+					return "error: text is required", nil
+				}
+				db, dbErrMsg := a.docDBForScope(rc, doc.Scope)
+				if dbErrMsg != "" {
+					return dbErrMsg, nil
+				}
+				hits, err := a.Docs.FindText(ctx, db, doc.ID, text, 5)
+				if err != nil {
+					return "", err
+				}
+				if len(hits) == 0 {
+					return fmt.Sprintf("Not found: %q does not appear anywhere in %q (%s).", text, doc.Title, docRef(doc)), nil
+				}
+				var sb strings.Builder
+				fmt.Fprintf(&sb, "Found %d occurrence(s) of %q in %q:\n", len(hits), text, doc.Title)
+				for _, h := range hits {
+					cite := fmt.Sprintf("d.%s.%d", scopeLetter(doc.Scope), h.ChunkID)
+					if h.Page > 0 {
+						cite += fmt.Sprintf(" p.%d", h.Page)
+					}
+					fmt.Fprintf(&sb, "[%s] …%s…\n", cite, h.Snippet)
+				}
+				return sb.String(), nil
+			},
+		}
 		reg["search_docs"] = toolEntry{
-			def: fnTool("search_docs", `Search the organisation document corpus (RAG) — personal, shared, and (in a project session) project documents. Results are ranked chunks labelled with scope and document chunk id (d.u.N / d.s.N / d.p.N). If the first query returns irrelevant or empty results, retry with synonyms and related terms (e.g. HQ → headquarters, seat, Brussels) before concluding the corpus lacks the answer.`, map[string]any{
+			def: fnTool("search_docs", `Search the organisation document corpus (RAG) — personal, shared, and (in a project session) project documents. Results are ranked chunks labelled with scope and document chunk id (d.u.N / d.s.N / d.p.N). Pass docs (scoped ids from list_documents, e.g. ["p.3","p.4"]) to search only within those documents — do this whenever the user asks about a specific document or compares specific documents. If the first query returns irrelevant or empty results, retry with synonyms and related terms (e.g. HQ → headquarters, seat, Brussels) before concluding the corpus lacks the answer.`, map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"query": map[string]any{"type": "string"},
+					"docs": map[string]any{"type": "array", "items": map[string]any{"type": "string"},
+						"description": "Optional scoped document ids to restrict the search to, e.g. [\"p.3\",\"p.4\"]"},
 				},
 				"required": []string{"query"},
 			}),
 			handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 				q, _ := args["query"].(string)
+				docsByScope, errMsg := parseDocRefs(coerceStringSlice(args["docs"]))
+				if errMsg != "" {
+					return errMsg, nil
+				}
 				// Fuse the org corpus with the user's personal docs and, in a
 				// project session, the project corpus (rc.projectDB is set only
 				// then). Results are scope-labelled.
-				res, err := a.Docs.SearchScoped(ctx, a.Docs.ScopesFor(rc.userDB, rc.projectDB), q, 6)
+				res, err := a.Docs.SearchScopedDocs(ctx, a.Docs.ScopesFor(rc.userDB, rc.projectDB), q, 6, docsByScope)
 				if err != nil {
 					return "", err
 				}
@@ -445,7 +515,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 
 	if a.Docs != nil {
 		reg["save_doc"] = toolEntry{
-			def: fnTool("save_doc", `Save a text you produced (a report, analysis, or summary worth keeping) as a document in the corpus, so it can be found later with search_docs. Keep any [d.x.N] citations in the content — they remain linked to their source documents. Scope "personal" saves to the user's own documents; "project" (default in a project session) saves to the project corpus for all members.`, map[string]any{
+			def: fnTool("save_doc", `Save a text you produced (a report, analysis, or summary worth keeping) as a document in the corpus, so it can be found later with search_docs. Keep any [d.x.N] citations in the content — they remain linked to their source documents. Omit scope unless the user asks: the default is right (the project corpus in a project session, else the user's personal documents).`, map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"title":   map[string]any{"type": "string", "description": "Document title, e.g. \"Comparison: Regulation 2025 vs 2026\""},
