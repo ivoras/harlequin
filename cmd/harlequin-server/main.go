@@ -302,6 +302,10 @@ func main() {
 	// attribute may not live in both scopes). Backgrounded — it may call the LLM.
 	go srv.SweepCrossScopeSlots(context.Background())
 
+	// Backfill catalogue descriptions for documents that have none (their
+	// at-upload attempt lost to model contention). Backgrounded LLM work.
+	go srv.SweepDocumentDescriptions(context.Background())
+
 	// Background maintenance: expire memories, sweep old session logs, and evict
 	// stale per-user tmp dumps (hourly).
 	go maintenance(store, memStore, sessionLog, ag, cfg.DataRetentionDaysValue())

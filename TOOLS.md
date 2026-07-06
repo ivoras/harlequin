@@ -121,10 +121,19 @@ stored document — without reading the whole file. `output_mode` is
 
 ## Documents (only when the document corpus is configured)
 
+### `list_documents`
+**Why:** enumerate the corpus (scoped id, title, LLM-generated catalogue
+description, size, date) so the model can resolve a loosely-named document
+("the new EEA regulation") to its id for `align_docs` or a `search_docs`
+docs filter.
+**Example:** `list_documents({})`
+
 ### `search_docs`
 **Why:** retrieve passages from the organisation's RAG document corpus (uploaded
-PDFs/text) to ground answers in source material.
-**Example:** `search_docs({"query": "OTC derivatives reporting obligations"})`
+PDFs/text) to ground answers in source material. The optional `docs` filter
+restricts hits to specific documents — use it whenever the question is about a
+particular document (or pair of documents).
+**Example:** `search_docs({"query": "OTC derivatives reporting obligations", "docs": ["p.3"]})`
 
 ### `align_docs`
 **Why:** compare two corpus documents without holding both in context. The
@@ -134,7 +143,21 @@ pairs sections of two different texts about the same subject by embedding
 similarity (leftovers are reported as present in only one document) — and
 returns the pairs in cursor batches for the model to analyse one at a time.
 **Example:** `align_docs({"doc_a": "p.3", "doc_b": "p.4", "mode": "topical"})`,
-then again with `"cursor": 5` etc. until the last batch.
+then again with `"cursor": 5` etc. until the last batch. For a question that
+names a theme spanning many sections (e.g. "what changed about funding")
+rather than one article, use `view="pairs"` with `pairs="9,12,16,19-22"`
+(explicit numbers/ranges picked from the summary) or a comma-separated
+multi-term `filter` — both fetch several relevant pairs per call instead of
+one call per pair.
+
+### `check_text`
+**Why:** authoritatively confirm or rule out that an exact phrase exists
+anywhere in one document — a literal, exhaustive scan, unlike `search_docs`'s
+ranked semantic/lexical search. `align_docs` classifying a section as
+"only in A/B" is a hint, not proof (renamed or reworded headings can hide the
+true counterpart); this is the deterministic check before asserting something
+is genuinely new, removed, or absent.
+**Example:** `check_text({"doc": "p.6", "text": "Fund for Civil Society"})`
 
 ### `save_doc`
 **Why:** persist a produced report/analysis into the corpus (personal, or

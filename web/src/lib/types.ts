@@ -316,6 +316,7 @@ export interface Document {
   created_at: string;
   scope?: string; // personal | shared | project
   chunks?: number;
+  description?: string; // LLM-generated catalogue line
 }
 export interface DocChunkInfo {
   id: string;
@@ -336,6 +337,8 @@ export interface AlignSection {
 export interface AlignPair {
   kind: string; // changed | matched | only_a | only_b
   similarity?: number;
+  a_heading?: string;
+  b_heading?: string;
   a: AlignSection[];
   b: AlignSection[];
 }
