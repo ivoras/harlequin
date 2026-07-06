@@ -925,16 +925,21 @@ func (s *Server) handleGetDocumentContent(w http.ResponseWriter, r *http.Request
 	u, _ := auth.UserFromContext(r.Context())
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	scope := r.URL.Query().Get("scope")
-	var db *sql.DB
+	// FullText must run inside the WithUser/WithProjectReadOnly callback: both
+	// close their *sql.DB when the callback returns, so capturing the handle
+	// for use afterward (as an earlier version of this handler did) queries an
+	// already-closed connection and every lookup fails as "not found".
+	var content string
 	var err error
 	switch scope {
 	case documents.ScopePersonal:
 		err = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
-			db = udb
-			return nil
+			var e error
+			content, e = s.Docs.FullText(r.Context(), udb, id)
+			return e
 		})
 	case documents.ScopeShared, "":
-		db = s.Docs.SharedDB()
+		content, err = s.Docs.FullText(r.Context(), s.Docs.SharedDB(), id)
 	case documents.ScopeProject:
 		projectID, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64)
 		if member, _ := s.Projects.IsMember(r.Context(), projectID, u.ID); !member {
@@ -942,18 +947,14 @@ func (s *Server) handleGetDocumentContent(w http.ResponseWriter, r *http.Request
 			return
 		}
 		err = s.Storage.WithProjectReadOnly(r.Context(), projectID, func(pdb *sql.DB) error {
-			db = pdb
-			return nil
+			var e error
+			content, e = s.Docs.FullText(r.Context(), pdb, id)
+			return e
 		})
 	default:
 		writeErr(w, http.StatusBadRequest, "invalid scope")
 		return
 	}
-	if err != nil || db == nil {
-		writeErr(w, http.StatusNotFound, "document not found")
-		return
-	}
-	content, err := s.Docs.FullText(r.Context(), db, id)
 	if err != nil || content == "" {
 		writeErr(w, http.StatusNotFound, "document not found or has no content")
 		return
