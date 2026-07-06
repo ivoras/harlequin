@@ -155,6 +155,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/documents/align", s.handleAlignDocuments)
 			r.Get("/documents/chunk/{cid}", s.handleGetDocChunk)
 			r.Get("/documents/{id}/file", s.handleGetDocumentFile)
+			r.Get("/documents/{id}/content", s.handleGetDocumentContent)
 
 			if s.MCP != nil {
 				// A server is addressed by ?scope=&name= (not a path segment) so

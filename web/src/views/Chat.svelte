@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { session, user, activeProject, toast } from "../lib/stores";
+  import { session, user, toast } from "../lib/stores";
   import { sc } from "../lib/session.svelte";
   import { api } from "../lib/api";
   import { renderMarkdown } from "../lib/markdown";
@@ -30,7 +30,7 @@
   function resolveCite(cid: string): Promise<DocChunkInfo> {
     let p = citeCache.get(cid);
     if (!p) {
-      p = api.getDocChunk(cid, cid.startsWith("d.p.") ? ($activeProject?.id ?? 0) : 0);
+      p = api.getDocChunk(cid, cid.startsWith("d.p.") ? sc.currentProjectID : 0);
       citeCache.set(cid, p);
     }
     return p;
@@ -63,7 +63,7 @@
         toast(`${info.title || "untitled"} (${info.scope}) — no stored file to open`);
         return;
       }
-      const projectID = info.scope === "project" ? ($activeProject?.id ?? 0) : 0;
+      const projectID = info.scope === "project" ? sc.currentProjectID : 0;
       const blob = await api.fetchDocumentFile(info.document_id, info.scope, projectID);
       const url = URL.createObjectURL(blob);
       const anchor = info.mime === "application/pdf" && info.page ? `#page=${info.page}` : "";
@@ -71,6 +71,43 @@
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
       toast((err as Error).message, "error");
+    }
+  }
+
+  // --- Whole-document references (p.18, u.4 … spans produced by renderMarkdown) ---
+  // Unlike a chunk citation, a doc ref carries no page/chunk to resolve first —
+  // scope and id come straight from the ref text. Try the stored original
+  // (PDF/DOCX) first; documents with no stored file (e.g. save_doc reports)
+  // fall back to their full extracted text, opened as a plain-text tab.
+  const DOCREF_SCOPE: Record<string, string> = { u: "personal", p: "project", s: "shared" };
+  function docrefTarget(e: Event): HTMLElement | null {
+    const el = (e.target as HTMLElement)?.closest?.(".docref");
+    return el instanceof HTMLElement ? el : null;
+  }
+  async function onDocrefClick(e: Event) {
+    const el = docrefTarget(e);
+    const ref = el?.dataset.docref;
+    if (!el || !ref) return;
+    const [letter, idStr] = ref.split(".");
+    const scope = DOCREF_SCOPE[letter];
+    const id = Number(idStr);
+    if (!scope || !id) return;
+    const projectID = scope === "project" ? sc.currentProjectID : 0;
+    try {
+      const blob = await api.fetchDocumentFile(id, scope, projectID);
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      try {
+        const res = await api.getDocumentContent(id, scope, projectID);
+        const blob = new Blob([res.content], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        window.open(url, "_blank", "noopener");
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      } catch (err) {
+        toast((err as Error).message || `couldn't open ${ref}`, "error");
+      }
     }
   }
 
@@ -146,7 +183,8 @@
 
 <div class="chat">
   <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events, a11y_mouse_events_have_key_events -->
-  <div class="messages" bind:this={scrollEl} onclick={onCiteClick} onmouseover={onCiteHover}>
+  <div class="messages" bind:this={scrollEl}
+    onclick={(e) => { onCiteClick(e); onDocrefClick(e); }} onmouseover={onCiteHover}>
     <div class="container col" style="gap:12px;">
       {#each sc.items as it}
         {#if it.kind === "msg"}

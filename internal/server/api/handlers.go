@@ -915,6 +915,52 @@ func (s *Server) handleGetDocumentFile(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filepath.Join(dir, stored))
 }
 
+// handleGetDocumentContent returns a document's full text content — every
+// chunk concatenated in order — for documents with no stored original file
+// (plain-text ingests, including save_doc reports). PDF/DOCX uploads should
+// use /documents/{id}/file instead (their content lives in an actual file);
+// this endpoint works for any document type but exists specifically to view
+// TXT-type documents that /file cannot serve.
+func (s *Server) handleGetDocumentContent(w http.ResponseWriter, r *http.Request) {
+	u, _ := auth.UserFromContext(r.Context())
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	scope := r.URL.Query().Get("scope")
+	var db *sql.DB
+	var err error
+	switch scope {
+	case documents.ScopePersonal:
+		err = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+			db = udb
+			return nil
+		})
+	case documents.ScopeShared, "":
+		db = s.Docs.SharedDB()
+	case documents.ScopeProject:
+		projectID, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64)
+		if member, _ := s.Projects.IsMember(r.Context(), projectID, u.ID); !member {
+			writeErr(w, http.StatusForbidden, "not a member of this project")
+			return
+		}
+		err = s.Storage.WithProjectReadOnly(r.Context(), projectID, func(pdb *sql.DB) error {
+			db = pdb
+			return nil
+		})
+	default:
+		writeErr(w, http.StatusBadRequest, "invalid scope")
+		return
+	}
+	if err != nil || db == nil {
+		writeErr(w, http.StatusNotFound, "document not found")
+		return
+	}
+	content, err := s.Docs.FullText(r.Context(), db, id)
+	if err != nil || content == "" {
+		writeErr(w, http.StatusNotFound, "document not found or has no content")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"content": content})
+}
+
 func (s *Server) handleSearchDocuments(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	q := r.URL.Query().Get("q")

@@ -30,7 +30,7 @@ func (m *Model) runProject(args []string) tea.Cmd {
 				return errMsg{err}
 			}
 			var sb strings.Builder
-			sb.WriteString("Projects (use /project switch <id>):\n")
+			sb.WriteString("Projects (use /project switch <id-or-name>):\n")
 			for _, p := range ps {
 				fmt.Fprintf(&sb, "  #%d %s\n", p.ID, p.Name)
 			}
@@ -83,11 +83,14 @@ func (m *Model) runProject(args []string) tea.Cmd {
 			return m.enterProject(p.ID, p.Name)
 		}
 	case "switch", "open":
-		id, err := strconv.ParseInt(rest, 10, 64)
-		if err != nil {
-			return infoCmd("usage: /project switch <id>")
+		if rest == "" {
+			return infoCmd("usage: /project switch <id-or-name>")
 		}
 		return func() tea.Msg {
+			id, err := m.resolveProjectRef(context.Background(), rest)
+			if err != nil {
+				return errMsg{err}
+			}
 			p, err := m.client.GetProject(context.Background(), id)
 			if err != nil {
 				return errMsg{err}
@@ -101,26 +104,45 @@ func (m *Model) runProject(args []string) tea.Cmd {
 		m.leaveProject()
 		return m.bootstrapChat()
 	case "depart":
-		// Remove the caller's membership. Targets <id> if given, else the active
-		// project; deselects (back to personal) if it was the active one.
-		id := m.activeProjectID
-		if rest != "" {
-			parsed, err := strconv.ParseInt(rest, 10, 64)
-			if err != nil {
-				return infoCmd("usage: /project depart [id]  (defaults to the active project)")
-			}
-			id = parsed
+		// Remove the caller's membership. Targets <id-or-name> if given, else the
+		// active project; deselects (back to personal) if it was the active one.
+		// Whether the target IS the active project must be known synchronously
+		// (leaveProject() mutates model state and cannot run inside the async
+		// tea.Cmd closure below), so a given name is compared against the
+		// already-known activeProjectName first — no resolve call needed for
+		// that common case. A numeric id is compared directly, as before.
+		if rest == "" && m.activeProjectID == 0 {
+			return infoCmd("usage: /project depart <id-or-name>  (or switch to a project first)")
 		}
-		if id == 0 {
-			return infoCmd("usage: /project depart <id>  (or switch to a project first)")
+		id := m.activeProjectID
+		isActive := true
+		if rest != "" {
+			if parsed, err := strconv.ParseInt(rest, 10, 64); err == nil {
+				id = parsed
+				isActive = id != 0 && id == m.activeProjectID
+			} else if m.activeProjectID != 0 && strings.EqualFold(rest, m.activeProjectName) {
+				id = m.activeProjectID
+				isActive = true
+			} else {
+				id = 0 // not (known to be) the active project — resolve async below
+				isActive = false
+			}
 		}
 		depart := func() tea.Msg {
-			if err := m.client.DepartProject(context.Background(), id); err != nil {
+			targetID := id
+			if targetID == 0 {
+				resolved, err := m.resolveProjectRef(context.Background(), rest)
+				if err != nil {
+					return errMsg{err}
+				}
+				targetID = resolved
+			}
+			if err := m.client.DepartProject(context.Background(), targetID); err != nil {
 				return errMsg{err}
 			}
-			return infoMsg{fmt.Sprintf("departed project #%d (membership removed)", id)}
+			return infoMsg{fmt.Sprintf("departed project #%d (membership removed)", targetID)}
 		}
-		if id == m.activeProjectID {
+		if isActive {
 			m.leaveProject()
 			return tea.Batch(m.bootstrapChat(), depart)
 		}
@@ -223,6 +245,35 @@ func (m *Model) leaveProject() {
 		m.chat = nil
 	}
 	m.chatMessages = nil
+}
+
+// resolveProjectRef resolves a /project argument that may be a numeric id or a
+// project name to its id. A numeric ref is returned as-is (no network call —
+// the common, fast path). Otherwise it lists the caller's projects and
+// matches ref against their names case-insensitively; ambiguous (two projects
+// sharing a name) or no-match is an error naming the numeric id as a fallback.
+func (m *Model) resolveProjectRef(ctx context.Context, ref string) (int64, error) {
+	if id, err := strconv.ParseInt(ref, 10, 64); err == nil {
+		return id, nil
+	}
+	ps, err := m.client.ListProjects(ctx)
+	if err != nil {
+		return 0, err
+	}
+	var matches []types.Project
+	for _, p := range ps {
+		if strings.EqualFold(p.Name, ref) {
+			matches = append(matches, p)
+		}
+	}
+	switch len(matches) {
+	case 1:
+		return matches[0].ID, nil
+	case 0:
+		return 0, fmt.Errorf("no project named %q (use /project list to see ids/names)", ref)
+	default:
+		return 0, fmt.Errorf("%q matches %d projects — use the numeric id instead (/project list)", ref, len(matches))
+	}
 }
 
 // openChatCmd opens the project chatroom socket and pumps messages into the program.
