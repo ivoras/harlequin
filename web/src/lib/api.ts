@@ -201,6 +201,15 @@ export const api = {
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     return res.blob();
   },
+  // getDocumentContent returns a TXT-type document's full text (documents with
+  // no stored original file, e.g. save_doc reports) — use fetchDocumentFile
+  // instead for PDF/DOCX, which have an actual file to open.
+  getDocumentContent: (id: number, scope: string, projectID = 0) => {
+    const v = new URLSearchParams();
+    if (scope) v.set("scope", scope);
+    if (projectID) v.set("project", String(projectID));
+    return req<{ content: string }>("GET", `/documents/${id}/content?${v.toString()}`);
+  },
 
   // mcp
   listMCP: () => reqList<MCPServer>("GET", "/mcp"),

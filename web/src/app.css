@@ -177,6 +177,13 @@ hr { border: none; border-top: 1px solid var(--border); }
 .cite.openable { cursor: pointer; }
 .cite:hover { background: rgba(140, 233, 154, 0.14); }
 
+/* whole-document references in assistant messages (p.18, u.4 …) */
+.docref { color: var(--accent); background: rgba(140, 233, 154, 0.07);
+  border-bottom: 1px dotted var(--accent-dim); border-radius: 4px;
+  padding: 0 3px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em; cursor: pointer; white-space: nowrap; }
+.docref:hover { background: rgba(140, 233, 154, 0.14); }
+
 /* scope tints (documents/skills listings) */
 .pill.scope-personal { color: #9ecbff; background: rgba(110, 168, 254, 0.1); border: 1px solid rgba(110, 168, 254, 0.3); }
 .pill.scope-shared { color: var(--accent); background: rgba(140, 233, 154, 0.08); border: 1px solid rgba(140, 233, 154, 0.28); }

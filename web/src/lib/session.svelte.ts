@@ -60,6 +60,16 @@ class SessionController {
 
   private projectID = 0; // non-zero when the active session belongs to a project
 
+  // currentProjectID exposes the project the ATTACHED session actually belongs
+  // to — authoritative for resolving refs found in that session's transcript,
+  // unlike the global activeProject store, which tracks project-switcher UI
+  // state and can drift out of sync with an already-open transcript (e.g. the
+  // user switches projects while an older session's messages are still on
+  // screen, or reattaches to a session via a stale/bookmarked URL).
+  get currentProjectID(): number {
+    return this.projectID;
+  }
+
   // attach connects to session id (no-op if already attached). projectID > 0
   // attaches to a shared project session (history + WS under the project). Loads
   // committed history, then opens the socket so any in-flight turn replays and

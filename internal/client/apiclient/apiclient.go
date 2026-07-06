@@ -586,6 +586,70 @@ func (c *Client) DeleteDocument(ctx context.Context, id int64, scope string, pro
 	return c.do(ctx, http.MethodDelete, path, nil, nil)
 }
 
+// GetDocumentContent returns a TXT-type document's full text — documents with
+// no stored original file (plain-text ingests, including save_doc reports).
+func (c *Client) GetDocumentContent(ctx context.Context, id int64, scope string, projectID int64) (string, error) {
+	v := url.Values{}
+	if scope != "" {
+		v.Set("scope", scope)
+	}
+	if projectID > 0 {
+		v.Set("project", strconv.FormatInt(projectID, 10))
+	}
+	path := fmt.Sprintf("/documents/%d/content", id)
+	if len(v) > 0 {
+		path += "?" + v.Encode()
+	}
+	var out struct {
+		Content string `json:"content"`
+	}
+	if err := c.do(ctx, http.MethodGet, path, nil, &out); err != nil {
+		return "", err
+	}
+	return out.Content, nil
+}
+
+// DownloadDocumentFile fetches a document's stored original file (PDF/DOCX)
+// as raw bytes plus its Content-Type, for viewing outside the terminal.
+// Documents with no stored file (TXT-type, including save_doc reports) have
+// nothing to fetch here — use GetDocumentContent instead; this returns an
+// error for them (the server's 404 "no stored file for this document").
+func (c *Client) DownloadDocumentFile(ctx context.Context, id int64, scope string, projectID int64) (data []byte, contentType string, err error) {
+	v := url.Values{}
+	if scope != "" {
+		v.Set("scope", scope)
+	}
+	if projectID > 0 {
+		v.Set("project", strconv.FormatInt(projectID, 10))
+	}
+	path := fmt.Sprintf("/api/v1/documents/%d/file", id)
+	if len(v) > 0 {
+		path += "?" + v.Encode()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		var er types.ErrorResponse
+		_ = json.NewDecoder(resp.Body).Decode(&er)
+		if er.Error == "" {
+			er.Error = resp.Status
+		}
+		return nil, "", fmt.Errorf("%s", er.Error)
+	}
+	data, err = io.ReadAll(resp.Body)
+	return data, resp.Header.Get("Content-Type"), err
+}
+
 // UploadDocument uploads a local file (e.g. a PDF) to the org RAG corpus; the
 // server extracts its text (PDFs via PDFium) and ingests it. Uses a generous
 // timeout since server-side extraction + embedding can take a while.

@@ -80,6 +80,52 @@
     }
   }
 
+  // --- View a document's content: PDF/DOCX open the stored file in a new tab
+  // (the browser/OS handles rendering); everything else (TXT — plain text or
+  // markdown, including save_doc reports, which have no stored file at all)
+  // expands inline from its chunk content. ---
+  const FILE_MIME = new Set([
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ]);
+  let openTextDoc = $state<Document | null>(null);
+  let textContent = $state("");
+  let loadingText = $state(false);
+
+  function docProjectID(d: Document): number {
+    return d.scope === "project" ? ($activeProject?.id ?? 0) : 0;
+  }
+  async function viewDoc(d: Document) {
+    if (FILE_MIME.has(d.mime)) {
+      try {
+        const blob = await api.fetchDocumentFile(d.id, d.scope ?? "", docProjectID(d));
+        const url = URL.createObjectURL(blob);
+        window.open(url, "_blank", "noopener");
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      } catch (e) {
+        toast((e as Error).message, "error");
+      }
+      return;
+    }
+    // TXT: toggle the inline panel closed if it's already open for this doc.
+    if (openTextDoc === d) {
+      openTextDoc = null;
+      return;
+    }
+    openTextDoc = d;
+    textContent = "";
+    loadingText = true;
+    try {
+      const res = await api.getDocumentContent(d.id, d.scope ?? "", docProjectID(d));
+      textContent = res.content;
+    } catch (e) {
+      toast((e as Error).message, "error");
+      openTextDoc = null;
+    } finally {
+      loadingText = false;
+    }
+  }
+
   // --- Side-by-side comparison (deterministic alignment, no LLM) ---
   let cmpA = $state("");
   let cmpB = $state("");
@@ -137,16 +183,25 @@
     <h3 class="muted small">Library</h3>
     <div class="list">
       {#each docs as d}
-        <div class="card row">
-          <div class="col" style="flex:1; min-width:0; gap:1px;">
-            <div class="row" style="gap:6px;">
-              <strong>{d.title}</strong>
-              <span class="pill scope-{d.scope}">{d.scope === "project" ? `project: ${$activeProject?.name ?? "?"}` : (d.scope ?? "shared")}</span>
+        <div class="card col">
+          <div class="row">
+            <div class="col" style="flex:1; min-width:0; gap:1px;">
+              <div class="row" style="gap:6px;">
+                <strong>{d.title}</strong>
+                <span class="pill scope-{d.scope}">{d.scope === "project" ? `project: ${$activeProject?.name ?? "?"}` : (d.scope ?? "shared")}</span>
+              </div>
+              <span class="muted small">{d.mime} · {new Date(d.created_at).toLocaleDateString()}</span>
+              {#if d.description}<span class="muted small wrap">{d.description}</span>{/if}
             </div>
-            <span class="muted small">{d.mime} · {new Date(d.created_at).toLocaleDateString()}</span>
-            {#if d.description}<span class="muted small wrap">{d.description}</span>{/if}
+            <button class="ghost small" onclick={() => viewDoc(d)}>{openTextDoc === d ? "Hide" : "View"}</button>
+            {#if canDelete(d)}<button class="ghost danger small" onclick={() => del(d)} aria-label="Delete">✕</button>{/if}
           </div>
-          {#if canDelete(d)}<button class="ghost danger small" onclick={() => del(d)} aria-label="Delete">✕</button>{/if}
+          {#if openTextDoc === d}
+            <div class="doc-text-panel">
+              {#if loadingText}<span class="muted small">loading…</span>
+              {:else}<pre class="wrap">{textContent}</pre>{/if}
+            </div>
+          {/if}
         </div>
       {/each}
       {#if docs.length === 0}<div class="muted small">Empty.</div>{/if}
@@ -228,6 +283,8 @@
   .cmp-pair.kind-only_b { border-left-color: #5f93d0; }
   .cmp-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
   .cmp-heading { font-weight: 600; }
+  .doc-text-panel { max-height: 24em; overflow-y: auto; border-top: 1px solid var(--accent-dim); padding-top: 8px; margin-top: 4px; }
+  .doc-text-panel pre { white-space: pre-wrap; font-family: inherit; margin: 0; font-size: 0.9em; }
   .cmp-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .cmp-cell { min-width: 0; max-height: 16em; overflow-y: auto; font-size: 0.9em; }
   .cmp-cell p { margin: 0 0 6px; white-space: pre-wrap; }

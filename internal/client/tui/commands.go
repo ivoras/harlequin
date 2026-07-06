@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -192,8 +193,10 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 			return m.handleDocsList()
 		case "del":
 			return m.handleDocsDelete(args[1:])
+		case "view":
+			return m.handleDocsView(args[1:])
 		default:
-			return infoCmd("usage: /docs <search|q> <query> | list | del <scope> <id> | add [scope] <path>")
+			return infoCmd("usage: /docs <search|q> <query> | list | del <scope> <id> | view <scope> <id> | add [scope] <path>")
 		}
 	case "/resume":
 		// "/resume <id>" jumps straight to that session; "/resume [query]" opens the
@@ -769,6 +772,143 @@ func (m *Model) handleDocsDelete(args []string) tea.Cmd {
 			return errMsg{err}
 		}
 		return infoMsg{fmt.Sprintf("deleted %s document #%d", scope, id)}
+	}
+}
+
+// scopeLetters maps a document ref's scope letter (as shown throughout the
+// UI and in [d.x.N] citations, e.g. "p.19") to the /docs command's scope word.
+var scopeLetters = map[string]string{"u": "personal", "s": "shared", "p": "project"}
+
+// parseDocRef splits a leading "<scope>.<id>" token (e.g. "p.19", matching how
+// documents are referenced everywhere else — citations, align_docs, search
+// results) into its scope word and id, consuming one argument instead of two.
+func parseDocRef(tok string) (scope string, id int64, ok bool) {
+	letter, idStr, found := strings.Cut(tok, ".")
+	if !found {
+		return "", 0, false
+	}
+	scope, ok = scopeLetters[strings.ToLower(letter)]
+	if !ok {
+		return "", 0, false
+	}
+	n, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil || n <= 0 {
+		return "", 0, false
+	}
+	return scope, n, true
+}
+
+// handleDocsView shows a document: "/docs view <scope> <id> [text|file]", or
+// the shorter "/docs view <p|u|s>.<id> [text|file]" using the same scoped-ref
+// shorthand as citations and search results (e.g. "/docs view p.19"). A
+// TXT-type document (plain text or markdown, no stored original file — this
+// includes every save_doc report) is fetched and printed inline immediately,
+// no prompt needed. A PDF/DOCX (has a stored original file) is NOT
+// auto-fetched — the terminal can't render either format, so instead of
+// guessing which the user wants, this asks: "text" prints the extracted text
+// already sitting in the corpus from ingest-time conversion (Docling/PDFium/
+// docxextract — no new conversion needed, it already happened); "file" saves
+// the original for opening with an external viewer. Re-run the command with
+// that keyword to proceed. project scope uses the active project.
+func (m *Model) handleDocsView(args []string) tea.Cmd {
+	const usage = "usage: /docs view <personal|shared|project> <id> [text|file]  (or /docs view p.19 [text|file])"
+	if len(args) < 1 {
+		return infoCmd(usage)
+	}
+	var scope string
+	var id int64
+	rest := args[1:]
+	if s, n, ok := parseDocRef(args[0]); ok {
+		scope, id = s, n
+	} else {
+		if len(args) < 2 {
+			return infoCmd(usage)
+		}
+		scope = strings.ToLower(args[0])
+		switch scope {
+		case "personal", "shared", "project":
+		default:
+			return func() tea.Msg { return errMsg{fmt.Errorf("scope must be personal, shared, or project")} }
+		}
+		parsed, err := strconv.ParseInt(args[1], 10, 64)
+		if err != nil {
+			return func() tea.Msg { return errMsg{fmt.Errorf("invalid document id %q", args[1])} }
+		}
+		id = parsed
+		rest = args[2:]
+	}
+	mode := ""
+	if len(rest) >= 1 {
+		mode = strings.ToLower(rest[0])
+		if mode != "text" && mode != "file" {
+			return infoCmd(fmt.Sprintf("usage: /docs view %s %d [text|file]", scope, id))
+		}
+	}
+	var projectID int64
+	if scope == "project" {
+		if m.activeProjectID == 0 {
+			return func() tea.Msg { return errMsg{fmt.Errorf("no active project; switch to one with /project switch first")} }
+		}
+		projectID = m.activeProjectID
+	}
+	return func() tea.Msg {
+		ctx := context.Background()
+
+		showText := func() tea.Msg {
+			content, cerr := m.client.GetDocumentContent(ctx, id, scope, projectID)
+			if cerr != nil {
+				return errMsg{fmt.Errorf("document not found or has no content: %w", cerr)}
+			}
+			return infoMsg{content}
+		}
+		saveFile := func() tea.Msg {
+			data, contentType, ferr := m.client.DownloadDocumentFile(ctx, id, scope, projectID)
+			if ferr != nil {
+				return errMsg{fmt.Errorf("no stored file for this document: %w", ferr)}
+			}
+			ext := ".bin"
+			switch {
+			case strings.Contains(contentType, "pdf"):
+				ext = ".pdf"
+			case strings.Contains(contentType, "wordprocessingml"):
+				ext = ".docx"
+			}
+			f, werr := os.CreateTemp("", fmt.Sprintf("harlequin-doc-%d-*%s", id, ext))
+			if werr != nil {
+				return errMsg{werr}
+			}
+			defer f.Close()
+			if _, werr := f.Write(data); werr != nil {
+				return errMsg{werr}
+			}
+			return infoMsg{fmt.Sprintf("saved to %s — open it with your system's PDF/DOCX viewer", f.Name())}
+		}
+
+		switch mode {
+		case "text":
+			return showText()
+		case "file":
+			return saveFile()
+		}
+
+		// No mode given: TXT-type documents (no stored file) show directly;
+		// file-backed documents (PDF/DOCX) prompt instead of guessing.
+		docs, lerr := m.client.ListDocuments(ctx, projectID)
+		if lerr != nil {
+			return errMsg{lerr}
+		}
+		for _, d := range docs {
+			if d.ID != id || d.Scope != scope {
+				continue
+			}
+			if d.StoredPath == "" {
+				return showText()
+			}
+			return infoMsg{fmt.Sprintf(
+				"%q is a %s document. View it as: /docs view %s %d text (the extracted text already in the corpus) or /docs view %s %d file (save the original to open externally)",
+				d.Title, d.Mime, scope, id, scope, id)}
+		}
+		return errMsg{fmt.Errorf("document %s #%d not found", scope, id)}
 	}
 }
 
