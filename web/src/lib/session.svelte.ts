@@ -5,7 +5,7 @@ import { api } from "./api";
 import { SessionSocket } from "./ws";
 import { SSE, NOTIFY_SESSION_TITLE } from "./types";
 import type { Message, StreamEvent, Notification } from "./types";
-import { session, toast } from "./stores";
+import { session, toast, lastModel } from "./stores";
 
 export type Item =
   | { kind: "msg"; role: "user" | "assistant"; content: string }
@@ -279,6 +279,7 @@ class SessionController {
         toast(ev.error || "error", "error");
         break;
       case SSE.Done: {
+        if (ev.model) lastModel.set(ev.model);
         // Turn-end stats live inline in the transcript (like the TUI), not in
         // a separate element below the composer.
         const stats = turnStats(ev);

@@ -8,6 +8,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
 // contextMeterState holds the latest context usage from the server (SSE done).
@@ -125,6 +126,38 @@ func formatTokenCount(n int) string {
 		return fmt.Sprintf("%.1fk", float64(n)/1000)
 	}
 	return fmt.Sprintf("%d", n)
+}
+
+// formatContextBreakdown renders a category-by-category context usage report
+// (system prompt / skills / tools / messages), similar in spirit to Claude
+// Code's /context command.
+func formatContextBreakdown(bd *types.ContextBreakdown) string {
+	var sb strings.Builder
+	sb.WriteString("Context usage")
+	if bd.Model != "" {
+		fmt.Fprintf(&sb, " (%s)", bd.Model)
+	}
+	sb.WriteString(":\n")
+	for _, c := range bd.Categories {
+		pct := 0.0
+		if bd.ContextMax > 0 {
+			pct = float64(c.Tokens) * 100 / float64(bd.ContextMax)
+		}
+		fmt.Fprintf(&sb, "  %-18s %8s tokens (%.1f%%)\n", c.Name, formatTokenCount(c.Tokens), pct)
+	}
+	if bd.ContextMax > 0 {
+		pct := float64(bd.Total) * 100 / float64(bd.ContextMax)
+		fmt.Fprintf(&sb, "  %-18s %8s tokens (%.1f%%)\n", "Total", formatTokenCount(bd.Total), pct)
+		free := bd.ContextMax - bd.Total
+		if free < 0 {
+			free = 0
+		}
+		fmt.Fprintf(&sb, "  Context window: %s used, %s free of %s\n",
+			formatTokenCount(bd.Total), formatTokenCount(free), formatTokenCount(bd.ContextMax))
+	} else {
+		fmt.Fprintf(&sb, "  %-18s %8s tokens\n", "Total", formatTokenCount(bd.Total))
+	}
+	return strings.TrimRight(sb.String(), "\n")
 }
 
 func truncateModelName(model string) string {

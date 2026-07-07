@@ -71,6 +71,7 @@ const helpText = `Commands:
   /run <n>              run the prompt carried by alert n
   /alert <message>      (owner/admin) broadcast an alert to all users
   /usage                show your token/cost usage
+  /context              show context window usage breakdown
   /export [raw]         save transcript to session_YYYYMMDD_HHMM.md (cwd); raw includes thinking/tools, else User+Assistant only
   /quit                 exit`
 
@@ -221,6 +222,14 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 				ct += r.CompletionTokens
 			}
 			return infoMsg{fmt.Sprintf("Usage: %d records, %d prompt + %d completion tokens, est $%.4f", len(rows), pt, ct, total)}
+		}
+	case "/context":
+		return func() tea.Msg {
+			bd, err := m.client.ContextBreakdown(context.Background(), m.sessionID, m.ctxMeter.model)
+			if err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{formatContextBreakdown(bd)}
 		}
 	default:
 		return infoCmd("unknown command: " + cmd + " (try /help)")

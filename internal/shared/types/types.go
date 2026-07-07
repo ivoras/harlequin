@@ -510,6 +510,24 @@ type TurnTiming struct {
 	TGRate           float64 `json:"tg_rate"`           // token-generation speed, tokens/sec
 }
 
+// ContextCategory is one line item in a ContextBreakdown, e.g. "System prompt"
+// or "Messages".
+type ContextCategory struct {
+	Name   string `json:"name"`
+	Tokens int    `json:"tokens"`
+}
+
+// ContextBreakdown estimates how a session's next request would fill the
+// model's context window, broken down by category. Token counts are estimates
+// (see llm.EstimateTextTokens) unless the session has completed a turn, in
+// which case Total/ContextMax come from the provider-reported usage instead.
+type ContextBreakdown struct {
+	Model      string            `json:"model"`
+	ContextMax int               `json:"context_max"`
+	Total      int               `json:"total"`
+	Categories []ContextCategory `json:"categories"`
+}
+
 // SkillInfo describes a skill in a listing.
 type SkillInfo struct {
 	Name        string `json:"name"`

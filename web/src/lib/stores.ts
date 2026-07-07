@@ -18,12 +18,17 @@ export const projectSheet = writable<boolean>(false);
 // Which top-level view is shown (chat + management panels).
 export type View =
   | "chat" | "skills" | "hats" | "memory" | "documents" | "projects"
-  | "mcp" | "cron" | "config" | "usage";
+  | "mcp" | "cron" | "config" | "usage" | "context";
 export const view = writable<View>("chat");
 
 // The active session shown in the header (title is auto-updated by the
 // server's auto-titler via a session-title notification).
 export const session = writable<{ id: number; title: string }>({ id: 0, title: "" });
+
+// The model reported by the most recent turn's SSEDone event, so the /context
+// panel can size the context window against the model actually in use without
+// a round trip.
+export const lastModel = writable<string>("");
 
 // The hat worn by the active session ("" = none). Shown as a header chip with
 // a take-off button; kept in sync on wear/off and session switches.

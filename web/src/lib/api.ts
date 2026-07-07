@@ -7,7 +7,7 @@ import type {
   Memory, MemoryConflict, SearchResult, MCPServer, RegisterMCPRequest,
   MCPTestResult, MCPAuthStartResult, CronJob, CreateCronJobRequest,
   UpdateCronJobRequest, UsageRecord, Notification, Document, CreateDocumentRequest,
-  CreateMemoryRequest, Project, ProjectInvite, AlignResult,
+  CreateMemoryRequest, Project, ProjectInvite, AlignResult, ContextBreakdown,
 } from "./types";
 
 const TOKEN_KEY = "harlequin.token";
@@ -124,6 +124,13 @@ export const api = {
     req<void>("POST", `/sessions/${id}/hat`, { hat }),
   clearSession: (id: number, projectID = 0) =>
     req<void>("POST", `/sessions/${id}/clear${projectID ? `?project=${projectID}` : ""}`),
+  getContextBreakdown: (id: number, projectID = 0, model = "") => {
+    const params = new URLSearchParams();
+    if (projectID) params.set("project", String(projectID));
+    if (model) params.set("model", model);
+    const qs = params.toString();
+    return req<ContextBreakdown>("GET", `/sessions/${id}/context${qs ? `?${qs}` : ""}`);
+  },
 
   // hats
   listHats: () => reqList<Hat>("GET", "/hats"),

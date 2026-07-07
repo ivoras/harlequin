@@ -721,6 +721,18 @@ func (c *Client) Usage(ctx context.Context) ([]types.UsageRecord, error) {
 	return out, c.do(ctx, http.MethodGet, "/usage", nil, &out)
 }
 
+// ContextBreakdown estimates how a session's next request would fill the
+// model's context window, broken down by category. model, if non-empty, sizes
+// the context window against a specific model (typically the one last used).
+func (c *Client) ContextBreakdown(ctx context.Context, sessionID int64, model string) (*types.ContextBreakdown, error) {
+	path := fmt.Sprintf("/sessions/%d/context", sessionID)
+	if model != "" {
+		path += "?model=" + url.QueryEscape(model)
+	}
+	var out types.ContextBreakdown
+	return &out, c.do(ctx, http.MethodGet, path, nil, &out)
+}
+
 // Session is a live WebSocket connection to a server-side session. The server
 // runs the turn independently of this connection, so dropping it does not cancel
 // the turn — reopen the Session (with HaveSeq) to resume. Events are delivered on
