@@ -16,7 +16,7 @@ session_*.md
 /.claude/
 /testdocs/
 
-harlequin
-harlequin-server
+/harlequin
+/harlequin-server
 
 __pycache__/
