@@ -11,8 +11,8 @@ Provides:
   - cosine helpers
   - a tiny SQLite vector store (brute-force cosine; research scale)
 
-The embedding model (granite-embedding-311M-multilingual-r2) returns
-L2-normalized 768-dim vectors, so cosine == dot product.
+The embedding model should return L2-normalized vectors,
+so cosine == dot product.
 """
 import hashlib
 import json
