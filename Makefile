@@ -12,7 +12,10 @@ export CGO_CFLAGS
 
 BIN_DIR := bin
 
-build: build-server build-client
+# build runs web-build first so the server binary embeds the current UI.
+# Use build-server directly for a fast Go-only iteration (embeds whatever is
+# in web/dist at the time).
+build: web-build build-server build-client
 
 build-server:
 	go build $(GOFLAGS) -o $(BIN_DIR)/harlequin-server ./cmd/harlequin-server
@@ -42,8 +45,11 @@ clean:
 web-install:
 	cd web && npm install
 
+# vite's emptyOutDir wipes dist, including the committed .gitkeep that the
+# go:embed directive relies on when no UI has been built — restore it.
 web-build: web-install
 	cd web && npm run build
+	@touch web/dist/.gitkeep
 
 web-dev:
 	cd web && npm run dev

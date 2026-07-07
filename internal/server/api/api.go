@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	harlequin "github.com/ivoras/harlequin"
 	"github.com/ivoras/harlequin/internal/server/agent"
 	"github.com/ivoras/harlequin/internal/server/audit"
 	"github.com/ivoras/harlequin/internal/server/auth"
@@ -213,11 +215,15 @@ func (s *Server) Router() http.Handler {
 		})
 	})
 
-	// Optionally serve the static web UI at / (same origin as the API). The
-	// /api/v1 routes above are matched first; everything else falls through to the
-	// SPA handler.
+	// Serve the web UI at / (same origin as the API). The /api/v1 routes above
+	// are matched first; everything else falls through to the SPA handler. A
+	// configured web.dir serves from disk (dev: pick up rebuilds without
+	// recompiling); otherwise the UI embedded in the binary is used, if the
+	// binary was built with one.
 	if s.Cfg != nil && s.Cfg.Server.Web.Dir != "" {
-		r.Handle("/*", spaHandler(s.Cfg.Server.Web.Dir))
+		r.Handle("/*", spaHandler(os.DirFS(s.Cfg.Server.Web.Dir)))
+	} else if ui, ok := harlequin.EmbeddedWebUI(); ok {
+		r.Handle("/*", spaHandler(ui))
 	}
 
 	return r
