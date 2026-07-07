@@ -11,7 +11,8 @@ import (
 )
 
 // DiscoverContextWindows queries an OpenAI-compatible GET /v1/models endpoint
-// and returns model id -> max context tokens (from meta.n_ctx when present).
+// and returns model id -> max context tokens. Recognises llama.cpp's
+// meta.n_ctx and OpenRouter's context_length / top_provider.context_length.
 func DiscoverContextWindows(ctx context.Context, baseURL, apiKey string) (map[string]int, error) {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if baseURL == "" {
@@ -48,8 +49,12 @@ func parseModelsContext(body []byte) (map[string]int, error) {
 		Data []struct {
 			ID   string `json:"id"`
 			Meta struct {
-				NCtx int `json:"n_ctx"`
+				NCtx int `json:"n_ctx"` // llama.cpp
 			} `json:"meta"`
+			ContextLength int `json:"context_length"` // OpenRouter: model's max context
+			TopProvider   struct {
+				ContextLength int `json:"context_length"` // OpenRouter: current serving provider's limit, may be < ContextLength
+			} `json:"top_provider"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &raw); err != nil {
@@ -57,12 +62,24 @@ func parseModelsContext(body []byte) (map[string]int, error) {
 	}
 	out := make(map[string]int)
 	for _, m := range raw.Data {
-		if m.ID != "" && m.Meta.NCtx > 0 {
-			out[m.ID] = m.Meta.NCtx
+		if m.ID == "" {
+			continue
+		}
+		n := m.Meta.NCtx
+		switch {
+		case n > 0:
+			// llama.cpp value is authoritative for that single loaded model.
+		case m.TopProvider.ContextLength > 0:
+			n = m.TopProvider.ContextLength
+		case m.ContextLength > 0:
+			n = m.ContextLength
+		}
+		if n > 0 {
+			out[m.ID] = n
 		}
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("no models with meta.n_ctx")
+		return nil, fmt.Errorf("no models with a known context length")
 	}
 	return out, nil
 }
