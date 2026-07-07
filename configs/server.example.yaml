@@ -4,8 +4,11 @@
 server:
   addr: ":8080"
   # Optionally serve the static browser UI at / (same origin as /api/v1, no CORS).
-  # Build it with `make web-build`, then point dir at the output. Leave empty to
-  # disable (e.g. when nginx serves web/dist instead — see README).
+  # Web UI. Left empty, the server serves the UI embedded in the binary at
+  # build time (`make build` embeds a fresh web build; a fully self-contained
+  # deploy). Set dir to serve from disk instead — useful in dev, where
+  # `make web-build` alone updates the UI without recompiling the server —
+  # or when nginx serves web/dist directly (see README).
   web:
     dir: ""   # e.g. "./web/dist"
 
