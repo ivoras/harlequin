@@ -94,7 +94,7 @@ SERVERS = [
             "--batch-size", "4096", "-np", "2",
             "--presence-penalty", "0.5", "--repeat-penalty", "1.05",
             "--temperature", "0.5", "--min_p", "0.05", "--top_p", "0.95",
-            "-cram", "6144",
+            "-cram", "4096",
             "--ctx-checkpoints", "64", "--checkpoint-min-step", "256",
             "--cache-reuse", "2",
             "--reasoning-budget", "3000",
@@ -104,7 +104,7 @@ SERVERS = [
             "--spec-ngram-map-k4v-size-n", "8",
             "--spec-ngram-map-k4v-size-m", "8",
             "--spec-ngram-map-k4v-min-hits", "2",
-            "--spec-draft-n-max", "64",
+            "--spec-draft-n-max", "16",
             "--swa-full",
         ],
     },
@@ -135,7 +135,7 @@ SERVERS = [
         "args": [
             "--embeddings",
             "-c", "2560", "-ub", "2560", "-b", "2560",
-            "-ngl", "99", "-cram", "0",
+            "-ngl", "0", "-cram", "0",
         ],
     },
 ]
@@ -378,27 +378,36 @@ def read_log_increment(path, pos):
 
 
 def parse_timing_rates(text):
-    """Latest PP/TG tokens/s from new print_timing log lines."""
-    pp = tg = None
+    """Aggregate PP/TG tokens/s across slots from new print_timing log lines.
+
+    Within one iteration's log chunk, keep the latest rate per slot, then sum
+    across slots so concurrent work on multiple slots is reflected in totals.
+    """
+    pp_by_slot = {}
+    tg_by_slot = {}
     for line in text.splitlines():
         if "print_timing" not in line:
             continue
+        slot_m = re.search(r"\bid\s+(\d+)\b", line)
+        slot = int(slot_m.group(1)) if slot_m else 0
         m = _TIMING_PP_PROGRESS_RE.search(line)
         if m:
-            pp = float(m.group(1))
+            pp_by_slot[slot] = float(m.group(1))
             continue
         m = _TIMING_PP_EVAL_RE.search(line)
         if m:
-            pp = float(m.group(1))
+            pp_by_slot[slot] = float(m.group(1))
             continue
         m = _TIMING_TG_LIVE_RE.search(line)
         if m:
-            tg = float(m.group(1))
+            tg_by_slot[slot] = float(m.group(1))
             continue
         m = _TIMING_TG_EVAL_RE.search(line)
         if m:
-            tg = float(m.group(1))
-    return pp, tg
+            tg_by_slot[slot] = float(m.group(1))
+    pp = sum(pp_by_slot.values()) if pp_by_slot else None
+    tg = sum(tg_by_slot.values()) if tg_by_slot else None
+    return pp, tg, len(pp_by_slot), len(tg_by_slot)
 
 
 def parse_embed_activity(text):
@@ -705,6 +714,8 @@ class History:
                 "_last_decode": None,
                 "_last_ts": None,
                 "_last_tick_reqs": 0,
+                "_last_pp_slots": 0,
+                "_last_tg_slots": 0,
             }
             for s in servers
         }
@@ -723,6 +734,8 @@ class History:
         d["_embed_from_log"] = False
         d["_last_decode"] = None
         d["_last_tick_reqs"] = 0
+        d["_last_pp_slots"] = 0
+        d["_last_tg_slots"] = 0
 
     @staticmethod
     def _rate_sample(new_log, last_val, last_at, now):
@@ -772,7 +785,9 @@ class History:
                     d["_last_decode"] = decode
                 d["_last_ts"] = now
                 return
-            pp_log, tg_log = parse_timing_rates(chunk)
+            pp_log, tg_log, pp_slots, tg_slots = parse_timing_rates(chunk)
+            d["_last_pp_slots"] = pp_slots
+            d["_last_tg_slots"] = tg_slots
 
         if kind == "embed":
             return
@@ -870,6 +885,8 @@ def collect_frame(servers, procs, started_at, history, ui=None):
             "tg": hd["tg"][-1] if hd["tg"] else 0.0,
             "pp_src": "log" if hd.get("_pp_from_log") else "idle",
             "tg_src": "log" if hd.get("_tg_from_log") else "idle",
+            "pp_slots": hd.get("_last_pp_slots", 0),
+            "tg_slots": hd.get("_last_tg_slots", 0),
             "slot_head": slot_head,
             "slot_lines": slot_lines,
             "ctx_cfg": context_arg(srv) or (slots[0].get("n_ctx") if slots else None),
@@ -935,6 +952,7 @@ def draw_frame(frame, ui=None):
         hd = row["hd"]
         pp, tg = row["pp"], row["tg"]
         pp_src, tg_src = row["pp_src"], row["tg_src"]
+        pp_slots, tg_slots = row.get("pp_slots", 0), row.get("tg_slots", 0)
         metrics = row["metrics"]
         gen_tk = metrics.get("llamacpp:tokens_predicted_total")
         pr_tk = metrics.get("llamacpp:prompt_tokens_total")
@@ -1002,13 +1020,19 @@ def draw_frame(frame, ui=None):
                 width,
             ))
         else:
+            pp_tag = " log" if pp_src == "log" else " idle"
+            if pp_src == "log" and pp_slots > 1:
+                pp_tag += " ∑%d" % pp_slots
+            tg_tag = " log" if tg_src == "log" else " idle"
+            if tg_src == "log" and tg_slots > 1:
+                tg_tag += " ∑%d" % tg_slots
             print(boxed_line(
                 "  %sPP%s %5s t/s%s  %s%s%s   %sTG%s %5s t/s%s  %s%s%s" % (
                     S["cyan"], S["reset"], fmt_rate(pp),
-                    S["dim"] + (" log" if pp_src == "log" else " idle") + S["reset"],
+                    S["dim"] + pp_tag + S["reset"],
                     S["blue"], pp_spark, S["reset"],
                     S["green"], S["reset"], fmt_rate(tg),
-                    S["dim"] + (" log" if tg_src == "log" else " idle") + S["reset"],
+                    S["dim"] + tg_tag + S["reset"],
                     S["green"], tg_spark, S["reset"],
                 ),
                 width,
@@ -1071,7 +1095,7 @@ def draw_frame(frame, ui=None):
 
     legend = (
         " %s█%s model  %s▓%s KV/state  %s▒%s compute  │  "
-        "sparklines: print_timing / embed operator() log (%d samples ~%.0fm), hold %.0fs then 0"
+        "sparklines: print_timing / embed operator() log, Σ slots/tick (%d ~%.0fm, hold %.0fs)"
     ) % (
         S["magenta"], S["reset"], S["magenta"], S["reset"],
         S["magenta"], S["reset"],
