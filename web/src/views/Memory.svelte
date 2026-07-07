@@ -43,6 +43,7 @@
     }
   }
   async function del(id: string) {
+    if (!confirm("Delete this memory?")) return;
     try {
       await api.deleteMemory(id);
       mems = mems.filter((m) => m.id !== id);

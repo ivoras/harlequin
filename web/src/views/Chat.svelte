@@ -111,16 +111,58 @@
     }
   }
 
+  // --- Copy affordances ---
+  // Per-code-block copy: .codecopy buttons injected by renderMarkdown, handled
+  // via the same event delegation as citations/docrefs. Feedback is a brief ✓
+  // swap directly on the button (it lives in {@html} output, not the template).
+  async function onCodeCopy(e: Event) {
+    const btn = (e.target as HTMLElement)?.closest?.(".codecopy");
+    if (!(btn instanceof HTMLElement)) return;
+    const pre = btn.parentElement?.querySelector("pre");
+    if (!pre) return;
+    try {
+      await navigator.clipboard.writeText(pre.textContent ?? "");
+    } catch (err) {
+      toast((err as Error).message || "copy failed", "error");
+      return;
+    }
+    btn.textContent = "✓";
+    setTimeout(() => (btn.textContent = "⧉"), 1200);
+  }
+  // Whole-message copy: copies the raw markdown source, not the rendered HTML.
+  let copiedIdx = $state(-1);
+  async function copyMsg(i: number, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (err) {
+      toast((err as Error).message || "copy failed", "error");
+      return;
+    }
+    copiedIdx = i;
+    setTimeout(() => {
+      if (copiedIdx === i) copiedIdx = -1;
+    }, 1200);
+  }
+
   function scrollToBottom() {
     requestAnimationFrame(() => {
       if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
     });
   }
 
+  // Sticky auto-scroll: only follow the transcript while the user is at (or
+  // near) the bottom; scrolling up to read older messages disables it until
+  // they return. Plain boolean on purpose — it must not retrigger the effect.
+  let atBottom = true;
+  function onScroll() {
+    if (!scrollEl) return;
+    atBottom = scrollEl.scrollTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 80;
+  }
+
   // Auto-scroll as the transcript grows (controller-driven).
   $effect(() => {
     sc.items.length;
-    scrollToBottom();
+    if (atBottom) scrollToBottom();
   });
 
   // When the turn ends on a free-text question (no preset options), focus the
@@ -131,18 +173,63 @@
     if (last && last.kind === "ask" && last.options.length === 0) inputEl?.focus();
   });
 
+  // Auto-grow the composer with its content; the CSS max-height caps it.
+  // Called from oninput and explicitly after programmatic clears, since
+  // setting `input` from code doesn't fire the input event.
+  function resizeInput() {
+    // rAF so programmatic `input` changes have reached the DOM before measuring.
+    requestAnimationFrame(() => {
+      if (!inputEl) return;
+      inputEl.style.height = "auto";
+      inputEl.style.height = `${inputEl.scrollHeight}px`;
+    });
+  }
+
+  // --- Input history recall ---
+  // ArrowUp in an empty (or unmodified-recall) composer walks back through
+  // previous user messages for editing/resend; ArrowDown walks toward
+  // newest/empty. The cursor resets whenever the user types normally.
+  let histIdx = -1; // -1 = not recalling; otherwise index into userHistory() (0 = newest)
+  let histRecalled = ""; // exact text last inserted by recall, to detect edits
+  function userHistory(): string[] {
+    const out: string[] = [];
+    for (const it of sc.items) if (it.kind === "msg" && it.role === "user") out.push(it.content);
+    return out.reverse();
+  }
+  function recall(delta: number) {
+    const hist = userHistory();
+    const next = histIdx + delta;
+    if (next < -1 || next >= hist.length) return;
+    histIdx = next;
+    histRecalled = next === -1 ? "" : hist[next];
+    input = histRecalled;
+    resizeInput();
+  }
+  function resetHistory() {
+    histIdx = -1;
+    histRecalled = "";
+  }
+  function onInput(e: Event) {
+    // Any edit that diverges from the recalled text ends the recall session.
+    if ((e.currentTarget as HTMLTextAreaElement).value !== histRecalled) resetHistory();
+    resizeInput();
+  }
+
   // submit runs a slash command (lines starting with "/") or sends a message.
   async function submit() {
     const text = input.trim();
     if (!text) return;
+    resetHistory();
     if (text.startsWith("/")) {
       input = "";
       slashSel = 0;
+      resizeInput();
       if ((await runSlash(text, admin)) === "help") showHelp = true;
       return;
     }
     if (!$session.id) return;
     input = "";
+    resizeInput();
     sc.send(text);
   }
   function answerAsk(opt: string) {
@@ -173,6 +260,28 @@
         completeSlash();
         return;
       }
+      // Enter accepts the highlighted suggestion, unless the typed text is
+      // already exactly that command — then fall through and run it.
+      if (e.key === "Enter" && !e.shiftKey && input.trim() !== suggestions[slashSel].name) {
+        e.preventDefault();
+        completeSlash();
+        return;
+      }
+    }
+    // History recall — only when the slash menu isn't consuming the arrows,
+    // and only from an empty composer or an unmodified recall, so normal
+    // multiline cursor movement in typed text still works.
+    const recalling = histIdx >= 0 && input === histRecalled;
+    if (e.key === "ArrowUp" && (input === "" || recalling)) {
+      e.preventDefault();
+      if (input === "" && !recalling) resetHistory(); // stale cursor after a programmatic clear
+      recall(1);
+      return;
+    }
+    if (e.key === "ArrowDown" && recalling) {
+      e.preventDefault();
+      recall(-1);
+      return;
     }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -183,14 +292,16 @@
 
 <div class="chat">
   <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events, a11y_mouse_events_have_key_events -->
-  <div class="messages" bind:this={scrollEl}
-    onclick={(e) => { onCiteClick(e); onDocrefClick(e); }} onmouseover={onCiteHover}>
+  <div class="messages" bind:this={scrollEl} onscroll={onScroll}
+    onclick={(e) => { onCiteClick(e); onDocrefClick(e); onCodeCopy(e); }} onmouseover={onCiteHover}>
     <div class="container col" style="gap:12px;">
-      {#each sc.items as it}
+      {#each sc.items as it, i}
         {#if it.kind === "msg"}
           <div class="msg {it.role}">
             {#if it.role === "assistant"}
               <div class="md">{@html renderMarkdown(it.content)}</div>
+              <button class="msgcopy" title="Copy message" aria-label="Copy message"
+                onclick={() => copyMsg(i, it.content)}>{copiedIdx === i ? "✓" : "⧉ Copy"}</button>
             {:else}
               <div class="bubble">{it.content}</div>
             {/if}
@@ -275,7 +386,7 @@
       </div>
     {/if}
     <div class="container row" style="align-items:flex-end; gap:8px;">
-      <textarea rows="1" placeholder={sc.loading ? "Message (will queue)…" : "Message or /command…"} bind:value={input} bind:this={inputEl} onkeydown={onKey}></textarea>
+      <textarea rows="1" placeholder={sc.loading ? "Message (will queue)…" : "Message or /command…"} bind:value={input} bind:this={inputEl} onkeydown={onKey} oninput={onInput}></textarea>
       {#if sc.loading}
         <button class="danger" onclick={() => sc.stop()} title="Stop">■</button>
       {:else}
@@ -299,6 +410,17 @@
   .msg.assistant .md { max-width: 100%; word-break: break-word; }
   .md :global(p) { margin: 0.4em 0; }
   .md :global(pre) { white-space: pre; }
+  /* Per-code-block copy button (markup injected by renderMarkdown). */
+  .md :global(.codewrap) { position: relative; }
+  .md :global(.codecopy) { position: absolute; top: 4px; right: 4px; padding: 1px 8px;
+    font-size: 12px; line-height: 1.5; background: var(--surface-2);
+    border: 1px solid var(--border-soft); box-shadow: none; opacity: 0.6; }
+  .md :global(.codecopy:hover) { opacity: 1; }
+  /* Whole-message copy: subtle, always visible (no hover-gating for touch). */
+  .msgcopy { display: inline-block; margin-top: 2px; padding: 1px 8px; font-size: 12px;
+    background: transparent; border: 1px solid var(--border-soft); box-shadow: none;
+    color: var(--muted, inherit); opacity: 0.6; }
+  .msgcopy:hover { opacity: 1; }
   .thinking { background: var(--surface); border: 1px solid var(--border-soft);
     border-radius: var(--radius-sm); padding: 6px 10px; box-shadow: var(--hl); }
   .thinking-body { white-space: pre-wrap; margin-top: 6px; }

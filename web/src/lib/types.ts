@@ -305,6 +305,7 @@ export interface UpdateCronJobRequest {
   input?: string;
   notify?: boolean;
   enabled?: boolean;
+  notify_channel?: string; // "inapp" | "email" | "telegram"
 }
 
 export interface Document {

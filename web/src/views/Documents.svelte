@@ -72,6 +72,7 @@
     return isElevated($user?.role); // shared: owner/admin
   }
   async function del(d: Document) {
+    if (!confirm(`Delete document "${d.title}"?`)) return;
     try {
       await api.deleteDocument(d.id, d.scope ?? "", d.scope === "project" ? ($activeProject?.id ?? 0) : 0);
       docs = docs.filter((x) => x !== d);

@@ -6,6 +6,7 @@
 
   let jobs = $state<CronJob[]>([]);
   let showAdd = $state(false);
+  let editingID = $state<number | null>(null); // non-null: the form saves an existing job
   const blank = (): CreateCronJobRequest => ({ name: "", spec: "@every 12h", kind: "js", target: "", prompt: "", input: "", notify_channel: "inapp" });
   let f = $state<CreateCronJobRequest>(blank());
 
@@ -18,15 +19,26 @@
   }
   onMount(load);
   async function add() {
+    const wasEdit = editingID !== null;
     try {
-      await api.createCron({ ...f });
+      if (editingID !== null) {
+        await api.updateCron(editingID, { ...f });
+      } else {
+        await api.createCron({ ...f });
+      }
       showAdd = false;
+      editingID = null;
       f = blank();
       await load();
-      toast("scheduled");
+      toast(wasEdit ? "saved" : "scheduled");
     } catch (e) {
       toast((e as Error).message, "error");
     }
+  }
+  function edit(j: CronJob) {
+    editingID = j.id;
+    f = { name: j.name, spec: j.spec, kind: j.kind, target: j.target, prompt: j.prompt ?? "", input: j.input ?? "", notify_channel: j.notify_channel || "inapp" };
+    showAdd = true;
   }
   async function toggle(j: CronJob) {
     try {
@@ -49,6 +61,7 @@
     }
   }
   async function del(j: CronJob) {
+    if (!confirm(`Delete cron job "${j.name}"?`)) return;
     try {
       await api.deleteCron(j.id);
       jobs = jobs.filter((x) => x.id !== j.id);
@@ -60,7 +73,7 @@
 
 <section class="panel">
   <div class="container col">
-    <div class="row"><h3>Cron</h3><span class="spacer"></span><button class="primary small" onclick={() => (showAdd = !showAdd)}>+ Add</button></div>
+    <div class="row"><h3>Cron</h3><span class="spacer"></span><button class="primary small" onclick={() => { showAdd = editingID !== null ? true : !showAdd; editingID = null; f = blank(); }}>+ Add</button></div>
     {#if showAdd}
       <div class="card col">
         <input placeholder="name" bind:value={f.name} />
@@ -69,7 +82,11 @@
           <option value="js">js — run a script, no AI</option>
           <option value="skill">skill — run an agent turn</option>
         </select>
-        <input placeholder={f.kind === "js" ? "target: skill://… / storage://… or inline JS" : "target: skill name (optional)"} bind:value={f.target} />
+        {#if f.kind === "js"}
+          <textarea class="mono" rows="6" placeholder="target: skill://… / storage://… or inline JS" bind:value={f.target}></textarea>
+        {:else}
+          <input placeholder="target: skill name (optional)" bind:value={f.target} />
+        {/if}
         {#if f.kind === "skill"}<input placeholder="prompt for the agent" bind:value={f.prompt} />{/if}
         <input placeholder={'input JSON — e.g. {"name":"fzoeu"}'} bind:value={f.input} />
         <label class="muted small">Notify via
@@ -79,7 +96,7 @@
             <option value="telegram">telegram</option>
           </select>
         </label>
-        <button class="primary" onclick={add} disabled={!f.name.trim() || !f.spec.trim() || !f.target.trim()}>Create</button>
+        <button class="primary" onclick={add} disabled={!f.name.trim() || !f.spec.trim() || !f.target.trim()}>{editingID !== null ? "Save" : "Create"}</button>
       </div>
     {/if}
     <div class="list">
@@ -95,6 +112,7 @@
           <div class="row small" style="gap:6px;">
             <button onclick={() => run(j)}>Run now</button>
             <button onclick={() => toggle(j)}>{j.enabled ? "Disable" : "Enable"}</button>
+            <button onclick={() => edit(j)}>Edit</button>
             <span class="spacer"></span><button class="ghost danger" onclick={() => del(j)}>Delete</button>
           </div>
         </div>

@@ -120,6 +120,8 @@ export const api = {
     req<Session>("POST", "/sessions", { title, hat }),
   getMessages: (id: number) => reqList<Message>("GET", `/sessions/${id}/messages`),
   deleteSession: (id: number) => req<void>("DELETE", `/sessions/${id}`),
+  renameSession: (id: number, title: string) =>
+    req<void>("PATCH", `/sessions/${id}`, { title }),
   setSessionHat: (id: number, hat: string) =>
     req<void>("POST", `/sessions/${id}/hat`, { hat }),
   clearSession: (id: number, projectID = 0) =>
