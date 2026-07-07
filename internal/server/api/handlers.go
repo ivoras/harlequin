@@ -199,6 +199,40 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, c)
 }
 
+// handleSessionContext estimates how the session's next request would fill
+// the model's context window, broken down by category (system prompt, skills,
+// tools, messages). Pass ?project=<id> for a project session, and optionally
+// ?model=<id> to size the context window against a specific model (typically
+// the one last used, as reported by the client's most recent SSEDone event).
+func (s *Server) handleSessionContext(w http.ResponseWriter, r *http.Request) {
+	u, _ := auth.UserFromContext(r.Context())
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	projectID, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64)
+	model := r.URL.Query().Get("model")
+	if projectID > 0 {
+		if member, _ := s.Projects.IsMember(r.Context(), projectID, u.ID); !member {
+			writeErr(w, http.StatusForbidden, "not a member of this project")
+			return
+		}
+	} else {
+		var ownErr error
+		_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+			_, ownErr = s.Sessions.Get(r.Context(), udb, id, u.ID)
+			return nil
+		})
+		if ownErr != nil {
+			writeErr(w, http.StatusNotFound, "not found")
+			return
+		}
+	}
+	breakdown, err := s.Agent.ContextBreakdown(r.Context(), projectID, id, u.ID, u.Email, u.Role, model)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, breakdown)
+}
+
 func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)

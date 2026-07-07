@@ -376,3 +376,15 @@ export interface UsageRecord {
   est_cost_usd: number;
   created_at: string;
 }
+
+export interface ContextCategory {
+  name: string;
+  tokens: number;
+}
+
+export interface ContextBreakdown {
+  model: string;
+  context_max: number;
+  total: number;
+  categories: ContextCategory[];
+}

@@ -16,6 +16,7 @@
   import Cron from "./views/Cron.svelte";
   import Config from "./views/Config.svelte";
   import Usage from "./views/Usage.svelte";
+  import Context from "./views/Context.svelte";
   // Tab / menu icons: vendored OpenMoji color SVGs (CC BY-SA 4.0, see
   // src/assets/openmoji/LICENSE.txt) so they render identically everywhere.
   import icChat from "./assets/openmoji/1F4AC.svg";
@@ -315,6 +316,7 @@
     { id: "mcp", label: "MCP servers", ic: icMcp },
     { id: "config", label: "Config", ic: icConfig },
     { id: "usage", label: "Usage", ic: icUsage },
+    { id: "context", label: "Context", ic: icUsage },
   ];
 </script>
 
@@ -392,6 +394,8 @@
         <Config />
       {:else if $view === "usage"}
         <Usage />
+      {:else if $view === "context"}
+        <Context />
       {/if}
     </main>
 
