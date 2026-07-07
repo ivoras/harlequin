@@ -84,20 +84,33 @@ func main() {
 	for model, n := range cfg.ContextWindows {
 		ctxWindows[model] = n
 	}
+	// Models the config actually references: each provider's model plus the
+	// model_rules keys. Discovery against a hosted catalog (OpenRouter) returns
+	// hundreds of models we never route to — only these are worth keeping.
+	configuredModels := map[string]bool{}
+	for _, p := range cfg.Providers {
+		if p.Model != "" {
+			configuredModels[p.Model] = true
+		}
+	}
+	for model := range cfg.Routing.ModelRules {
+		configuredModels[model] = true
+	}
 	for _, p := range cfg.Providers {
 		if p.ContextWindow > 0 {
 			ctxWindows[p.Model] = p.ContextWindow
 		}
 		if discovered, err := llm.DiscoverContextWindows(context.Background(), p.BaseURL, p.APIKey); err == nil {
+			// A single-model endpoint (llama.cpp) is taken as-is: its id is the
+			// actual loaded model, aliased to the config's name for it.
+			single := len(discovered) == 1
+			llm.ApplyConfigModelAlias(discovered, p.Model)
 			for id, n := range discovered {
+				if !single && !configuredModels[id] {
+					continue
+				}
 				ctxWindows[id] = n
-			}
-			llm.ApplyConfigModelAlias(ctxWindows, p.Model)
-			if p.Model != "" && ctxWindows[p.Model] > 0 {
-				log.Printf("context window: provider %q config model %q -> %d tokens (from /v1/models)", p.Name, p.Model, ctxWindows[p.Model])
-			}
-			for id, n := range discovered {
-				log.Printf("context window: provider %q loaded model %q -> %d tokens", p.Name, id, n)
+				log.Printf("context window: provider %q model %q -> %d tokens (from /v1/models)", p.Name, id, n)
 			}
 		} else if p.ContextWindow == 0 {
 			log.Printf("context window: provider %q: /v1/models discovery failed (%v); set context_window in config", p.Name, err)
