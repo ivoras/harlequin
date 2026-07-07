@@ -125,7 +125,10 @@ hr { border: none; border-top: 1px solid var(--border); }
 
 /* Workspace: the main view, plus the project chatroom side-pane when active. */
 .workspace { flex: 1; min-height: 0; display: flex; flex-direction: row; }
-.app-main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* min-width: 0 lets the pane shrink below its content's intrinsic width —
+   without it, wide content (long select options, unbreakable tokens) forces
+   the whole page wider than the viewport on phones. */
+.app-main { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
 .chatpane { flex: none; width: 300px; max-width: 38vw; min-width: 0; display: flex; flex-direction: column;
   border-left: 1px solid var(--border); background: var(--surface);
   box-shadow: -4px 0 16px rgba(0, 0, 0, 0.2); }
@@ -168,7 +171,7 @@ hr { border: none; border-top: 1px solid var(--border); }
 .warn { color: var(--warn); }
 .small { font-size: 13px; }
 .pill { display: inline-block; padding: 1px 9px; border-radius: 999px; background: var(--surface-3);
-  color: var(--muted); font-size: 12px; box-shadow: var(--hl); }
+  color: var(--muted); font-size: 12px; box-shadow: var(--hl); white-space: nowrap; }
 .pill.warn { color: var(--warn); background: rgba(232, 195, 122, 0.1); border: 1px solid rgba(232, 195, 122, 0.35); }
 /* turn-end stats line inside the transcript */
 .stats { opacity: 0.75; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -199,6 +202,9 @@ hr { border: none; border-top: 1px solid var(--border); }
   border-radius: var(--radius);
   padding: 14px;
   box-shadow: var(--hl), var(--shadow-1);
+  /* long unbreakable tokens (mime types, URLs, ids) wrap instead of widening
+     the card past the viewport */
+  overflow-wrap: anywhere;
 }
 .list { display: flex; flex-direction: column; gap: 10px; }
 
