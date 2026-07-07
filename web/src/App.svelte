@@ -34,6 +34,7 @@
   let sessionDrawer = $state(false);
   let menu = $state(false);
   let sessions = $state<Session[]>([]);
+  let sessionFilter = $state("");
   // Project management (the /project sheet) + chatroom pane.
   let projects = $state<Project[]>([]);
   let invites = $state<ProjectInvite[]>([]);
@@ -67,6 +68,7 @@
     if (u && !started) {
       started = true;
       initSession();
+      loadProjects();
     } else if (!u && started) {
       started = false;
       sc.detach();
@@ -177,8 +179,31 @@
     }
   }
 
+  // Sessions drawer: type-to-filter (title substring, case-insensitive).
+  const filteredSessions = $derived(
+    sessionFilter.trim()
+      ? sessions.filter((c) => c.title.toLowerCase().includes(sessionFilter.trim().toLowerCase()))
+      : sessions,
+  );
+
+  // Compact "time since last activity" for the drawer rows ("3m", "2h", "5d").
+  function relTime(iso: string): string {
+    const secs = (Date.now() - new Date(iso).getTime()) / 1000;
+    if (!Number.isFinite(secs) || secs < 60) return "now";
+    if (secs < 3600) return Math.floor(secs / 60) + "m";
+    if (secs < 86400) return Math.floor(secs / 3600) + "h";
+    return Math.floor(secs / 86400) + "d";
+  }
+
+  // Focus the drawer's filter input on desktop only — autofocusing on mobile
+  // pops the on-screen keyboard over the list.
+  function focusOnDesktop(node: HTMLInputElement) {
+    if (matchMedia("(min-width: 641px)").matches) node.focus();
+  }
+
   async function openSessions() {
     sessionDrawer = true;
+    sessionFilter = "";
     try {
       // In a project, the drawer lists the project's (shared) sessions.
       sessions = $activeProject ? await api.listProjectSessions($activeProject.id) : await api.listSessions();
@@ -221,6 +246,15 @@
     projectSheet.set(false);
     sessionDrawer = false;
     await libSwitchToProject(p);
+  }
+  async function onSelectProject(e: Event) {
+    const id = parseInt((e.target as HTMLSelectElement).value, 10);
+    if (!id) {
+      await leaveActiveProject();
+      return;
+    }
+    const p = projects.find((x) => x.id === id);
+    if (p) await switchToProject(p);
   }
   async function leaveProject() {
     await leaveActiveProject();
@@ -286,8 +320,21 @@
     session.set({ id: c.id, title: cleanTitle(c.title) });
     wornHat.set(c.hat ?? "");
   }
+  async function renameSession(c: Session, e: Event) {
+    e.stopPropagation();
+    const title = prompt("Rename session", c.title)?.trim();
+    if (!title || title === c.title) return;
+    try {
+      await api.renameSession(c.id, title);
+      sessions = sessions.map((x) => (x.id === c.id ? { ...x, title } : x));
+      if (c.id === $session.id) session.set({ id: c.id, title: cleanTitle(title) });
+    } catch (err) {
+      toast((err as Error).message, "error");
+    }
+  }
   async function deleteSession(c: Session, e: Event) {
     e.stopPropagation();
+    if (!confirm(`Delete session "${c.title || "#" + c.id}"?`)) return;
     try {
       await api.deleteSession(c.id);
       sessions = sessions.filter((x) => x.id !== c.id);
@@ -328,9 +375,12 @@
   <header class="app-header">
     <button class="iconbtn" onclick={openSessions} aria-label="Sessions">☰</button>
     <span class="brand">Harlequin</span>
-    {#if $activeProject}
-      <button class="chip" onclick={() => projectSheet.set(true)} title="Project">📁 {$activeProject.name}</button>
-    {/if}
+    <select class="chip projectselect" value={$activeProject?.id ?? 0} onchange={onSelectProject} title="Project">
+      <option value={0}>&lt;no project selected&gt;</option>
+      {#each projects as p (p.id)}
+        <option value={p.id}>{p.name}</option>
+      {/each}
+    </select>
     <span class="title">{$session.title || "New session"}</span>
     {#if $wornHat}
       <span class="chip hatchip" title="This session wears the {$wornHat} hat">
@@ -429,19 +479,21 @@
         <button class="primary small" onclick={newSession}>+ New</button>
       </header>
       <div class="body list">
-        {#each sessions as c}
+        <input placeholder="Filter sessions…" bind:value={sessionFilter} use:focusOnDesktop />
+        {#each filteredSessions as c}
           <div class="card row" role="button" tabindex="0" onclick={() => switchSession(c)}
             onkeydown={(e) => e.key === "Enter" && switchSession(c)} style="cursor:pointer;">
             <div class="col" style="gap:2px; min-width:0; flex:1;">
               <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{c.title}</div>
-              <div class="muted small">#{c.id} · {c.interface}</div>
+              <div class="muted small">#{c.id} · {c.interface} · {relTime(c.updated_at)}</div>
             </div>
             {#if !$activeProject}
+              <button class="ghost small" onclick={(e) => renameSession(c, e)} aria-label="Rename">✏️</button>
               <button class="ghost danger small" onclick={(e) => deleteSession(c, e)} aria-label="Delete">✕</button>
             {/if}
           </div>
         {/each}
-        {#if sessions.length === 0}<div class="muted small">No sessions.</div>{/if}
+        {#if filteredSessions.length === 0}<div class="muted small">No sessions.</div>{/if}
       </div>
     </aside>
   {/if}

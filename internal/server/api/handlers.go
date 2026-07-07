@@ -265,6 +265,31 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// handleRenameSession sets a user-chosen title on one of the caller's personal
+// sessions (PATCH /sessions/{id} with {"title": "..."}).
+func (s *Server) handleRenameSession(w http.ResponseWriter, r *http.Request) {
+	u, _ := auth.UserFromContext(r.Context())
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	var req struct {
+		Title string `json:"title"`
+	}
+	if err := decode(r, &req); err != nil || strings.TrimSpace(req.Title) == "" {
+		writeErr(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		if _, e := s.Sessions.Get(r.Context(), udb, id, u.ID); e != nil {
+			return e
+		}
+		return s.Sessions.Rename(r.Context(), udb, id, strings.TrimSpace(req.Title))
+	})
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 // handleClearSession wipes a session's messages so the next turn starts with a
 // fresh context (the session, its title, and its hat survive). For a project
 // session pass ?project=<id>; any member may clear it.

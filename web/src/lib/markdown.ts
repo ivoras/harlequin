@@ -76,9 +76,30 @@ function wrapDocRefs(html: string): string {
   return tpl.innerHTML;
 }
 
+// wrapCodeBlocks wraps each <pre> in a positioned container with a copy
+// button so the chat view can offer copy-to-clipboard via its existing
+// delegated click handler (closest(".codecopy")). Runs after sanitization —
+// the injected markup is ours, not the model's.
+function wrapCodeBlocks(html: string): string {
+  const tpl = document.createElement("template");
+  tpl.innerHTML = html;
+  for (const pre of Array.from(tpl.content.querySelectorAll("pre"))) {
+    const wrap = document.createElement("div");
+    wrap.className = "codewrap";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "codecopy";
+    btn.title = "Copy code";
+    btn.textContent = "⧉";
+    pre.replaceWith(wrap);
+    wrap.append(btn, pre);
+  }
+  return tpl.innerHTML;
+}
+
 // Render assistant markdown to sanitized HTML. Links open in a new tab.
 export function renderMarkdown(src: string): string {
   const html = marked.parse(src ?? "", { async: false }) as string;
   const clean = DOMPurify.sanitize(html, { ADD_ATTR: ["target", "rel"] });
-  return wrapDocRefs(wrapCitations(clean));
+  return wrapCodeBlocks(wrapDocRefs(wrapCitations(clean)));
 }

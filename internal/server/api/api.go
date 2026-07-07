@@ -112,6 +112,7 @@ func (s *Server) Router() http.Handler {
 			r.Post("/sessions", s.handleCreateSession)
 			r.Get("/sessions/{id}/messages", s.handleListMessages)
 			r.Delete("/sessions/{id}", s.handleDeleteSession)
+			r.Patch("/sessions/{id}", s.handleRenameSession)
 			r.Get("/sessions/{id}/log", s.handleSessionLog)
 			r.Get("/sessions/{id}/context", s.handleSessionContext)
 			r.Post("/sessions/{id}/hat", s.handleSetSessionHat)

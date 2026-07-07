@@ -62,6 +62,14 @@ func (s *Store) SetTitle(ctx context.Context, db *sql.DB, id int64, title string
 	return err
 }
 
+// Rename replaces a session's title on the user's explicit request. Unlike
+// SetTitle it bumps updated_at, so a deliberately renamed session surfaces at
+// the top of the recents list.
+func (s *Store) Rename(ctx context.Context, db *sql.DB, id int64, title string) error {
+	_, err := db.ExecContext(ctx, `UPDATE sessions SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, title, id)
+	return err
+}
+
 // UntitledWithUserMessage returns sessions still carrying a generic/empty
 // title that have at least one user message — the candidates for auto-titling.
 // Internal (Cron) sessions are excluded.
