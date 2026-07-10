@@ -78,6 +78,48 @@ func (p *OpenAICompatible) requestTimeout(estTokens int) time.Duration {
 	return timeout
 }
 
+// idleWatchdog cancels an in-flight call when the stream stays quiet for
+// longer than the allowed gap; every touch() re-arms it. Used instead of a
+// hard whole-call deadline so a long generation, which keeps producing
+// chunks, is never killed — only a genuinely stalled request is.
+type idleWatchdog struct {
+	gap   time.Duration
+	timer *time.Timer
+	once  sync.Once     // touch() can race the timer and re-arm it; fire at most once
+	fired chan struct{} // closed by the timer just before cancelling
+}
+
+func newIdleWatchdog(gap time.Duration, cancel func()) *idleWatchdog {
+	w := &idleWatchdog{gap: gap, fired: make(chan struct{})}
+	w.timer = time.AfterFunc(gap, func() {
+		w.once.Do(func() {
+			close(w.fired)
+			cancel()
+		})
+	})
+	return w
+}
+
+// touch re-arms the watchdog after stream activity.
+func (w *idleWatchdog) touch() {
+	if !w.expired() {
+		w.timer.Reset(w.gap)
+	}
+}
+
+// stop disarms the watchdog once the call is finished.
+func (w *idleWatchdog) stop() { w.timer.Stop() }
+
+// expired reports whether the watchdog cancelled the call.
+func (w *idleWatchdog) expired() bool {
+	select {
+	case <-w.fired:
+		return true
+	default:
+		return false
+	}
+}
+
 // recordPP folds a completed call's prompt-processing rate into the rolling
 // average, preferring server-reported timings (cache-accurate) over a wall-clock
 // estimate from usage and the measured prefill (request start to first token).

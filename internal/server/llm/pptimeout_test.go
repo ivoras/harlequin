@@ -59,6 +59,50 @@ func TestRequestTimeout(t *testing.T) {
 	}
 }
 
+func TestIdleWatchdog(t *testing.T) {
+	waitFired := func(w *idleWatchdog) bool {
+		select {
+		case <-w.fired:
+			return true
+		case <-time.After(time.Second):
+			return false
+		}
+	}
+
+	t.Run("fires when idle", func(t *testing.T) {
+		cancelled := make(chan struct{})
+		w := newIdleWatchdog(10*time.Millisecond, func() { close(cancelled) })
+		if !waitFired(w) {
+			t.Fatal("watchdog did not fire")
+		}
+		<-cancelled // cancel ran before fired closed
+		if !w.expired() {
+			t.Fatal("expired() = false after firing")
+		}
+	})
+
+	t.Run("touch keeps it alive", func(t *testing.T) {
+		w := newIdleWatchdog(50*time.Millisecond, func() {})
+		for range 5 {
+			time.Sleep(20 * time.Millisecond)
+			w.touch()
+			if w.expired() {
+				t.Fatal("fired despite regular touches")
+			}
+		}
+		w.stop()
+	})
+
+	t.Run("stop disarms", func(t *testing.T) {
+		w := newIdleWatchdog(10*time.Millisecond, func() { t.Error("cancel ran after stop") })
+		w.stop()
+		time.Sleep(30 * time.Millisecond)
+		if w.expired() {
+			t.Fatal("fired after stop")
+		}
+	})
+}
+
 func TestRecordPPPrefersServerTimings(t *testing.T) {
 	p := NewOpenAICompatible("test", "http://x", "", "m")
 	// Server timings: 1000 prompt tokens in 500ms -> 2000 tok/s.

@@ -236,15 +236,23 @@ func (p *OpenAICompatible) Chat(ctx context.Context, req ChatRequest) (<-chan Ch
 		return nil, err
 	}
 
-	// Dynamic per-call deadline: ppTimeoutMultiplier x the predicted prompt-
-	// processing time for this request, instead of one fixed client timeout.
+	// Dynamic idle timeout: the call is cancelled only if the stream goes
+	// quiet for ppTimeoutMultiplier x the predicted prompt-processing time —
+	// the longest legitimately silent phase (hosted providers send nothing
+	// until the first token). A long generation keeps re-arming the watchdog
+	// chunk by chunk, so it is never killed by a whole-call deadline.
 	estTokens := EstimateMessagesTokens(req.Messages, req.Tools)
 	timeout := p.requestTimeout(estTokens)
-	callCtx, cancel := context.WithTimeout(ctx, timeout)
+	callCtx, cancel := context.WithCancel(ctx)
+	wd := newIdleWatchdog(timeout, cancel)
+	fail := func() {
+		wd.stop()
+		cancel()
+	}
 
 	httpReq, err := http.NewRequestWithContext(callCtx, http.MethodPost, p.baseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
-		cancel()
+		fail()
 		return nil, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -255,20 +263,23 @@ func (p *OpenAICompatible) Chat(ctx context.Context, req ChatRequest) (<-chan Ch
 	start := time.Now()
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
-		cancel()
+		if wd.expired() {
+			err = fmt.Errorf("provider %s: no response within idle timeout %s: %w", p.name, timeout.Round(time.Second), err)
+		}
+		fail()
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
-		cancel()
+		fail()
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return nil, fmt.Errorf("provider %s: status %d: %s", p.name, resp.StatusCode, strings.TrimSpace(string(msg)))
 	}
-	log.Printf("llm[%s]: model %s, ~%d prompt tokens, timeout %s (avg PP %.0f tok/s)",
+	log.Printf("llm[%s]: model %s, ~%d prompt tokens, idle timeout %s (avg PP %.0f tok/s)",
 		p.name, model, estTokens, timeout.Round(time.Second), p.ppAvg.avg())
 
 	out := make(chan Chunk, 32)
-	go p.readStream(resp, model, out, start, cancel)
+	go p.readStream(resp, model, out, start, cancel, wd)
 	return out, nil
 }
 
@@ -335,8 +346,9 @@ func (d *jsonDelta) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (p *OpenAICompatible) readStream(resp *http.Response, model string, out chan<- Chunk, start time.Time, cancel context.CancelFunc) {
-	defer cancel() // release the per-call deadline once the stream is fully drained
+func (p *OpenAICompatible) readStream(resp *http.Response, model string, out chan<- Chunk, start time.Time, cancel context.CancelFunc, wd *idleWatchdog) {
+	defer cancel() // release the call context once the stream is fully drained
+	defer wd.stop()
 	defer resp.Body.Close()
 	defer close(out)
 
@@ -361,6 +373,7 @@ func (p *OpenAICompatible) readStream(resp *http.Response, model string, out cha
 	}
 
 	for scanner.Scan() {
+		wd.touch()
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || !strings.HasPrefix(line, "data:") {
 			continue
@@ -425,6 +438,9 @@ func (p *OpenAICompatible) readStream(resp *http.Response, model string, out cha
 		}
 	}
 	if err := scanner.Err(); err != nil {
+		if wd.expired() {
+			err = fmt.Errorf("provider %s: stream stalled — no data for %s (idle timeout)", p.name, wd.gap.Round(time.Second))
+		}
 		flush(err)
 		return
 	}
