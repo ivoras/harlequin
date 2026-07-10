@@ -134,42 +134,6 @@ func (s *Store) sameAttributeJudge(ctx context.Context, newKey string, cands []s
 	return out.Match - 1, judge.Clamp(out.Confidence), true
 }
 
-// ReconcileUserCrossScope removes user-scope memories whose every slot already
-// exists (exact or judge-confirmed) in shared memory, keeping the shared value —
-// the one-time cleanup for sessions where the same attribute ended up in both
-// scopes (e.g. an org name as both a shared and a personal memory). Returns the
-// removed composite ids. A memory carrying a mix of duplicate and unique slots is
-// left untouched (logged by the caller's sweep) to avoid losing the unique one.
-func (s *Store) ReconcileUserCrossScope(ctx context.Context, userDB *sql.DB, userID int64) ([]string, error) {
-	user := s.userMem(userDB)
-	if user.db == nil {
-		return nil, nil
-	}
-	byMem := map[int64][]slotRef{}
-	for _, sr := range user.allSlotRefs(ctx) {
-		byMem[sr.local] = append(byMem[sr.local], sr)
-	}
-	var removed []string
-	for local, slots := range byMem {
-		allDup := len(slots) > 0
-		for _, sl := range slots {
-			m, err := s.CrossScopeSlot(ctx, userDB, scopeUser, sl.key)
-			if err != nil || m == nil {
-				allDup = false
-				break
-			}
-		}
-		if !allDup {
-			continue
-		}
-		id := user.encode(local)
-		if err := s.Delete(ctx, userDB, id, userID, true); err == nil {
-			removed = append(removed, id)
-		}
-	}
-	return removed, nil
-}
-
 // allSlotRefs returns every slot in this database file.
 func (m memDB) allSlotRefs(ctx context.Context) []slotRef {
 	if m.db == nil {

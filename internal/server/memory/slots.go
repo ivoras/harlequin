@@ -98,6 +98,16 @@ func (s *Store) indexSlot(ctx context.Context, userDB *sql.DB, memID, content st
 	if !ok {
 		return slotextract.Slot{}, false
 	}
+	// An attribute must not live in both shared and personal memory. The
+	// explicit slot_key write path refuses such writes up front (memory_write);
+	// extracted slots enforce the same invariant here by keeping the memory but
+	// not indexing a slot that duplicates one in the other scope.
+	scope, _, _ := decodeID(memID)
+	if scope == scopeUser || scope == scopeShared {
+		if m, err := s.CrossScopeSlot(ctx, userDB, scope, slot.Key); err == nil && m != nil {
+			return slotextract.Slot{}, false
+		}
+	}
 	s.storeSlot(ctx, userDB, memID, slot)
 	return slot, true
 }
