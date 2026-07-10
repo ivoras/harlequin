@@ -99,7 +99,7 @@
   async function viewDoc(d: Document) {
     if (FILE_MIME.has(d.mime)) {
       try {
-        const blob = await api.fetchDocumentFile(d.id, d.scope ?? "", docProjectID(d));
+        const { blob } = await api.fetchDocumentFile(d.id, d.scope ?? "", docProjectID(d));
         const url = URL.createObjectURL(blob);
         window.open(url, "_blank", "noopener");
         setTimeout(() => URL.revokeObjectURL(url), 60_000);

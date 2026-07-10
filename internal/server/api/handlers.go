@@ -968,6 +968,12 @@ func (s *Server) handleGetDocumentFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if mime != "" {
+		// Stored text is always UTF-8; without an explicit charset a browser
+		// viewing the served file (e.g. via a blob: URL) falls back to
+		// windows-1252 and mangles anything beyond ASCII.
+		if strings.HasPrefix(mime, "text/") {
+			mime += "; charset=utf-8"
+		}
 		w.Header().Set("Content-Type", mime)
 	}
 	w.Header().Set("Content-Disposition", "inline; filename=\""+documents.AsciiName(title)+"\"")

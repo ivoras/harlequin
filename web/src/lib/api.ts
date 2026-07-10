@@ -200,15 +200,17 @@ export const api = {
   },
   getDocChunk: (cid: string, projectID = 0) =>
     req<DocChunkInfo>("GET", `/documents/chunk/${q(cid)}${projectID ? `?project=${projectID}` : ""}`),
-  // fetchDocumentFile returns the stored original as a Blob (auth rides in the
-  // header; the caller turns it into an object URL to open in a new window).
-  fetchDocumentFile: async (id: number, scope: string, projectID = 0): Promise<Blob> => {
+  // fetchDocumentFile returns the stored original as a Blob plus the server's
+  // suggested filename (auth rides in the header; the caller turns the blob
+  // into an object URL to open in a new window, or into a download).
+  fetchDocumentFile: async (id: number, scope: string, projectID = 0): Promise<{ blob: Blob; filename: string }> => {
     const v = new URLSearchParams();
     if (scope) v.set("scope", scope);
     if (projectID) v.set("project", String(projectID));
     const res = await fetch(apiUrl(`/documents/${id}/file?${v}`), { headers: authHeaders() });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-    return res.blob();
+    const filename = /filename="([^"]*)"/.exec(res.headers.get("Content-Disposition") || "")?.[1] || "";
+    return { blob: await res.blob(), filename };
   },
   // getDocumentContent returns a TXT-type document's full text (documents with
   // no stored original file, e.g. save_doc reports) — use fetchDocumentFile

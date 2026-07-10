@@ -39,6 +39,40 @@
     const el = (e.target as HTMLElement)?.closest?.(".cite");
     return el instanceof HTMLElement ? el : null;
   }
+  // openDocBlob opens a fetched document in a new tab via a blob: URL. Text
+  // blobs get a UTF-8 BOM prepended: browsers ignore the charset parameter of
+  // a blob's MIME type when navigating to it and fall back to windows-1252, so
+  // the BOM is the only encoding signal that reliably survives.
+  function openDocBlob(blob: Blob, anchor = "") {
+    const b = blob.type.startsWith("text/") ? new Blob(["\uFEFF", blob], { type: blob.type }) : blob;
+    const url = URL.createObjectURL(b);
+    window.open(url + anchor, "_blank", "noopener");
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+
+  // --- Document viewer sidebar: text documents (markdown save_doc reports,
+  // plain-text ingests) render client-side instead of opening as a raw blob
+  // tab; PDFs/DOCX still open in a new tab for the browser/OS to handle. ---
+  let docView = $state<{ title: string; text: string; blob: Blob; filename: string } | null>(null);
+  async function showTextDoc(blob: Blob, title: string, filename: string) {
+    const text = (await blob.text()).replace(/^\uFEFF/, "");
+    const name = filename || title || "document";
+    docView = { title: title || filename || "document", text, blob, filename: /\.\w+$/.test(name) ? name : name + ".md" };
+  }
+  // openDoc routes a fetched document: text into the sidebar, the rest into a tab.
+  async function openDoc(file: { blob: Blob; filename: string }, title: string, anchor = "") {
+    if (file.blob.type.startsWith("text/")) await showTextDoc(file.blob, title, file.filename);
+    else openDocBlob(file.blob, anchor);
+  }
+  function downloadDoc() {
+    if (!docView) return;
+    const url = URL.createObjectURL(docView.blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = docView.filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
   async function onCiteHover(e: Event) {
     const el = citeTarget(e);
     const cid = el?.dataset.cite;
@@ -64,11 +98,9 @@
         return;
       }
       const projectID = info.scope === "project" ? sc.currentProjectID : 0;
-      const blob = await api.fetchDocumentFile(info.document_id, info.scope, projectID);
-      const url = URL.createObjectURL(blob);
+      const file = await api.fetchDocumentFile(info.document_id, info.scope, projectID);
       const anchor = info.mime === "application/pdf" && info.page ? `#page=${info.page}` : "";
-      window.open(url + anchor, "_blank", "noopener");
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      await openDoc(file, info.title || "", anchor);
     } catch (err) {
       toast((err as Error).message, "error");
     }
@@ -94,17 +126,12 @@
     if (!scope || !id) return;
     const projectID = scope === "project" ? sc.currentProjectID : 0;
     try {
-      const blob = await api.fetchDocumentFile(id, scope, projectID);
-      const url = URL.createObjectURL(blob);
-      window.open(url, "_blank", "noopener");
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      const file = await api.fetchDocumentFile(id, scope, projectID);
+      await openDoc(file, ref);
     } catch {
       try {
         const res = await api.getDocumentContent(id, scope, projectID);
-        const blob = new Blob([res.content], { type: "text/plain;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        window.open(url, "_blank", "noopener");
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        await showTextDoc(new Blob([res.content], { type: "text/markdown;charset=utf-8" }), ref, "");
       } catch (err) {
         toast((err as Error).message || `couldn't open ${ref}`, "error");
       }
@@ -345,6 +372,23 @@
     </div>
   </div>
 
+  {#if docView}
+    <div class="scrim" role="presentation" onclick={() => (docView = null)}></div>
+    <aside class="sheet right docview">
+      <header>
+        <strong class="doctitle" title={docView.title}>{docView.title}</strong>
+        <span class="spacer"></span>
+        <button class="ghost small" title="Open the raw file in a new tab" onclick={() => docView && openDocBlob(docView.blob)}>Raw ↗</button>
+        <button class="ghost small" title="Download the original markdown" onclick={downloadDoc}>Download ⬇</button>
+        <button class="ghost" onclick={() => (docView = null)}>Close</button>
+      </header>
+      <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
+      <div class="body md" onclick={(e) => { onCiteClick(e); onDocrefClick(e); onCodeCopy(e); }}>
+        {@html renderMarkdown(docView.text)}
+      </div>
+    </aside>
+  {/if}
+
   {#if showHelp}
     <div class="scrim" role="presentation" onclick={() => (showHelp = false)}></div>
     <aside class="sheet bottom">
@@ -401,6 +445,10 @@
 
 <style>
   .chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .docview { width: min(760px, 94vw); }
+  .docview .doctitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .docview header button { flex-shrink: 0; }
+  .docview .body { word-break: break-word; }
   .messages { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px 0 12px; }
   .msg.user { display: flex; justify-content: flex-end; }
   .bubble { background: linear-gradient(to bottom, var(--surface-3), var(--surface-2));
