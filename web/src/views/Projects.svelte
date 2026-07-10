@@ -15,7 +15,7 @@
   let uploading = $state(false);
   let title = $state("");
   let content = $state("");
-  let fileEl: HTMLInputElement | undefined;
+  let fileEl = $state<HTMLInputElement>();
 
   onMount(async () => {
     try {
