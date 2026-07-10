@@ -438,7 +438,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 				}
 				var sb strings.Builder
 				for _, d := range docs {
-					fmt.Fprintf(&sb, "- %s.%d %q · %d sections · %s", scopeLetter(d.Scope), d.ID, d.Title, d.Chunks, d.CreatedAt.Format("2006-01-02"))
+					fmt.Fprintf(&sb, "- %s.%d %q · %s · %d sections · %s", scopeLetter(d.Scope), d.ID, d.Title, docTypeLabel(d), d.Chunks, d.CreatedAt.Format("2006-01-02"))
 					if d.Description != "" {
 						fmt.Fprintf(&sb, " — %s", d.Description)
 					}
@@ -557,7 +557,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 					return sb.String(), nil
 				}
 				doc, err := a.Docs.IngestInto(ctx, db, types.CreateDocumentRequest{
-					Title: title, URI: "agent://save_doc", Mime: "text/plain", Content: content,
+					Title: title, URI: "agent://save_doc", Mime: "text/markdown", Content: content,
 				}, rc.userID)
 				if err != nil {
 					return "", err
@@ -790,7 +790,7 @@ func (a *Agent) storeSavedDocFile(ctx context.Context, db *sql.DB, scope string,
 		log.Printf("save_doc: persist file: %v", err)
 		return
 	}
-	name := fmt.Sprintf("%d-%s.txt", doc.ID, documents.AsciiName(doc.Title))
+	name := fmt.Sprintf("%d-%s.md", doc.ID, documents.AsciiName(doc.Title))
 	if werr := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); werr != nil {
 		log.Printf("save_doc: write file %q: %v", name, werr)
 		return
@@ -1005,6 +1005,29 @@ func (a *Agent) resolveMemoryRef(ctx context.Context, rc *runContext, args map[s
 		return ref, ""
 	}
 	return "", "error: id or slot_key is required (from memory_search or /memory)"
+}
+
+// docTypeLabel renders a document's format (e.g. "PDF", "DOCX", "TXT") from
+// its original filename's extension, falling back to the MIME type for
+// documents ingested as raw text (no file).
+func docTypeLabel(d types.Document) string {
+	if ext := strings.TrimPrefix(filepath.Ext(d.OriginalName), "."); ext != "" {
+		return strings.ToUpper(ext)
+	}
+	switch d.Mime {
+	case "text/markdown":
+		return "MD"
+	case "text/plain", "":
+		return "TXT"
+	case "application/pdf":
+		return "PDF"
+	case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+		return "DOCX"
+	}
+	if i := strings.LastIndex(d.Mime, "/"); i >= 0 {
+		return strings.ToUpper(d.Mime[i+1:])
+	}
+	return strings.ToUpper(d.Mime)
 }
 
 func memoryRefError(err error, kind, value string) string {
