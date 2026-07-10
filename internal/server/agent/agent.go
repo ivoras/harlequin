@@ -44,6 +44,9 @@ type Agent struct {
 	MCP        *mcp.Manager
 	// Cron, if set, lets the agent schedule/list/delete the user's cron jobs.
 	Cron CronStore
+	// Projects, if set, lets the search tools reach every project the user is
+	// a member of (the all_projects option), not just the session's own.
+	Projects ProjectLister
 	// Notify, if set, lets background tasks (e.g. the auto-titler) raise
 	// notifications for the client.
 	Notify *notify.Store
@@ -100,6 +103,12 @@ type Agent struct {
 type EmitFunc func(types.StreamEvent)
 
 // runContext carries per-request state.
+// ProjectLister yields the projects a user is a member of (satisfied by
+// project.Store); the search tools use it for the all_projects option.
+type ProjectLister interface {
+	List(ctx context.Context, userID int64) ([]types.Project, error)
+}
+
 type runContext struct {
 	sessionID      int64
 	userID         int64

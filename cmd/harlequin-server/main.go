@@ -248,6 +248,7 @@ func main() {
 		MemDefaultTTL:       cfg.Memory.DefaultTTL.D(),
 		DataDir:             cfg.DataDir,
 		Cron:                cronStore,
+		Projects:            projectStore,
 		Notify:              notifyStore,
 		NotifyDispatch:      dispatch,
 		Presence:            presenceTracker,
