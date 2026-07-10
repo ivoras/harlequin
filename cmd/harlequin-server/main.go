@@ -311,10 +311,6 @@ func main() {
 	// Queue onboarding for any existing users who still need it.
 	srv.SweepOnboarding(context.Background())
 
-	// One-time cleanup: drop personal memories that duplicate a shared slot (an
-	// attribute may not live in both scopes). Backgrounded — it may call the LLM.
-	go srv.SweepCrossScopeSlots(context.Background())
-
 	// Backfill catalogue descriptions for documents that have none (their
 	// at-upload attempt lost to model contention). Backgrounded LLM work.
 	go srv.SweepDocumentDescriptions(context.Background())
