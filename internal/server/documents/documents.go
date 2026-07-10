@@ -485,6 +485,12 @@ type ScopeDB struct {
 }
 
 func scopePrefix(scope string) string {
+	// A qualified project scope ("project:<id>", from an all-projects search)
+	// renders as p<id> so references stay unambiguous across projects; the
+	// session's own project keeps the plain p.
+	if id, ok := strings.CutPrefix(scope, ScopeProject+":"); ok {
+		return "p" + id
+	}
 	switch scope {
 	case ScopePersonal:
 		return "u"
@@ -493,6 +499,13 @@ func scopePrefix(scope string) string {
 	default:
 		return "s"
 	}
+}
+
+// ProjectScope returns the qualified scope label for a specific project's
+// corpus, used when searching projects beyond the session's own. Chunk and
+// document references under it render as d.p<id>.N / p<id>.N.
+func ProjectScope(projectID int64) string {
+	return ScopeProject + ":" + strconv.FormatInt(projectID, 10)
 }
 
 // ScopesFor builds the corpus list for a request: the active project (if any),

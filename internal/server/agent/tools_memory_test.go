@@ -45,3 +45,31 @@ func TestRenderDocResultsHeaderAndSource(t *testing.T) {
 		t.Fatalf("got %q", out)
 	}
 }
+
+func TestQualifiedProjectRefs(t *testing.T) {
+	t.Parallel()
+	// parseDocRefs: p<id>.N resolves to that project's qualified scope.
+	byScope, errMsg := parseDocRefs([]string{"p3.17", "p.4", "u.2", "d.p12.9"})
+	if errMsg != "" {
+		t.Fatalf("unexpected error: %s", errMsg)
+	}
+	if got := byScope["project:3"]; len(got) != 1 || got[0] != 17 {
+		t.Fatalf("project:3 docs = %v, want [17]", got)
+	}
+	if got := byScope["project:12"]; len(got) != 1 || got[0] != 9 {
+		t.Fatalf("project:12 docs = %v, want [9]", got)
+	}
+	if got := byScope["project"]; len(got) != 1 || got[0] != 4 {
+		t.Fatalf("project docs = %v, want [4]", got)
+	}
+	if _, errMsg = parseDocRefs([]string{"px.1"}); errMsg == "" {
+		t.Fatal("px.1 should be rejected")
+	}
+	// scopeLetter round-trips the qualified scope back to the p<id> prefix.
+	if got := scopeLetter("project:3"); got != "p3" {
+		t.Fatalf("scopeLetter(project:3) = %q, want p3", got)
+	}
+	if got := scopeLetter("project"); got != "p" {
+		t.Fatalf("scopeLetter(project) = %q, want p", got)
+	}
+}

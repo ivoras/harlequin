@@ -651,6 +651,10 @@ func docRef(d *docalign.Doc) string {
 }
 
 func scopeLetter(scope string) string {
+	// Qualified project scope ("project:<id>", all-projects search) → p<id>.
+	if id, ok := strings.CutPrefix(scope, documents.ScopeProject+":"); ok {
+		return "p" + id
+	}
 	switch scope {
 	case documents.ScopePersonal:
 		return "u"
@@ -835,7 +839,12 @@ func parseDocRefs(refs []string) (map[string][]int64, string) {
 		case "p":
 			scope = documents.ScopeProject
 		default:
-			return nil, fmt.Sprintf("error: unknown scope %q in %q (want u.N, s.N or p.N)", parts[0], ref)
+			// p<id>: a specific project's corpus (all-projects search).
+			pid, perr := strconv.ParseInt(strings.TrimPrefix(parts[0], "p"), 10, 64)
+			if !strings.HasPrefix(parts[0], "p") || perr != nil || pid <= 0 {
+				return nil, fmt.Sprintf("error: unknown scope %q in %q (want u.N, s.N, p.N or p<project>.N)", parts[0], ref)
+			}
+			scope = documents.ProjectScope(pid)
 		}
 		out[scope] = append(out[scope], id)
 	}

@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -353,7 +354,35 @@ func (s *Store) Search(ctx context.Context, userDB *sql.DB, query string, userID
 // SearchFused searches the user + shared + project memories together (used in a
 // project session), so a member's results draw on all three scopes.
 func (s *Store) SearchFused(ctx context.Context, userDB, projDB *sql.DB, query string, userID int64, limit int) ([]types.SearchResult, error) {
-	return s.searchTuned(ctx, userDB, projDB, query, userID, "", limit, s.slotSearchWeight)
+	return s.SearchFusedAcross(ctx, userDB, projDB, nil, query, userID, limit)
+}
+
+// SearchFusedAcross is SearchFused extended with additional project corpora
+// (all-projects search): foreign maps a project id to its open database, and
+// hits from those corpora carry qualified p<id>.N memory ids. The session's
+// own project (projDB, may be nil) keeps plain p.N ids.
+func (s *Store) SearchFusedAcross(ctx context.Context, userDB, projDB *sql.DB, foreign map[int64]*sql.DB, query string, userID int64, limit int) ([]types.SearchResult, error) {
+	if limit <= 0 {
+		limit = 8
+	}
+	var blob any
+	if b, err := s.embedQuery(ctx, query); err == nil {
+		blob = b
+	}
+	mems := s.scopesWith("", userDB, projDB)
+	for id, db := range foreign {
+		if db != nil {
+			mems = append(mems, memDB{db: db, scope: scopeProject + ":" + strconv.FormatInt(id, 10)})
+		}
+	}
+	ranks := map[string]float64{}
+	contents := map[string]string{}
+	for _, m := range mems {
+		m.search(ctx, query, blob, limit, s.ftsWeight, s.vectorWeight, s.slotSearchWeight, s.searchMaxDist, ranks, contents)
+	}
+	out := topN(ranks, contents, limit)
+	s.attachSlotsAcross(ctx, userDB, projDB, mems, out)
+	return out, nil
 }
 
 // SearchTuned is Search with an additional slot-key RRF leg, weighted by
@@ -386,19 +415,43 @@ func (s *Store) searchTuned(ctx context.Context, userDB, projDB *sql.DB, query s
 // attachSlotsToResults fills SlotKeys on search hits with every slot key the
 // memory carries.
 func (s *Store) attachSlotsToResults(ctx context.Context, userDB, projDB *sql.DB, results []types.SearchResult) {
+	s.attachSlotsAcross(ctx, userDB, projDB, nil, results)
+}
+
+// attachSlotsAcross is attachSlotsToResults for a result set that may include
+// qualified project ids (p<id>.N); mems supplies the open databases those ids
+// resolve against, matched by scope.
+func (s *Store) attachSlotsAcross(ctx context.Context, userDB, projDB *sql.DB, mems []memDB, results []types.SearchResult) {
+	byScope := map[string]memDB{}
+	for _, m := range mems {
+		byScope[m.scope] = m
+	}
 	for i, r := range results {
 		scope, local, ok := decodeID(r.ID)
 		if !ok {
-			continue
-		}
-		var m memDB
-		if scope == scopeProject {
-			if projDB == nil {
+			// Qualified project id: recover the scope from its p<id> prefix.
+			prefix, num, found := strings.Cut(r.ID, ".")
+			if !found || len(prefix) < 2 || prefix[0] != 'p' {
 				continue
 			}
+			scope = scopeProject + ":" + prefix[1:]
+			if local, _ = strconv.ParseInt(num, 10, 64); local <= 0 {
+				continue
+			}
+		}
+		var m memDB
+		switch {
+		case scope == scopeProject && projDB != nil:
 			m = s.projectMem(projDB)
-		} else {
+		case scope == scopeProject:
+			continue
+		case scope == scopeUser || scope == scopeShared:
 			m = s.memFor(scope, userDB)
+		default:
+			var okScope bool
+			if m, okScope = byScope[scope]; !okScope {
+				continue
+			}
 		}
 		for _, slot := range m.slotsForMemory(ctx, local) {
 			results[i].SlotKeys = append(results[i].SlotKeys, slot.Key)
@@ -519,8 +572,7 @@ func (m memDB) collectVec(ctx context.Context, query string, args []any, weight,
 func topN(ranks map[string]float64, contents map[string]string, limit int) []types.SearchResult {
 	out := make([]types.SearchResult, 0, len(ranks))
 	for id, score := range ranks {
-		sc, _, _ := decodeID(id)
-		out = append(out, types.SearchResult{ID: id, Content: contents[id], Score: score, Scope: PublicScope(sc)})
+		out = append(out, types.SearchResult{ID: id, Content: contents[id], Score: score, Scope: publicScopeOf(id)})
 	}
 	for i := 0; i < len(out); i++ {
 		max := i

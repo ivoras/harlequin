@@ -47,23 +47,30 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 	reg := map[string]toolEntry{}
 
 	reg["memory_search"] = toolEntry{
-		def: fnTool("memory_search", "Search the user's and shared memory and finds remembered facts, preferences, habits and information about the user and their environment. Each hit includes composite id (u.N/s.N) and slot_key when present — use those with memory_change or memory_delete.", map[string]any{
+		def: fnTool("memory_search", "Search the user's and shared memory and finds remembered facts, preferences, habits and information about the user and their environment. Each hit includes composite id (u.N/s.N) and slot_key when present — use those with memory_change or memory_delete. Pass all_projects: true to also search the memories of every project the user is a member of (hits there are labelled p<project>.N, e.g. p3.5, and are read-only from this session).", map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"query": map[string]any{"type": "string"},
+				"all_projects": map[string]any{"type": "boolean",
+					"description": "Also search every project the user is a member of, not only the session's own"},
 			},
 			"required": []string{"query"},
 		}),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 			q, _ := args["query"].(string)
-			var res []types.SearchResult
-			var err error
-			if rc.projectDB != nil {
-				// Project session: fuse user + shared + project memories.
-				res, err = a.Memory.SearchFused(ctx, rc.userDB, rc.projectDB, q, rc.userID, 6)
-			} else {
-				res, err = a.Memory.Search(ctx, rc.userDB, q, rc.userID, "", 6)
+			var legend string
+			foreignDBs := map[int64]*sql.DB{}
+			if argBool(args, "all_projects", false) {
+				foreign, closeAll := a.openForeignProjects(ctx, rc)
+				defer closeAll()
+				for _, f := range foreign {
+					foreignDBs[f.id] = f.db
+				}
+				legend = projectLegend(foreign)
 			}
+			// Fuses user + shared (+ the session's project, + any foreign
+			// projects) memories; rc.projectDB is nil outside a project session.
+			res, err := a.Memory.SearchFusedAcross(ctx, rc.userDB, rc.projectDB, foreignDBs, q, rc.userID, 6)
 			if err != nil {
 				return "", err
 			}
@@ -72,7 +79,7 @@ func (a *Agent) buildTools(ctx context.Context, rc *runContext) map[string]toolE
 			for _, r := range res {
 				rc.memRecalled = appendUnique(rc.memRecalled, r.ID)
 			}
-			return renderResults(res), nil
+			return legend + renderResults(res), nil
 		},
 	}
 
@@ -489,12 +496,14 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 			},
 		}
 		reg["search_docs"] = toolEntry{
-			def: fnTool("search_docs", `Search the organisation document corpus (RAG) — personal, shared, and (in a project session) project documents. Results are ranked chunks labelled with scope and document chunk id (d.u.N / d.s.N / d.p.N). Pass docs (scoped ids from list_documents, e.g. ["p.3","p.4"]) to search only within those documents — do this whenever the user asks about a specific document or compares specific documents. If the first query returns irrelevant or empty results, retry with synonyms and related terms (e.g. HQ → headquarters, seat, Brussels) before concluding the corpus lacks the answer.`, map[string]any{
+			def: fnTool("search_docs", `Search the organisation document corpus (RAG) — personal, shared, and (in a project session) project documents. Results are ranked chunks labelled with scope and document chunk id (d.u.N / d.s.N / d.p.N). Pass docs (scoped ids from list_documents, e.g. ["p.3","p.4"]) to search only within those documents — do this whenever the user asks about a specific document or compares specific documents. Pass all_projects: true to additionally search every project you are a member of (hits there are labelled d.p<project>.N, e.g. d.p3.17) — use it when the user asks where something is written down and the current scopes come up empty, or explicitly asks across projects. If the first query returns irrelevant or empty results, retry with synonyms and related terms (e.g. HQ → headquarters, seat, Brussels) before concluding the corpus lacks the answer.`, map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"query": map[string]any{"type": "string"},
 					"docs": map[string]any{"type": "array", "items": map[string]any{"type": "string"},
 						"description": "Optional scoped document ids to restrict the search to, e.g. [\"p.3\",\"p.4\"]"},
+					"all_projects": map[string]any{"type": "boolean",
+						"description": "Also search every project the user is a member of, not only the session's own"},
 				},
 				"required": []string{"query"},
 			}),
@@ -507,11 +516,21 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 				// Fuse the org corpus with the user's personal docs and, in a
 				// project session, the project corpus (rc.projectDB is set only
 				// then). Results are scope-labelled.
-				res, err := a.Docs.SearchScopedDocs(ctx, a.Docs.ScopesFor(rc.userDB, rc.projectDB), q, 6, docsByScope)
+				scopes := a.Docs.ScopesFor(rc.userDB, rc.projectDB)
+				var legend string
+				if argBool(args, "all_projects", false) {
+					foreign, closeAll := a.openForeignProjects(ctx, rc)
+					defer closeAll()
+					for _, f := range foreign {
+						scopes = append(scopes, documents.ScopeDB{Scope: documents.ProjectScope(f.id), DB: f.db})
+					}
+					legend = projectLegend(foreign)
+				}
+				res, err := a.Docs.SearchScopedDocs(ctx, scopes, q, 6, docsByScope)
 				if err != nil {
 					return "", err
 				}
-				return renderDocResults(res), nil
+				return legend + renderDocResults(res), nil
 			},
 		}
 	}
@@ -1005,6 +1024,58 @@ func (a *Agent) resolveMemoryRef(ctx context.Context, rc *runContext, args map[s
 		return ref, ""
 	}
 	return "", "error: id or slot_key is required (from memory_search or /memory)"
+}
+
+// foreignProject is another project the user belongs to (beyond the session's
+// own), opened read-only for the duration of an all-projects search.
+type foreignProject struct {
+	id   int64
+	name string
+	db   *sql.DB
+}
+
+// openForeignProjects opens every project the user is a member of except the
+// session's own. The returned closer must be called when the search is done
+// (project databases are not kept open across requests). Best-effort: a
+// project that fails to open is skipped.
+func (a *Agent) openForeignProjects(ctx context.Context, rc *runContext) ([]foreignProject, func()) {
+	noop := func() {}
+	if a.Projects == nil || a.Storage == nil {
+		return nil, noop
+	}
+	projs, err := a.Projects.List(ctx, rc.userID)
+	if err != nil {
+		return nil, noop
+	}
+	var out []foreignProject
+	for _, p := range projs {
+		if p.ID == rc.projectID {
+			continue
+		}
+		pdb, err := a.Storage.OpenProjectReadOnly(ctx, p.ID)
+		if err != nil {
+			continue
+		}
+		out = append(out, foreignProject{id: p.ID, name: p.Name, db: pdb})
+	}
+	return out, func() {
+		for _, f := range out {
+			_ = f.db.Close()
+		}
+	}
+}
+
+// projectLegend names each qualified project prefix for the model, e.g.
+// "Other projects searched: p3 = «Alpha», p5 = «Beta»."
+func projectLegend(foreign []foreignProject) string {
+	if len(foreign) == 0 {
+		return "Other projects searched: none (you are not a member of any other project).\n"
+	}
+	parts := make([]string, len(foreign))
+	for i, f := range foreign {
+		parts[i] = fmt.Sprintf("p%d = «%s»", f.id, f.name)
+	}
+	return "Other projects searched: " + strings.Join(parts, ", ") + ". When citing results from them, name the project in your answer.\n"
 }
 
 // docTypeLabel renders a document's format (e.g. "PDF", "DOCX", "TXT") from

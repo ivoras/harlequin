@@ -201,6 +201,19 @@ func (m *Manager) WithProjectReadOnly(ctx context.Context, projectID int64, fn f
 	return fn(pdb)
 }
 
+// OpenProjectReadOnly opens a project's database read-only and returns the
+// handle; the caller must Close it. For call sites that hold several project
+// databases open at once (e.g. an all-projects search), where the
+// closure-based WithProjectReadOnly can't nest cleanly.
+func (m *Manager) OpenProjectReadOnly(ctx context.Context, projectID int64) (*sql.DB, error) {
+	if _, ok := m.initedProject.Load(projectID); !ok {
+		if err := m.WithProject(ctx, projectID, func(*sql.DB) error { return nil }); err != nil {
+			return nil, err
+		}
+	}
+	return db.OpenReadOnly(m.ProjectDBPath(projectID))
+}
+
 // EachProject opens every project's database in turn and invokes fn (cross-project
 // maintenance). Errors from fn stop the iteration.
 func (m *Manager) EachProject(ctx context.Context, fn func(projectID int64, projDB *sql.DB) error) error {
