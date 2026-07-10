@@ -226,6 +226,13 @@ func (ls *liveSession) runTurn(content string) {
 	if err != nil && turnCtx.Err() == nil {
 		ls.emit(types.StreamEvent{Type: types.SSEError, Error: err.Error()})
 	}
+	// Run emits SSEDone only on success, but clients end the turn only on
+	// SSEDone — without one after a failed (or interrupted) turn they keep the
+	// spinner up and queue every subsequent prompt against a session that is
+	// actually free.
+	if err != nil {
+		ls.emit(types.StreamEvent{Type: types.SSEDone})
+	}
 }
 
 // emit assigns a sequence number, appends to the turn buffer, and fans the event
