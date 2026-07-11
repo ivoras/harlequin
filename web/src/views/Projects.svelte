@@ -156,7 +156,7 @@
 
       <div class="card col">
         <div class="row" style="align-items:center; gap:8px;">
-          <input type="file" accept=".pdf,.txt,.md,application/pdf,text/plain" bind:this={fileEl} onchange={upload} disabled={uploading} />
+          <input type="file" accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" bind:this={fileEl} onchange={upload} disabled={uploading} />
           {#if uploading}<span class="muted small">extracting & ingesting…</span>{/if}
         </div>
         <div class="muted small">Upload a PDF or text file into this project's corpus.</div>

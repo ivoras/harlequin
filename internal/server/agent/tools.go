@@ -9,7 +9,9 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -124,13 +126,15 @@ scope "shared" (org-wide, owner/admin only): organisation identity and org-wide 
 
 scope "user" (default): personal preferences and habits, private or sensitive information, facts about this individual only ("User prefers …", "I like …"). If unsure and you are not owner/admin, use user.
 
+scope "project" (project sessions only; the default there): facts about the project itself — decisions, conventions, deadlines — visible to every member. In a project session, only use "user"/"shared" when the fact is clearly not project-specific.
+
 Only owner/admin may use shared. When you are owner/admin and the user states an org-wide fact, prefer shared over user.
 
 Optionally pass slot_key to file the fact under an exact attribute key (e.g. "user.preferred_currency"); the content is then stored as that slot's value verbatim and no conflict check runs. Omit slot_key for normal free-text facts.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"content":  map[string]any{"type": "string"},
-				"scope":    map[string]any{"type": "string", "enum": []string{"user", "shared"}},
+				"scope":    map[string]any{"type": "string", "enum": []string{"user", "shared", "project"}},
 				"slot_key": map[string]any{"type": "string", "description": "Optional exact slot key, e.g. user.name; content becomes its value."},
 			},
 			"required": []string{"content"},
@@ -141,7 +145,10 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 			// In a project session, a fact with no explicit scope goes to the shared
 			// project memory (any member may write it). The model can still target
 			// "user"/"shared" explicitly.
-			if rc.projectDB != nil && scope == "" {
+			if scope == "project" && rc.projectDB == nil {
+				return "error: project scope is only available in a project session; use scope \"user\"", nil
+			}
+			if rc.projectDB != nil && (scope == "" || scope == "project") {
 				mem, err := a.Memory.ProjectAdd(ctx, rc.projectDB, content, "tool")
 				if err != nil {
 					return "", err
@@ -210,7 +217,7 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 	}
 
 	reg["memory_change"] = toolEntry{
-		def: fnTool("memory_change", `Replace the content of an existing memory (same composite id; scope unchanged). Identify the memory by id (u.N or s.N) or slot_key (e.g. organisation.name) from memory_search or /memory — id is preferred if both are known. Use when the user corrects or updates a fact. Prefer this over memory_delete alone when a replacement is known.`, map[string]any{
+		def: fnTool("memory_change", `Replace the content of an existing memory (same composite id; scope unchanged). Identify the memory by id (u.N, s.N or — in a project session — p.N) or slot_key (e.g. organisation.name) from memory_search or /memory — id is preferred if both are known. Use when the user corrects or updates a fact. Prefer this over memory_delete alone when a replacement is known.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"id":       map[string]any{"type": "string", "description": "Composite memory id, e.g. s.4"},
@@ -227,6 +234,15 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 			content, _ := args["content"].(string)
 			if strings.TrimSpace(content) == "" {
 				return "error: content is required", nil
+			}
+			// Project memories ("p.<n>") live in the project DB.
+			if rc.projectDB != nil && strings.HasPrefix(id, "p.") {
+				mem, err := a.Memory.ProjectChange(ctx, rc.projectDB, id, content)
+				if err != nil {
+					return fmt.Sprintf("error: project memory %s not found", id), nil
+				}
+				rc.memWritten = append(rc.memWritten, content)
+				return fmt.Sprintf("Updated memory %s.", mem.ID), nil
 			}
 			mem, hits, err := a.Memory.ChangeWithConflicts(ctx, rc.userDB, id, content, rc.userID, rc.canShareMemory)
 			if err != nil {
@@ -250,7 +266,7 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 	}
 
 	reg["memory_delete"] = toolEntry{
-		def: fnTool("memory_delete", `Delete a memory by id (u.N/s.N) or slot_key from memory_search or /memory. Use when discarding a fact with no replacement, or after memory_change/memory_write stored the replacement. Never delete alone when the user asked to update a value.`, map[string]any{
+		def: fnTool("memory_delete", `Delete a memory by id (u.N/s.N, or p.N in a project session) or slot_key from memory_search or /memory. Use when discarding a fact with no replacement, or after memory_change/memory_write stored the replacement. Never delete alone when the user asked to update a value.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"id":       map[string]any{"type": "string", "description": "Composite memory id"},
@@ -458,7 +474,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 			def: fnTool("check_text", `Authoritatively check whether an exact phrase or keyword appears anywhere in ONE document — a literal, exhaustive scan, unlike search_docs (which ranks by relevance and can miss an exact phrase). Use this BEFORE asserting a section is "new", "removed", or "only in" one document/version: a heading-only sighting in an align_docs summary is not proof of absence elsewhere. Returns every matching chunk with a citation and surrounding snippet, or "not found".`, map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"doc":  map[string]any{"type": "string", "description": "Scoped document id to search within, e.g. \"p.6\""},
+					"doc":  map[string]any{"type": "string", "description": "Scoped document id to search within, e.g. \"p.6\" (or a specific project's doc, e.g. \"p3.17\")"},
 					"text": map[string]any{"type": "string", "description": "Exact phrase or keyword to look for (case-insensitive)"},
 				},
 				"required": []string{"doc", "text"},
@@ -472,7 +488,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 				if text == "" {
 					return "error: text is required", nil
 				}
-				db, dbErrMsg := a.docDBForScope(rc, doc.Scope)
+				db, dbErrMsg := a.docDBForScope(ctx, rc, doc.Scope)
 				if dbErrMsg != "" {
 					return dbErrMsg, nil
 				}
@@ -537,12 +553,12 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 
 	if a.Docs != nil {
 		reg["save_doc"] = toolEntry{
-			def: fnTool("save_doc", `Save a text you produced (a report, analysis, or summary worth keeping) as a document in the corpus, so it can be found later with search_docs. Keep any [d.x.N] citations in the content — they remain linked to their source documents. Omit scope unless the user asks: the default is right (the project corpus in a project session, else the user's personal documents).`, map[string]any{
+			def: fnTool("save_doc", `Save a text you produced (a report, analysis, or summary worth keeping) as a document in the corpus, so it can be found later with search_docs. Keep any [d.x.N] citations in the content — they remain linked to their source documents. Omit scope unless the user asks: the default is right (the project corpus in a project session, else the user's personal documents). Scope "shared" (org-wide, visible to all users) is available to owners/admins only.`, map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"title":   map[string]any{"type": "string", "description": "Document title, e.g. \"Comparison: Regulation 2025 vs 2026\""},
 					"content": map[string]any{"type": "string", "description": "The full text to save (Markdown)"},
-					"scope":   map[string]any{"type": "string", "enum": []string{"personal", "project"}},
+					"scope":   map[string]any{"type": "string", "enum": []string{"personal", "project", "shared"}},
 				},
 				"required": []string{"title", "content"},
 			}),
@@ -560,11 +576,17 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 					}
 				}
 				db := rc.userDB
-				if scope == documents.ScopeProject {
+				switch scope {
+				case documents.ScopeProject:
 					if rc.projectDB == nil {
 						return "error: project scope is only available in a project session; use scope \"personal\"", nil
 					}
 					db = rc.projectDB
+				case documents.ScopeShared:
+					if !rc.canShareMemory {
+						return "error: only owner or admin users can save shared documents; use scope \"personal\" instead, or ask an owner/admin.", nil
+					}
+					db = a.Docs.SharedDB()
 				}
 				if problems := a.VerifyCitedQuotes(ctx, rc, content); len(problems) > 0 {
 					var sb strings.Builder
@@ -574,6 +596,12 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 					}
 					sb.WriteString("Fix the citation(s) and call save_doc again.")
 					return sb.String(), nil
+				}
+				// Pin project chunk citations to this project (d.p.N → d.p<id>.N):
+				// a bare p resolves against the READER's session project, so a
+				// report opened from another context would mis-link its sources.
+				if rc.projectID != 0 {
+					content = pinProjectCitations(content, rc.projectID)
 				}
 				doc, err := a.Docs.IngestInto(ctx, db, types.CreateDocumentRequest{
 					Title: title, URI: "agent://save_doc", Mime: "text/markdown", Content: content,
@@ -1024,6 +1052,17 @@ func (a *Agent) resolveMemoryRef(ctx context.Context, rc *runContext, args map[s
 		return ref, ""
 	}
 	return "", "error: id or slot_key is required (from memory_search or /memory)"
+}
+
+// bareProjectCite matches an unqualified project chunk citation (d.p.N).
+var bareProjectCite = regexp.MustCompile(`\bd\.p\.(\d+)\b`)
+
+// pinProjectCitations qualifies bare project chunk citations with the project
+// they actually reference (d.p.N → d.p<id>.N), so they stay resolvable when
+// the document is read outside that project's session. Bare document refs
+// (p.N) are left alone — the same pattern is used for page numbers in prose.
+func pinProjectCitations(content string, projectID int64) string {
+	return bareProjectCite.ReplaceAllString(content, "d.p"+strconv.FormatInt(projectID, 10)+".$1")
 }
 
 // foreignProject is another project the user belongs to (beyond the session's

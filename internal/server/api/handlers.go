@@ -352,6 +352,25 @@ func (s *Server) handleSessionLog(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleListMemory(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	var mems []types.Memory
+	// scope=project&project=<id>: the project's shared memories (members only).
+	if r.URL.Query().Get("scope") == "project" {
+		projectID, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64)
+		if member, _ := s.Projects.IsMember(r.Context(), projectID, u.ID); !member {
+			writeErr(w, http.StatusForbidden, "not a member of this project")
+			return
+		}
+		err := s.Storage.WithProjectReadOnly(r.Context(), projectID, func(pdb *sql.DB) error {
+			var e error
+			mems, e = s.Memory.ProjectList(r.Context(), pdb, 200)
+			return e
+		})
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, mems)
+		return
+	}
 	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
 		var e error
 		mems, e = s.Memory.List(r.Context(), udb, u.ID, r.URL.Query().Get("scope"), 200)
@@ -472,6 +491,24 @@ func (s *Server) handleCreateMemory(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusForbidden, "only owner or admin can create shared memories")
 		return
 	}
+	if req.Scope == "project" {
+		if member, _ := s.Projects.IsMember(r.Context(), req.ProjectID, u.ID); !member {
+			writeErr(w, http.StatusForbidden, "not a member of this project")
+			return
+		}
+		var m *types.Memory
+		err := s.Storage.WithProject(r.Context(), req.ProjectID, func(pdb *sql.DB) error {
+			var e error
+			m, e = s.Memory.ProjectAdd(r.Context(), pdb, req.Content, req.Source)
+			return e
+		})
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, m)
+		return
+	}
 	var m *types.Memory
 	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
 		// AddWithConflicts records any conflicts so they surface via
@@ -514,6 +551,26 @@ func (s *Server) handlePatchMemory(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteMemory(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	id := chi.URLParam(r, "id")
+	// p.N + project=<id>: a project memory (members only).
+	if projectID, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64); projectID > 0 && strings.HasPrefix(id, "p.") {
+		if member, _ := s.Projects.IsMember(r.Context(), projectID, u.ID); !member {
+			writeErr(w, http.StatusForbidden, "not a member of this project")
+			return
+		}
+		err := s.Storage.WithProject(r.Context(), projectID, func(pdb *sql.DB) error {
+			return s.Memory.ProjectDelete(r.Context(), pdb, id)
+		})
+		if err != nil {
+			if errors.Is(err, memory.ErrNotFound) {
+				writeErr(w, http.StatusNotFound, "not found")
+				return
+			}
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		return
+	}
 	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
 		if e := s.Memory.Delete(r.Context(), udb, id, u.ID, types.IsElevated(u.Role)); e != nil {
 			return e
@@ -870,7 +927,7 @@ func (s *Server) handleGetDocChunk(w http.ResponseWriter, r *http.Request) {
 	cid := chi.URLParam(r, "cid")
 	parts := strings.Split(cid, ".")
 	if len(parts) != 3 || parts[0] != "d" {
-		writeErr(w, http.StatusBadRequest, "invalid chunk id (want d.u.N / d.s.N / d.p.N)")
+		writeErr(w, http.StatusBadRequest, "invalid chunk id (want d.u.N / d.s.N / d.p.N / d.p<project>.N)")
 		return
 	}
 	local, err := strconv.ParseInt(parts[2], 10, 64)
@@ -879,7 +936,17 @@ func (s *Server) handleGetDocChunk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var info *types.DocChunkInfo
-	switch parts[1] {
+	scopeToken := parts[1]
+	projectID, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64)
+	if len(scopeToken) > 1 && scopeToken[0] == 'p' {
+		// Qualified project citation (d.p<id>.N): the project id rides in the
+		// reference itself, overriding the session's project parameter.
+		if pid, err := strconv.ParseInt(scopeToken[1:], 10, 64); err == nil && pid > 0 {
+			projectID = pid
+			scopeToken = "p"
+		}
+	}
+	switch scopeToken {
 	case "u":
 		err = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
 			var e error
@@ -895,7 +962,6 @@ func (s *Server) handleGetDocChunk(w http.ResponseWriter, r *http.Request) {
 			info.Scope = documents.ScopeShared
 		}
 	case "p":
-		projectID, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64)
 		if member, _ := s.Projects.IsMember(r.Context(), projectID, u.ID); !member {
 			writeErr(w, http.StatusForbidden, "not a member of this project")
 			return
@@ -907,6 +973,7 @@ func (s *Server) handleGetDocChunk(w http.ResponseWriter, r *http.Request) {
 		})
 		if info != nil {
 			info.Scope = documents.ScopeProject
+			info.ProjectID = projectID
 		}
 	default:
 		writeErr(w, http.StatusBadRequest, "invalid chunk scope")

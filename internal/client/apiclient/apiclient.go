@@ -522,6 +522,13 @@ func (c *Client) ListMemory(ctx context.Context, scope string) ([]types.Memory, 
 	return out, c.do(ctx, http.MethodGet, path, nil, &out)
 }
 
+// ListProjectMemory returns a project's shared memories (members only).
+func (c *Client) ListProjectMemory(ctx context.Context, projectID int64) ([]types.Memory, error) {
+	var out []types.Memory
+	path := fmt.Sprintf("/memory?scope=project&project=%d", projectID)
+	return out, c.do(ctx, http.MethodGet, path, nil, &out)
+}
+
 // FindMemory returns full memory records matching the query (ranked best-first,
 // across the user's own and shared memories), shaped like a memory listing.
 func (c *Client) FindMemory(ctx context.Context, query string) ([]types.Memory, error) {

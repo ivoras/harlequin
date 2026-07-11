@@ -1048,8 +1048,21 @@ func (m *Model) handleMemorySub(args []string) tea.Cmd {
 		}
 	default:
 		scope := args[0]
+		if scope == "project" {
+			pid := m.activeProjectID
+			if pid == 0 {
+				return infoCmd("no active project — switch with /project use <name> first")
+			}
+			return func() tea.Msg {
+				mems, err := m.client.ListProjectMemory(context.Background(), pid)
+				if err != nil {
+					return errMsg{err}
+				}
+				return infoMsg{renderMemoryList(mems, m.canManageShared())}
+			}
+		}
 		if scope != "user" && scope != "shared" {
-			return infoCmd("usage: /memory [user|shared|find|show|del|conflicts|resolve]")
+			return infoCmd("usage: /memory [user|shared|project|find|show|del|conflicts|resolve]")
 		}
 		return func() tea.Msg {
 			mems, err := m.client.ListMemory(context.Background(), scope)

@@ -44,7 +44,7 @@ const (
 func (a *Agent) alignDocsEntry() toolEntry {
 	return toolEntry{
 		def: fnTool("align_docs", `Align two documents from the corpus so their differences can be analysed. Use mode "versions" for two revisions of the same text and mode "topical" for two different texts about the same subject. Documents are aligned at section level (e.g. per article), anchored on section headings; unchanged sections are skipped.
-Documents are referenced by scoped id: u.N (personal), s.N (shared), p.N (project), exactly as list_documents and search_docs show them; a bare N works when it is unambiguous.
+Documents are referenced by scoped id: u.N (personal), s.N (shared), p.N (project), p<project>.N (a specific project, e.g. p3.17 from an all-projects search), exactly as list_documents and search_docs show them; a bare N works when it is unambiguous.
 Call it first WITHOUT view to get the summary: which sections changed (most-different first), and which exist in only one document, each with a pair number "#N". For a narrow question (one article, one specific change), read the 1-4 most relevant pairs with view="pairs" and cursor=<#N> or filter="<keyword>". For a THEMATIC question spanning many sections (e.g. "what changed about funding", "how did oversight change", "which bodies were added/removed") — read every heading in the summary, pick every pair number whose heading plausibly relates to the theme (this can be 10-30+ pairs, do not under-select), and fetch them all with pairs="<comma-separated numbers, e.g. 9,12,16,19-22,44>" — one or a few pairs= calls, NOT one call per pair. filter also accepts several comma-separated terms (OR-matched) to gather a theme by keyword instead of by number. Analyse each returned pair (state the substantive difference, or that there is none) before fetching more. The alignment is deterministic: the same arguments always produce the same pairs and numbering.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -83,11 +83,11 @@ Call it first WITHOUT view to get the summary: which sections changed (most-diff
 			if len(docA.Sections) == 0 || len(docB.Sections) == 0 {
 				return "error: both documents must have indexed sections (one of them has none)", nil
 			}
-			dbA, errMsg := a.docDBForScope(rc, docA.Scope)
+			dbA, errMsg := a.docDBForScope(ctx, rc, docA.Scope)
 			if errMsg != "" {
 				return errMsg, nil
 			}
-			dbB, errMsg := a.docDBForScope(rc, docB.Scope)
+			dbB, errMsg := a.docDBForScope(ctx, rc, docB.Scope)
 			if errMsg != "" {
 				return errMsg, nil
 			}
@@ -665,30 +665,102 @@ func scopeLetter(scope string) string {
 	}
 }
 
+// closeForeignDBs releases any cross-project database handles the turn opened
+// while resolving p<id>.N references.
+func (rc *runContext) closeForeignDBs() {
+	for _, db := range rc.foreignProjDBs {
+		_ = db.Close()
+	}
+	rc.foreignProjDBs = nil
+}
+
+// projectDBFor returns an open handle to another project's database, lazily
+// opened read-only and cached on the runContext for the rest of the turn.
+// Membership is enforced. A non-empty second return value is a tool-facing
+// error.
+func (a *Agent) projectDBFor(ctx context.Context, rc *runContext, projectID int64) (*sql.DB, string) {
+	if projectID == rc.projectID && rc.projectDB != nil {
+		return rc.projectDB, ""
+	}
+	if db, ok := rc.foreignProjDBs[projectID]; ok {
+		return db, ""
+	}
+	if a.Projects == nil || a.Storage == nil {
+		return nil, "error: cross-project references are not available on this server"
+	}
+	member := false
+	if projs, err := a.Projects.List(ctx, rc.userID); err == nil {
+		for _, p := range projs {
+			if p.ID == projectID {
+				member = true
+				break
+			}
+		}
+	}
+	if !member {
+		return nil, fmt.Sprintf("error: project %d is not among the user's projects", projectID)
+	}
+	db, err := a.Storage.OpenProjectReadOnly(ctx, projectID)
+	if err != nil {
+		return nil, fmt.Sprintf("error: can't open project %d: %v", projectID, err)
+	}
+	if rc.foreignProjDBs == nil {
+		rc.foreignProjDBs = map[int64]*sql.DB{}
+	}
+	rc.foreignProjDBs[projectID] = db
+	return db, ""
+}
+
+// scopeForToken maps a reference's scope token (u, s, p, or p<id>) to its
+// scope label and database for this session. p<id> may reach another project
+// the user is a member of. A non-empty third return value is a tool-facing
+// error.
+func (a *Agent) scopeForToken(ctx context.Context, rc *runContext, token string) (string, *sql.DB, string) {
+	switch token {
+	case "u":
+		return documents.ScopePersonal, rc.userDB, ""
+	case "s":
+		return documents.ScopeShared, a.Docs.SharedDB(), ""
+	case "p":
+		if rc.projectDB == nil {
+			return "", nil, "error: p.N refers to the current project, but this is not a project session — use the qualified form p<project>.N"
+		}
+		return documents.ScopeProject, rc.projectDB, ""
+	}
+	if pid, err := strconv.ParseInt(strings.TrimPrefix(token, "p"), 10, 64); strings.HasPrefix(token, "p") && err == nil && pid > 0 {
+		if pid == rc.projectID && rc.projectDB != nil {
+			return documents.ScopeProject, rc.projectDB, ""
+		}
+		db, errMsg := a.projectDBFor(ctx, rc, pid)
+		if errMsg != "" {
+			return "", nil, errMsg
+		}
+		return documents.ProjectScope(pid), db, ""
+	}
+	return "", nil, fmt.Sprintf("error: unknown document scope %q (use u.N, s.N, p.N or p<project>.N)", token)
+}
+
 // loadDocRef resolves a model-supplied document reference ("u.12", "s.3",
-// "p.7", or a bare id) against the scopes available to this session and loads
-// the document. A non-empty second return value is a tool-facing error.
+// "p.7", "p3.7", or a bare id) against the scopes available to this session
+// (p<id> reaches other projects the user is a member of) and loads the
+// document. A non-empty second return value is a tool-facing error.
 func (a *Agent) loadDocRef(ctx context.Context, rc *runContext, ref string) (*docalign.Doc, string) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		return nil, "error: doc_a and doc_b are required (scoped document ids like u.12, s.3 or p.7)"
 	}
 	scopes := a.Docs.ScopesFor(rc.userDB, rc.projectDB)
-	byLetter := map[string]documents.ScopeDB{}
-	for _, sc := range scopes {
-		byLetter[scopeLetter(sc.Scope)] = sc
-	}
-	// Scoped form: <letter>.<id> (tolerate the chunk-id style "d.u.N" prefix).
+	// Scoped form: <token>.<id> (tolerate the chunk-id style "d.u.N" prefix).
 	if parts := strings.Split(strings.TrimPrefix(ref, "d."), "."); len(parts) == 2 {
-		sc, ok := byLetter[parts[0]]
-		if !ok {
-			return nil, fmt.Sprintf("error: unknown document scope %q in %q (use u.N, s.N or p.N)", parts[0], ref)
+		scope, db, errMsg := a.scopeForToken(ctx, rc, parts[0])
+		if errMsg != "" {
+			return nil, errMsg
 		}
 		id, err := strconv.ParseInt(parts[1], 10, 64)
 		if err != nil || id <= 0 {
 			return nil, fmt.Sprintf("error: bad document id in %q", ref)
 		}
-		d, err := docalign.LoadDoc(ctx, sc.DB, sc.Scope, id)
+		d, err := docalign.LoadDoc(ctx, db, scope, id)
 		if err != nil {
 			return nil, fmt.Sprintf("error: document %s not found", ref)
 		}
@@ -727,8 +799,9 @@ var quoteRE = regexp.MustCompile(`"([^"\n]{15,400})"`)
 
 // citeAfterRE matches a citation within a tight window right after a quote's
 // closing mark, so it can't accidentally pair with an unrelated citation
-// belonging to a different claim further down.
-var citeAfterRE = regexp.MustCompile(`^[^\[\n]{0,60}\[d\.([usp])\.(\d+)\]`)
+// belonging to a different claim further down. The scope token may be a
+// qualified project (p<id>, from an all-projects search).
+var citeAfterRE = regexp.MustCompile(`^[^\[\n]{0,60}\[d\.(u|s|p\d*)\.(\d+)\]`)
 
 // VerifyCitedQuotes enforces two things about every long quoted claim in
 // content: it must be cited, and the citation must be to the chunk that
@@ -758,17 +831,8 @@ func (a *Agent) VerifyCitedQuotes(ctx context.Context, rc *runContext, content s
 		if err != nil {
 			continue
 		}
-		var scope string
-		switch letter {
-		case "u":
-			scope = documents.ScopePersonal
-		case "p":
-			scope = documents.ScopeProject
-		default:
-			scope = documents.ScopeShared
-		}
-		db, errMsg := a.docDBForScope(rc, scope)
-		if errMsg != "" {
+		_, db, errMsg := a.scopeForToken(ctx, rc, letter)
+		if errMsg != "" || db == nil {
 			continue
 		}
 		chunkText, err := a.Docs.ChunkContent(ctx, db, id)
@@ -796,7 +860,16 @@ func normalizedContains(haystack, needle string) bool {
 
 // docDBForScope resolves the corpus DB backing a given scope label for this
 // session — the same mapping loadDocRef used to find the document originally.
-func (a *Agent) docDBForScope(rc *runContext, scope string) (*sql.DB, string) {
+// Qualified project scopes ("project:<id>") resolve through the turn's
+// cross-project cache.
+func (a *Agent) docDBForScope(ctx context.Context, rc *runContext, scope string) (*sql.DB, string) {
+	if idStr, ok := strings.CutPrefix(scope, documents.ScopeProject+":"); ok {
+		pid, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil || pid <= 0 {
+			return nil, fmt.Sprintf("error: bad project scope %q", scope)
+		}
+		return a.projectDBFor(ctx, rc, pid)
+	}
 	for _, sc := range a.Docs.ScopesFor(rc.userDB, rc.projectDB) {
 		if sc.Scope == scope {
 			return sc.DB, ""

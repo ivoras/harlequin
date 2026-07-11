@@ -166,13 +166,15 @@ export const api = {
     req<void>("PUT", withProject(`/skills/${q(name)}/files/${qpath(path)}`), { scope, content }),
 
   // memory
-  listMemory: (scope = "") => reqList<Memory>("GET", "/memory" + (scope ? `?scope=${q(scope)}` : "")),
+  listMemory: (scope = "", projectID = 0) =>
+    reqList<Memory>("GET", "/memory" + (scope ? `?scope=${q(scope)}${projectID ? `&project=${projectID}` : ""}` : "")),
   findMemory: (query: string) => reqList<Memory>("GET", `/memory/find?q=${q(query)}`),
   searchMemory: (query: string, scope = "") =>
     reqList<SearchResult>("GET", `/memory/search?q=${q(query)}${scope ? `&scope=${q(scope)}` : ""}`),
   getMemory: (id: string) => req<Memory>("GET", `/memory/${q(id)}`),
   createMemory: (r: CreateMemoryRequest) => req<Memory>("POST", "/memory", r),
-  deleteMemory: (id: string) => req<void>("DELETE", `/memory/${q(id)}`),
+  deleteMemory: (id: string, projectID = 0) =>
+    req<void>("DELETE", `/memory/${q(id)}${projectID ? `?project=${projectID}` : ""}`),
   listMemoryConflicts: () => reqList<MemoryConflict>("GET", "/memory/conflicts"),
   resolveMemoryConflict: (id: string) => req<void>("POST", `/memory/conflicts/${q(id)}/resolve`),
 

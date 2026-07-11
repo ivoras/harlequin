@@ -1,24 +1,29 @@
 <script lang="ts">
   import { api } from "../lib/api";
-  import { user, toast } from "../lib/stores";
+  import { user, activeProject, toast } from "../lib/stores";
   import { isElevated } from "../lib/types";
   import type { Memory, MemoryConflict } from "../lib/types";
 
-  let scope = $state<"user" | "shared">("user");
+  let scope = $state<"user" | "shared" | "project">("user");
   let mems = $state<Memory[]>([]);
   let q = $state("");
   let addText = $state("");
   let conflicts = $state<MemoryConflict[]>([]);
   let showConflicts = $state(false);
 
-  // Reload when the scope tab changes.
+  let projectID = $derived($activeProject?.id ?? 0);
+
+  // Reload when the scope tab or active project changes; the project tab only
+  // exists while a project is active.
   $effect(() => {
     void scope;
-    loadList();
+    void projectID;
+    if (scope === "project" && !projectID) scope = "user";
+    else loadList();
   });
   async function loadList() {
     try {
-      mems = await api.listMemory(scope);
+      mems = await api.listMemory(scope, scope === "project" ? projectID : 0);
     } catch (e) {
       toast((e as Error).message, "error");
     }
@@ -34,7 +39,7 @@
   async function add() {
     if (!addText.trim()) return;
     try {
-      await api.createMemory({ scope, content: addText.trim() });
+      await api.createMemory({ scope, content: addText.trim(), project_id: scope === "project" ? projectID : undefined });
       addText = "";
       toast("stored");
       await loadList();
@@ -45,7 +50,7 @@
   async function del(id: string) {
     if (!confirm("Delete this memory?")) return;
     try {
-      await api.deleteMemory(id);
+      await api.deleteMemory(id, scope === "project" ? projectID : 0);
       mems = mems.filter((m) => m.id !== id);
     } catch (e) {
       toast((e as Error).message, "error");
@@ -76,6 +81,9 @@
     <div class="tabs">
       <button class:active={scope === "user"} onclick={() => (scope = "user")}>Personal</button>
       <button class:active={scope === "shared"} onclick={() => (scope = "shared")}>Shared</button>
+      {#if projectID}
+        <button class:active={scope === "project"} onclick={() => (scope = "project")}>Project: {$activeProject?.name}</button>
+      {/if}
     </div>
     <div class="row">
       <input placeholder="search memories…" bind:value={q} onkeydown={(e) => e.key === "Enter" && find()} />
@@ -100,6 +108,7 @@
       <textarea rows="2" placeholder={`Add a ${scope} memory…`} bind:value={addText}></textarea>
       <button class="primary" onclick={add} disabled={!addText.trim() || (scope === "shared" && !canShared)}>Store</button>
       {#if scope === "shared" && !canShared}<div class="muted small">Only owner/admin can add shared memories.</div>{/if}
+      {#if scope === "project"}<div class="muted small">Project memories are visible to every member.</div>{/if}
     </div>
   </div>
 </section>
