@@ -123,6 +123,10 @@ type runContext struct {
 	// project's data (sessions/messages/memory). nil/zero for a personal session.
 	projectID  int64
 	projectDB  *sql.DB
+	// foreignProjDBs caches read-only handles to OTHER projects the user is a
+	// member of, opened lazily when a p<id>.N reference is resolved and closed
+	// when the turn ends (closeForeignDBs).
+	foreignProjDBs map[int64]*sql.DB
 	hat        *types.Hat // the session's worn hat, or nil
 	// skillInfos is the hat-aware visible-skill catalogue, resolved once per
 	// turn (after loadHat) and reused by the system prompt, the catalogue log,
@@ -169,6 +173,7 @@ func (a *Agent) Run(ctx context.Context, projectID, sessionID, userID int64, use
 		iface = types.InterfaceTUI
 	}
 	rc := &runContext{sessionID: sessionID, userID: userID, username: username, canShareMemory: types.IsElevated(role), api: api, iface: iface, projectID: projectID, turn: 1, emit: emit}
+	defer rc.closeForeignDBs() // cross-project handles opened for p<id>.N refs
 
 	var finalText string
 	run := func(userDB *sql.DB) error {

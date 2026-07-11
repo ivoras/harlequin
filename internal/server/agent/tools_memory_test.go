@@ -73,3 +73,13 @@ func TestQualifiedProjectRefs(t *testing.T) {
 		t.Fatalf("scopeLetter(project) = %q, want p", got)
 	}
 }
+
+func TestPinProjectCitations(t *testing.T) {
+	t.Parallel()
+	in := `Fee cap "25 EUR" [d.p.421] vs [d.p.9]; keep [d.u.3], [d.s.7] and already-pinned [d.p5.11]; prose p.19 stays.`
+	got := pinProjectCitations(in, 3)
+	want := `Fee cap "25 EUR" [d.p3.421] vs [d.p3.9]; keep [d.u.3], [d.s.7] and already-pinned [d.p5.11]; prose p.19 stays.`
+	if got != want {
+		t.Fatalf("got %q\nwant %q", got, want)
+	}
+}

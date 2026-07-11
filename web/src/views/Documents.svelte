@@ -10,7 +10,10 @@
   let title = $state("");
   let content = $state("");
   let uploading = $state(false);
-  let fileEl: HTMLInputElement | undefined;
+  let fileEl = $state<HTMLInputElement>();
+  // Where new documents land: personal (default) or, for owners/admins, the
+  // shared org corpus. Applies to both file uploads and pasted text.
+  let ingestScope = $state("personal");
 
   async function upload(e: Event) {
     const input = e.target as HTMLInputElement;
@@ -18,7 +21,7 @@
     if (!file) return;
     uploading = true;
     try {
-      const d = await api.uploadDocument(file);
+      const d = await api.uploadDocument(file, undefined, ingestScope);
       toast(`ingested "${d.title}"`);
       await load();
     } catch (err) {
@@ -57,7 +60,7 @@
   async function add() {
     if (!content.trim()) return;
     try {
-      await api.createDocument({ title: title.trim() || "Untitled", uri: "", mime: "text/plain", content });
+      await api.createDocument({ title: title.trim() || "Untitled", uri: "", mime: "text/plain", content, scope: ingestScope });
       title = "";
       content = "";
       toast("ingested");
@@ -261,6 +264,15 @@
       {/if}
     </div>
     <div class="card col">
+      {#if isElevated($user?.role)}
+        <div class="row" style="align-items:center; gap:8px;">
+          <span class="muted small">Ingest into</span>
+          <select bind:value={ingestScope}>
+            <option value="personal">my documents</option>
+            <option value="shared">shared (all users)</option>
+          </select>
+        </div>
+      {/if}
       <div class="row" style="align-items:center; gap:8px;">
         <input type="file" accept=".pdf,.docx,.txt,.md,application/pdf,text/plain" bind:this={fileEl} onchange={upload} disabled={uploading} />
         {#if uploading}<span class="muted small">extracting & ingesting…</span>{/if}

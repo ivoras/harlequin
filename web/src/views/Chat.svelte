@@ -30,6 +30,8 @@
   function resolveCite(cid: string): Promise<DocChunkInfo> {
     let p = citeCache.get(cid);
     if (!p) {
+      // A bare d.p.N resolves against the session's project; a qualified
+      // d.p<id>.N carries its project in the reference itself.
       p = api.getDocChunk(cid, cid.startsWith("d.p.") ? sc.currentProjectID : 0);
       citeCache.set(cid, p);
     }
@@ -97,7 +99,7 @@
         toast(`${info.title || "untitled"} (${info.scope}) — no stored file to open`);
         return;
       }
-      const projectID = info.scope === "project" ? sc.currentProjectID : 0;
+      const projectID = info.scope === "project" ? info.project_id || sc.currentProjectID : 0;
       const file = await api.fetchDocumentFile(info.document_id, info.scope, projectID);
       const anchor = info.mime === "application/pdf" && info.page ? `#page=${info.page}` : "";
       await openDoc(file, info.title || "", anchor);
@@ -121,10 +123,16 @@
     const ref = el?.dataset.docref;
     if (!el || !ref) return;
     const [letter, idStr] = ref.split(".");
-    const scope = DOCREF_SCOPE[letter];
     const id = Number(idStr);
+    // p<id> is a qualified project ref (e.g. p3.17); bare p uses the session's
+    // project.
+    let scope = DOCREF_SCOPE[letter];
+    let projectID = scope === "project" ? sc.currentProjectID : 0;
+    if (!scope && /^p\d+$/.test(letter)) {
+      scope = "project";
+      projectID = Number(letter.slice(1));
+    }
     if (!scope || !id) return;
-    const projectID = scope === "project" ? sc.currentProjectID : 0;
     try {
       const file = await api.fetchDocumentFile(id, scope, projectID);
       await openDoc(file, ref);
@@ -350,6 +358,8 @@
           </div>
         {:else if it.kind === "stats"}
           <div class="muted small stats">{it.text}</div>
+        {:else if it.kind === "error"}
+          <div class="turn-error small">⚠ {it.text}</div>
         {:else if it.kind === "ask"}
           <div class="card col ask">
             <div>{it.question}</div>
@@ -446,6 +456,8 @@
 <style>
   .chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .docview { width: min(760px, 94vw); }
+  .turn-error { color: var(--danger, #e5484d); border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+    border-radius: var(--radius-sm); padding: 6px 10px; background: color-mix(in srgb, currentColor 8%, transparent); }
   .docview .doctitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .docview header button { flex-shrink: 0; }
   .docview .body { word-break: break-word; }

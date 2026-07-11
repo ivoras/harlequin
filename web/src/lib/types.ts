@@ -223,6 +223,7 @@ export interface CreateMemoryRequest {
   content: string;
   source?: string;
   expires_at?: string;
+  project_id?: number; // required when scope is "project"
 }
 
 export interface MCPTool {
@@ -327,6 +328,7 @@ export interface DocChunkInfo {
   mime: string;
   page?: number; // 1-based; absent when the source has no pages
   has_file: boolean;
+  project_id?: number; // set for project-scoped chunks (which project holds it)
 }
 // Document alignment (the /documents/align side-by-side comparison).
 export interface AlignSection {

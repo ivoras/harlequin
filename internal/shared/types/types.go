@@ -576,6 +576,8 @@ type CreateMemoryRequest struct {
 	Content   string     `json:"content"`
 	Source    string     `json:"source,omitempty"`
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	// ProjectID targets a project's memory when Scope is "project" (members only).
+	ProjectID int64 `json:"project_id,omitempty"`
 }
 
 // UpdateMemoryRequest is the body of PATCH /memory/{id}.
@@ -678,6 +680,10 @@ type DocChunkInfo struct {
 	Mime       string `json:"mime"`
 	Page       int    `json:"page,omitempty"`
 	HasFile    bool   `json:"has_file"`
+	// ProjectID identifies the project a project-scoped chunk lives in (from a
+	// qualified d.p<id>.N citation, or the request's project parameter), so the
+	// client can open the document file against the right corpus.
+	ProjectID int64 `json:"project_id,omitempty"`
 }
 
 // UsageRecord is a per-completion accounting row.

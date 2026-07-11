@@ -4,7 +4,10 @@ import DOMPurify from "dompurify";
 marked.setOptions({ gfm: true, breaks: true });
 
 // Document-chunk citation ids the agent emits after search_docs results.
-const CITE_RE = /\bd\.[usp]\.\d+\b/g;
+// The scope token is u/s/p for the session's own corpora, or p<id> for a
+// specific project (qualified citations from all-projects searches and
+// pinned save_doc reports).
+const CITE_RE = /\bd\.(?:[us]|p\d*)\.\d+\b/g;
 
 // wrapCitations walks text nodes and wraps chunk ids (d.u.939 …) in
 // <span class="cite" data-cite="…"> so the chat view can attach a tooltip and
@@ -43,7 +46,7 @@ function wrapCitations(html: string): string {
 // from the d.<scope>.<n> chunk citations above. Runs after wrapCitations, so
 // a chunk citation's "u.939" is already inside a .cite span (skipped below)
 // by the time this pass walks text nodes — it only catches genuinely bare refs.
-const DOCREF_RE = /\b([usp])\.(\d+)\b/g;
+const DOCREF_RE = /\b([us]|p\d*)\.(\d+)\b/g;
 
 // wrapDocRefs mirrors wrapCitations for whole-document references: wraps each
 // in <span class="docref" data-docref="…"> so the chat view can open it.

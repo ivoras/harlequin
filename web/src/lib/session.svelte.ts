@@ -12,7 +12,8 @@ export type Item =
   | { kind: "thinking"; text: string }
   | { kind: "tool"; name: string; args: string; output: string; ms: number; done: boolean }
   | { kind: "ask"; question: string; options: string[] }
-  | { kind: "stats"; text: string }; // turn-end model/PP/TG/ctx summary
+  | { kind: "stats"; text: string } // turn-end model/PP/TG/ctx summary
+  | { kind: "error"; text: string }; // turn failure, kept in the transcript
 
 // fmtk renders a token count compactly (11k / 100k).
 function fmtk(n: number): string {
@@ -276,6 +277,10 @@ class SessionController {
         break;
       }
       case SSE.Error:
+        // Keep the failure in the transcript (like the TUI's error block) so
+        // the reason survives the transient toast.
+        this.items.push({ kind: "error", text: ev.error || "error" });
+        this.streamingAssistant = null;
         toast(ev.error || "error", "error");
         break;
       case SSE.Done: {

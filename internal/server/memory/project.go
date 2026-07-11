@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ivoras/harlequin/internal/shared/types"
@@ -42,6 +43,31 @@ func (s *Store) ProjectList(ctx context.Context, projDB *sql.DB, limit int) ([]t
 		limit = 100
 	}
 	return s.projectMem(projDB).list(ctx, 0, limit)
+}
+
+// ProjectChange replaces a project memory's content in place (same composite
+// id, "p.<n>"), re-embedding it for search.
+func (s *Store) ProjectChange(ctx context.Context, projDB *sql.DB, id, content string) (*types.Memory, error) {
+	scope, local, ok := decodeID(id)
+	if !ok || scope != scopeProject {
+		return nil, ErrNotFound
+	}
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return nil, fmt.Errorf("empty content")
+	}
+	blob, err := s.embed(ctx, content)
+	if err != nil {
+		return nil, fmt.Errorf("embed memory content: %w", err)
+	}
+	updated, err := s.projectMem(projDB).updateContent(ctx, local, content, blob)
+	if err != nil {
+		return nil, err
+	}
+	if !updated {
+		return nil, ErrNotFound
+	}
+	return &types.Memory{ID: id, Scope: scopeProject, Content: content}, nil
 }
 
 // ProjectDelete removes a project memory by its composite id ("p.<n>").
