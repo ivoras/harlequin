@@ -53,6 +53,7 @@ Client-server AI agent system in Go. A REST + WebSocket **server** talks to LLMs
 - **Per-user config**: generic key/value `config` table in `user.db`, via `internal/server/userconfig.Store` (Get/Set/Delete/All) and REST `/config`, `PUT|DELETE /config/{key}` (TUI `/config`). Holds small settings that don't warrant their own table — e.g. registering a Telegram connection (`telegram.chat_id`, `telegram.username`).
 
 ## Conventions
+- **Principle of least astonishment (POLA) governs every user-facing decision** — features, defaults, tool behavior, references, errors. Harlequin is a multi-user assistant whose users can't read the code: whatever a reasonable user would predict (from names, conventions, or what a sibling feature does) is the spec. Concretely: safe defaults (personal scope, not shared), symmetric capabilities (anything visible on the read side must be writable/openable where the user would expect), references that mean the same thing everywhere they appear, and failures that are loud and persistent rather than silent or transient.
 - Comments should be terse and explain the non-obvious (the *why*, edge cases, gotchas); don't restate what the code plainly says.
 - Secrets only in `.env`, never in YAML or code.
 - URLs built with names in the path (skill name, hat name, file relpaths, config keys, …) must URL-encode those strings: Go `url.PathEscape` per segment (`apiclient.escapePathSegments` for relpaths), web `encodeURIComponent` (the `q()` helper in `web/src/lib/api.ts`).

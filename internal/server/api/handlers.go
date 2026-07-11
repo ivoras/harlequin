@@ -421,6 +421,12 @@ func (s *Server) handleSearchMemory(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	q := r.URL.Query().Get("q")
 	projectID, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64)
+	if projectID > 0 {
+		if member, _ := s.Projects.IsMember(r.Context(), projectID, u.ID); !member {
+			writeErr(w, http.StatusForbidden, "not a member of this project")
+			return
+		}
+	}
 	var res []types.SearchResult
 	// When a project is active (?project=<id>), fuse project+shared+personal;
 	// otherwise the requested scope (default personal+shared).
@@ -1098,6 +1104,12 @@ func (s *Server) handleSearchDocuments(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	q := r.URL.Query().Get("q")
 	projectID, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64)
+	if projectID > 0 {
+		if member, _ := s.Projects.IsMember(r.Context(), projectID, u.ID); !member {
+			writeErr(w, http.StatusForbidden, "not a member of this project")
+			return
+		}
+	}
 	var res []types.SearchResult
 	// Fuse the user's personal corpus and (when ?project=<id> is set, i.e. the
 	// user has switched to a project) the project corpus with the shared corpus.
