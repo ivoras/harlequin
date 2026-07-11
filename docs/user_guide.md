@@ -65,7 +65,7 @@ They resolve across scopes: project (when one is active), then shared
 
 | Command | What it does |
 |---------|--------------|
-| `/memory [scope]` | List memories with ids (`user` or `shared`). |
+| `/memory [scope]` | List memories with ids (`user`, `shared`, or `project` for the active project's). |
 | `/memory find <phrase>` | Search memories (your own + shared) by relevance. |
 | `/memory show <id>` | Show one memory. |
 | `/memory del <id>…` | Delete one or more memories by id (shared ones if you're an admin). |
@@ -73,9 +73,28 @@ They resolve across scopes: project (when one is active), then shared
 | `/memory resolve <id>` | Mark a conflict flag as resolved. |
 | `/docs search <query>` | Search documents (personal + shared, + project if active). |
 | `/docs list` | List documents across scopes. |
-| `/docs add [scope] <path>` | Upload a `.txt`/`.md`/`.html`/`.pdf` for retrieval (same as `/upload`). |
+| `/docs add [scope] <path>` | Upload a `.txt`/`.md`/`.html`/`.pdf`/`.docx` for retrieval (same as `/upload`). |
 | `/docs del <scope> <id>` | Delete a document. |
 | `/upload [scope] <path>` | Upload a document into `personal`, `shared`, or `project` scope (default personal). |
+
+In the browser, the Documents view does the same: upload or paste text, with a
+scope picker (personal by default; owners/admins can ingest into the shared,
+org-wide corpus). Document listings show each document's type (PDF, DOCX, MD,
+TXT) alongside its scope.
+
+#### Reports and citations
+
+When you ask the agent to produce a report or comparison worth keeping, it
+saves it as a document (`saved as p.21`) — searchable later like anything else.
+By default a report goes to the project corpus in a project session, otherwise
+to your personal documents; owners/admins can ask for it to be saved as shared.
+
+Answers and saved reports cite their sources inline (`[d.p.421]`). In the
+browser these citations are clickable: hovering shows the source document,
+clicking opens it — PDFs in a new tab at the cited page, text and markdown
+documents in a rendered side panel with buttons to view the raw file or
+download the original. Citations inside a rendered report are clickable too,
+so you can follow a report's sources without leaving it.
 
 ### Projects
 
@@ -86,6 +105,22 @@ memories, and a live chatroom (shown as a side pane while a project is active).
 |---------|--------------|
 | `/project` | Manage projects: `list`, `new`, `switch`, `invite`, `assign` (move the current session into the project), `leave`, `depart`. |
 | `/say <message>` | Post a message to the active project's chatroom. |
+
+**Project memory.** In a project session, facts the agent remembers go to the
+project's shared memory by default, visible to every member; you can still ask
+it to keep something personal. Browse and edit project memories in the web
+Memory view's project tab, or with `/memory project` in the TUI.
+
+**Searching across projects.** Normally the agent searches your personal +
+shared scopes, plus the active project. Ask it to look "across all my
+projects" and it searches every project you belong to; hits from other
+projects carry qualified references — `p3.17` for a document, `d.p3.421` for a
+cited passage, where `3` is the project id — which open against the right
+project when clicked, and which you can hand back to the agent later even from
+a different session. Saved reports pin their citations the same way, so a
+report keeps pointing at its true sources no matter where it's opened from.
+Project content is members-only throughout: another user's search never sees
+projects you belong to unless they are members too.
 
 ### Automation and integrations
 
