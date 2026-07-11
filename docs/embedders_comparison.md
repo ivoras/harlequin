@@ -64,6 +64,34 @@ RAG retrieval over the current local model, and by how much.*
   current all-local path has none of those costs — the quality gap buys
   independence.
 
+## Cross-lingual check (Croatian → English)
+
+The English-only ranking above doesn't hold cross-lingually. 250 corpus
+sentences were machine-translated to Croatian (deepseek-v4-flash, cached),
+then each Croatian sentence retrieved against the 250 English originals by
+cosine (HR = query side with each model's query prefix, EN = document side).
+The *margin* is a query's true-source cosine minus its best wrong rival;
+"inversions" are outright misses (a wrong sentence ranked first).
+
+| model | top-1 | matched cos | unrelated cos | avg margin | p10 margin | inversions |
+|---|---:|---:|---:|---:|---:|---:|
+| qwen3-emb-4b | 0.996 | 0.740 | 0.329 | 0.176 | 0.075 | 1/250 |
+| mistral-embed-2312 | 0.980 | 0.867 | 0.754 | 0.046 | 0.017 | 5/250 |
+
+mistral-embed's similarity space is compressed for HR↔EN: *unrelated* pairs
+already sit at ~0.75 cosine, leaving razor-thin margins (p10 = 0.017 with
+only 249 distractors) — it loses 5/250 matches outright and any
+cosine-distance threshold (e.g. the memory search max-distance gate) becomes
+meaningless in that range. qwen3-embedding-4b keeps unrelated pairs at ~0.33
+with an order-of-magnitude healthier margin, consistent with its multilingual
+training.
+
+**Revised recommendation**: for a mixed Croatian/English deployment,
+mistral-embed's same-dim convenience does not survive the cross-lingual test;
+**qwen3-embedding-4b is the robust hosted choice** despite requiring
+`dim: 2560` and recreated vector tables (which any model switch needs
+anyway). Harness: `hr_eval*.py` next to `embed_eval_hosted.py`.
+
 ## Reproducing / extending
 
 The harness embeds the corpus + sampled questions per model, caches vectors,
