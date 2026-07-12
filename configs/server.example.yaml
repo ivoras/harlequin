@@ -27,7 +27,7 @@ data_retention_days: 7     # delete session logs + per-user tmp dumps older than
 # endpoint/model becomes a second provider that WebFetch routes to (an aux equal
 # to chat just reuses it). Switching the embed model usually changes `dim`, which
 # requires recreating the vec0 tables — run `harlequin-server reindex-vectors`.
-model_suite: ""   # "" = use the explicit providers below; or "local" / "openrouter"
+model_suite: ""   # "" = use the explicit providers below; or "local" / "openrouter" / "deepseek"
 
 model_suites:
   local:                                     # local llama-server lineup (see llm_for_harlequin.py)
@@ -71,6 +71,29 @@ model_suites:
       model: "qwen/qwen3-embedding-4b"
       api_key_env: "OPENROUTER_API_KEY"
       dim: 2560
+  deepseek:                                  # hosted lineup via OpenRouter: DeepSeek chat+aux, Qwen3 embeddings
+    chat:
+      base_url: "https://openrouter.ai/api/v1"
+      model: "deepseek/deepseek-v4-flash"
+      api_key_env: "OPENROUTER_API_KEY"
+      temperature: 0.5
+      # context_window omitted: discovered from the provider's /v1/models at
+      # startup; set it explicitly if discovery doesn't return a value.
+    aux:                                     # same model as chat -> one provider serves both
+      base_url: "https://openrouter.ai/api/v1"
+      model: "deepseek/deepseek-v4-flash"
+      api_key_env: "OPENROUTER_API_KEY"
+      temperature: 0.1
+    embed:
+      base_url: "https://openrouter.ai/api/v1"
+      model: "qwen/qwen3-embedding-4b"
+      api_key_env: "OPENROUTER_API_KEY"
+      dim: 2560                              # switching from another dim requires `harlequin-server reindex-vectors`
+      # Qwen3-Embedding's documented retrieval prompt; hosted endpoints don't
+      # apply it server-side, and it measurably improves ranking (see
+      # docs/embedders_comparison.md).
+      query_prefix: "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: "
+      doc_prefix: ""
 
 # Explicit chat LLM providers (used only when `model_suite` above is empty). The
 # router tries them according to `routing` rules and falls back on error/timeout.
