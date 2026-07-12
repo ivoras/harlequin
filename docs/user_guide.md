@@ -75,7 +75,7 @@ They resolve across scopes: project (when one is active), then shared
 | `/docs list` | List documents across scopes, each shown under its reference id (`u.2`, `s.5`, `p.19`) — the same form `/docs view`, `/docs del`, and chat references accept. |
 | `/docs add [scope] <path>` | Upload a `.txt`/`.md`/`.html`/`.pdf`/`.docx` for retrieval (same as `/upload`). |
 | `/docs del <ref>` | Delete a document by its reference (e.g. `/docs del p.19`; the long form `<scope> <id>` still works). |
-| `/upload [scope] <path>` | Upload a document into `personal`, `shared`, or `project` scope (default personal). |
+| `/upload [scope] <path>` | Upload a document (`.txt`/`.md`/`.html`/`.pdf`/`.docx`) into `personal`, `shared`, or `project` scope (defaults to the active project, else personal). Ingestion runs server-side with a live status line (stage, percent, elapsed) — in the browser too. |
 
 In the browser, the Documents view does the same: upload or paste text, with a
 scope picker (personal by default; owners/admins can ingest into the shared,

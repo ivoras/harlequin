@@ -157,6 +157,29 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.appendBlock("info", msg.text)
 		return m, nil
 
+	case ingestStartedMsg:
+		// Async document upload accepted; poll for stage/progress.
+		return m, pollIngestCmd(m.client, msg)
+
+	case ingestStatusMsg:
+		if msg.err != nil {
+			m.setStatusBlock("")
+			m.appendBlock("error", "upload failed: "+msg.err.Error())
+			return m, nil
+		}
+		if msg.st.Finished {
+			if msg.st.Error != "" {
+				m.setStatusBlock(fmt.Sprintf("upload of %q failed", msg.name))
+				m.appendBlock("error", msg.st.Error)
+				return m, nil
+			}
+			d := msg.st.Document
+			m.setStatusBlock(fmt.Sprintf("ingested %q into the %s for RAG: %d chunks (document id=%d)", d.Title, msg.dest, d.Chunks, d.ID))
+			return m, nil
+		}
+		m.setStatusBlock(ingestStatusLine(msg))
+		return m, pollIngestCmd(m.client, msg.ingestStartedMsg)
+
 	case skillEditorLoadedMsg:
 		if msg.err != nil {
 			m.appendBlock("error", msg.err.Error())
