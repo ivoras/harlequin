@@ -152,6 +152,10 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 // other's emails inside shared projects; this widens nothing sensitive
 // (roles, activity, and creation dates stay owner-only).
 func (s *Server) handleUserDirectory(w http.ResponseWriter, r *http.Request) {
+	if !s.Cfg.Auth.UserDirectoryValue() {
+		writeErr(w, http.StatusForbidden, "the user directory is disabled on this server")
+		return
+	}
 	users, err := s.Auth.ListUsers(r.Context())
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())

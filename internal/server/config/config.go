@@ -109,6 +109,17 @@ type AuthConfig struct {
 	// (/auth/register + /auth/verify). Pointer so an omitted key defaults to
 	// enabled; set false to require owner-created accounts only.
 	AllowRegistration *bool `yaml:"allow_registration"`
+	// UserDirectory enables GET /users/directory (all accounts' id + email,
+	// readable by any authenticated user — powers invite autocomplete). Pointer
+	// so an omitted key defaults to enabled; set false if org email addresses
+	// should not be enumerable by regular users.
+	UserDirectory *bool `yaml:"user_directory"`
+}
+
+// UserDirectoryValue reports whether the user directory endpoint is enabled
+// (default true).
+func (a AuthConfig) UserDirectoryValue() bool {
+	return a.UserDirectory == nil || *a.UserDirectory
 }
 
 // AllowRegistrationValue reports whether self-registration is enabled (default true).

@@ -209,6 +209,8 @@ mcp:
 # Authentication policy. The login identity is the user's email address.
 auth:
   allow_registration: true          # public self-registration via /auth/register + /auth/verify (default true; false = owner-created accounts only)
+  user_directory: true              # GET /users/directory (all accounts' id+email, any authenticated user; powers invite autocomplete in the web UI).
+                                    # Default true; set false if org emails should not be enumerable by regular users — invites by typed email still work.
 
 # Outbound email, used to deliver registration magic codes. When smtp_host is
 # empty the code is logged to the server console instead (handy in development),
