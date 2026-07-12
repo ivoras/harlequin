@@ -112,6 +112,8 @@ export const api = {
     req<LoginResponse>("POST", "/auth/verify", { email, code }),
   logout: () => req<void>("POST", "/auth/logout"),
   me: () => req<User>("GET", "/me"),
+  // Directory of all accounts (id + email only), for invite autocomplete.
+  userDirectory: () => reqList<{ id: number; email: string }>("GET", "/users/directory"),
 
   // sessions
   listSessions: (query = "") =>
