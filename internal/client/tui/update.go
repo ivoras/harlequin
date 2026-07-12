@@ -752,9 +752,25 @@ func (m *Model) loadHistoryCmd(id int64) tea.Cmd {
 	}
 }
 
-// resumeListCmd loads the recent sessions for the interactive picker.
+// resumeListCmd loads the recent sessions for the interactive picker: the
+// active project's shared sessions when one is active (matching the web
+// drawer), else the user's personal sessions.
 func (m *Model) resumeListCmd(query string) tea.Cmd {
+	projectID := m.activeProjectID
 	return func() tea.Msg {
+		if projectID > 0 {
+			list, err := m.client.ListProjectSessions(context.Background(), projectID)
+			if q := strings.ToLower(strings.TrimSpace(query)); q != "" && err == nil {
+				kept := list[:0]
+				for _, s := range list {
+					if strings.Contains(strings.ToLower(s.Title), q) {
+						kept = append(kept, s)
+					}
+				}
+				list = kept
+			}
+			return sessionsLoadedMsg{list: list, err: err}
+		}
 		list, err := m.client.ListSessions(context.Background(), query)
 		return sessionsLoadedMsg{list: list, err: err}
 	}
