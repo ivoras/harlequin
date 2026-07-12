@@ -12,7 +12,36 @@ skills. Chat sessions live on the server (a goroutine per active session) and st
 WebSocket, so a client can disconnect mid-turn and reconnect later to resume. A beautiful Bubble
 Tea **TUI client** and a mobile-first **web UI** talk to it. Multi-user, organisation-aware.
 
-See [AGENTS.md](AGENTS.md) for a thousand-mile architecture overview.
+See [AGENTS.md](AGENTS.md) for a thousand-mile architecture overview, and
+[docs/user_guide.md](docs/user_guide.md) for day-to-day usage.
+
+## What it does
+
+- **Server-side sessions** — chats live on the server and stream over WebSockets;
+  disconnect mid-answer, reconnect from any client, and messages typed while the
+  agent is busy queue up. Sessions are auto-titled, exportable, and clearable.
+- **Layered memory** — personal / shared (org) / project scopes with structured
+  attribute *slots*, automatic conflict detection, and write-time rules that keep
+  an attribute from living in two scopes at once.
+- **Documents (RAG)** — upload PDF / DOCX / text into any scope; hybrid FTS5 +
+  vector retrieval with inline, clickable citations (`[d.p.421]`). The agent can
+  align two documents (`align_docs`) for version/topical comparison, verify
+  quoted claims against sources, and save its own reports as searchable,
+  citation-pinned documents rendered in the web UI.
+- **Projects** — shared workspaces (members, sessions, documents, memories, live
+  chatroom). Search can span *all* projects a user belongs to, with
+  project-qualified references (`p3.17`) that stay valid anywhere.
+- **Skills & hats** — reusable instruction/script bundles resolved across
+  scopes, and org-defined skill overlays ("hats") with optional custom system
+  prompts.
+- **Tools** — WebFetch/WebFetchDOM/WebFetchGrep (page analysis, structural
+  extraction, raw-HTML grep), WebSearch (Brave Search API), sandboxed
+  JavaScript (`run_js`), calculator, cron scheduling, and any MCP server the
+  user registers.
+- **Automation** — per-user cron jobs (JS or agent-turn), background memory
+  extraction, notifications delivered in-app, by email, or via Telegram.
+- **Multi-user** — email-identified accounts, owner/admin/user roles, email-code
+  self-registration, per-user usage accounting, audit log.
 
 ## Build prerequisites
 
@@ -56,6 +85,24 @@ Both binaries read a YAML config file plus a `.env` file. YAML holds non-secret 
 - Client: copy `configs/client.example.yaml`. Client config lives at
   `~/.config/harlequin/client.yaml` by default.
 
+#### Model suites
+
+The three model roles — **chat** (drives the conversation), **aux** (small/fast
+model for WebFetch analysis), and **embed** (embeddings) — can be switched as a
+bundle by setting `model_suite` to one of the named `model_suites` in
+`server.yaml`. The example config ships three: `local` (llama.cpp lineup),
+`openrouter`, and `deepseek` (deepseek-v4-flash chat/aux + qwen3-embedding-4b
+embeddings, all hosted). Switching the *embedding* model changes vector
+dimensions and requires a one-time rebuild:
+
+```sh
+./bin/harlequin-server reindex-vectors --config server.yaml
+```
+
+See [docs/embedders_comparison.md](docs/embedders_comparison.md) for measured
+retrieval quality of local vs hosted embedding models (including a
+Croatian↔English cross-lingual check).
+
 #### Server `.env` secrets
 
 The server loads `.env` from the working directory on startup (via `godotenv`). At minimum
@@ -78,6 +125,11 @@ Optional:
 | Variable | Purpose |
 |----------|---------|
 | `HARLEQUIN_DB_PATH` | Override SQLite database path (default: `<data_dir>/harlequin.db`) |
+| `BRAVE_API_KEY` | Enables the agent's `WebSearch` tool (Brave Search API); empty = tool disabled |
+| `ZYTE_API_KEY` | Zyte API fallback for `WebFetch` on bot-protected sites |
+| `TELEGRAM_BOT_TOKEN` | Outbound Telegram notification delivery |
+| `SMTP_PASSWORD` | SMTP auth for registration-code emails (see Self-registration) |
+| `HARLEQUIN_SECRET_KEY` | 32-byte base64 AES key encrypting MCP credentials at rest |
 
 Local llama.cpp / embedding servers usually need no API keys — leave those variables empty.
 Never commit `.env`; only `.env.example` belongs in git.
@@ -136,6 +188,26 @@ Change a user's password (revokes their existing API tokens):
 ```sh
 ./bin/harlequin-server changepassword alice@example.com --config server.yaml --password newsecret
 ```
+
+#### Running as a systemd service
+
+A production-ready unit file with install instructions in its header lives at
+[docs/harlequin-server.service](docs/harlequin-server.service): dedicated
+service user, secrets via `EnvironmentFile=.env`, restart-on-failure, and a
+hardened sandbox (read-only system, only the data directory writable). In
+short:
+
+```sh
+sudo cp docs/harlequin-server.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now harlequin-server
+journalctl -u harlequin-server -f
+```
+
+The unit assumes a deployment under `/opt/harlequin` (binary, `server.yaml`,
+`.env`, `data/`); adjust paths in one place at the top if you deploy elsewhere.
+If your models are served locally by llama.cpp, add `After=`/`Wants=` entries
+for those units (noted in the file).
 
 #### Self-registration
 
