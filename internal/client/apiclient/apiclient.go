@@ -657,13 +657,12 @@ func (c *Client) DownloadDocumentFile(ctx context.Context, id int64, scope strin
 	return data, resp.Header.Get("Content-Type"), err
 }
 
-// UploadDocument uploads a local file (e.g. a PDF) to the org RAG corpus; the
-// server extracts its text (PDFs via PDFium) and ingests it. Uses a generous
-// timeout since server-side extraction + embedding can take a while.
-func (c *Client) UploadDocument(ctx context.Context, path, title, scope string, projectID int64) (*types.Document, error) {
+// postUpload multipart-POSTs a local file to endpoint and decodes the JSON
+// response into out.
+func (c *Client) postUpload(ctx context.Context, endpoint, path, title, scope string, projectID int64, out any) error {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer f.Close()
 
@@ -680,18 +679,18 @@ func (c *Client) UploadDocument(ctx context.Context, path, title, scope string, 
 	}
 	fw, err := mw.CreateFormFile("file", filepath.Base(path))
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if _, err := io.Copy(fw, f); err != nil {
-		return nil, err
+		return err
 	}
 	if err := mw.Close(); err != nil {
-		return nil, err
+		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/documents", &buf)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+endpoint, &buf)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	if c.token != "" {
@@ -704,7 +703,7 @@ func (c *Client) UploadDocument(ctx context.Context, path, title, scope string, 
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
@@ -713,13 +712,41 @@ func (c *Client) UploadDocument(ctx context.Context, path, title, scope string, 
 		if er.Error == "" {
 			er.Error = resp.Status
 		}
-		return nil, fmt.Errorf("%s", er.Error)
+		return fmt.Errorf("%s", er.Error)
 	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// UploadDocument uploads a local file (e.g. a PDF) to the org RAG corpus; the
+// server extracts its text (PDFs via PDFium) and ingests it. Uses a generous
+// timeout since server-side extraction + embedding can take a while.
+func (c *Client) UploadDocument(ctx context.Context, path, title, scope string, projectID int64) (*types.Document, error) {
 	var d types.Document
-	if err := json.NewDecoder(resp.Body).Decode(&d); err != nil {
+	if err := c.postUpload(ctx, "/api/v1/documents", path, title, scope, projectID, &d); err != nil {
 		return nil, err
 	}
 	return &d, nil
+}
+
+// UploadDocumentAsync starts a background ingestion of a local file and
+// returns the job id to poll with GetIngestJob.
+func (c *Client) UploadDocumentAsync(ctx context.Context, path, title, scope string, projectID int64) (string, error) {
+	var out struct {
+		JobID string `json:"job_id"`
+	}
+	if err := c.postUpload(ctx, "/api/v1/documents/async", path, title, scope, projectID, &out); err != nil {
+		return "", err
+	}
+	return out.JobID, nil
+}
+
+// GetIngestJob reports an async ingestion's stage/progress.
+func (c *Client) GetIngestJob(ctx context.Context, id string) (*types.IngestJobStatus, error) {
+	var st types.IngestJobStatus
+	if err := c.do(ctx, http.MethodGet, "/documents/jobs/"+url.PathEscape(id), nil, &st); err != nil {
+		return nil, err
+	}
+	return &st, nil
 }
 
 // Usage returns usage records for the current user.

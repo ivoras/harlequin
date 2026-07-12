@@ -948,7 +948,7 @@ func (m *Model) handleDocsView(args []string) tea.Cmd {
 // you've switched to one), otherwise personal. The server enforces permissions;
 // the client pre-checks for a clearer message.
 func (m *Model) handleUpload(args []string) tea.Cmd {
-	usage := "usage: /upload [personal|shared|project] <path>  (defaults to the active project, else personal; formats: .txt .md .html .pdf)"
+	usage := "usage: /upload [personal|shared|project] <path>  (defaults to the active project, else personal; formats: .txt .md .html .pdf .docx)"
 	if len(args) == 0 {
 		return func() tea.Msg { return infoMsg{usage} }
 	}
@@ -969,10 +969,10 @@ func (m *Model) handleUpload(args []string) tea.Cmd {
 	}
 	path := strings.TrimSpace(strings.Join(rest, " "))
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".txt", ".md", ".markdown", ".html", ".htm", ".pdf":
+	case ".txt", ".md", ".markdown", ".html", ".htm", ".pdf", ".docx":
 	default:
 		return func() tea.Msg {
-			return errMsg{fmt.Errorf("unsupported format %q (use .txt, .md, .html, or .pdf)", filepath.Ext(path))}
+			return errMsg{fmt.Errorf("unsupported format %q (use .txt, .md, .html, .pdf, or .docx)", filepath.Ext(path))}
 		}
 	}
 	var projectID int64
@@ -993,16 +993,67 @@ func (m *Model) handleUpload(args []string) tea.Cmd {
 	if scope == "project" {
 		dest = fmt.Sprintf("project %q", m.activeProjectName)
 	}
-	// Immediate feedback: ingestion (extract → chunk → embed) is synchronous and
-	// can take a while for big PDFs, so show a status line before it starts.
-	m.appendBlock("status", fmt.Sprintf("uploading %q into the %s — extracting, chunking and embedding (this can take a while)…", filepath.Base(path), dest))
+	// Ingestion runs as a server-side job; the status block below is updated in
+	// place by ingestStatusMsg polls (stage, percent, elapsed).
+	m.appendBlock("status", fmt.Sprintf("uploading %q into the %s…", filepath.Base(path), dest))
+	name := filepath.Base(path)
 	return func() tea.Msg {
-		d, err := m.client.UploadDocument(context.Background(), path, "", scope, projectID)
+		jobID, err := m.client.UploadDocumentAsync(context.Background(), path, "", scope, projectID)
 		if err != nil {
 			return errMsg{err}
 		}
-		return infoMsg{fmt.Sprintf("ingested %q into the %s for RAG: %d chunks (document id=%d)", d.Title, dest, d.Chunks, d.ID)}
+		return ingestStartedMsg{jobID: jobID, name: name, dest: dest, start: time.Now()}
 	}
+}
+
+// ingestStartedMsg / ingestStatusMsg drive the async-upload poll loop: started
+// kicks off the first poll, each status either schedules the next poll or ends
+// the loop with the final result.
+type ingestStartedMsg struct {
+	jobID string
+	name  string
+	dest  string
+	start time.Time
+}
+
+type ingestStatusMsg struct {
+	ingestStartedMsg
+	st  *types.IngestJobStatus
+	err error
+}
+
+// pollIngestCmd fetches the job status after a short delay.
+func pollIngestCmd(client *apiclient.Client, m ingestStartedMsg) tea.Cmd {
+	return func() tea.Msg {
+		time.Sleep(time.Second)
+		st, err := client.GetIngestJob(context.Background(), m.jobID)
+		return ingestStatusMsg{ingestStartedMsg: m, st: st, err: err}
+	}
+}
+
+// ingestStatusLine renders the in-place status text for one poll result.
+func ingestStatusLine(msg ingestStatusMsg) string {
+	elapsed := int(time.Since(msg.start).Seconds())
+	t := fmt.Sprintf("%ds", elapsed)
+	if elapsed >= 60 {
+		t = fmt.Sprintf("%dm %ds", elapsed/60, elapsed%60)
+	}
+	stage := msg.st.Stage
+	if stage == "embedding" && msg.st.Total > 0 {
+		stage = fmt.Sprintf("embedding %d%% (%d/%d chunks)", msg.st.Done*100/msg.st.Total, msg.st.Done, msg.st.Total)
+	}
+	return fmt.Sprintf("uploading %q into the %s: %s… %s", msg.name, msg.dest, stage, t)
+}
+
+// setStatusBlock replaces the last transcript block if it is a status line
+// (the in-place progress display), else appends one.
+func (m *Model) setStatusBlock(text string) {
+	if n := len(m.blocks); n > 0 && m.blocks[n-1].role == "status" {
+		m.blocks[n-1].text = text
+		m.refreshViewport()
+		return
+	}
+	m.appendBlock("status", text)
 }
 
 func (m *Model) handleMemorySub(args []string) tea.Cmd {
