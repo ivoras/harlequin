@@ -77,4 +77,4 @@ Unless the user said **not** to save it, persist the report so later questions a
 
 Do NOT pass a scope — the default is correct (the project corpus in a project session, else personal).
 
-Keep the `[d.x.N]` citations in the saved content — they stay linked to the source documents. Then tell the user the report was saved and that they can ask follow-up questions about it later.
+Keep the `[d.x.N]` citations in the saved content — they stay linked to the source documents. Then tell the user the report was saved **and state its scoped id from the save_doc result** (e.g. "saved as **p.21**") — the clients render that id as a clickable link that opens the report, so never omit it — and that they can ask follow-up questions about it later.
