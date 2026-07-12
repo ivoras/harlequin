@@ -106,6 +106,18 @@ memories, and a live chatroom (shown as a side pane while a project is active).
 | `/project` | Manage projects: `list`, `new`, `switch`, `invite`, `assign` (move the current session into the project), `leave`, `depart`. |
 | `/say <message>` | Post a message to the active project's chatroom. |
 
+**Inviting members.** Any member can invite others. In the browser, the
+Projects tab shows the picked project's members and an "Invite by email" box
+(the Manage… sheet has the same box for the active project); as you type, the
+field suggests account emails from the server's user directory — current
+members are left out of the suggestions. In the TUI, use `/project invite
+<email>`. The invitee gets an in-app notification and an entry in their
+Invitations list (Manage… sheet, or `/project invites` in the TUI) where they
+accept or decline; nothing is shared with them until they accept. Invites are
+by exact account email — the person must already have an account on the
+server. If email suggestions don't appear, the server may have the user
+directory disabled (`auth.user_directory: false`); typed emails still work.
+
 **Project memory.** In a project session, facts the agent remembers go to the
 project's shared memory by default, visible to every member; you can still ask
 it to keep something personal. Browse and edit project memories in the web
