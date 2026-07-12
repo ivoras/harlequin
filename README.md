@@ -41,7 +41,10 @@ See [AGENTS.md](AGENTS.md) for a thousand-mile architecture overview, and
 - **Automation** — per-user cron jobs (JS or agent-turn), background memory
   extraction, notifications delivered in-app, by email, or via Telegram.
 - **Multi-user** — email-identified accounts, owner/admin/user roles, email-code
-  self-registration, per-user usage accounting, audit log.
+  self-registration, per-user usage accounting, audit log. Note: to power
+  invite autocomplete, any signed-in user can list all account emails via the
+  user directory endpoint — set `auth.user_directory: false` if org addresses
+  should not be enumerable.
 
 ## Build prerequisites
 
