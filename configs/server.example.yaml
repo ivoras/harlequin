@@ -217,7 +217,7 @@ auth:
 # so registration still works without a mail server.
 email:
   smtp_host: ""                     # e.g. smtp.gmail.com; empty disables real sending (code is logged)
-  smtp_port: 587                    # 465 = implicit TLS, anything else uses STARTTLS
+  smtp_port: 587                    # 465 = implicit TLS; localhost/127.0.0.1/::1 = plaintext (no STARTTLS, for a local relay); anything else uses STARTTLS
   smtp_username: ""                 # SMTP auth username (omit for unauthenticated relays)
   smtp_password_env: SMTP_PASSWORD  # env var holding the SMTP password (like api_key_env; never put the secret in YAML)
   from: ""                          # From address (defaults to smtp_username)
