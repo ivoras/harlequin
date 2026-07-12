@@ -68,19 +68,24 @@ They resolve across scopes: project (when one is active), then shared
 | `/memory [scope]` | List memories with ids (`user`, `shared`, or `project` for the active project's). |
 | `/memory find <phrase>` | Search memories (your own + shared) by relevance. |
 | `/memory show <id>` | Show one memory. |
+| `/memory edit <id>` | Edit a memory's content (and, for `user`/`shared` memories, its slots) in a built-in text editor overlay. Project memories don't support slots — the editor omits the slots section for them. |
 | `/memory del <id>…` | Delete one or more memories by id (shared ones if you're an admin). |
 | `/memory conflicts` | List flagged duplicate/conflicting memory pairs. |
 | `/memory resolve <id>` | Mark a conflict flag as resolved. |
 | `/docs search <query>` | Search documents (personal + shared, + project if active). |
-| `/docs list` | List documents across scopes, each shown under its reference id (`u.2`, `s.5`, `p.19`) — the same form `/docs view`, `/docs del`, and chat references accept. |
+| `/docs list` | List documents across scopes, each shown under its reference id (`u.2`, `s.5`, `p3.19`) — the same form `/docs view`, `/docs del`, and chat references accept. Project ids are qualified (`p<projectID>.<id>`) so a document stays unambiguous outside the context of "the active project". |
 | `/docs add [scope] <path>` | Upload a `.txt`/`.md`/`.html`/`.pdf`/`.docx` for retrieval (same as `/upload`). |
-| `/docs del <ref>` | Delete a document by its reference (e.g. `/docs del p.19`; the long form `<scope> <id>` still works). |
+| `/docs del <ref>` | Delete a document by its reference (e.g. `/docs del p3.19`; the long form `<scope> <id>` still works). |
 | `/upload [scope] <path>` | Upload a document (`.txt`/`.md`/`.html`/`.pdf`/`.docx`) into `personal`, `shared`, or `project` scope (defaults to the active project, else personal). Ingestion runs server-side with a live status line (stage, percent, elapsed) — in the browser too. |
 
-In the browser, the Documents view does the same: upload or paste text, with a
-scope picker (personal by default; owners/admins can ingest into the shared,
-org-wide corpus). Document listings show each document's type (PDF, DOCX, MD,
-TXT) alongside its scope.
+In the browser, the Memory view lets you edit a memory's content and (for
+`user`/`shared` scope) its slots inline, alongside delete; project memories
+show a content-only editor since they don't support slots. The Documents view
+does the same for uploads: upload or paste text, with a scope picker (personal
+by default; owners/admins can ingest into the shared, org-wide corpus).
+Document listings show each document's type (PDF, DOCX, MD, TXT) and its
+reference id (`u.2`, `s.5`, `p3.19`) alongside its scope, in both the
+Documents view and a project's Documents tab in the Projects view.
 
 #### Reports and citations
 

@@ -188,7 +188,10 @@
           {#each docs as d}
             <div class="card row">
               <div class="col" style="flex:1; min-width:0; gap:1px;">
-                <strong>{d.title}</strong>
+                <div class="row" style="gap:6px;">
+                  <strong>{d.title}</strong>
+                  <span class="pill small" title="document id">p{selected}.{d.id}</span>
+                </div>
                 <span class="muted small">
                   {d.mime} · {new Date(d.created_at).toLocaleDateString()}
                   {#if d.chunks} · {d.chunks} chunks{/if}
