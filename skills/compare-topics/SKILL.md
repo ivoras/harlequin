@@ -1,6 +1,6 @@
 ---
 name: compare-topics
-description: Compare two DIFFERENT documents about the same subject (two countries' laws on one topic, two vendors' contracts, two policies) and report how they treat each topic and what only one of them covers. load_skill this whenever asked to compare two distinct documents, laws, contracts or policies against each other. For two revisions of the same document, load compare-versions instead.
+description: Compare two DIFFERENT documents about the same subject (two countries' laws on one topic, two vendors' contracts, two policies) and report how they treat each topic and what only one of them covers. load_skill this whenever asked to compare two distinct documents, laws, contracts or policies against each other. NOT for old/new, previous/current, or original/amended pairs — two versions of the same text are compare-versions territory even when the user calls them "two documents"; load compare-versions for those.
 ---
 
 # Compare two documents about the same subject
