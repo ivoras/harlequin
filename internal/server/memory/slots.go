@@ -132,6 +132,33 @@ func (s *Store) AddSlot(ctx context.Context, userDB *sql.DB, memID, key, value s
 	return s.AddSlotEmbed(ctx, userDB, memID, key, value, HumanizeKey(key))
 }
 
+// SetSlots replaces all of a memory's slots in one shot (user/shared scope
+// only — project memories don't support slots). Used by the memory edit API
+// so a client can submit a full replacement set of (key, value) pairs.
+func (s *Store) SetSlots(ctx context.Context, userDB *sql.DB, id string, slots []types.MemorySlot, canManageShared bool) error {
+	scope, local, ok := decodeID(id)
+	if !ok {
+		return ErrNotFound
+	}
+	if scope == scopeShared && !canManageShared {
+		return ErrNotFound
+	}
+	m := s.memFor(scope, userDB)
+	if err := deleteSlots(ctx, m.db, local); err != nil {
+		return err
+	}
+	for _, sl := range slots {
+		key := strings.TrimSpace(sl.Key)
+		if key == "" {
+			continue
+		}
+		if err := s.AddSlot(ctx, userDB, id, key, sl.Value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // AddSlotEmbed attaches a slot whose vector is the embedding of embedText rather
 // than the default humanized key. For evaluating alternative slot-vector schemes
 // (e.g. key+value); production code uses AddSlot.

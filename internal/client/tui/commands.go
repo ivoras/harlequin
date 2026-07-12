@@ -1099,6 +1099,12 @@ func (m *Model) handleMemorySub(args []string) tea.Cmd {
 			}
 			return infoMsg{renderMemoryDetail(*mem, m.canManageShared())}
 		}
+	case "edit":
+		if len(args) < 2 {
+			return infoCmd("usage: /memory edit <id>")
+		}
+		id := args[1]
+		return m.openMemoryEditor(id, m.activeProjectID)
 	case "conflicts", "conflict":
 		return func() tea.Msg {
 			conflicts, err := m.client.ListMemoryConflicts(context.Background())
@@ -1134,7 +1140,7 @@ func (m *Model) handleMemorySub(args []string) tea.Cmd {
 			}
 		}
 		if scope != "user" && scope != "shared" {
-			return infoCmd("usage: /memory [user|shared|project|find|show|del|conflicts|resolve]")
+			return infoCmd("usage: /memory [user|shared|project|find|show|edit|del|conflicts|resolve]")
 		}
 		return func() tea.Msg {
 			mems, err := m.client.ListMemory(context.Background(), scope)

@@ -10,6 +10,9 @@
   let addText = $state("");
   let conflicts = $state<MemoryConflict[]>([]);
   let showConflicts = $state(false);
+  let editingId = $state<string | null>(null);
+  let editContent = $state("");
+  let editSlots = $state<{ key: string; value: string }[]>([]);
 
   let projectID = $derived($activeProject?.id ?? 0);
 
@@ -43,6 +46,38 @@
       addText = "";
       toast("stored");
       await loadList();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  }
+  function startEdit(m: Memory) {
+    editingId = m.id;
+    editContent = m.content;
+    editSlots = (m.slots ?? []).map((s) => ({ key: s.key, value: s.value ?? "" }));
+  }
+  function cancelEdit() {
+    editingId = null;
+  }
+  function addSlotRow() {
+    editSlots = [...editSlots, { key: "", value: "" }];
+  }
+  function removeSlotRow(i: number) {
+    editSlots = editSlots.filter((_, idx) => idx !== i);
+  }
+  async function saveEdit(m: Memory) {
+    if (!editContent.trim()) return;
+    try {
+      const updated = await api.updateMemory(
+        m.id,
+        {
+          content: editContent.trim(),
+          slots: scope === "project" ? undefined : editSlots.filter((s) => s.key.trim()),
+        },
+        scope === "project" ? projectID : 0,
+      );
+      mems = mems.map((x) => (x.id === m.id ? updated : x));
+      editingId = null;
+      toast("updated");
     } catch (e) {
       toast((e as Error).message, "error");
     }
@@ -92,14 +127,37 @@
     <div class="list">
       {#each mems as m}
         <div class="card col" style="gap:4px;">
-          <div class="wrap">{m.content}</div>
-          <div class="row small muted">
-            <span class="pill">{m.id}</span>
-            {#each m.slots ?? [] as s}<span class="pill" title={s.value}>{s.key}</span>{/each}
-            {#if m.pinned}<span title="pinned">📌</span>{/if}
-            <span class="spacer"></span>
-            <button class="ghost danger small" onclick={() => del(m.id)}>Delete</button>
-          </div>
+          {#if editingId === m.id}
+            <textarea rows="2" bind:value={editContent}></textarea>
+            {#if scope !== "project"}
+              <div class="col" style="gap:4px;">
+                {#each editSlots as s, i}
+                  <div class="row" style="gap:4px;">
+                    <input class="small" style="flex:1;" placeholder="key" bind:value={s.key} />
+                    <input class="small" style="flex:1;" placeholder="value" bind:value={s.value} />
+                    <button class="ghost small" onclick={() => removeSlotRow(i)}>✕</button>
+                  </div>
+                {/each}
+                <button class="ghost small" onclick={addSlotRow}>+ Add slot</button>
+              </div>
+            {/if}
+            <div class="row small muted">
+              <span class="pill">{m.id}</span>
+              <span class="spacer"></span>
+              <button class="ghost small" onclick={cancelEdit}>Cancel</button>
+              <button class="primary small" disabled={!editContent.trim()} onclick={() => saveEdit(m)}>Save</button>
+            </div>
+          {:else}
+            <div class="wrap">{m.content}</div>
+            <div class="row small muted">
+              <span class="pill">{m.id}</span>
+              {#each m.slots ?? [] as s}<span class="pill" title={s.value}>{s.key}</span>{/each}
+              {#if m.pinned}<span title="pinned">📌</span>{/if}
+              <span class="spacer"></span>
+              <button class="ghost small" onclick={() => startEdit(m)}>Edit</button>
+              <button class="ghost danger small" onclick={() => del(m.id)}>Delete</button>
+            </div>
+          {/if}
         </div>
       {/each}
       {#if mems.length === 0}<div class="muted small">Nothing here.</div>{/if}

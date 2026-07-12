@@ -7,7 +7,7 @@ import type {
   Memory, MemoryConflict, SearchResult, MCPServer, RegisterMCPRequest,
   MCPTestResult, MCPAuthStartResult, CronJob, CreateCronJobRequest,
   UpdateCronJobRequest, UsageRecord, Notification, Document, CreateDocumentRequest,
-  CreateMemoryRequest, Project, ProjectInvite, AlignResult, ContextBreakdown,
+  CreateMemoryRequest, UpdateMemoryRequest, Project, ProjectInvite, AlignResult, ContextBreakdown,
   IngestJobStatus,
 } from "./types";
 
@@ -192,6 +192,8 @@ export const api = {
     reqList<SearchResult>("GET", `/memory/search?q=${q(query)}${scope ? `&scope=${q(scope)}` : ""}`),
   getMemory: (id: string) => req<Memory>("GET", `/memory/${q(id)}`),
   createMemory: (r: CreateMemoryRequest) => req<Memory>("POST", "/memory", r),
+  updateMemory: (id: string, r: UpdateMemoryRequest, projectID = 0) =>
+    req<Memory>("PATCH", `/memory/${q(id)}${projectID ? `?project=${projectID}` : ""}`, r),
   deleteMemory: (id: string, projectID = 0) =>
     req<void>("DELETE", `/memory/${q(id)}${projectID ? `?project=${projectID}` : ""}`),
   listMemoryConflicts: () => reqList<MemoryConflict>("GET", "/memory/conflicts"),

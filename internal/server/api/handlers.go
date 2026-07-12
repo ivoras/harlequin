@@ -572,14 +572,81 @@ func (s *Server) handlePatchMemory(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if req.Pinned != nil {
-		err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
-			return s.Memory.SetPinned(r.Context(), udb, id, u.ID, *req.Pinned)
+
+	// p.N + project=<id>: a project memory (members only). Project memories
+	// don't support slots (ProjectAdd never indexes any).
+	if projectID, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64); projectID > 0 && strings.HasPrefix(id, "p.") {
+		if member, _ := s.Projects.IsMember(r.Context(), projectID, u.ID); !member {
+			writeErr(w, http.StatusForbidden, "not a member of this project")
+			return
+		}
+		if req.Slots != nil {
+			writeErr(w, http.StatusBadRequest, "project memories do not support slots")
+			return
+		}
+		var m *types.Memory
+		err := s.Storage.WithProject(r.Context(), projectID, func(pdb *sql.DB) error {
+			if req.Content == nil {
+				return nil
+			}
+			var e error
+			m, e = s.Memory.ProjectChange(r.Context(), pdb, id, *req.Content)
+			return e
 		})
 		if err != nil {
+			if errors.Is(err, memory.ErrNotFound) {
+				writeErr(w, http.StatusNotFound, "not found")
+				return
+			}
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		if m == nil {
+			writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+			return
+		}
+		writeJSON(w, http.StatusOK, m)
+		return
+	}
+
+	canManageShared := types.IsElevated(u.Role)
+	var result *types.Memory
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		if req.Pinned != nil {
+			if e := s.Memory.SetPinned(r.Context(), udb, id, u.ID, *req.Pinned); e != nil {
+				return e
+			}
+		}
+		if req.Content != nil {
+			if _, _, e := s.Memory.ChangeWithConflicts(r.Context(), udb, id, *req.Content, u.ID, canManageShared); e != nil {
+				return e
+			}
+		}
+		if req.Slots != nil {
+			if e := s.Memory.SetSlots(r.Context(), udb, id, *req.Slots, canManageShared); e != nil {
+				return e
+			}
+		}
+		if req.Content != nil || req.Slots != nil {
+			m, e := s.Memory.Get(r.Context(), udb, id, u.ID)
+			if e != nil {
+				return e
+			}
+			result = m
+		}
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, memory.ErrNotFound) {
+			writeErr(w, http.StatusNotFound, "not found")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if result != nil {
+		writeJSON(w, http.StatusOK, result)
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
