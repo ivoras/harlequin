@@ -21,3 +21,7 @@ session_*.md
 /harlequin-server
 
 __pycache__/
+
+# archives (e.g. ad-hoc data dir backups) must never be committed
+*.tgz
+*.txz
