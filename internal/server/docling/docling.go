@@ -27,17 +27,22 @@ const DefaultTimeout = 5 * time.Minute
 // Client calls one docling-serve instance.
 type Client struct {
 	baseURL string
+	fast    bool
 	hc      *http.Client
 }
 
 // New builds a client for the docling-serve at baseURL (e.g.
-// "http://127.0.0.1:5001"). timeout <= 0 uses DefaultTimeout.
-func New(baseURL string, timeout time.Duration) *Client {
+// "http://127.0.0.1:5001"). timeout <= 0 uses DefaultTimeout. fast trades
+// conversion quality for speed: it disables OCR and selects the dlparse_v2
+// PDF backend (the docling CLI's --no-ocr --pdf-backend=dlparse_v2), which is
+// much faster on digital-native PDFs but extracts nothing from scanned pages.
+func New(baseURL string, timeout time.Duration, fast bool) *Client {
 	if timeout <= 0 {
 		timeout = DefaultTimeout
 	}
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
+		fast:    fast,
 		hc:      &http.Client{Timeout: timeout},
 	}
 }
@@ -97,6 +102,15 @@ func (c *Client) convert(ctx context.Context, filename string, data []byte, form
 	}
 	if err := mw.WriteField("to_formats", format); err != nil {
 		return nil, err
+	}
+	if c.fast {
+		// docling CLI equivalents: --no-ocr --pdf-backend=dlparse_v2.
+		if err := mw.WriteField("do_ocr", "false"); err != nil {
+			return nil, err
+		}
+		if err := mw.WriteField("pdf_backend", "dlparse_v2"); err != nil {
+			return nil, err
+		}
 	}
 	if err := mw.Close(); err != nil {
 		return nil, err

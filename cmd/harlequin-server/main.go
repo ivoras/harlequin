@@ -302,7 +302,7 @@ func main() {
 	// instance is currently down: each upload retries it and falls back to the
 	// built-in extractors on failure.
 	if base := cfg.Documents.Docling.BaseURL; base != "" {
-		dl := docling.New(base, cfg.Documents.Docling.Timeout.D())
+		dl := docling.New(base, cfg.Documents.Docling.Timeout.D(), cfg.Documents.Docling.FastValue())
 		if dl.Healthy(context.Background()) {
 			log.Printf("docling: converting PDF/DOCX uploads via %s", base)
 		} else {

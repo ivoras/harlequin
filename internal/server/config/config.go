@@ -250,6 +250,16 @@ type DoclingConfig struct {
 	BaseURL string `yaml:"base_url"` // e.g. "http://127.0.0.1:5001"; empty disables
 	// Timeout bounds one conversion (default 5m — layout models are per-page).
 	Timeout Duration `yaml:"timeout"`
+	// Fast trades quality for speed: disables OCR and uses the dlparse_v2 PDF
+	// backend (docling CLI --no-ocr --pdf-backend=dlparse_v2). Much faster on
+	// digital-native PDFs; scanned/image pages extract nothing. Pointer so an
+	// omitted key defaults to enabled; set false for full-quality conversion.
+	Fast *bool `yaml:"fast"`
+}
+
+// FastValue reports whether fast conversion is enabled (default true).
+func (d DoclingConfig) FastValue() bool {
+	return d.Fast == nil || *d.Fast
 }
 
 // AgentConfig controls the agent loop and JS sandbox.

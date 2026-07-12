@@ -157,6 +157,8 @@ embeddings:
 #   docling:                   # optional docling-serve converter for PDF/DOCX uploads
 #     base_url: "http://127.0.0.1:5001"   # empty/absent = use built-in extractors only
 #     timeout: "5m"            # per-conversion bound; fallback extractors take over on failure
+#     fast: true               # default true: no OCR + dlparse_v2 backend (CLI --no-ocr --pdf-backend=dlparse_v2),
+#                              # much faster on digital-native PDFs; set false for OCR/scanned-page support
 
 agent:
   max_steps: 50

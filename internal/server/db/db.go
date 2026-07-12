@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 	"sync"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
@@ -59,11 +60,21 @@ func openConn(path string) (*sql.DB, error) {
 	// sqlite-vec / writes are simplest with a single connection for the embedded DB.
 	sqlDB.SetMaxOpenConns(1)
 
-	if err := sqlDB.Ping(); err != nil {
-		sqlDB.Close()
-		return nil, fmt.Errorf("ping sqlite: %w", err)
+	// The first Ping runs the DSN pragmas; the journal_mode=WAL change can
+	// return SQLITE_BUSY outside the busy handler when several connections
+	// create the same file at once (e.g. a fresh project db) — retry briefly.
+	var err2 error
+	for attempt := range 20 {
+		if err2 = sqlDB.Ping(); err2 == nil {
+			return sqlDB, nil
+		}
+		if !strings.Contains(err2.Error(), "locked") && !strings.Contains(err2.Error(), "busy") {
+			break
+		}
+		time.Sleep(time.Duration(attempt+1) * 25 * time.Millisecond)
 	}
-	return sqlDB, nil
+	sqlDB.Close()
+	return nil, fmt.Errorf("ping sqlite: %w", err2)
 }
 
 // Open opens (and initializes) the database at path for the given role, with
@@ -246,6 +257,11 @@ func ensureFTSTables(sqlDB *sql.DB, role Role) error {
 		}
 		if exists == 0 {
 			if _, err := sqlDB.Exec(ftsCreateStmt(n)); err != nil {
+				// Another connection creating the same fresh file can win the
+				// race between our existence check and this CREATE.
+				if strings.Contains(err.Error(), "already exists") {
+					continue
+				}
 				return fmt.Errorf("%s: %w", ftsCreateStmt(n), err)
 			}
 		}
