@@ -1,10 +1,9 @@
 <script lang="ts">
   import { session, user, toast } from "../lib/stores";
   import { sc } from "../lib/session.svelte";
-  import { api } from "../lib/api";
   import { renderMarkdown } from "../lib/markdown";
   import { matchSlash, runSlash, availableCommands } from "../lib/slash";
-  import type { DocChunkInfo } from "../lib/types";
+  import { onCiteHover, onCiteClick, onDocrefClick, onCodeCopy } from "../lib/docview.svelte";
 
   // Chat is a thin view over the app-scoped session controller (sc), which owns
   // the WebSocket and chat state so it survives view switches. Only view-local
@@ -23,147 +22,6 @@
     if (slashSel >= suggestions.length) slashSel = 0;
   });
 
-  // --- Document citations (d.u.N spans produced by renderMarkdown) ---
-  // Lazily resolved and cached; hover sets a tooltip (title + scope + page),
-  // click opens the stored original (PDFs anchored to the page) in a new tab.
-  const citeCache = new Map<string, Promise<DocChunkInfo>>();
-  function resolveCite(cid: string): Promise<DocChunkInfo> {
-    let p = citeCache.get(cid);
-    if (!p) {
-      // A bare d.p.N resolves against the session's project; a qualified
-      // d.p<id>.N carries its project in the reference itself.
-      p = api.getDocChunk(cid, cid.startsWith("d.p.") ? sc.currentProjectID : 0);
-      citeCache.set(cid, p);
-    }
-    return p;
-  }
-  function citeTarget(e: Event): HTMLElement | null {
-    const el = (e.target as HTMLElement)?.closest?.(".cite");
-    return el instanceof HTMLElement ? el : null;
-  }
-  // openDocBlob opens a fetched document in a new tab via a blob: URL. Text
-  // blobs get a UTF-8 BOM prepended: browsers ignore the charset parameter of
-  // a blob's MIME type when navigating to it and fall back to windows-1252, so
-  // the BOM is the only encoding signal that reliably survives.
-  function openDocBlob(blob: Blob, anchor = "") {
-    const b = blob.type.startsWith("text/") ? new Blob(["\uFEFF", blob], { type: blob.type }) : blob;
-    const url = URL.createObjectURL(b);
-    window.open(url + anchor, "_blank", "noopener");
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
-  }
-
-  // --- Document viewer sidebar: text documents (markdown save_doc reports,
-  // plain-text ingests) render client-side instead of opening as a raw blob
-  // tab; PDFs/DOCX still open in a new tab for the browser/OS to handle. ---
-  let docView = $state<{ title: string; text: string; blob: Blob; filename: string } | null>(null);
-  async function showTextDoc(blob: Blob, title: string, filename: string) {
-    const text = (await blob.text()).replace(/^\uFEFF/, "");
-    const name = filename || title || "document";
-    docView = { title: title || filename || "document", text, blob, filename: /\.\w+$/.test(name) ? name : name + ".md" };
-  }
-  // openDoc routes a fetched document: text into the sidebar, the rest into a tab.
-  async function openDoc(file: { blob: Blob; filename: string }, title: string, anchor = "") {
-    if (file.blob.type.startsWith("text/")) await showTextDoc(file.blob, title, file.filename);
-    else openDocBlob(file.blob, anchor);
-  }
-  function downloadDoc() {
-    if (!docView) return;
-    const url = URL.createObjectURL(docView.blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = docView.filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-  async function onCiteHover(e: Event) {
-    const el = citeTarget(e);
-    const cid = el?.dataset.cite;
-    if (!el || !cid || el.title) return;
-    try {
-      const info = await resolveCite(cid);
-      const page = info.page ? `, p.${info.page}` : "";
-      const open = info.has_file ? " — click to open" : "";
-      el.title = `${info.title || "untitled"} (${info.scope}${page})${open}`;
-      if (info.has_file) el.classList.add("openable");
-    } catch {
-      el.title = "unknown reference";
-    }
-  }
-  async function onCiteClick(e: Event) {
-    const el = citeTarget(e);
-    const cid = el?.dataset.cite;
-    if (!el || !cid) return;
-    try {
-      const info = await resolveCite(cid);
-      if (!info.has_file) {
-        toast(`${info.title || "untitled"} (${info.scope}) — no stored file to open`);
-        return;
-      }
-      const projectID = info.scope === "project" ? info.project_id || sc.currentProjectID : 0;
-      const file = await api.fetchDocumentFile(info.document_id, info.scope, projectID);
-      const anchor = info.mime === "application/pdf" && info.page ? `#page=${info.page}` : "";
-      await openDoc(file, info.title || "", anchor);
-    } catch (err) {
-      toast((err as Error).message, "error");
-    }
-  }
-
-  // --- Whole-document references (p.18, u.4 … spans produced by renderMarkdown) ---
-  // Unlike a chunk citation, a doc ref carries no page/chunk to resolve first —
-  // scope and id come straight from the ref text. Try the stored original
-  // (PDF/DOCX) first; documents with no stored file (e.g. save_doc reports)
-  // fall back to their full extracted text, opened as a plain-text tab.
-  const DOCREF_SCOPE: Record<string, string> = { u: "personal", p: "project", s: "shared" };
-  function docrefTarget(e: Event): HTMLElement | null {
-    const el = (e.target as HTMLElement)?.closest?.(".docref");
-    return el instanceof HTMLElement ? el : null;
-  }
-  async function onDocrefClick(e: Event) {
-    const el = docrefTarget(e);
-    const ref = el?.dataset.docref;
-    if (!el || !ref) return;
-    const [letter, idStr] = ref.split(".");
-    const id = Number(idStr);
-    // p<id> is a qualified project ref (e.g. p3.17); bare p uses the session's
-    // project.
-    let scope = DOCREF_SCOPE[letter];
-    let projectID = scope === "project" ? sc.currentProjectID : 0;
-    if (!scope && /^p\d+$/.test(letter)) {
-      scope = "project";
-      projectID = Number(letter.slice(1));
-    }
-    if (!scope || !id) return;
-    try {
-      const file = await api.fetchDocumentFile(id, scope, projectID);
-      await openDoc(file, ref);
-    } catch {
-      try {
-        const res = await api.getDocumentContent(id, scope, projectID);
-        await showTextDoc(new Blob([res.content], { type: "text/markdown;charset=utf-8" }), ref, "");
-      } catch (err) {
-        toast((err as Error).message || `couldn't open ${ref}`, "error");
-      }
-    }
-  }
-
-  // --- Copy affordances ---
-  // Per-code-block copy: .codecopy buttons injected by renderMarkdown, handled
-  // via the same event delegation as citations/docrefs. Feedback is a brief ✓
-  // swap directly on the button (it lives in {@html} output, not the template).
-  async function onCodeCopy(e: Event) {
-    const btn = (e.target as HTMLElement)?.closest?.(".codecopy");
-    if (!(btn instanceof HTMLElement)) return;
-    const pre = btn.parentElement?.querySelector("pre");
-    if (!pre) return;
-    try {
-      await navigator.clipboard.writeText(pre.textContent ?? "");
-    } catch (err) {
-      toast((err as Error).message || "copy failed", "error");
-      return;
-    }
-    btn.textContent = "✓";
-    setTimeout(() => (btn.textContent = "⧉"), 1200);
-  }
   // Whole-message copy: copies the raw markdown source, not the rendered HTML.
   let copiedIdx = $state(-1);
   async function copyMsg(i: number, text: string) {
@@ -382,23 +240,6 @@
     </div>
   </div>
 
-  {#if docView}
-    <div class="scrim" role="presentation" onclick={() => (docView = null)}></div>
-    <aside class="sheet right docview">
-      <header>
-        <strong class="doctitle" title={docView.title}>{docView.title}</strong>
-        <span class="spacer"></span>
-        <button class="ghost small" title="Open the raw file in a new tab" onclick={() => docView && openDocBlob(docView.blob)}>Raw ↗</button>
-        <button class="ghost small" title="Download the original markdown" onclick={downloadDoc}>Download ⬇</button>
-        <button class="ghost" onclick={() => (docView = null)}>Close</button>
-      </header>
-      <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-      <div class="body md" onclick={(e) => { onCiteClick(e); onDocrefClick(e); onCodeCopy(e); }}>
-        {@html renderMarkdown(docView.text)}
-      </div>
-    </aside>
-  {/if}
-
   {#if showHelp}
     <div class="scrim" role="presentation" onclick={() => (showHelp = false)}></div>
     <aside class="sheet bottom">
@@ -455,12 +296,8 @@
 
 <style>
   .chat { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  .docview { width: min(760px, 94vw); }
   .turn-error { color: var(--danger, #e5484d); border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
     border-radius: var(--radius-sm); padding: 6px 10px; background: color-mix(in srgb, currentColor 8%, transparent); }
-  .docview .doctitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-  .docview header button { flex-shrink: 0; }
-  .docview .body { word-break: break-word; }
   .messages { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px 0 12px; }
   .msg.user { display: flex; justify-content: flex-end; }
   .bubble { background: linear-gradient(to bottom, var(--surface-3), var(--surface-2));

@@ -4,6 +4,7 @@
   import { activeProject, projectSheet, toast } from "../lib/stores";
   import { switchToProject, leaveActiveProject, projectBylines } from "../lib/project";
   import { uploadWithProgress, ingestLabel } from "../lib/ingest";
+  import { viewDocument } from "../lib/docview.svelte";
   import type { Project, ProjectMember, Document } from "../lib/types";
 
   // Project picker + a document file manager for the picked project. The pick
@@ -193,6 +194,7 @@
                   {#if d.chunks} · {d.chunks} chunks{/if}
                 </span>
               </div>
+              <button class="ghost small" onclick={() => viewDocument(d, selected)}>View</button>
               <button class="ghost danger small" onclick={() => del(d.id)} aria-label="Delete">✕</button>
             </div>
           {/each}
