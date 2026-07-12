@@ -13,15 +13,20 @@
   let busy = $state(false);
   let canRegister = $state(false);
 
-  onMount(async () => {
+  // probeRegistration decides whether to offer "Create an account". Re-run
+  // whenever the API base changes (not just at mount), so fixing the server
+  // URL in the form updates the offer without a reload.
+  async function probeRegistration() {
     try {
       setBase(base.trim());
       const r = await api.registrationEnabled();
       canRegister = r.enabled;
-    } catch {
-      canRegister = false; // older server / unreachable; just hide register
+    } catch (e) {
+      canRegister = false; // older server / unreachable; hide but say why
+      console.warn("registration probe failed (register button hidden):", e);
     }
-  });
+  }
+  onMount(probeRegistration);
 
   async function login() {
     if (busy || !email || !password) return;
@@ -98,7 +103,8 @@
       <input type="password" placeholder={mode === "register" ? "Password (min 8 chars)" : "Password"}
         autocomplete={mode === "register" ? "new-password" : "current-password"} bind:value={password} onkeydown={onKey} />
       {#if showServer}
-        <input placeholder="Server URL (blank = same origin)" bind:value={base} onkeydown={onKey} />
+        <input placeholder="Server URL (blank = same origin)" bind:value={base} onkeydown={onKey}
+          onchange={probeRegistration} />
       {/if}
 
       {#if mode === "login"}
