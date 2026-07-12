@@ -138,9 +138,8 @@ See the [Projects](#projects-1) chapter below for the full workflow.
 
 ## Projects
 
-Projects are a collection of documents, and each has an AI chat session and a
-private chat between human members of the project. More precisely, a project
-is a shared workspace: its members see the same chat sessions with the agent
+Each project
+is a shared workspace with documents, an AI chat session and a human chat session: its members see the same chat sessions with the agent
 (a project can hold several), the same document corpus and project memory, and
 a members-only chatroom — while everything outside the project (your personal
 sessions, documents, and memories) stays private to you.
