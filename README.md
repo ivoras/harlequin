@@ -336,6 +336,7 @@ server {
 
     # API + WebSocket chat stream (same /api/ prefix; the map handles both).
     location /api/ {
+        client_max_body_size 64m;  # match the server's document-upload cap (nginx default is 1m -> 413 on uploads)
         proxy_pass http://127.0.0.1:8890;
         proxy_http_version 1.1;                          # required for WebSockets
         proxy_set_header Host $host;
