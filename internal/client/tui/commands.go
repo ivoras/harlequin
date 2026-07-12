@@ -738,13 +738,13 @@ func (m *Model) handleDocsList() tea.Cmd {
 			return infoMsg{"No documents. Upload one with /upload or /docs add."}
 		}
 		var sb strings.Builder
-		fmt.Fprintf(&sb, "Documents (%d) — reference them by the leading id (e.g. /docs view p.19); delete with /docs del <id>:\n", len(docs))
+		fmt.Fprintf(&sb, "Documents (%d) — reference them by the leading id (e.g. /docs view p3.19); delete with /docs del <id>:\n", len(docs))
 		for _, d := range docs {
 			name := d.Title
 			if name == "" {
 				name = d.OriginalName
 			}
-			fmt.Fprintf(&sb, "  %s.%-4d %s  (%s, %s, %d chunks)\n", docScopeLetter(d.Scope), d.ID, name, d.Scope, d.Mime, d.Chunks)
+			fmt.Fprintf(&sb, "  %-8s %s  (%s, %s, %d chunks)\n", docRef(d, pid), name, d.Scope, d.Mime, d.Chunks)
 		if d.Description != "" {
 			fmt.Fprintf(&sb, "        %s\n", d.Description)
 		}
@@ -760,16 +760,16 @@ func (m *Model) handleDocsDelete(args []string) tea.Cmd {
 		return infoCmd("usage: /docs del <ref>  (e.g. /docs del p.19; also: /docs del <personal|shared|project> <id>)")
 	}
 	var scope string
-	var id int64
-	if s, n, ok := parseDocRef(args[0]); ok {
-		// Scoped-ref shorthand, same form the listing shows (u.2, s.5, p.19).
-		scope, id = s, n
+	var id, refProjectID int64
+	if s, n, pid, ok := parseDocRef(args[0]); ok {
+		// Scoped-ref shorthand, same form the listing shows (u.2, s.5, p3.19).
+		scope, id, refProjectID = s, n, pid
 	} else if len(args) >= 2 {
 		scope = strings.ToLower(args[0])
 		switch scope {
 		case "personal", "shared", "project":
 		default:
-			return func() tea.Msg { return errMsg{fmt.Errorf("scope must be personal, shared, or project (or use a ref like p.19)")} }
+			return func() tea.Msg { return errMsg{fmt.Errorf("scope must be personal, shared, or project (or use a ref like p3.19)")} }
 		}
 		n, err := strconv.ParseInt(args[1], 10, 64)
 		if err != nil {
@@ -777,14 +777,18 @@ func (m *Model) handleDocsDelete(args []string) tea.Cmd {
 		}
 		id = n
 	} else {
-		return infoCmd("usage: /docs del <ref>  (e.g. /docs del p.19; also: /docs del <personal|shared|project> <id>)")
+		return infoCmd("usage: /docs del <ref>  (e.g. /docs del p3.19; also: /docs del <personal|shared|project> <id>)")
 	}
 	var projectID int64
 	if scope == "project" {
-		if m.activeProjectID == 0 {
+		switch {
+		case refProjectID > 0:
+			projectID = refProjectID
+		case m.activeProjectID != 0:
+			projectID = m.activeProjectID
+		default:
 			return func() tea.Msg { return errMsg{fmt.Errorf("no active project; switch to one with /project switch first")} }
 		}
-		projectID = m.activeProjectID
 	}
 	return func() tea.Msg {
 		if err := m.client.DeleteDocument(context.Background(), id, scope, projectID); err != nil {
@@ -795,37 +799,55 @@ func (m *Model) handleDocsDelete(args []string) tea.Cmd {
 }
 
 // scopeLetters maps a document ref's scope letter (as shown throughout the
-// UI and in [d.x.N] citations, e.g. "p.19") to the /docs command's scope word.
+// UI and in [d.x.N] citations, e.g. "p3.19") to the /docs command's scope word.
 var scopeLetters = map[string]string{"u": "personal", "s": "shared", "p": "project"}
 
-// docScopeLetter is the inverse: the ref letter for a scope word, so listings
-// show documents under the same id the commands and citations accept.
-func docScopeLetter(scope string) string {
-	for l, sc := range scopeLetters {
-		if sc == scope {
-			return l
-		}
+// docRef builds a document's unique display/reference id: "u.N"/"s.N" for
+// personal/shared, or "p<projectID>.N" for project scope — the same
+// project-qualified form used in chunk citations (see
+// internal/server/documents.scopePrefix), so the id stays unambiguous even
+// outside the context of "the current active project". pid is the project
+// whose corpus d belongs to (0 if d isn't project-scoped).
+func docRef(d types.Document, pid int64) string {
+	switch d.Scope {
+	case "personal":
+		return "u." + strconv.FormatInt(d.ID, 10)
+	case "project":
+		return "p" + strconv.FormatInt(pid, 10) + "." + strconv.FormatInt(d.ID, 10)
+	default:
+		return "s." + strconv.FormatInt(d.ID, 10)
 	}
-	return "s"
 }
 
-// parseDocRef splits a leading "<scope>.<id>" token (e.g. "p.19", matching how
-// documents are referenced everywhere else — citations, align_docs, search
-// results) into its scope word and id, consuming one argument instead of two.
-func parseDocRef(tok string) (scope string, id int64, ok bool) {
+// parseDocRef splits a leading "<scope>.<id>" token (matching how documents
+// are referenced everywhere else — citations, align_docs, search results)
+// into its scope word, id, and (for a project ref) an explicit project id if
+// one was embedded ("p3.19" — 0 if omitted, e.g. plain "p.19" meaning "the
+// active project"). Consumes one argument instead of two.
+func parseDocRef(tok string) (scope string, id, projectID int64, ok bool) {
 	letter, idStr, found := strings.Cut(tok, ".")
 	if !found {
-		return "", 0, false
-	}
-	scope, ok = scopeLetters[strings.ToLower(letter)]
-	if !ok {
-		return "", 0, false
+		return "", 0, 0, false
 	}
 	n, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil || n <= 0 {
-		return "", 0, false
+		return "", 0, 0, false
 	}
-	return scope, n, true
+	if rest, isProj := strings.CutPrefix(strings.ToLower(letter), "p"); isProj {
+		if rest == "" {
+			return "project", n, 0, true
+		}
+		pid, perr := strconv.ParseInt(rest, 10, 64)
+		if perr != nil || pid <= 0 {
+			return "", 0, 0, false
+		}
+		return "project", n, pid, true
+	}
+	scope, ok = scopeLetters[strings.ToLower(letter)]
+	if !ok {
+		return "", 0, 0, false
+	}
+	return scope, n, 0, true
 }
 
 // handleDocsView shows a document: "/docs view <scope> <id> [text|file]", or
@@ -841,15 +863,15 @@ func parseDocRef(tok string) (scope string, id int64, ok bool) {
 // the original for opening with an external viewer. Re-run the command with
 // that keyword to proceed. project scope uses the active project.
 func (m *Model) handleDocsView(args []string) tea.Cmd {
-	const usage = "usage: /docs view <personal|shared|project> <id> [text|file]  (or /docs view p.19 [text|file])"
+	const usage = "usage: /docs view <personal|shared|project> <id> [text|file]  (or /docs view p3.19 [text|file])"
 	if len(args) < 1 {
 		return infoCmd(usage)
 	}
 	var scope string
-	var id int64
+	var id, refProjectID int64
 	rest := args[1:]
-	if s, n, ok := parseDocRef(args[0]); ok {
-		scope, id = s, n
+	if s, n, pid, ok := parseDocRef(args[0]); ok {
+		scope, id, refProjectID = s, n, pid
 	} else {
 		if len(args) < 2 {
 			return infoCmd(usage)
@@ -876,10 +898,14 @@ func (m *Model) handleDocsView(args []string) tea.Cmd {
 	}
 	var projectID int64
 	if scope == "project" {
-		if m.activeProjectID == 0 {
+		switch {
+		case refProjectID > 0:
+			projectID = refProjectID
+		case m.activeProjectID != 0:
+			projectID = m.activeProjectID
+		default:
 			return func() tea.Msg { return errMsg{fmt.Errorf("no active project; switch to one with /project switch first")} }
 		}
-		projectID = m.activeProjectID
 	}
 	return func() tea.Msg {
 		ctx := context.Background()

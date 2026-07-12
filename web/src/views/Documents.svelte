@@ -140,9 +140,14 @@
   let comparing = $state(false);
   let cmp = $state<AlignResult | null>(null);
 
+  // The unique display/reference id for a document: "u.N"/"s.N" for
+  // personal/shared, or "p<projectID>.N" for project scope — the same
+  // project-qualified form used in RAG chunk citations, so the id stays
+  // unambiguous even outside the context of "the active project".
   function refOf(d: Document): string {
-    const letter = d.scope === "personal" ? "u" : d.scope === "project" ? "p" : "s";
-    return `${letter}.${d.id}`;
+    if (d.scope === "personal") return `u.${d.id}`;
+    if (d.scope === "project") return `p${$activeProject?.id ?? 0}.${d.id}`;
+    return `s.${d.id}`;
   }
   async function compare() {
     if (!cmpA || !cmpB || cmpA === cmpB) return;
@@ -196,6 +201,7 @@
               <div class="row" style="gap:6px;">
                 <strong>{d.title}</strong>
                 <span class="pill scope-{d.scope}">{d.scope === "project" ? `project: ${$activeProject?.name ?? "?"}` : (d.scope ?? "shared")}</span>
+                <span class="pill" title="document id">{refOf(d)}</span>
               </div>
               <span class="muted small">{d.mime} · {new Date(d.created_at).toLocaleDateString()}</span>
               {#if d.description}<span class="muted small wrap">{d.description}</span>{/if}
