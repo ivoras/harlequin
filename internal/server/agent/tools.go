@@ -452,18 +452,32 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 	if a.Docs != nil {
 		reg["align_docs"] = a.alignDocsEntry()
 		reg["list_documents"] = toolEntry{
-			def: fnTool("list_documents", `List every document in the corpus (personal, shared, and — in a project session — project documents): scoped id, title, catalogue description, size and date. Use this to resolve a document the user names loosely ("the new EEA regulation", "last year's contract") to its scoped id (u.N / s.N / p.N) before calling align_docs or search_docs with a docs filter. Prefer matching on the description, not just the title — titles are often raw filenames.`, map[string]any{
-				"type": "object", "properties": map[string]any{},
+			def: fnTool("list_documents", `List every document in the corpus (personal, shared, and — in a project session — project documents): scoped id, title, catalogue description, size and date. Use this to resolve a document the user names loosely ("the new EEA regulation", "last year's contract") to its scoped id (u.N / s.N / p.N) before calling align_docs or search_docs with a docs filter. Pass all_projects: true to also list the documents of every project the user is a member of (ids there are p<project>.N, e.g. p3.17 — usable with align_docs, check_text and search_docs from any session). Prefer matching on the description, not just the title — titles are often raw filenames.`, map[string]any{
+				"type": "object", "properties": map[string]any{
+					"all_projects": map[string]any{"type": "boolean",
+						"description": "Also list documents of every project the user is a member of, not only the session's own"},
+				},
 			}),
 			handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
-				docs, err := a.Docs.ListScoped(ctx, a.Docs.ScopesFor(rc.userDB, rc.projectDB))
+				scopes := a.Docs.ScopesFor(rc.userDB, rc.projectDB)
+				var legend string
+				if argBool(args, "all_projects", false) {
+					foreign, closeAll := a.openForeignProjects(ctx, rc)
+					defer closeAll()
+					for _, f := range foreign {
+						scopes = append(scopes, documents.ScopeDB{Scope: documents.ProjectScope(f.id), DB: f.db})
+					}
+					legend = projectLegend(foreign)
+				}
+				docs, err := a.Docs.ListScoped(ctx, scopes)
 				if err != nil {
 					return "", err
 				}
 				if len(docs) == 0 {
-					return "(no documents)", nil
+					return legend + "(no documents)", nil
 				}
 				var sb strings.Builder
+				sb.WriteString(legend)
 				for _, d := range docs {
 					fmt.Fprintf(&sb, "- %s.%d %q · %s · %d sections · %s", scopeLetter(d.Scope), d.ID, d.Title, docTypeLabel(d), d.Chunks, d.CreatedAt.Format("2006-01-02"))
 					if d.Description != "" {
