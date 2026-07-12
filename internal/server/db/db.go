@@ -141,13 +141,35 @@ func runMigrations(sqlDB *sql.DB, role Role) error {
 	sort.Strings(names)
 
 	for _, name := range names {
-		var exists int
-		if err := sqlDB.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE name = ?`, name).Scan(&exists); err != nil {
+		if err := applyMigration(sqlDB, dir, name); err != nil {
 			return err
 		}
-		if exists > 0 {
-			continue
+	}
+	return nil
+}
+
+// applyMigration runs one migration under an IMMEDIATE transaction. Two
+// connections can race first-open of the same file (e.g. a fresh project db
+// opened by two request handlers at once); BEGIN IMMEDIATE takes the write
+// lock up front, so the loser blocks (busy_timeout), then sees the recorded
+// name and skips — instead of double-applying and failing on the UNIQUE
+// insert. The pool is MaxOpenConns(1), so these raw BEGIN/COMMIT statements
+// all run on the one underlying connection.
+func applyMigration(sqlDB *sql.DB, dir, name string) error {
+	if _, err := sqlDB.Exec("BEGIN IMMEDIATE"); err != nil {
+		return fmt.Errorf("begin %s: %w", name, err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = sqlDB.Exec("ROLLBACK")
 		}
+	}()
+	var exists int
+	if err := sqlDB.QueryRow(`SELECT COUNT(*) FROM schema_migrations WHERE name = ?`, name).Scan(&exists); err != nil {
+		return err
+	}
+	if exists == 0 {
 		raw, err := migrationsFS.ReadFile(dir + "/" + name)
 		if err != nil {
 			return err
@@ -159,6 +181,10 @@ func runMigrations(sqlDB *sql.DB, role Role) error {
 			return err
 		}
 	}
+	if _, err := sqlDB.Exec("COMMIT"); err != nil {
+		return fmt.Errorf("commit %s: %w", name, err)
+	}
+	committed = true
 	return nil
 }
 
