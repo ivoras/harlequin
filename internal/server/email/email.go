@@ -67,15 +67,54 @@ func (s *Sender) Send(to, subject, body string) error {
 		auth = smtp.PlainAuth("", s.cfg.Username, s.cfg.Password, s.cfg.Host)
 	}
 
-	// Port 465 is implicit TLS (SMTPS); everything else uses STARTTLS via
-	// smtp.SendMail (which upgrades when the server advertises it).
+	// Port 465 is implicit TLS (SMTPS); a loopback host (a local relay like
+	// postfix on the same box) is spoken to in plaintext with no STARTTLS —
+	// local MTAs typically have no or self-signed certs, and the traffic never
+	// leaves the machine. Everything else uses STARTTLS via smtp.SendMail
+	// (which upgrades when the server advertises it).
 	if s.cfg.Port == 465 {
 		return s.sendTLS(addr, auth, from, to, msg)
+	}
+	if isLoopbackHost(s.cfg.Host) {
+		return s.sendPlain(addr, auth, from, to, msg)
 	}
 	if err := smtp.SendMail(addr, auth, from, []string{to}, msg); err != nil {
 		return fmt.Errorf("smtp send: %w", err)
 	}
 	return nil
+}
+
+// isLoopbackHost reports whether host names the local machine (localhost,
+// 127.0.0.0/8, ::1 — bracketed IPv6 accepted).
+func isLoopbackHost(host string) bool {
+	h := strings.ToLower(strings.TrimSpace(host))
+	h = strings.Trim(h, "[]")
+	if h == "localhost" {
+		return true
+	}
+	if ip := net.ParseIP(h); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
+}
+
+// sendPlain delivers over a plaintext connection without attempting STARTTLS,
+// for loopback relays.
+func (s *Sender) sendPlain(addr string, auth smtp.Auth, from, to string, msg []byte) error {
+	c, err := smtp.Dial(addr)
+	if err != nil {
+		return fmt.Errorf("smtp dial: %w", err)
+	}
+	defer c.Close()
+	if auth != nil {
+		// Only authenticate if the relay asks for it; local relays usually don't.
+		if ok, _ := c.Extension("AUTH"); ok {
+			if err := c.Auth(auth); err != nil {
+				return fmt.Errorf("smtp auth: %w", err)
+			}
+		}
+	}
+	return transact(c, from, to, msg)
 }
 
 // sendTLS sends over an implicit-TLS connection (port 465).
@@ -95,6 +134,11 @@ func (s *Sender) sendTLS(addr string, auth smtp.Auth, from, to string, msg []byt
 			return fmt.Errorf("smtp auth: %w", err)
 		}
 	}
+	return transact(c, from, to, msg)
+}
+
+// transact runs the MAIL/RCPT/DATA/QUIT sequence on an established client.
+func transact(c *smtp.Client, from, to string, msg []byte) error {
 	if err := c.Mail(from); err != nil {
 		return fmt.Errorf("smtp mail: %w", err)
 	}
