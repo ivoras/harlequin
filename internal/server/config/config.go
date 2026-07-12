@@ -66,6 +66,7 @@ type Config struct {
 	Auth           AuthConfig            `yaml:"auth"`
 	Email          email.Config          `yaml:"email"`
 	Telegram       TelegramConfig        `yaml:"telegram"`
+	WebSearch      WebSearchConfig       `yaml:"web_search"`
 
 	// Secrets, populated from the environment (not YAML).
 	JWTSecret string `yaml:"-"`
@@ -77,6 +78,18 @@ type Config struct {
 	// ZyteAPIKey enables the Zyte API fallback for WebFetch (and the sandbox
 	// fetch()), from the ZYTE_API_KEY env var. Empty disables it.
 	ZyteAPIKey string `yaml:"-"`
+}
+
+// WebSearchConfig configures the agent's WebSearch tool (Brave Search API).
+// The key is read from the env var named by APIKeyEnv (default BRAVE_API_KEY,
+// like the other *_env secrets); an empty key disables the tool entirely (it
+// is not offered to the model). APIBase overrides the API host (tests).
+type WebSearchConfig struct {
+	APIKeyEnv string `yaml:"api_key_env"`
+	APIBase   string `yaml:"api_base"`
+
+	// APIKey is resolved from APIKeyEnv at load time.
+	APIKey string `yaml:"-"`
 }
 
 // TelegramConfig configures outbound Telegram notification delivery. The bot
@@ -624,6 +637,13 @@ func (c *Config) resolveSecrets() {
 
 	if env := c.Email.PasswordEnv; env != "" {
 		c.Email.Password = os.Getenv(env)
+	}
+
+	if env := c.WebSearch.APIKeyEnv; env != "" {
+		c.WebSearch.APIKey = os.Getenv(env)
+	}
+	if c.WebSearch.APIKey == "" {
+		c.WebSearch.APIKey = os.Getenv("BRAVE_API_KEY")
 	}
 
 	if env := c.Telegram.BotTokenEnv; env != "" {

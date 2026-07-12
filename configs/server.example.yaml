@@ -226,3 +226,11 @@ email:
 telegram:
   bot_token_env: TELEGRAM_BOT_TOKEN # env var holding the bot token (empty disables Telegram delivery)
   api_base: ""                      # override the Bot API host (default https://api.telegram.org; for self-host/testing)
+
+# Web search: the agent's WebSearch tool, backed by the Brave Search API
+# (https://brave.com/search/api/). The key is read from the env var named by
+# api_key_env; when the key is empty/unset the tool is disabled and not
+# offered to the model.
+web_search:
+  api_key_env: BRAVE_API_KEY        # env var holding the Brave Search API key
+  api_base: ""                      # override the API host (default https://api.search.brave.com; for testing)
