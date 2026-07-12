@@ -72,9 +72,9 @@ They resolve across scopes: project (when one is active), then shared
 | `/memory conflicts` | List flagged duplicate/conflicting memory pairs. |
 | `/memory resolve <id>` | Mark a conflict flag as resolved. |
 | `/docs search <query>` | Search documents (personal + shared, + project if active). |
-| `/docs list` | List documents across scopes. |
+| `/docs list` | List documents across scopes, each shown under its reference id (`u.2`, `s.5`, `p.19`) — the same form `/docs view`, `/docs del`, and chat references accept. |
 | `/docs add [scope] <path>` | Upload a `.txt`/`.md`/`.html`/`.pdf`/`.docx` for retrieval (same as `/upload`). |
-| `/docs del <scope> <id>` | Delete a document. |
+| `/docs del <ref>` | Delete a document by its reference (e.g. `/docs del p.19`; the long form `<scope> <id>` still works). |
 | `/upload [scope] <path>` | Upload a document into `personal`, `shared`, or `project` scope (default personal). |
 
 In the browser, the Documents view does the same: upload or paste text, with a

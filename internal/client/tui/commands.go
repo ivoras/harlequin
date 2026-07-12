@@ -62,7 +62,7 @@ const helpText = `Commands:
   /memory resolve <id>  mark a conflict flag as resolved
   /docs search <query>     search documents (personal + shared, + project if active)
   /docs list               list documents across scopes
-  /docs del <scope> <id>   delete a document
+  /docs del <ref>          delete a document (e.g. /docs del p.19)
   /docs add [scope] <path> upload a .txt/.md/.html/.pdf for RAG (same as /upload)
   /upload [scope] <path>   upload a doc into personal|shared|project (default personal)
   /resume [query]       pick a session to resume (optionally filter by title)
@@ -197,7 +197,7 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 		case "view":
 			return m.handleDocsView(args[1:])
 		default:
-			return infoCmd("usage: /docs <search|q> <query> | list | del <scope> <id> | view <scope> <id> | add [scope] <path>")
+			return infoCmd("usage: /docs <search|q> <query> | list | del <ref> | view <ref> [text|file] | add [scope] <path>")
 		}
 	case "/resume":
 		// "/resume <id>" jumps straight to that session; "/resume [query]" opens the
@@ -738,13 +738,13 @@ func (m *Model) handleDocsList() tea.Cmd {
 			return infoMsg{"No documents. Upload one with /upload or /docs add."}
 		}
 		var sb strings.Builder
-		fmt.Fprintf(&sb, "Documents (%d) — delete with /docs delete <scope> <id>:\n", len(docs))
+		fmt.Fprintf(&sb, "Documents (%d) — reference them by the leading id (e.g. /docs view p.19); delete with /docs del <id>:\n", len(docs))
 		for _, d := range docs {
 			name := d.Title
 			if name == "" {
 				name = d.OriginalName
 			}
-			fmt.Fprintf(&sb, "  [%s] #%d  %s  (%s, %d chunks)\n", d.Scope, d.ID, name, d.Mime, d.Chunks)
+			fmt.Fprintf(&sb, "  %s.%-4d %s  (%s, %s, %d chunks)\n", docScopeLetter(d.Scope), d.ID, name, d.Scope, d.Mime, d.Chunks)
 		if d.Description != "" {
 			fmt.Fprintf(&sb, "        %s\n", d.Description)
 		}
@@ -756,18 +756,28 @@ func (m *Model) handleDocsList() tea.Cmd {
 // handleDocsDelete deletes a document: "/docs delete <scope> <id>". project
 // scope uses the active project.
 func (m *Model) handleDocsDelete(args []string) tea.Cmd {
-	if len(args) < 2 {
-		return infoCmd("usage: /docs del <personal|shared|project> <id>")
+	if len(args) < 1 {
+		return infoCmd("usage: /docs del <ref>  (e.g. /docs del p.19; also: /docs del <personal|shared|project> <id>)")
 	}
-	scope := strings.ToLower(args[0])
-	switch scope {
-	case "personal", "shared", "project":
-	default:
-		return func() tea.Msg { return errMsg{fmt.Errorf("scope must be personal, shared, or project")} }
-	}
-	id, err := strconv.ParseInt(args[1], 10, 64)
-	if err != nil {
-		return func() tea.Msg { return errMsg{fmt.Errorf("invalid document id %q", args[1])} }
+	var scope string
+	var id int64
+	if s, n, ok := parseDocRef(args[0]); ok {
+		// Scoped-ref shorthand, same form the listing shows (u.2, s.5, p.19).
+		scope, id = s, n
+	} else if len(args) >= 2 {
+		scope = strings.ToLower(args[0])
+		switch scope {
+		case "personal", "shared", "project":
+		default:
+			return func() tea.Msg { return errMsg{fmt.Errorf("scope must be personal, shared, or project (or use a ref like p.19)")} }
+		}
+		n, err := strconv.ParseInt(args[1], 10, 64)
+		if err != nil {
+			return func() tea.Msg { return errMsg{fmt.Errorf("invalid document id %q", args[1])} }
+		}
+		id = n
+	} else {
+		return infoCmd("usage: /docs del <ref>  (e.g. /docs del p.19; also: /docs del <personal|shared|project> <id>)")
 	}
 	var projectID int64
 	if scope == "project" {
@@ -787,6 +797,17 @@ func (m *Model) handleDocsDelete(args []string) tea.Cmd {
 // scopeLetters maps a document ref's scope letter (as shown throughout the
 // UI and in [d.x.N] citations, e.g. "p.19") to the /docs command's scope word.
 var scopeLetters = map[string]string{"u": "personal", "s": "shared", "p": "project"}
+
+// docScopeLetter is the inverse: the ref letter for a scope word, so listings
+// show documents under the same id the commands and citations accept.
+func docScopeLetter(scope string) string {
+	for l, sc := range scopeLetters {
+		if sc == scope {
+			return l
+		}
+	}
+	return "s"
+}
 
 // parseDocRef splits a leading "<scope>.<id>" token (e.g. "p.19", matching how
 // documents are referenced everywhere else — citations, align_docs, search
