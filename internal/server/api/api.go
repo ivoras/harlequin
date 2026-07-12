@@ -64,6 +64,9 @@ type Server struct {
 	Hub      *sessionhub.Hub
 	Projects *project.Store
 	ChatHub  *projectchat.Hub
+
+	// ingest tracks asynchronous document ingestions (POST /documents/async).
+	ingest ingestJobs
 }
 
 // Router builds the chi router.
@@ -155,6 +158,8 @@ func (s *Server) Router() http.Handler {
 
 			r.Get("/documents", s.handleListDocuments)
 			r.Post("/documents", s.handleCreateDocument)
+			r.Post("/documents/async", s.handleCreateDocumentAsync)
+			r.Get("/documents/jobs/{id}", s.handleGetIngestJob)
 			r.Delete("/documents/{id}", s.handleDeleteDocument)
 			r.Get("/documents/search", s.handleSearchDocuments)
 			r.Get("/documents/align", s.handleAlignDocuments)

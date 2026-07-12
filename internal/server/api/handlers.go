@@ -667,11 +667,54 @@ func (s *Server) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Catalogue description: one small LLM call over the opening text, stored
+	// with the document so the assistant can resolve paraphrased references
+	// ("the new EEA regulation") from list_documents. Best-effort.
+	if req.Description == "" && s.Agent != nil {
+		req.Description = s.Agent.DescribeDocument(r.Context(), req.Title, req.Content)
+	}
+
+	d, status, msg := s.ingestToScope(r.Context(), u, req, raw, nil)
+	if msg != "" {
+		writeErr(w, status, msg)
+		return
+	}
+	s.afterIngest(u, req, d)
+	writeJSON(w, http.StatusCreated, d)
+}
+
+// checkDocScope validates an ingest's target corpus and the caller's right to
+// write there. A non-empty msg is a client-facing error with its status.
+func (s *Server) checkDocScope(ctx context.Context, u *types.User, scope string, projectID int64) (int, string) {
+	switch scope {
+	case documents.ScopePersonal, "":
+	case documents.ScopeShared:
+		if !types.IsElevated(u.Role) {
+			return http.StatusForbidden, "only owners/admins can add shared documents"
+		}
+	case documents.ScopeProject:
+		if projectID == 0 {
+			return http.StatusBadRequest, "project_id required for project scope"
+		}
+		if member, _ := s.Projects.IsMember(ctx, projectID, u.ID); !member {
+			return http.StatusForbidden, "not a member of this project"
+		}
+	default:
+		return http.StatusBadRequest, "invalid scope (personal|shared|project)"
+	}
+	return 0, ""
+}
+
+// ingestToScope routes an ingest to the requested corpus (with permission
+// checks), persists the uploaded raw bytes under that scope's files/
+// directory, and optionally reports embedding progress. A non-empty msg is a
+// client-facing error with its status.
+func (s *Server) ingestToScope(ctx context.Context, u *types.User, req types.CreateDocumentRequest, raw []byte, progress func(done, total int)) (*types.Document, int, string) {
 	// ingestAndStore ingests into a corpus, then persists the uploaded file under
 	// that scope's files/ directory with a 7-bit ASCII name (the original name is
 	// kept in the DB) and records the on-disk path.
 	ingestAndStore := func(ctx context.Context, db *sql.DB, filesDir string, dirErr error) (*types.Document, error) {
-		doc, err := s.Docs.IngestInto(ctx, db, req, u.ID)
+		doc, err := s.Docs.IngestIntoProgress(ctx, db, req, u.ID, progress)
 		if err != nil || doc == nil || len(raw) == 0 || dirErr != nil || filesDir == "" {
 			return doc, err
 		}
@@ -686,78 +729,121 @@ func (s *Server) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 		return doc, err
 	}
 
-	// Catalogue description: one small LLM call over the opening text, stored
-	// with the document so the assistant can resolve paraphrased references
-	// ("the new EEA regulation") from list_documents. Best-effort.
-	if req.Description == "" && s.Agent != nil {
-		req.Description = s.Agent.DescribeDocument(r.Context(), req.Title, req.Content)
-	}
-
-	// Route the ingest to the requested corpus, checking permission for each:
-	//   personal (default) — any user, into their own DB
-	//   shared             — owners/admins only (org-wide)
-	//   project            — members of the project only
 	scope := req.Scope
 	if scope == "" {
 		scope = documents.ScopePersonal
+	}
+	if status, msg := s.checkDocScope(ctx, u, scope, req.ProjectID); msg != "" {
+		return nil, status, msg
 	}
 	var d *types.Document
 	var err error
 	switch scope {
 	case documents.ScopePersonal:
-		err = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		err = s.Storage.WithUser(ctx, u.ID, func(udb *sql.DB) error {
 			dir, dErr := s.Storage.UserFilesDir(u.ID)
 			var e error
-			d, e = ingestAndStore(r.Context(), udb, dir, dErr)
+			d, e = ingestAndStore(ctx, udb, dir, dErr)
 			return e
 		})
 	case documents.ScopeShared:
-		if !types.IsElevated(u.Role) {
-			writeErr(w, http.StatusForbidden, "only owners/admins can add shared documents")
-			return
-		}
 		dir, dErr := s.Storage.SharedFilesDir()
-		d, err = ingestAndStore(r.Context(), s.Storage.Shared, dir, dErr)
+		d, err = ingestAndStore(ctx, s.Storage.Shared, dir, dErr)
 	case documents.ScopeProject:
-		if req.ProjectID == 0 {
-			writeErr(w, http.StatusBadRequest, "project_id required for project scope")
-			return
-		}
-		if member, _ := s.Projects.IsMember(r.Context(), req.ProjectID, u.ID); !member {
-			writeErr(w, http.StatusForbidden, "not a member of this project")
-			return
-		}
-		err = s.Storage.WithProject(r.Context(), req.ProjectID, func(pdb *sql.DB) error {
+		err = s.Storage.WithProject(ctx, req.ProjectID, func(pdb *sql.DB) error {
 			dir, dErr := s.Storage.ProjectFilesDir(req.ProjectID)
 			var e error
-			d, e = ingestAndStore(r.Context(), pdb, dir, dErr)
+			d, e = ingestAndStore(ctx, pdb, dir, dErr)
 			return e
 		})
-	default:
-		writeErr(w, http.StatusBadRequest, "invalid scope (personal|shared|project)")
-		return
 	}
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
+		return nil, http.StatusInternalServerError, err.Error()
 	}
-	_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
-		s.Audit.Log(r.Context(), udb, "document_ingest", req.Title, nil)
+	return d, 0, ""
+}
+
+// afterIngest runs the post-ingest side work shared by the sync and async
+// paths: the audit row, the optional document→memory bridge, and the
+// background description retry.
+func (s *Server) afterIngest(u *types.User, req types.CreateDocumentRequest, d *types.Document) {
+	ctx := context.Background()
+	_ = s.Storage.WithUser(ctx, u.ID, func(udb *sql.DB) error {
+		s.Audit.Log(ctx, udb, "document_ingest", req.Title, nil)
 		return nil
 	})
-
 	// Optional bridge: distill durable facts from the document into memory.
 	if s.Cfg.Memory.ExtractFromDocumentsEnabled() && s.Agent != nil && strings.TrimSpace(req.Content) != "" {
 		go s.Agent.ExtractMemoriesFromText(context.Background(), u.ID, req.Title, req.Content, types.IsElevated(u.Role))
 	}
-
 	// The synchronous description attempt can lose to model load/contention;
 	// retry in the background and repair the stored row.
+	scope := req.Scope
+	if scope == "" {
+		scope = documents.ScopePersonal
+	}
 	if d != nil && req.Description == "" && s.Agent != nil {
 		s.describeLater(u.ID, scope, req.ProjectID, d.ID, req.Title, req.Content)
 	}
+}
 
-	writeJSON(w, http.StatusCreated, d)
+// handleCreateDocumentAsync accepts a multipart document upload, starts the
+// conversion+ingest in the background, and returns a job id immediately; the
+// client polls GET /documents/jobs/{id} for stage/progress. Scope permission
+// is checked up front so a forbidden upload fails synchronously.
+func (s *Server) handleCreateDocumentAsync(w http.ResponseWriter, r *http.Request) {
+	u, _ := auth.UserFromContext(r.Context())
+	in, err := readUploadInput(w, r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	scope := in.scope
+	if scope == "" {
+		scope = documents.ScopePersonal
+	}
+	if status, msg := s.checkDocScope(r.Context(), u, scope, in.projectID); msg != "" {
+		writeErr(w, status, msg)
+		return
+	}
+	job := s.ingest.start(u.ID)
+	uCopy := *u
+	go func() {
+		// Independent lifetime: the upload request returns immediately.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+		job.set("extracting")
+		req, _, msg := s.extractDocument(ctx, in)
+		if msg != "" {
+			job.fail(msg)
+			return
+		}
+		if req.Description == "" && s.Agent != nil {
+			job.set("describing")
+			req.Description = s.Agent.DescribeDocument(ctx, req.Title, req.Content)
+		}
+		// The progress callback flips this to "embedding" at the first batch.
+		job.set("chunking")
+		d, _, msg := s.ingestToScope(ctx, &uCopy, req, in.data, job.progress)
+		if msg != "" {
+			job.fail(msg)
+			return
+		}
+		s.afterIngest(&uCopy, req, d)
+		job.succeed(d)
+	}()
+	writeJSON(w, http.StatusAccepted, map[string]string{"job_id": job.id})
+}
+
+// handleGetIngestJob reports an async ingestion's stage/progress (creator only).
+func (s *Server) handleGetIngestJob(w http.ResponseWriter, r *http.Request) {
+	u, _ := auth.UserFromContext(r.Context())
+	j := s.ingest.get(chi.URLParam(r, "id"), u.ID)
+	if j == nil {
+		writeErr(w, http.StatusNotFound, "no such ingest job (it may have expired or the server restarted)")
+		return
+	}
+	writeJSON(w, http.StatusOK, j.status())
 }
 
 // describeLater regenerates a document's missing catalogue description in the
@@ -797,40 +883,75 @@ func (s *Server) describeLater(userID int64, scope string, projectID, docID int6
 // text-like files are used as-is), and builds an ingest request. On failure it
 // writes the HTTP error and returns a non-nil error.
 // It also returns the raw uploaded bytes so the caller can persist the file.
-func (s *Server) documentFromUpload(w http.ResponseWriter, r *http.Request) (types.CreateDocumentRequest, []byte, error) {
-	var req types.CreateDocumentRequest
+// uploadInput is the quickly-read multipart payload of a document upload; the
+// slow text extraction happens separately (extractDocument), so the async path
+// can return a job id before conversion starts.
+type uploadInput struct {
+	data        []byte
+	filename    string
+	contentType string // the file part's declared Content-Type
+	title       string
+	scope       string
+	projectID   int64
+}
+
+// readUploadInput reads the multipart form (file bytes + fields) without any
+// conversion work.
+func readUploadInput(w http.ResponseWriter, r *http.Request) (uploadInput, error) {
+	var in uploadInput
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid upload: "+err.Error())
-		return req, nil, err
+		return in, fmt.Errorf("invalid upload: %w", err)
 	}
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "missing file field")
-		return req, nil, err
+		return in, fmt.Errorf("missing file field")
 	}
 	defer file.Close()
-	data, err := io.ReadAll(file)
+	in.data, err = io.ReadAll(file)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, "read file: "+err.Error())
+		return in, fmt.Errorf("read file: %w", err)
+	}
+	in.filename = header.Filename
+	in.contentType = header.Header.Get("Content-Type")
+	in.title = r.FormValue("title")
+	if in.title == "" {
+		in.title = header.Filename
+	}
+	in.scope = r.FormValue("scope")
+	in.projectID, _ = strconv.ParseInt(r.FormValue("project_id"), 10, 64)
+	return in, nil
+}
+
+func (s *Server) documentFromUpload(w http.ResponseWriter, r *http.Request) (types.CreateDocumentRequest, []byte, error) {
+	var req types.CreateDocumentRequest
+	in, err := readUploadInput(w, r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
 		return req, nil, err
 	}
-
-	title := r.FormValue("title")
-	if title == "" {
-		title = header.Filename
+	req, status, msg := s.extractDocument(r.Context(), in)
+	if msg != "" {
+		writeErr(w, status, msg)
+		return req, nil, fmt.Errorf("%s", msg)
 	}
-	// Namespace to ingest into (permission-checked by the caller).
-	scope := r.FormValue("scope")
-	projectID, _ := strconv.ParseInt(r.FormValue("project_id"), 10, 64)
+	return req, in.data, nil
+}
+
+// extractDocument converts an upload's bytes to an ingest request (Docling /
+// PDFium-wasm / docxextract / raw text). A non-empty msg is a client-facing
+// error with its HTTP status.
+func (s *Server) extractDocument(ctx context.Context, in uploadInput) (req types.CreateDocumentRequest, status int, msg string) {
+	data, title, scope, projectID := in.data, in.title, in.scope, in.projectID
+	header := struct{ Filename string }{in.filename}
 
 	const docxMime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 	lowName := strings.ToLower(header.Filename)
 	isPDF := strings.HasSuffix(lowName, ".pdf") ||
-		header.Header.Get("Content-Type") == "application/pdf" ||
+		in.contentType == "application/pdf" ||
 		bytes.HasPrefix(data, []byte("%PDF-"))
 	isDOCX := !isPDF && (strings.HasSuffix(lowName, ".docx") ||
-		header.Header.Get("Content-Type") == docxMime)
+		in.contentType == docxMime)
 
 	var pageStarts []int
 	switch {
@@ -848,9 +969,9 @@ func (s *Server) documentFromUpload(w http.ResponseWriter, r *http.Request) (typ
 			var md string
 			var err error
 			if isPDF {
-				md, pageStarts, err = s.Docling.ConvertPaged(r.Context(), header.Filename, data)
+				md, pageStarts, err = s.Docling.ConvertPaged(ctx, header.Filename, data)
 			} else {
-				md, err = s.Docling.Convert(r.Context(), header.Filename, data)
+				md, err = s.Docling.Convert(ctx, header.Filename, data)
 			}
 			if err != nil {
 				pageStarts = nil
@@ -865,13 +986,11 @@ func (s *Server) documentFromUpload(w http.ResponseWriter, r *http.Request) (typ
 			// Extracted above (PDFs keep their page mapping via pageStarts).
 		case isPDF:
 			if s.PDFExtract == nil {
-				writeErr(w, http.StatusUnsupportedMediaType, "PDF extraction is not available on this server")
-				return req, nil, fmt.Errorf("no pdf extractor")
+				return req, http.StatusUnsupportedMediaType, "PDF extraction is not available on this server"
 			}
 			pages, err := s.PDFExtract.Pages(data)
 			if err != nil {
-				writeErr(w, http.StatusUnprocessableEntity, "PDF extraction failed: "+err.Error())
-				return req, nil, err
+				return req, http.StatusUnprocessableEntity, "PDF extraction failed: " + err.Error()
 			}
 			// Join pages (matching Text's "\n\n" separator) and record the rune
 			// offset at which each page begins so chunks can be mapped to a page.
@@ -890,28 +1009,25 @@ func (s *Server) documentFromUpload(w http.ResponseWriter, r *http.Request) (typ
 		default: // DOCX
 			t, err := docxextract.Text(data)
 			if err != nil {
-				writeErr(w, http.StatusUnprocessableEntity, "DOCX extraction failed: "+err.Error())
-				return req, nil, err
+				return req, http.StatusUnprocessableEntity, "DOCX extraction failed: " + err.Error()
 			}
 			text = t
 		}
 		if strings.TrimSpace(text) == "" {
-			writeErr(w, http.StatusUnprocessableEntity, "no extractable text in the file (it may be scanned images)")
-			return req, nil, fmt.Errorf("empty extracted text")
+			return req, http.StatusUnprocessableEntity, "no extractable text in the file (it may be scanned images)"
 		}
 		log.Printf("documents: extracted %d chars from %q for user", len(text), header.Filename)
 		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: mime, Content: text}
 	case utf8.Valid(data):
 		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: "text/plain", Content: string(data)}
 	default:
-		writeErr(w, http.StatusUnsupportedMediaType, "unsupported file type (only PDF, DOCX and text are supported)")
-		return req, nil, fmt.Errorf("unsupported file type")
+		return req, http.StatusUnsupportedMediaType, "unsupported file type (only PDF, DOCX and text are supported)"
 	}
 	req.Scope = scope
 	req.ProjectID = projectID
 	req.OriginalName = header.Filename
 	req.PageStarts = pageStarts
-	return req, data, nil
+	return req, 0, ""
 }
 
 func (s *Server) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {

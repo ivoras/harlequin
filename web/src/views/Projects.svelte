@@ -3,6 +3,7 @@
   import { api } from "../lib/api";
   import { activeProject, projectSheet, toast } from "../lib/stores";
   import { switchToProject, leaveActiveProject, projectBylines } from "../lib/project";
+  import { uploadWithProgress, ingestLabel } from "../lib/ingest";
   import type { Project, ProjectMember, Document } from "../lib/types";
 
   // Project picker + a document file manager for the picked project. The pick
@@ -15,6 +16,7 @@
   let docs = $state<Document[]>([]);
   let loadingDocs = $state(false);
   let uploading = $state(false);
+  let uploadLabel = $state("");
   let title = $state("");
   let content = $state("");
   let fileEl = $state<HTMLInputElement>();
@@ -83,13 +85,14 @@
     if (!file || !selected) return;
     uploading = true;
     try {
-      const d = await api.uploadDocument(file, undefined, "project", selected);
+      const d = await uploadWithProgress(file, { scope: "project", projectID: selected }, (p) => (uploadLabel = ingestLabel(p)));
       toast(`ingested "${d.title}"`);
       await reload();
     } catch (err) {
       toast((err as Error).message, "error");
     } finally {
       uploading = false;
+      uploadLabel = "";
       if (fileEl) fileEl.value = ""; // allow re-selecting the same file
     }
   }
@@ -200,7 +203,7 @@
       <div class="card col">
         <div class="row" style="align-items:center; gap:8px;">
           <input type="file" accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" bind:this={fileEl} onchange={upload} disabled={uploading} />
-          {#if uploading}<span class="muted small">extracting & ingesting…</span>{/if}
+          {#if uploading}<span class="muted small"><span class="spin">⟳</span> {uploadLabel}</span>{/if}
         </div>
         <div class="muted small">Upload a PDF or text file into this project's corpus.</div>
         <hr />

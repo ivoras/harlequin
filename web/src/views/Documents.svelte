@@ -2,6 +2,7 @@
   import { api } from "../lib/api";
   import { user, activeProject, toast } from "../lib/stores";
   import { isElevated } from "../lib/types";
+  import { uploadWithProgress, ingestLabel } from "../lib/ingest";
   import type { AlignPair, AlignResult, AlignSection, Document, SearchResult } from "../lib/types";
 
   let docs = $state<Document[]>([]);
@@ -10,6 +11,7 @@
   let title = $state("");
   let content = $state("");
   let uploading = $state(false);
+  let uploadLabel = $state("");
   let fileEl = $state<HTMLInputElement>();
   // Where new documents land: personal (default) or, for owners/admins, the
   // shared org corpus. Applies to both file uploads and pasted text.
@@ -21,13 +23,14 @@
     if (!file) return;
     uploading = true;
     try {
-      const d = await api.uploadDocument(file, undefined, ingestScope);
+      const d = await uploadWithProgress(file, { scope: ingestScope }, (p) => (uploadLabel = ingestLabel(p)));
       toast(`ingested "${d.title}"`);
       await load();
     } catch (err) {
       toast((err as Error).message, "error");
     } finally {
       uploading = false;
+      uploadLabel = "";
       if (fileEl) fileEl.value = ""; // allow re-selecting the same file
     }
   }
@@ -275,7 +278,7 @@
       {/if}
       <div class="row" style="align-items:center; gap:8px;">
         <input type="file" accept=".pdf,.docx,.txt,.md,application/pdf,text/plain" bind:this={fileEl} onchange={upload} disabled={uploading} />
-        {#if uploading}<span class="muted small">extracting & ingesting…</span>{/if}
+        {#if uploading}<span class="muted small"><span class="spin">⟳</span> {uploadLabel}</span>{/if}
       </div>
       <div class="muted small">Upload a PDF, DOCX or text file (the server extracts the text).</div>
       <hr />

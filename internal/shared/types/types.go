@@ -689,6 +689,21 @@ type DocChunkInfo struct {
 	ProjectID int64 `json:"project_id,omitempty"`
 }
 
+// IngestJobStatus is the pollable state of an asynchronous document ingestion
+// (GET /documents/jobs/{id}). Stage is "starting" / "extracting" /
+// "describing" / "embedding" / "done"; Done/Total are embedded-chunk counts
+// during the embedding stage (0 when unknown). Document is set once Finished
+// without Error.
+type IngestJobStatus struct {
+	ID       string    `json:"id"`
+	Stage    string    `json:"stage"`
+	Done     int       `json:"done,omitempty"`
+	Total    int       `json:"total,omitempty"`
+	Finished bool      `json:"finished"`
+	Error    string    `json:"error,omitempty"`
+	Document *Document `json:"document,omitempty"`
+}
+
 // UsageRecord is a per-completion accounting row.
 type UsageRecord struct {
 	ID               int64     `json:"id"`

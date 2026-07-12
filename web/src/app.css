@@ -169,6 +169,9 @@ hr { border: none; border-top: 1px solid var(--border); }
 .spacer { flex: 1; }
 /* single-line truncation for flexible-width labels (needs min-width:0 to shrink) */
 .ellipsize { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* inline activity spinner (e.g. the ⟳ in upload progress labels) */
+.spin { display: inline-block; animation: spin 1.2s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .muted { color: var(--muted); }
 .warn { color: var(--warn); }
 .small { font-size: 13px; }

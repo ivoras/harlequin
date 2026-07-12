@@ -8,6 +8,7 @@ import type {
   MCPTestResult, MCPAuthStartResult, CronJob, CreateCronJobRequest,
   UpdateCronJobRequest, UsageRecord, Notification, Document, CreateDocumentRequest,
   CreateMemoryRequest, Project, ProjectInvite, AlignResult, ContextBreakdown,
+  IngestJobStatus,
 } from "./types";
 
 const TOKEN_KEY = "harlequin.token";
@@ -100,6 +101,23 @@ async function uploadDoc(file: File, title?: string, scope?: string, projectID?:
   return (await res.json()) as Document;
 }
 
+// uploadDocAsync starts a background ingestion and returns the job id to poll.
+async function uploadDocAsync(file: File, title?: string, scope?: string, projectID?: number): Promise<string> {
+  const fd = new FormData();
+  fd.append("file", file);
+  if (title) fd.append("title", title);
+  if (scope) fd.append("scope", scope);
+  if (projectID) fd.append("project_id", String(projectID));
+  const res = await fetch(apiUrl("/documents/async"), { method: "POST", headers: authHeaders(), body: fd });
+  if (!res.ok) {
+    let msg = res.status + " " + res.statusText;
+    try { const e = await res.json(); if (e && e.error) msg = e.error; } catch { /* keep status */ }
+    if (res.status === 401) setToken("");
+    throw new Error(msg);
+  }
+  return ((await res.json()) as { job_id: string }).job_id;
+}
+
 export const api = {
   // auth / user
   login: (email: string, password: string) =>
@@ -186,6 +204,10 @@ export const api = {
   createDocument: (r: CreateDocumentRequest) => req<Document>("POST", "/documents", r),
   uploadDocument: (file: File, title?: string, scope?: string, projectID?: number) =>
     uploadDoc(file, title, scope, projectID),
+  // Async ingestion: returns a job id; poll getIngestJob until finished.
+  uploadDocumentAsync: (file: File, title?: string, scope?: string, projectID?: number) =>
+    uploadDocAsync(file, title, scope, projectID),
+  getIngestJob: (id: string) => req<IngestJobStatus>("GET", `/documents/jobs/${q(id)}`),
   deleteDocument: (id: number, scope = "", projectID = 0) => {
     const v = new URLSearchParams();
     if (scope) v.set("scope", scope);

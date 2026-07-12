@@ -321,6 +321,16 @@ export interface Document {
   chunks?: number;
   description?: string; // LLM-generated catalogue line
 }
+// Pollable state of an async document ingestion (POST /documents/async).
+export interface IngestJobStatus {
+  id: string;
+  stage: string; // starting | extracting | describing | embedding | done
+  done?: number; // embedded chunks so far (embedding stage)
+  total?: number;
+  finished: boolean;
+  error?: string;
+  document?: Document;
+}
 export interface DocChunkInfo {
   id: string;
   scope: string; // personal | shared | project
