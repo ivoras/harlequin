@@ -1,6 +1,6 @@
 ---
 name: compare-versions
-description: Compare two revisions of the SAME document (old draft vs new draft, v1 vs v2, last year's policy vs this year's) and report what changed, was added, or was removed. load_skill this whenever asked what changed between document versions, to diff two revisions, or to review a new draft against the old one. For two DIFFERENT documents about the same subject (e.g. two countries' laws), load compare-topics instead.
+description: Compare two revisions of the SAME document (old draft vs new draft, v1 vs v2, last year's policy vs this year's) and report what changed, was added, or was removed. load_skill this whenever asked what changed between document versions, to diff two revisions, or to review a new draft against the old one. IMPORTANT — users usually phrase this as two documents: "the old and the new document", "the old regulation vs the new one", "the 2024 and 2026 versions", "the amended text", "the updated policy". Whenever the two things being compared are an earlier and a later state of the same text — any old/new, previous/current, original/amended framing — this is the right skill, even though two document files are involved. Only for two genuinely DIFFERENT texts about the same subject (e.g. two countries' laws) load compare-topics instead.
 ---
 
 # Compare two versions of a document
