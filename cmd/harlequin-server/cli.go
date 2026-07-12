@@ -401,7 +401,7 @@ func runReindexVectors(args []string) {
 	}
 	fmt.Printf("shared: %d memory(ies), %d slot(s), %d doc chunk(s)\n", smem, sslot, sdoc)
 
-	// Each user: memories and slot keys (documents are shared-only).
+	// Each user: memories, slot keys, and their personal document chunks.
 	if err := store.EachUser(ctx, func(uid int64, udb *sql.DB) error {
 		if err := db.RecreateVectorTables(udb, db.User, cfg.Embeddings.Dim); err != nil {
 			return fmt.Errorf("user %d tables: %w", uid, err)
@@ -414,8 +414,12 @@ func runReindexVectors(args []string) {
 		if err != nil {
 			return fmt.Errorf("user %d slots: %w", uid, err)
 		}
-		if umem > 0 || uslot > 0 {
-			fmt.Printf("user %d: %d memory(ies), %d slot(s)\n", uid, umem, uslot)
+		udoc, err := documents.NewStore(udb, embedder).ReindexChunkVectors(ctx)
+		if err != nil {
+			return fmt.Errorf("user %d doc chunks: %w", uid, err)
+		}
+		if umem > 0 || uslot > 0 || udoc > 0 {
+			fmt.Printf("user %d: %d memory(ies), %d slot(s), %d doc chunk(s)\n", uid, umem, uslot, udoc)
 		}
 		return nil
 	}); err != nil {
