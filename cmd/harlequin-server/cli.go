@@ -96,7 +96,8 @@ Usage:
   harlequin-server help
 
 Server flags:
-  --config path   server config YAML (default server.yaml)
+  --config path      server config YAML (default server.yaml)
+  --log-timestamps   prefix log lines with date+time (default off: journald/docker timestamp already)
 
 createuser flags:
   --config path     server config YAML (default server.yaml)
