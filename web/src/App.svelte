@@ -3,6 +3,7 @@
   import { user, view, session, wornHat, toasts, toast, activeProject, projectSheet, type View } from "./lib/stores";
   import { sc } from "./lib/session.svelte";
   import { switchToProject as libSwitchToProject, leaveActiveProject, cleanTitle, projectBylines } from "./lib/project";
+  import DocViewer from "./lib/DocViewer.svelte";
   import { pc } from "./lib/projectchat.svelte";
   import type { Session, Project, ProjectInvite } from "./lib/types";
   import Login from "./views/Login.svelte";
@@ -583,6 +584,8 @@
   {/if}
 
 {/if}
+
+<DocViewer />
 
 <!-- Toasts render outside the auth branches so errors surface on the
      login/registration screen too (e.g. a failed verification-code send). -->
