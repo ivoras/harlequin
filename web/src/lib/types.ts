@@ -39,6 +39,7 @@ export interface Project {
   id: number;
   name: string;
   created_by: number;
+  created_by_email?: string; // for disambiguating duplicate names
   created_at: string;
   members?: ProjectMember[];
 }

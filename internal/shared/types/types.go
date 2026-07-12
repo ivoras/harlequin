@@ -226,7 +226,10 @@ type Project struct {
 	ID        int64     `json:"id"`
 	Name      string    `json:"name"`
 	CreatedBy int64     `json:"created_by"`
-	CreatedAt time.Time `json:"created_at"`
+	// CreatedByEmail is the creator's email (list/detail responses), so clients
+	// can disambiguate projects with duplicate names.
+	CreatedByEmail string    `json:"created_by_email,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
 	// Members is populated on the single-project detail endpoint.
 	Members []ProjectMember `json:"members,omitempty"`
 }
