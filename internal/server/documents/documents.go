@@ -277,6 +277,12 @@ func (s *Store) Ingest(ctx context.Context, req types.CreateDocumentRequest, use
 // IngestInto stores a document into a specific corpus (personal/shared/project
 // DB), chunks + embeds its content, and indexes the chunks there.
 func (s *Store) IngestInto(ctx context.Context, db *sql.DB, req types.CreateDocumentRequest, userID int64) (*types.Document, error) {
+	return s.IngestIntoProgress(ctx, db, req, userID, nil)
+}
+
+// IngestIntoProgress is IngestInto with a progress callback for the embedding
+// phase, called after each embedded batch with (done, total) chunk counts.
+func (s *Store) IngestIntoProgress(ctx context.Context, db *sql.DB, req types.CreateDocumentRequest, userID int64, progress func(done, total int)) (*types.Document, error) {
 	mime := req.Mime
 	if mime == "" {
 		mime = "text/plain"
@@ -304,9 +310,20 @@ func (s *Store) IngestInto(ctx context.Context, db *sql.DB, req types.CreateDocu
 		for i, c := range chunks {
 			texts[i] = c.text
 		}
-		vecs, err := s.embedder.Embed(ctx, texts)
-		if err != nil {
-			return nil, fmt.Errorf("embed document: %w", err)
+		// Embed in sub-batches so a progress callback can report per-batch
+		// (one request for everything would be opaque for minutes on big docs).
+		const embedBatch = 32
+		vecs := make([][]float32, 0, len(texts))
+		for start := 0; start < len(texts); start += embedBatch {
+			end := min(start+embedBatch, len(texts))
+			bv, err := s.embedder.Embed(ctx, texts[start:end])
+			if err != nil {
+				return nil, fmt.Errorf("embed document: %w", err)
+			}
+			vecs = append(vecs, bv...)
+			if progress != nil {
+				progress(end, len(texts))
+			}
 		}
 		for i, c := range chunks {
 			page := pageFor(c.start, req.PageStarts) // 0 when the source has no pages
