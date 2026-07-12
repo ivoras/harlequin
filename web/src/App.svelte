@@ -2,7 +2,7 @@
   import { api, getToken, setToken } from "./lib/api";
   import { user, view, session, wornHat, toasts, toast, activeProject, projectSheet, type View } from "./lib/stores";
   import { sc } from "./lib/session.svelte";
-  import { switchToProject as libSwitchToProject, leaveActiveProject, cleanTitle } from "./lib/project";
+  import { switchToProject as libSwitchToProject, leaveActiveProject, cleanTitle, projectBylines } from "./lib/project";
   import { pc } from "./lib/projectchat.svelte";
   import type { Session, Project, ProjectInvite } from "./lib/types";
   import Login from "./views/Login.svelte";
@@ -37,6 +37,8 @@
   let sessionFilter = $state("");
   // Project management (the /project sheet) + chatroom pane.
   let projects = $state<Project[]>([]);
+  // "by <email>" suffixes for projects with duplicate names.
+  let bylines = $derived(projectBylines(projects));
   let invites = $state<ProjectInvite[]>([]);
   let newProjectName = $state("");
   let inviteEmail = $state("");
@@ -378,7 +380,7 @@
     <select class="chip projectselect" value={$activeProject?.id ?? 0} onchange={onSelectProject} title="Project">
       <option value={0}>&lt;no project selected&gt;</option>
       {#each projects as p (p.id)}
-        <option value={p.id}>{p.name}</option>
+        <option value={p.id}>{p.name}{bylines.get(p.id) ? ` (${bylines.get(p.id)})` : ""}</option>
       {/each}
     </select>
     <span class="title">{$session.title || "New session"}</span>
@@ -540,7 +542,10 @@
         {#each projects as p (p.id)}
           <div class="card row" role="button" tabindex="0" onclick={() => switchToProject(p)}
             onkeydown={(e) => e.key === "Enter" && switchToProject(p)} style="cursor:pointer;">
-            <div style="flex:1; min-width:0;">📁 {p.name}</div>
+            <div class="row" style="flex:1; min-width:0; gap:6px; align-items:baseline;">
+              <span class="ellipsize">📁 {p.name}</span>
+              {#if bylines.get(p.id)}<span class="muted small ellipsize" style="flex-shrink:1;">{bylines.get(p.id)}</span>{/if}
+            </div>
             {#if $activeProject?.id === p.id}<span class="muted small">active</span>{/if}
           </div>
         {/each}

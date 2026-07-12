@@ -83,8 +83,9 @@ func (s *Store) Get(ctx context.Context, projectID int64) (*types.Project, error
 // List returns the projects the user is a member of (most recent first).
 func (s *Store) List(ctx context.Context, userID int64) ([]types.Project, error) {
 	rows, err := s.system.QueryContext(ctx,
-		`SELECT p.id, p.name, p.created_by, p.created_at
+		`SELECT p.id, p.name, p.created_by, p.created_at, COALESCE(u.email, '')
 		 FROM projects p JOIN project_members m ON m.project_id = p.id
+		 LEFT JOIN users u ON u.id = p.created_by
 		 WHERE m.user_id = ? ORDER BY LOWER(p.name), p.id`, userID)
 	if err != nil {
 		return nil, err
@@ -93,7 +94,7 @@ func (s *Store) List(ctx context.Context, userID int64) ([]types.Project, error)
 	var out []types.Project
 	for rows.Next() {
 		var p types.Project
-		if err := rows.Scan(&p.ID, &p.Name, &p.CreatedBy, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.CreatedBy, &p.CreatedAt, &p.CreatedByEmail); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
