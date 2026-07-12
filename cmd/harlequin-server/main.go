@@ -43,6 +43,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/usage"
 	"github.com/ivoras/harlequin/internal/server/userconfig"
 	"github.com/ivoras/harlequin/internal/server/webfetch"
+	"github.com/ivoras/harlequin/internal/server/websearch"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
@@ -237,6 +238,7 @@ func main() {
 		Sessions:            sessStore,
 		Session:             sessionLog,
 		WebFetcher:          webFetcher,
+		WebSearch:           websearch.New(cfg.WebSearch.APIKey, cfg.WebSearch.APIBase),
 		MCP:                 mcpManager,
 		WebFetchModel:       cfg.Agent.WebFetch.Model,
 		WebFetchTemperature: cfg.Agent.WebFetch.TemperatureValue(),

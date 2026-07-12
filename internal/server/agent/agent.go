@@ -27,6 +27,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/skills"
 	"github.com/ivoras/harlequin/internal/server/storage"
 	"github.com/ivoras/harlequin/internal/server/webfetch"
+	"github.com/ivoras/harlequin/internal/server/websearch"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
@@ -41,6 +42,8 @@ type Agent struct {
 	Sessions   *session.Store
 	Session    *sessionlog.Logger
 	WebFetcher *webfetch.Client
+	// WebSearch, if configured, provides the WebSearch tool (Brave Search API).
+	WebSearch *websearch.Client
 	MCP        *mcp.Manager
 	// Cron, if set, lets the agent schedule/list/delete the user's cron jobs.
 	Cron CronStore

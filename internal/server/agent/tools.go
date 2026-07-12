@@ -439,6 +439,10 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 
 	reg["Grep"] = a.grepEntry()
 
+	if a.WebSearch.Configured() {
+		reg["WebSearch"] = a.webSearchEntry()
+	}
+
 	if a.WebFetcher != nil {
 		reg["WebFetch"] = a.webFetchEntry()
 		reg["WebFetchDOM"] = a.webFetchDOMEntry()
