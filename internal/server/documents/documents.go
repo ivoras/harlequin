@@ -340,7 +340,8 @@ func (s *Store) IngestInto(ctx context.Context, db *sql.DB, req types.CreateDocu
 // ReindexChunkVectors re-embeds every chunk's content and rewrites its
 // doc_chunks_vec row. Use after recreating the vec0 table (e.g. a metric
 // change). Returns the number of chunks reindexed.
-func (s *Store) ReindexChunkVectors(ctx context.Context) (int, error) {
+// progress, if non-nil, is called after each embedded batch with (done, total).
+func (s *Store) ReindexChunkVectors(ctx context.Context, progress func(done, total int)) (int, error) {
 	if s.db == nil {
 		return 0, nil
 	}
@@ -367,20 +368,31 @@ func (s *Store) ReindexChunkVectors(ctx context.Context) (int, error) {
 	}
 
 	n := 0
-	for _, c := range all {
-		vecs, err := s.embedder.Embed(ctx, []string{c.content})
-		if err != nil || len(vecs) != 1 {
-			continue
+	const batch = 32 // chunks per embeddings request (the endpoint round-trip dominates)
+	for start := 0; start < len(all); start += batch {
+		end := min(start+batch, len(all))
+		texts := make([]string, end-start)
+		for i, c := range all[start:end] {
+			texts[i] = c.content
 		}
-		blob, err := sqlite_vec.SerializeFloat32(vecs[0])
-		if err != nil {
-			return n, err
+		vecs, err := s.embedder.Embed(ctx, texts)
+		if err != nil || len(vecs) != len(texts) {
+			continue // skip the failing batch, keep going (matches the old per-item behavior)
 		}
-		if _, err := s.db.ExecContext(ctx,
-			`INSERT INTO doc_chunks_vec(rowid, embedding) VALUES (?, ?)`, c.id, blob); err != nil {
-			return n, err
+		for i, c := range all[start:end] {
+			blob, err := sqlite_vec.SerializeFloat32(vecs[i])
+			if err != nil {
+				return n, err
+			}
+			if _, err := s.db.ExecContext(ctx,
+				`INSERT INTO doc_chunks_vec(rowid, embedding) VALUES (?, ?)`, c.id, blob); err != nil {
+				return n, err
+			}
+			n++
 		}
-		n++
+		if progress != nil {
+			progress(end, len(all))
+		}
 	}
 	return n, nil
 }

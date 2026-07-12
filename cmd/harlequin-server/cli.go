@@ -334,7 +334,7 @@ func runBackfillSlotKeys(args []string) {
 
 	ctx := context.Background()
 	total := 0
-	n, err := mem.BackfillSlotKeyEmbeddings(ctx, store.Shared)
+	n, err := mem.BackfillSlotKeyEmbeddings(ctx, store.Shared, nil)
 	if err != nil {
 		log.Fatalf("backfill-slot-keys (shared): %v", err)
 	}
@@ -342,7 +342,7 @@ func runBackfillSlotKeys(args []string) {
 	fmt.Printf("shared: reindexed %d slot key(s)\n", n)
 
 	if err := store.EachUser(ctx, func(uid int64, udb *sql.DB) error {
-		un, err := mem.BackfillSlotKeyEmbeddings(ctx, udb)
+		un, err := mem.BackfillSlotKeyEmbeddings(ctx, udb, nil)
 		if err != nil {
 			return fmt.Errorf("user %d: %w", uid, err)
 		}
@@ -355,6 +355,21 @@ func runBackfillSlotKeys(args []string) {
 		log.Fatalf("backfill-slot-keys: %v", err)
 	}
 	fmt.Printf("done: reindexed %d slot key(s) total\n", total)
+}
+
+
+// phaseProgress returns a live \r-progress printer for one reindex phase, and
+// prints nothing for empty phases. Call the returned done() to end the line.
+func phaseProgress(label string) (func(done, total int), func()) {
+	shown := false
+	return func(done, total int) {
+			fmt.Printf("\r%s: %d/%d", label, done, total)
+			shown = true
+		}, func() {
+			if shown {
+				fmt.Print("\r\033[K") // clear the progress line; the summary follows
+			}
+		}
 }
 
 func runReindexVectors(args []string) {
@@ -387,15 +402,21 @@ func runReindexVectors(args []string) {
 	if err := db.RecreateVectorTables(store.Shared, db.Shared, cfg.Embeddings.Dim); err != nil {
 		log.Fatalf("reindex-vectors (shared tables): %v", err)
 	}
-	smem, err := mem.ReindexMemoryVectors(ctx, store.Shared)
+	prog, done := phaseProgress("shared: memories")
+	smem, err := mem.ReindexMemoryVectors(ctx, store.Shared, prog)
+	done()
 	if err != nil {
 		log.Fatalf("reindex-vectors (shared memories): %v", err)
 	}
-	sslot, err := mem.BackfillSlotKeyEmbeddings(ctx, store.Shared)
+	prog, done = phaseProgress("shared: slot keys")
+	sslot, err := mem.BackfillSlotKeyEmbeddings(ctx, store.Shared, prog)
+	done()
 	if err != nil {
 		log.Fatalf("reindex-vectors (shared slots): %v", err)
 	}
-	sdoc, err := docs.ReindexChunkVectors(ctx)
+	prog, done = phaseProgress("shared: doc chunks")
+	sdoc, err := docs.ReindexChunkVectors(ctx, prog)
+	done()
 	if err != nil {
 		log.Fatalf("reindex-vectors (shared doc chunks): %v", err)
 	}
@@ -406,15 +427,21 @@ func runReindexVectors(args []string) {
 		if err := db.RecreateVectorTables(udb, db.User, cfg.Embeddings.Dim); err != nil {
 			return fmt.Errorf("user %d tables: %w", uid, err)
 		}
-		umem, err := mem.ReindexMemoryVectors(ctx, udb)
+		prog, done := phaseProgress(fmt.Sprintf("user %d: memories", uid))
+		umem, err := mem.ReindexMemoryVectors(ctx, udb, prog)
+		done()
 		if err != nil {
 			return fmt.Errorf("user %d memories: %w", uid, err)
 		}
-		uslot, err := mem.BackfillSlotKeyEmbeddings(ctx, udb)
+		prog, done = phaseProgress(fmt.Sprintf("user %d: slot keys", uid))
+		uslot, err := mem.BackfillSlotKeyEmbeddings(ctx, udb, prog)
+		done()
 		if err != nil {
 			return fmt.Errorf("user %d slots: %w", uid, err)
 		}
-		udoc, err := documents.NewStore(udb, embedder).ReindexChunkVectors(ctx)
+		prog, done = phaseProgress(fmt.Sprintf("user %d: doc chunks", uid))
+		udoc, err := documents.NewStore(udb, embedder).ReindexChunkVectors(ctx, prog)
+		done()
 		if err != nil {
 			return fmt.Errorf("user %d doc chunks: %w", uid, err)
 		}
@@ -431,15 +458,21 @@ func runReindexVectors(args []string) {
 		if err := db.RecreateVectorTables(pdb, db.Project, cfg.Embeddings.Dim); err != nil {
 			return fmt.Errorf("project %d tables: %w", pid, err)
 		}
-		pmem, err := mem.ReindexMemoryVectors(ctx, pdb)
+		prog, done := phaseProgress(fmt.Sprintf("project %d: memories", pid))
+		pmem, err := mem.ReindexMemoryVectors(ctx, pdb, prog)
+		done()
 		if err != nil {
 			return fmt.Errorf("project %d memories: %w", pid, err)
 		}
-		pslot, err := mem.BackfillSlotKeyEmbeddings(ctx, pdb)
+		prog, done = phaseProgress(fmt.Sprintf("project %d: slot keys", pid))
+		pslot, err := mem.BackfillSlotKeyEmbeddings(ctx, pdb, prog)
+		done()
 		if err != nil {
 			return fmt.Errorf("project %d slots: %w", pid, err)
 		}
-		pdoc, err := documents.NewStore(pdb, embedder).ReindexChunkVectors(ctx)
+		prog, done = phaseProgress(fmt.Sprintf("project %d: doc chunks", pid))
+		pdoc, err := documents.NewStore(pdb, embedder).ReindexChunkVectors(ctx, prog)
+		done()
 		if err != nil {
 			return fmt.Errorf("project %d doc chunks: %w", pid, err)
 		}

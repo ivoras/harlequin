@@ -230,7 +230,8 @@ func HumanizeKey(key string) string {
 // BackfillSlotKeyEmbeddings re-embeds every slot key in db using the humanized
 // form and rewrites its memory_slots_vec row. Use after changing the key
 // embedding scheme. Returns the number of slots reindexed.
-func (s *Store) BackfillSlotKeyEmbeddings(ctx context.Context, db *sql.DB) (int, error) {
+// progress, if non-nil, is called after each embedded slot key with (done, total).
+func (s *Store) BackfillSlotKeyEmbeddings(ctx context.Context, db *sql.DB, progress func(done, total int)) (int, error) {
 	if db == nil {
 		return 0, nil
 	}
@@ -259,7 +260,7 @@ func (s *Store) BackfillSlotKeyEmbeddings(ctx context.Context, db *sql.DB) (int,
 	}
 
 	n := 0
-	for _, sk := range all {
+	for i, sk := range all {
 		blob, err := s.embed(ctx, HumanizeKey(sk.key))
 		if err != nil || blob == nil {
 			continue
@@ -280,6 +281,9 @@ func (s *Store) BackfillSlotKeyEmbeddings(ctx context.Context, db *sql.DB) (int,
 			return n, err
 		}
 		n++
+		if progress != nil {
+			progress(i+1, len(all))
+		}
 	}
 	return n, nil
 }

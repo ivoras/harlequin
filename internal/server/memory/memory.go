@@ -284,7 +284,8 @@ func (s *Store) serialize(vecs [][]float32, err error) (any, error) {
 // ReindexMemoryVectors re-embeds every memory's content and rewrites its
 // memories_vec row. Use after recreating the vec0 table (e.g. a metric change).
 // Returns the number of memories reindexed.
-func (s *Store) ReindexMemoryVectors(ctx context.Context, db *sql.DB) (int, error) {
+// progress, if non-nil, is called after each embedded memory with (done, total).
+func (s *Store) ReindexMemoryVectors(ctx context.Context, db *sql.DB, progress func(done, total int)) (int, error) {
 	if db == nil {
 		return 0, nil
 	}
@@ -311,7 +312,7 @@ func (s *Store) ReindexMemoryVectors(ctx context.Context, db *sql.DB) (int, erro
 	}
 
 	n := 0
-	for _, m := range all {
+	for i, m := range all {
 		blob, err := s.embed(ctx, m.content)
 		if err != nil || blob == nil {
 			continue
@@ -321,6 +322,9 @@ func (s *Store) ReindexMemoryVectors(ctx context.Context, db *sql.DB) (int, erro
 			return n, err
 		}
 		n++
+		if progress != nil {
+			progress(i+1, len(all))
+		}
 	}
 	return n, nil
 }
