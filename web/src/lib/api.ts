@@ -85,36 +85,35 @@ const withProject = (path: string) =>
 // uploadDoc posts a file as multipart/form-data (the server extracts text — PDFs
 // via PDFium — and ingests it). We must NOT set Content-Type: the browser adds
 // the multipart boundary itself.
-async function uploadDoc(file: File, title?: string, scope?: string, projectID?: number): Promise<Document> {
+async function uploadForm(endpoint: string, file: File, title?: string, scope?: string, projectID?: number): Promise<Response> {
   const fd = new FormData();
   fd.append("file", file);
   if (title) fd.append("title", title);
   if (scope) fd.append("scope", scope);
   if (projectID) fd.append("project_id", String(projectID));
-  const res = await fetch(apiUrl("/documents"), { method: "POST", headers: authHeaders(), body: fd });
+  const res = await fetch(apiUrl(endpoint), { method: "POST", headers: authHeaders(), body: fd });
   if (!res.ok) {
     let msg = res.status + " " + res.statusText;
     try { const e = await res.json(); if (e && e.error) msg = e.error; } catch { /* keep status */ }
+    if (res.status === 413) {
+      // Typically the reverse proxy (nginx client_max_body_size, default 1m),
+      // not Harlequin itself (64 MiB cap) — say so instead of a bare "413".
+      msg = "file too large: the server or its reverse proxy rejected the upload (nginx client_max_body_size?)";
+    }
     if (res.status === 401) setToken("");
     throw new Error(msg);
   }
+  return res;
+}
+
+async function uploadDoc(file: File, title?: string, scope?: string, projectID?: number): Promise<Document> {
+  const res = await uploadForm("/documents", file, title, scope, projectID);
   return (await res.json()) as Document;
 }
 
 // uploadDocAsync starts a background ingestion and returns the job id to poll.
 async function uploadDocAsync(file: File, title?: string, scope?: string, projectID?: number): Promise<string> {
-  const fd = new FormData();
-  fd.append("file", file);
-  if (title) fd.append("title", title);
-  if (scope) fd.append("scope", scope);
-  if (projectID) fd.append("project_id", String(projectID));
-  const res = await fetch(apiUrl("/documents/async"), { method: "POST", headers: authHeaders(), body: fd });
-  if (!res.ok) {
-    let msg = res.status + " " + res.statusText;
-    try { const e = await res.json(); if (e && e.error) msg = e.error; } catch { /* keep status */ }
-    if (res.status === 401) setToken("");
-    throw new Error(msg);
-  }
+  const res = await uploadForm("/documents/async", file, title, scope, projectID);
   return ((await res.json()) as { job_id: string }).job_id;
 }
 
