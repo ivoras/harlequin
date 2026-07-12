@@ -89,5 +89,7 @@ Unless the user said not to save it:
     save_doc({"title": "Update impact: <target title> vs <report title>", "content": "<the full report>"})
 
 Do NOT pass a scope — the default is correct. Keep all `[d.x.N]` citations in
-the saved content. Tell the user it was saved and that they can ask to draft
-the actual edits next.
+the saved content. Tell the user it was saved, **state its scoped id from the
+save_doc result** (e.g. "saved as **p.22**" — the clients render that id as a
+clickable link that opens the report, so never omit it), and that they can ask
+to draft the actual edits next.
