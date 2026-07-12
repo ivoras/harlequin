@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
@@ -39,6 +40,7 @@ func NewStore(system *sql.DB) *Store { return &Store{system: system} }
 
 // Create inserts a project and makes the creator its first member.
 func (s *Store) Create(ctx context.Context, name string, createdBy int64) (*types.Project, error) {
+	name = strings.TrimSpace(name)
 	tx, err := s.system.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -83,7 +85,7 @@ func (s *Store) List(ctx context.Context, userID int64) ([]types.Project, error)
 	rows, err := s.system.QueryContext(ctx,
 		`SELECT p.id, p.name, p.created_by, p.created_at
 		 FROM projects p JOIN project_members m ON m.project_id = p.id
-		 WHERE m.user_id = ? ORDER BY p.id DESC`, userID)
+		 WHERE m.user_id = ? ORDER BY LOWER(p.name), p.id`, userID)
 	if err != nil {
 		return nil, err
 	}
