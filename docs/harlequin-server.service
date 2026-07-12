@@ -1,0 +1,68 @@
+# systemd unit for harlequin-server.
+#
+# Install:
+#   1. Deploy the app, e.g. to /opt/harlequin:
+#        bin/harlequin-server   (make build-server; the web UI is embedded)
+#        server.yaml            (config; data_dir "./data" is resolved from
+#                                WorkingDirectory below)
+#        .env                   (secrets: API keys, JWT_SECRET, …; loaded via
+#                                EnvironmentFile — chmod 600, owned by root)
+#   2. Create the service user and data dir:
+#        useradd --system --home /opt/harlequin --shell /usr/sbin/nologin harlequin
+#        mkdir -p /opt/harlequin/data && chown -R harlequin: /opt/harlequin/data
+#   3. Install and start:
+#        cp docs/harlequin-server.service /etc/systemd/system/
+#        systemctl daemon-reload
+#        systemctl enable --now harlequin-server
+#   Logs: journalctl -u harlequin-server -f
+#
+# If the model suite is served locally (llama.cpp), add After=/Wants= for those
+# units so the LLMs are up before Harlequin starts probing them, e.g.:
+#   After=llama-chat.service llama-aux.service llama-embed.service
+#   Wants=llama-chat.service llama-aux.service llama-embed.service
+
+[Unit]
+Description=Harlequin AI agent server
+Documentation=https://github.com/ivoras/harlequin
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=harlequin
+Group=harlequin
+WorkingDirectory=/opt/harlequin
+ExecStart=/opt/harlequin/bin/harlequin-server --config /opt/harlequin/server.yaml
+# Secrets (.env is KEY=value lines, the same file the server reads in dev).
+EnvironmentFile=/opt/harlequin/.env
+
+Restart=on-failure
+RestartSec=3
+# Give in-flight LLM turns a moment to finish on stop before SIGKILL.
+TimeoutStopSec=30
+
+# --- Hardening -------------------------------------------------------------
+# The service only needs to write its data directory (SQLite databases,
+# uploaded files, session logs); everything else is read-only.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/harlequin/data
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+# The PDF extractor runs PDFium as WebAssembly compiled to native code at
+# runtime, which needs writable+executable memory; "yes" would break PDF
+# uploads (everything else in the server is pure Go).
+MemoryDenyWriteExecute=no
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
