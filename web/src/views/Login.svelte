@@ -83,6 +83,7 @@
 <div class="container" style="max-width:380px; margin-top:14vh;">
   <div class="card col" style="gap:14px;">
     <div style="text-align:center;">
+      <img src="/logo.png" alt="" class="loginlogo" />
       <div class="brand" style="font-size:26px; color:var(--accent);">Harlequin</div>
       <div class="muted small">
         {#if mode === "login"}Sign in to your agent server
@@ -126,3 +127,7 @@
     {/if}
   </div>
 </div>
+
+<style>
+  .loginlogo { width: min(180px, 45vw); height: auto; margin: 0 auto 4px; display: block; }
+</style>
