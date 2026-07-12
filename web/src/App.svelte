@@ -39,6 +39,8 @@
   let projects = $state<Project[]>([]);
   // "by <email>" suffixes for projects with duplicate names.
   let bylines = $derived(projectBylines(projects));
+  // Account directory for invite autocomplete, loaded when the sheet opens.
+  let directory = $state<{ id: number; email: string }[]>([]);
   let invites = $state<ProjectInvite[]>([]);
   let newProjectName = $state("");
   let inviteEmail = $state("");
@@ -104,7 +106,10 @@
 
   // Load projects + invites whenever the management sheet opens.
   $effect(() => {
-    if ($projectSheet) loadProjects();
+    if ($projectSheet) {
+      loadProjects();
+      if (directory.length === 0) api.userDirectory().then((d) => (directory = d)).catch(() => {});
+    }
   });
 
   function intParam(name: string): number {
@@ -560,8 +565,11 @@
         {#if $activeProject}
           <div class="muted small">Active: {$activeProject.name}</div>
           <div class="row" style="gap:6px;">
-            <input placeholder="Invite by email" bind:value={inviteEmail}
+            <input placeholder="Invite by email" list="sheet-invite-directory" bind:value={inviteEmail}
               onkeydown={(e) => e.key === "Enter" && inviteMember()} />
+            <datalist id="sheet-invite-directory">
+              {#each directory as u (u.id)}<option value={u.email}></option>{/each}
+            </datalist>
             <button class="small" onclick={inviteMember} disabled={!inviteEmail.trim()}>Invite</button>
           </div>
           <div class="row" style="flex-wrap:wrap; gap:8px;">

@@ -146,6 +146,29 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, u)
 }
 
+// handleUserDirectory lists every account's id and email — deliberately only
+// those two fields — for any authenticated user, so clients can offer
+// autocomplete when inviting project members. Org members already see each
+// other's emails inside shared projects; this widens nothing sensitive
+// (roles, activity, and creation dates stay owner-only).
+func (s *Server) handleUserDirectory(w http.ResponseWriter, r *http.Request) {
+	users, err := s.Auth.ListUsers(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	type entry struct {
+		ID    int64  `json:"id"`
+		Email string `json:"email"`
+	}
+	out := make([]entry, 0, len(users))
+	for _, u := range users {
+		out = append(out, entry{ID: u.ID, Email: u.Email})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Email < out[j].Email })
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	if _, ok := requireOwner(w, r); !ok {
 		return

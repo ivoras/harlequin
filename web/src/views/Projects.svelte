@@ -3,7 +3,7 @@
   import { api } from "../lib/api";
   import { activeProject, projectSheet, toast } from "../lib/stores";
   import { switchToProject, leaveActiveProject, projectBylines } from "../lib/project";
-  import type { Project, Document } from "../lib/types";
+  import type { Project, ProjectMember, Document } from "../lib/types";
 
   // Project picker + a document file manager for the picked project. The pick
   // is local to this tab (browsing a project's documents does not switch the
@@ -18,6 +18,11 @@
   let title = $state("");
   let content = $state("");
   let fileEl = $state<HTMLInputElement>();
+  let members = $state<ProjectMember[]>([]);
+  let inviteEmail = $state("");
+  let directory = $state<{ id: number; email: string }[]>([]);
+  // datalist suggestions: everyone except current members of the picked project
+  let suggestions = $derived(directory.filter((u) => !members.some((m) => m.user_id === u.id)));
 
   onMount(async () => {
     try {
@@ -27,6 +32,11 @@
       else if (projects.length) selected = projects[0].id;
     } catch (e) {
       toast((e as Error).message, "error");
+    }
+    try {
+      directory = await api.userDirectory();
+    } catch {
+      directory = []; // autocomplete is best-effort; inviting by typed email still works
     }
   });
 
@@ -46,11 +56,25 @@
       })
       .catch((e) => toast((e as Error).message, "error"))
       .finally(() => (loadingDocs = false));
+    members = [];
+    api.getProject(id).then((p) => (members = p.members ?? [])).catch(() => {});
   });
 
   async function reload() {
     if (!selected) return;
     docs = (await api.listDocuments(selected)).filter((d) => d.scope === "project");
+  }
+
+  async function invite() {
+    const email = inviteEmail.trim();
+    if (!email || !selected) return;
+    try {
+      await api.inviteToProject(selected, email);
+      inviteEmail = "";
+      toast("invited " + email + " — they'll get a notification to accept");
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
   }
 
   async function upload(e: Event) {
@@ -134,6 +158,22 @@
             {#if $activeProject?.id === p.id}<span class="dot" title="active in chat"></span>{/if}
           </button>
         {/each}
+      </div>
+
+      <h3 class="muted small">Members</h3>
+      <div class="row" style="flex-wrap:wrap; gap:6px; align-items:center;">
+        {#each members as m (m.user_id)}
+          <span class="pill ellipsize" style="max-width:100%;">{m.email}</span>
+        {/each}
+        {#if members.length === 0}<span class="muted small">Loading…</span>{/if}
+      </div>
+      <div class="row" style="gap:6px;">
+        <input placeholder="Invite by email" list="invite-directory" bind:value={inviteEmail}
+          onkeydown={(e) => e.key === "Enter" && invite()} style="flex:1; min-width:0;" />
+        <datalist id="invite-directory">
+          {#each suggestions as u (u.id)}<option value={u.email}></option>{/each}
+        </datalist>
+        <button class="small" onclick={invite} disabled={!inviteEmail.trim()}>Invite</button>
       </div>
 
       <h3 class="muted small">Documents</h3>
