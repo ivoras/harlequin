@@ -542,6 +542,17 @@ func (c *Client) GetMemory(ctx context.Context, id string) (*types.Memory, error
 	return &out, c.do(ctx, http.MethodGet, "/memory/"+id, nil, &out)
 }
 
+// UpdateMemory applies a partial update (content and/or slots) to a memory.
+// projectID must be set (>0) when id is a project-scoped ("p.N") memory.
+func (c *Client) UpdateMemory(ctx context.Context, id string, req types.UpdateMemoryRequest, projectID int64) (*types.Memory, error) {
+	path := "/memory/" + id
+	if projectID > 0 {
+		path += fmt.Sprintf("?project=%d", projectID)
+	}
+	var out types.Memory
+	return &out, c.do(ctx, http.MethodPatch, path, req, &out)
+}
+
 // DeleteMemory deletes a user-scoped memory owned by the caller, or a shared memory if the caller is admin.
 func (c *Client) DeleteMemory(ctx context.Context, id string) error {
 	return c.do(ctx, http.MethodDelete, "/memory/"+id, nil, nil)

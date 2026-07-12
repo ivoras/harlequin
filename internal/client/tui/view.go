@@ -55,6 +55,8 @@ func (m *Model) View() tea.View {
 		content = m.sessionsView()
 	case m.phase == phaseEditor:
 		content = m.editorView()
+	case m.phase == phaseMemoryEditor:
+		content = m.memoryEditorView()
 	default:
 		content = m.chatView()
 	}

@@ -32,8 +32,9 @@ const (
 	phaseRegisterCode
 	phaseChat
 	phaseAsk      // interactive ask_user answering
-	phaseSessions // interactive session picker (resume)
-	phaseEditor   // built-in skill-file editor overlay
+	phaseSessions     // interactive session picker (resume)
+	phaseEditor       // built-in skill-file editor overlay
+	phaseMemoryEditor // built-in memory editor overlay
 )
 
 // loginPrompt is the placeholder shown at the email step of the login screen.
@@ -128,6 +129,9 @@ type Model struct {
 
 	// editor holds the built-in skill-file editor overlay state (phaseEditor).
 	editor *skillEditor
+
+	// memEditor holds the built-in memory editor overlay state (phaseMemoryEditor).
+	memEditor *memoryEditor
 
 	// ask_user interaction (phaseAsk): questions collected during a turn and the
 	// answers being assembled.

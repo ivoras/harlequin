@@ -583,9 +583,13 @@ type CreateMemoryRequest struct {
 	ProjectID int64 `json:"project_id,omitempty"`
 }
 
-// UpdateMemoryRequest is the body of PATCH /memory/{id}.
+// UpdateMemoryRequest is the body of PATCH /memory/{id}. A nil Content leaves
+// the text unchanged; a nil Slots leaves slots unchanged (an empty non-nil
+// slice clears them). Project-scoped memories reject Slots.
 type UpdateMemoryRequest struct {
-	Pinned *bool `json:"pinned,omitempty"`
+	Pinned  *bool         `json:"pinned,omitempty"`
+	Content *string       `json:"content,omitempty"`
+	Slots   *[]MemorySlot `json:"slots,omitempty"`
 }
 
 // MemoryConflict is a flagged contradictory or duplicate memory pair. IDs are

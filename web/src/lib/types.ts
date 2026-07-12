@@ -226,6 +226,11 @@ export interface CreateMemoryRequest {
   expires_at?: string;
   project_id?: number; // required when scope is "project"
 }
+export interface UpdateMemoryRequest {
+  pinned?: boolean;
+  content?: string;
+  slots?: MemorySlot[]; // omit for project-scoped memories
+}
 
 export interface MCPTool {
   name: string;
