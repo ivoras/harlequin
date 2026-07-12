@@ -156,7 +156,11 @@ pane, post with `/say`).
 **Sessions.** A new project starts with one AI session; create more as usual
 (`/new`) while the project is active, or move an existing personal session —
 and its whole history — into the project with **Assign current session**
-(TUI: `/project assign`). A session belongs to at most one project.
+(TUI: `/project assign`). A session belongs to at most one project. To switch
+between a project's sessions: in the browser, open the sessions drawer (☰) —
+with a project active it lists that project's sessions; in the TUI, `/resume`
+opens the same project-aware picker (`/project sessions` prints the ids, and
+`/resume <id>` jumps directly).
 
 **Documents.** Upload into the project from the Projects tab (or
 `/upload project <path>` in the TUI); ingestion shows live progress. In a
