@@ -88,7 +88,10 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 	body := "Your Harlequin verification code is: " + code + "\n\nIt expires in 15 minutes."
 	if err := s.Email.Send(addr, "Harlequin verification code", body); err != nil {
-		writeErr(w, http.StatusInternalServerError, "failed to send verification code")
+		// The client gets a generic message (this is an unauthenticated
+		// endpoint); the actual SMTP failure goes to the server log.
+		log.Printf("register: sending verification code to %s failed: %v", addr, err)
+		writeErr(w, http.StatusInternalServerError, "failed to send verification code (server email problem — contact the administrator)")
 		return
 	}
 	writeJSON(w, http.StatusOK, types.RegisterResponse{Status: "verification_sent", Email: addr})

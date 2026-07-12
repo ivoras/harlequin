@@ -582,9 +582,12 @@
     </aside>
   {/if}
 
-  <div class="toasts">
-    {#each $toasts as t (t.id)}
-      <div class="toast {t.kind}">{t.text}</div>
-    {/each}
-  </div>
 {/if}
+
+<!-- Toasts render outside the auth branches so errors surface on the
+     login/registration screen too (e.g. a failed verification-code send). -->
+<div class="toasts">
+  {#each $toasts as t (t.id)}
+    <div class="toast {t.kind}">{t.text}</div>
+  {/each}
+</div>
