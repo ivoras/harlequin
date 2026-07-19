@@ -6,14 +6,7 @@ This repo is the answer to the questions I had: why all AI agent harnesses seem 
 
 **You probably don't want to use it**, at least not yet. It's a research project in very early development.
 
-A client-server AI agent system written in Go. A REST + WebSocket **server** communicates with LLMs,
-stores data in SQLite (FTS5 + vector search), runs an agentic tool-calling loop, and manages
-skills. Chat sessions live on the server (a goroutine per active session) and stream over a
-WebSocket, so a client can disconnect mid-turn and reconnect later to resume. A beautiful Bubble
-Tea **TUI client** and a mobile-first **web UI** talk to it. Multi-user, organisation-aware.
-
-See [AGENTS.md](AGENTS.md) for a thousand-mile architecture overview, and
-[docs/user_guide.md](docs/user_guide.md) for day-to-day usage.
+Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a full harness on user's machine, users are running light-weight clients that connect to the server, which does all the work. The server can be self-hosted, or you can try the official public server. The server is user-aware, has acces roles, differentiates between user-specific data, shared (e.g. company-wide) data, and per-project data. It can reach out to do web search, document analysis and synthesis, and has a proactive memory system. All this is available with small LLMs, because the author believes that (currently) most useful AI systems are ones with smart toolings and verbose skills, rather than those that stuff all data into huge contexts.
 
 ## What it does
 
@@ -45,6 +38,17 @@ See [AGENTS.md](AGENTS.md) for a thousand-mile architecture overview, and
   invite autocomplete, any signed-in user can list all account emails via the
   user directory endpoint — set `auth.user_directory: false` if org addresses
   should not be enumerable.
+
+## Tech
+
+A client-server AI agent harness written in Go. A REST + WebSocket **server** communicates with LLMs,
+stores data in SQLite (FTS5 + vector search), runs an agentic tool-calling loop, and manages
+skills. Chat sessions live on the server (a goroutine per active session) and stream over a
+WebSocket, so a client can disconnect mid-turn and reconnect later to resume. A beautiful Bubble
+Tea **TUI client** and a mobile-first **web UI** talk to it. Multi-user, organisation-aware.
+
+See [AGENTS.md](AGENTS.md) for a thousand-mile architecture overview, and
+[docs/user_guide.md](docs/user_guide.md) for day-to-day usage.
 
 ## Build prerequisites
 
