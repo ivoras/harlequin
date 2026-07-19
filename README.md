@@ -12,7 +12,8 @@ Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a fu
 
 - **Server-side sessions** — chats live on the server and stream over WebSockets;
   disconnect mid-answer, reconnect from any client, and messages typed while the
-  agent is busy queue up. Sessions are auto-titled, exportable, and clearable.
+  agent is busy queue up. Sessions are auto-titled, exportable, and clearable. Users
+  see the same real-time LLM stream/chat when connected with multiple clients.
 - **Layered memory** — personal / shared (org) / project scopes with structured
   attribute *slots*, automatic conflict detection, and write-time rules that keep
   an attribute from living in two scopes at once.
