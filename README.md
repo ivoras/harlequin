@@ -45,7 +45,8 @@ A client-server AI agent harness written in Go. A REST + WebSocket **server** co
 stores data in SQLite (FTS5 + vector search), runs an agentic tool-calling loop, and manages
 skills. Chat sessions live on the server (a goroutine per active session) and stream over a
 WebSocket, so a client can disconnect mid-turn and reconnect later to resume. A beautiful Bubble
-Tea **TUI client** and a mobile-first **web UI** talk to it. Multi-user, organisation-aware.
+Tea **TUI client** and a mobile-first **web UI** talk to it. Multi-user, organisation-aware. All
+harness data stored in SQLite database files, not as scattered markdown file trees.
 
 See [AGENTS.md](AGENTS.md) for a thousand-mile architecture overview, and
 [docs/user_guide.md](docs/user_guide.md) for day-to-day usage.
