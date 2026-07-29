@@ -85,7 +85,7 @@ SERVERS = [
     {
         "name": "chat",
         "kind": "chat",
-        "model": "Qwen3.6-35B-A3B-IQ4_XS-3.53bpw.gguf",
+        "model": "Ornith-1.0-9B-MTP-Q8_0.gguf",
         "port": 2234,
         # Mirrors llm_for_hermes_meral.sh (the chat model launch script).
         "args": [
@@ -100,11 +100,10 @@ SERVERS = [
             "--reasoning-budget", "3000",
             "--reasoning-budget-message", "Thinking budget exceeded, answer now",
             "--reasoning-preserve",
-            "--spec-type", "ngram-map-k4v",
-            "--spec-ngram-map-k4v-size-n", "8",
-            "--spec-ngram-map-k4v-size-m", "8",
-            "--spec-ngram-map-k4v-min-hits", "2",
-            "--spec-draft-n-max", "16",
+            "--flash-attn", "on",
+            "--jinja",
+            "--spec-type", "draft-mtp",
+            "--spec-draft-n-max", "3",
             "--swa-full",
         ],
     },
