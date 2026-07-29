@@ -639,6 +639,57 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 					scopeLetter(scope), doc.ID, doc.Chunks), nil
 			},
 		}
+
+		reg["delete_doc"] = toolEntry{
+			def: fnTool("delete_doc", `Permanently delete a document from the corpus, given its scoped id (u.N / s.N / p.N — resolve it with list_documents first). This removes the document and all its chunks; it cannot be undone, and search_docs/align_docs will no longer find it. Only delete when the user has clearly asked to; if you are unsure which document they mean, use list_documents and confirm with ask_user first. Personal (u.N) documents are always yours to delete; a project (p.N) document is deleted from the current project's corpus; a shared (s.N) document may be deleted by owners/admins only.`, map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"doc": map[string]any{"type": "string", "description": "Scoped document id to delete, e.g. \"u.12\", \"s.3\" or \"p.7\""},
+				},
+				"required": []string{"doc"},
+			}),
+			handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+				doc, errMsg := a.loadDocRef(ctx, rc, argString(args, "doc"))
+				if errMsg != "" {
+					return errMsg, nil
+				}
+				// Authorize by scope, mirroring the API's delete handler: shared
+				// deletes are owner/admin-only, and another project's corpus
+				// (project:<id>) is off-limits — only the session's own project.
+				switch doc.Scope {
+				case documents.ScopeShared:
+					if !rc.canShareMemory {
+						return "error: only owner or admin users can delete shared documents; ask an owner/admin.", nil
+					}
+				case documents.ScopePersonal, documents.ScopeProject:
+					// allowed: the user's own corpus, or the session project's
+				default:
+					return "error: this document belongs to another project's corpus and cannot be deleted from this session.", nil
+				}
+				db, dbErrMsg := a.docDBForScope(ctx, rc, doc.Scope)
+				if dbErrMsg != "" {
+					return dbErrMsg, nil
+				}
+				ref := fmt.Sprintf("%s.%d", scopeLetter(doc.Scope), doc.ID)
+				// Unlink the persisted original too, mirroring storeSavedDocFile's
+				// write; best-effort, so a missing Storage just skips it.
+				var filesDir string
+				if a.Storage != nil {
+					switch doc.Scope {
+					case documents.ScopeShared:
+						filesDir, _ = a.Storage.SharedFilesDir()
+					case documents.ScopeProject:
+						filesDir, _ = a.Storage.ProjectFilesDir(rc.projectID)
+					default:
+						filesDir, _ = a.Storage.UserFilesDir(rc.userID)
+					}
+				}
+				if err := a.Docs.DeleteFromAndFile(ctx, db, doc.ID, filesDir); err != nil {
+					return "", err
+				}
+				return fmt.Sprintf("Deleted document %s (%q); it is no longer in the corpus.", ref, doc.Title), nil
+			},
+		}
 	}
 
 	if a.Cron != nil {

@@ -3,11 +3,13 @@
 package documents
 
 import (
-	"log"
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"math"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -453,11 +455,6 @@ func (s *Store) ListScoped(ctx context.Context, scopes []ScopeDB) ([]types.Docum
 	return out, nil
 }
 
-// Delete removes a document (and its chunks/index rows) from the shared corpus.
-func (s *Store) Delete(ctx context.Context, id int64) error {
-	return s.DeleteFrom(ctx, s.db, id)
-}
-
 // DeleteFrom removes a document and its chunks/index rows from a specific corpus.
 func (s *Store) DeleteFrom(ctx context.Context, db *sql.DB, id int64) error {
 	tx, err := db.BeginTx(ctx, nil)
@@ -487,6 +484,25 @@ func (s *Store) DeleteFrom(ctx context.Context, db *sql.DB, id int64) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// DeleteFromAndFile deletes a document like DeleteFrom, and additionally
+// unlinks its persisted original file (stored_path) from filesDir when the
+// document has one — so save_doc/PDF/DOCX uploads don't leave orphaned files
+// behind on disk after deletion. The stored_path is read before the row is
+// removed; the file unlink is best-effort (a failure is logged, not fatal, and
+// never rolls back the DB deletion). Pass an empty filesDir to skip the unlink.
+func (s *Store) DeleteFromAndFile(ctx context.Context, db *sql.DB, id int64, filesDir string) error {
+	stored, _, _, _ := s.StoredFile(ctx, db, id)
+	if err := s.DeleteFrom(ctx, db, id); err != nil {
+		return err
+	}
+	if stored != "" && filesDir != "" {
+		if err := os.Remove(filepath.Join(filesDir, stored)); err != nil && !os.IsNotExist(err) {
+			log.Printf("documents: unlink stored file %q: %v", stored, err)
+		}
+	}
+	return nil
 }
 
 type scoredHit struct {
