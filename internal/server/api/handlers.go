@@ -1110,22 +1110,25 @@ func (s *Server) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {
 	var err error
 	switch scope {
 	case documents.ScopePersonal:
+		filesDir, _ := s.Storage.UserFilesDir(u.ID)
 		err = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
-			return s.Docs.DeleteFrom(r.Context(), udb, id)
+			return s.Docs.DeleteFromAndFile(r.Context(), udb, id, filesDir)
 		})
 	case documents.ScopeShared:
 		if _, ok := requireElevated(w, r); !ok {
 			return
 		}
-		err = s.Docs.Delete(r.Context(), id)
+		filesDir, _ := s.Storage.SharedFilesDir()
+		err = s.Docs.DeleteFromAndFile(r.Context(), s.Docs.SharedDB(), id, filesDir)
 	case documents.ScopeProject:
 		projectID, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64)
 		if member, _ := s.Projects.IsMember(r.Context(), projectID, u.ID); !member {
 			writeErr(w, http.StatusForbidden, "not a member of this project")
 			return
 		}
+		filesDir, _ := s.Storage.ProjectFilesDir(projectID)
 		err = s.Storage.WithProject(r.Context(), projectID, func(pdb *sql.DB) error {
-			return s.Docs.DeleteFrom(r.Context(), pdb, id)
+			return s.Docs.DeleteFromAndFile(r.Context(), pdb, id, filesDir)
 		})
 	default:
 		writeErr(w, http.StatusBadRequest, "invalid scope (personal|shared|project)")

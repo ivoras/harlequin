@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -103,5 +104,78 @@ func TestSaveDocIsRawSkipsCitationCheck(t *testing.T) {
 	}
 	if !strings.Contains(out, "Saved as document") {
 		t.Fatalf("is_raw should bypass the citation check and save, got: %q", out)
+	}
+}
+
+// TestDeleteDocTool covers the delete_doc handler: a personal document is
+// resolved by its scoped id and removed from the corpus (row and its persisted
+// on-disk file), and a shared-scope delete is refused for a non-elevated user.
+func TestDeleteDocTool(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	mgr, err := storage.New(dir, filepath.Join(dir, "harlequin.db"), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mgr.Close()
+	sqlDB := mgr.Shared
+
+	store := documents.NewStore(sqlDB, crossCheckFakeEmbedder{dim: 4})
+	a := &Agent{Docs: store, Storage: mgr}
+	rc := &runContext{userDB: sqlDB, userID: 1}
+	del := a.buildTools(ctx, rc)["delete_doc"].handler
+
+	doc, err := store.IngestInto(ctx, sqlDB, types.CreateDocumentRequest{
+		Title: "Disposable", URI: "agent://save_doc", Mime: "text/plain", Content: "Some text to store then delete.",
+	}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Persist an on-disk file for the doc (as save_doc/uploads do), so we can
+	// assert delete_doc unlinks it. Personal docs live in the user files dir.
+	content := "Some text to store then delete."
+	a.storeSavedDocFile(ctx, sqlDB, documents.ScopePersonal, rc, doc, content)
+	storedPath, _, _, err := store.StoredFile(ctx, sqlDB, doc.ID)
+	if err != nil || storedPath == "" {
+		t.Fatalf("expected a stored file to exist before delete (path=%q, err=%v)", storedPath, err)
+	}
+	userFiles, _ := mgr.UserFilesDir(rc.userID)
+	fullPath := filepath.Join(userFiles, storedPath)
+	if _, err := os.Stat(fullPath); err != nil {
+		t.Fatalf("stored file should exist before delete: %v", err)
+	}
+
+	out, err := del(ctx, rc, map[string]any{"doc": "u." + strconv.FormatInt(doc.ID, 10)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Deleted document") {
+		t.Fatalf("expected a delete confirmation, got: %q", out)
+	}
+	var n int
+	if err := sqlDB.QueryRow("SELECT COUNT(*) FROM documents WHERE id = ?", doc.ID).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("document row should be gone after delete, found %d", n)
+	}
+	if _, err := os.Stat(fullPath); !os.IsNotExist(err) {
+		t.Fatalf("stored file should be unlinked after delete, stat err = %v", err)
+	}
+
+	// A shared-scope delete is refused when the user is not owner/admin. Ingest
+	// into the shared corpus (rc has canShareMemory=false).
+	sdoc, err := store.IngestInto(ctx, store.SharedDB(), types.CreateDocumentRequest{
+		Title: "Org policy", URI: "agent://save_doc", Mime: "text/plain", Content: "A shared document.",
+	}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err = del(ctx, rc, map[string]any{"doc": "s." + strconv.FormatInt(sdoc.ID, 10)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "owner or admin") {
+		t.Fatalf("shared delete should be refused for a non-elevated user, got: %q", out)
 	}
 }
