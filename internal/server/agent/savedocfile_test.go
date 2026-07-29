@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ivoras/harlequin/internal/server/db"
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/storage"
 	"github.com/ivoras/harlequin/internal/shared/types"
@@ -62,5 +63,45 @@ func TestStoreSavedDocFilePersistsExactContent(t *testing.T) {
 	}
 	if strings.ContainsAny(storedPath, "/: ") {
 		t.Fatalf("stored filename %q should be filesystem-safe (ascii, no separators)", storedPath)
+	}
+}
+
+// TestSaveDocIsRawSkipsCitationCheck covers the is_raw flag: original writing
+// (e.g. a story) whose dialogue contains a long quoted sentence would otherwise
+// be rejected by the quoted-citation check as an uncited corpus excerpt. With
+// is_raw=true that check is skipped and the same content saves; without it, the
+// content is rejected. Exercised end-to-end through the save_doc tool handler.
+func TestSaveDocIsRawSkipsCitationCheck(t *testing.T) {
+	ctx := context.Background()
+	sqlDB, err := db.Open(":memory:", db.Shared, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+
+	a := &Agent{Docs: documents.NewStore(sqlDB, crossCheckFakeEmbedder{dim: 4})}
+	rc := &runContext{userDB: sqlDB, userID: 1}
+	save := a.buildTools(ctx, rc)["save_doc"].handler
+
+	// A story whose dialogue is a long verbatim quotation with no citation —
+	// exactly what the citation verifier flags as an uncited excerpt.
+	content := "# Ludwig Returns\n\nBarnaby cleared his throat. \"Good morning to you all, and welcome back to the meadow where our very first adventure began\" he announced to the gathered woodchucks."
+
+	// Without is_raw the citation check rejects it.
+	out, err := save(ctx, rc, map[string]any{"title": "Ludwig Returns", "content": content, "scope": "personal"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "not saved") {
+		t.Fatalf("expected the citation check to reject the story, got: %q", out)
+	}
+
+	// With is_raw=true the same content saves.
+	out, err = save(ctx, rc, map[string]any{"title": "Ludwig Returns", "content": content, "scope": "personal", "is_raw": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "Saved as document") {
+		t.Fatalf("is_raw should bypass the citation check and save, got: %q", out)
 	}
 }

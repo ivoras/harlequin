@@ -571,12 +571,13 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 
 	if a.Docs != nil {
 		reg["save_doc"] = toolEntry{
-			def: fnTool("save_doc", `Save a text you produced (a report, analysis, or summary worth keeping) as a document in the corpus, so it can be found later with search_docs. Keep any [d.x.N] citations in the content — they remain linked to their source documents. Omit scope unless the user asks: the default is right (the project corpus in a project session, else the user's personal documents). Scope "shared" (org-wide, visible to all users) is available to owners/admins only.`, map[string]any{
+			def: fnTool("save_doc", `Save a text you produced (a report, analysis, or summary worth keeping) as a document in the corpus, so it can be found later with search_docs. Keep any [d.x.N] citations in the content — they remain linked to their source documents. Omit scope unless the user asks: the default is right (the project corpus in a project session, else the user's personal documents). Scope "shared" (org-wide, visible to all users) is available to owners/admins only. Set is_raw to true only when the content is original writing you authored (e.g. a story, a draft, freeform prose) rather than a report drawn from the corpus — this skips the quoted-citation check, so any quotation marks in the text are treated as ordinary prose, not as excerpts that must cite a source document.`, map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"title":   map[string]any{"type": "string", "description": "Document title, e.g. \"Comparison: Regulation 2025 vs 2026\""},
 					"content": map[string]any{"type": "string", "description": "The full text to save (Markdown)"},
 					"scope":   map[string]any{"type": "string", "enum": []string{"personal", "project", "shared"}},
+					"is_raw":  map[string]any{"type": "boolean", "description": "True if content is original writing you authored (not sourced from the corpus); skips the quoted-citation check. Default false."},
 				},
 				"required": []string{"title", "content"},
 			}),
@@ -606,14 +607,16 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 					}
 					db = a.Docs.SharedDB()
 				}
-				if problems := a.VerifyCitedQuotes(ctx, rc, content); len(problems) > 0 {
-					var sb strings.Builder
-					sb.WriteString("error: not saved — problem(s) with quoted claims (every quoted excerpt needs a citation, and it must be to the exact chunk it actually came from, not a similar nearby one):\n")
-					for _, p := range problems {
-						fmt.Fprintf(&sb, "- %s\n", p)
+				if !argBool(args, "is_raw", false) {
+					if problems := a.VerifyCitedQuotes(ctx, rc, content); len(problems) > 0 {
+						var sb strings.Builder
+						sb.WriteString("error: not saved — problem(s) with quoted claims (every quoted excerpt needs a citation, and it must be to the exact chunk it actually came from, not a similar nearby one):\n")
+						for _, p := range problems {
+							fmt.Fprintf(&sb, "- %s\n", p)
+						}
+						sb.WriteString("Fix the citation(s) and call save_doc again.")
+						return sb.String(), nil
 					}
-					sb.WriteString("Fix the citation(s) and call save_doc again.")
-					return sb.String(), nil
 				}
 				// Pin project chunk citations to this project (d.p.N → d.p<id>.N):
 				// a bare p resolves against the READER's session project, so a
