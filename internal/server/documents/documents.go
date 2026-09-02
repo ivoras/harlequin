@@ -303,6 +303,8 @@ func (s *Store) IngestIntoProgress(ctx context.Context, db *sql.DB, req types.Cr
 	}
 	docID, _ := res.LastInsertId()
 
+	pl := PhaseLogFrom(ctx)
+
 	chunks, err := s.chunkContent(ctx, req.Content)
 	if err != nil {
 		return nil, fmt.Errorf("chunk document: %w", err)
@@ -327,6 +329,7 @@ func (s *Store) IngestIntoProgress(ctx context.Context, db *sql.DB, req types.Cr
 				progress(end, len(texts))
 			}
 		}
+		pl.Phase("embed-chunks", fmt.Sprintf("%d chunks", len(texts)))
 		for i, c := range chunks {
 			page := pageFor(c.start, req.PageStarts) // 0 when the source has no pages
 			r, err := tx.ExecContext(ctx,
@@ -353,6 +356,7 @@ func (s *Store) IngestIntoProgress(ctx context.Context, db *sql.DB, req types.Cr
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	pl.Phase("db-write", fmt.Sprintf("%d chunks", len(chunks)))
 	return &types.Document{ID: docID, Title: req.Title, URI: req.URI, Mime: mime, CreatedBy: userID, Chunks: len(chunks), OriginalName: req.OriginalName}, nil
 }
 
@@ -779,18 +783,28 @@ type sentRec struct {
 }
 
 func (s *Store) chunkContent(ctx context.Context, text string) ([]chunkRec, error) {
+	pl := PhaseLogFrom(ctx)
 	if s.chunk.Strategy != "semadj" {
-		return chunkText(text, 0), nil
+		out := chunkText(text, 0)
+		pl.Phase("chunk-plain", fmt.Sprintf("%d chunks", len(out)))
+		return out, nil
 	}
 	sents := splitSentences(text)
 	if len(sents) <= s.chunk.MinSentences {
-		return chunkText(text, 0), nil
+		out := chunkText(text, 0)
+		pl.Phase("chunk-plain", fmt.Sprintf("%d chunks (too few sentences for semadj)", len(out)))
+		return out, nil
 	}
 	texts := make([]string, len(sents))
 	for i, sr := range sents {
 		texts[i] = sr.text
 	}
+	pl.Phase("split-sentences", fmt.Sprintf("%d sentences", len(sents)))
+	// The costlier of the two embedding passes: semadj embeds every sentence,
+	// then the caller embeds every chunk. Timing them separately is the only way
+	// to see that one ingestion pays for embeddings twice.
 	vecs, err := s.embedder.Embed(ctx, texts)
+	pl.Phase("embed-sentences", fmt.Sprintf("%d sentences", len(texts)))
 	if err != nil || len(vecs) != len(sents) {
 		// Graceful degradation, but never a silent one: the document still
 		// ingests with plain chunking, minus the semantic boundaries.
@@ -806,6 +820,7 @@ func (s *Store) chunkContent(ctx context.Context, text string) ([]chunkRec, erro
 			out = append(out, c)
 		}
 	}
+	pl.Phase("chunk-semadj", fmt.Sprintf("%d chunks from %d sentences", len(out), len(sents)))
 	return out, nil
 }
 

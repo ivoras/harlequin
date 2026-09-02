@@ -159,6 +159,12 @@ embeddings:
 #     timeout: "5m"            # per-conversion bound; fallback extractors take over on failure
 #     fast: true               # default true: no OCR + dlparse_v2 backend (CLI --no-ocr --pdf-backend=dlparse_v2),
 #                              # much faster on digital-native PDFs; set false for OCR/scanned-page support
+#   xberg:                     # alternative to docling, same role (https://github.com/xberg-io/xberg)
+#     base_url: "http://127.0.0.1:8000"   # wins if docling is also set; empty/absent = disabled
+#     timeout: "5m"            # per-conversion bound; fallback extractors take over on failure
+#     fast: true               # default true: no OCR, no layout models; set false for OCR +
+#                              # layout-driven Markdown (headings/tables from RT-DETR + TATR)
+#                              # compare the two on your own files: go run ./cmd/extracttest -both <file.pdf>
 
 agent:
   max_steps: 50

@@ -40,6 +40,20 @@ the same way as the server:
   two revisions of one text plus two different texts on the same subject, runs
   both alignment modes, and asserts the expected pair shapes. No chat LLM.
 - `crontest` — exercises the cron Store (CRUD + scheduling math).
+- `extracttest` — compares the document converters (docling-serve, xberg) plus the
+  built-in pure-Go extractor on real files, so the choice rests on evidence rather
+  than on their READMEs. Reports wall time, recovered Markdown structure, the page
+  mapping — with a validity check, since a broken mapping silently mis-cites every
+  chunk — and the word-level disagreement between converters. The `bullet`/`num`/
+  `alpha` columns are deliberately separate: in a regulation the enumerator is part
+  of the citation, and a converter that renumbers `(b)` to `3.` changes what the
+  document says while every prose-level metric still looks healthy. The `builtin`
+  row is the baseline the converters have to beat — it is what the server falls
+  back to, needs no service, and reproduces the text layer verbatim.
+  No LLM, no database; reads `server.yaml` only for the converter URLs.
+  `go run ./cmd/extracttest [-both] [-dump DIR] [-pages 80] <file.pdf> …`
+  (`-both` runs fast and full-quality modes; `-docling`/`-xberg` override the URLs
+  or take `off` to skip one; `-builtin=false` drops the baseline row).
 - `embedsim` — embeds two strings via the configured embeddings provider and
   prints their cosine similarity (`-url`/`-model` to target an arbitrary endpoint).
 - `mcptest` — integration harness for the MCP registry.

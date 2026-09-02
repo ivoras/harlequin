@@ -3,6 +3,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -17,7 +18,6 @@ import (
 	"github.com/ivoras/harlequin/internal/server/auth"
 	"github.com/ivoras/harlequin/internal/server/config"
 	"github.com/ivoras/harlequin/internal/server/cron"
-	"github.com/ivoras/harlequin/internal/server/docling"
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/email"
 	"github.com/ivoras/harlequin/internal/server/mcp"
@@ -36,6 +36,24 @@ import (
 	"github.com/ivoras/harlequin/internal/server/userconfig"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
+
+// DocConverter converts an uploaded document to Markdown, richer than the
+// built-in pure-Go extractors (layout analysis, table structure, OCR). Both
+// docling.Client and xberg.Client implement it; which one a server uses is a
+// config choice, and neither is required.
+//
+// ConvertPaged additionally returns the rune offset at which each page of the
+// returned text begins, so document chunks keep their page citations. A nil
+// mapping means the source was not page-addressable.
+type DocConverter interface {
+	// Name identifies the backend in logs.
+	Name() string
+	// Healthy reports whether the backend is reachable. Advisory only: an
+	// unhealthy converter stays registered, since each upload retries it.
+	Healthy(ctx context.Context) bool
+	Convert(ctx context.Context, filename string, data []byte) (string, error)
+	ConvertPaged(ctx context.Context, filename string, data []byte) (string, []int, error)
+}
 
 // Server holds the dependencies for the HTTP handlers.
 type Server struct {
@@ -58,12 +76,12 @@ type Server struct {
 	Presence   *presence.Tracker
 	Email      *email.Sender
 	PDFExtract *pdfextract.Extractor
-	// Docling, if set, converts PDF/DOCX uploads to structured Markdown; on
+	// Converter, if set, converts PDF/DOCX uploads to structured Markdown; on
 	// failure the built-in extractors (PDFExtract, docxextract) take over.
-	Docling  *docling.Client
-	Hub      *sessionhub.Hub
-	Projects *project.Store
-	ChatHub  *projectchat.Hub
+	Converter DocConverter
+	Hub       *sessionhub.Hub
+	Projects  *project.Store
+	ChatHub   *projectchat.Hub
 
 	// ingest tracks asynchronous document ingestions (POST /documents/async).
 	ingest ingestJobs

@@ -199,13 +199,18 @@ func RepairDescriptions(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-// descriptionOf extracts the frontmatter description from a SKILL.md (best effort).
+// descriptionOf extracts the frontmatter description from a SKILL.md (best
+// effort). A parse failure yields "" so seeding still installs the skill's
+// files, but it is logged: a skill seeded with an empty description stays
+// invisible to the model's routing, which is otherwise indistinguishable from
+// the skill working.
 func descriptionOf(md string) string {
 	if md == "" {
 		return ""
 	}
 	fm, _, err := parseFrontmatter(md)
 	if err != nil {
+		log.Printf("skills: cannot read description from SKILL.md (%v); the skill will not be routable until its frontmatter parses", err)
 		return ""
 	}
 	return fm.Description

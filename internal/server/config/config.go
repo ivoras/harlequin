@@ -243,6 +243,11 @@ type DocumentsConfig struct {
 	// Markdown via a docling-serve instance (layout analysis, tables, OCR). Any
 	// failure falls back to the built-in pure-Go extractors.
 	Docling DoclingConfig `yaml:"docling"`
+	// Xberg is an alternative converter with the same role as Docling, backed by
+	// an xberg server (https://github.com/xberg-io/xberg) instead of
+	// docling-serve. When both are configured Xberg wins. Compare them on real
+	// documents with cmd/extracttest before switching.
+	Xberg XbergConfig `yaml:"xberg"`
 }
 
 // DoclingConfig points at an optional docling-serve document converter.
@@ -260,6 +265,23 @@ type DoclingConfig struct {
 // FastValue reports whether fast conversion is enabled (default true).
 func (d DoclingConfig) FastValue() bool {
 	return d.Fast == nil || *d.Fast
+}
+
+// XbergConfig points at an optional xberg document converter.
+type XbergConfig struct {
+	BaseURL string `yaml:"base_url"` // e.g. "http://127.0.0.1:8000"; empty disables
+	// Timeout bounds one conversion (default 5m — layout and OCR run per page).
+	Timeout Duration `yaml:"timeout"`
+	// Fast trades quality for speed: disables OCR and skips layout detection.
+	// Much faster on digital-native documents; scanned pages extract nothing and
+	// complex layouts lose structure. Pointer so an omitted key defaults to
+	// enabled; set false for full-quality conversion.
+	Fast *bool `yaml:"fast"`
+}
+
+// FastValue reports whether fast conversion is enabled (default true).
+func (x XbergConfig) FastValue() bool {
+	return x.Fast == nil || *x.Fast
 }
 
 // AgentConfig controls the agent loop and JS sandbox.

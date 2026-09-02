@@ -47,6 +47,9 @@ func New(baseURL string, timeout time.Duration, fast bool) *Client {
 	}
 }
 
+// Name identifies this converter in logs.
+func (c *Client) Name() string { return "docling" }
+
 // Healthy reports whether the instance answers its health check.
 func (c *Client) Healthy(ctx context.Context) bool {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
