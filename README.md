@@ -10,24 +10,31 @@ Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a fu
 
 ## What it does
 
+- **Server-side data** — everything lives server-side: personal (user) data,
+  project data, and company-global data. Clients are thin clients, with no
+  data storage, and *no local data access by default*.
 - **Server-side sessions** — chats live on the server and stream over WebSockets;
   disconnect mid-answer, reconnect from any client, and messages typed while the
   agent is busy queue up. Sessions are auto-titled, exportable, and clearable. Users
   see the same real-time LLM stream/chat when connected with multiple clients.
 - **Layered memory** — personal / shared (org) / project scopes with structured
   attribute *slots*, automatic conflict detection, and write-time rules that keep
-  an attribute from living in two scopes at once.
+  an attribute from living in two scopes at once. Harlequin data isn't just a big
+  bunch of MD files fed into RAG, there's an overlay of key-value pair with structured
+  naming (like `company.address`) to aid both machine-readability and user understanding.
 - **Documents (RAG)** — upload PDF / DOCX / text into any scope; hybrid FTS5 +
-  vector retrieval with inline, clickable citations (`[d.p.421]`). The agent can
+  vector retrieval with inline, clickable citations. The shipped skils can
   align two documents (`align_docs`) for version/topical comparison, verify
   quoted claims against sources, and save its own reports as searchable,
   citation-pinned documents rendered in the web UI.
 - **Projects** — shared workspaces (members, sessions, documents, memories, live
   chatroom). Search can span *all* projects a user belongs to, with
-  project-qualified references (`p3.17`) that stay valid anywhere.
+  project-qualified references (`p3.17`) that stay valid anywhere, or they can
+  be limited to per-project only.
 - **Skills & hats** — reusable instruction/script bundles resolved across
   scopes, and org-defined skill overlays ("hats") with optional custom system
-  prompts.
+  prompts. The idea is that someone wearing a "hat" of certain skills can
+  participate in multiple projects with those highly specific skills.
 - **Tools** — WebFetch/WebFetchDOM/WebFetchGrep (page analysis, structural
   extraction, raw-HTML grep), WebSearch (Brave Search API), sandboxed
   JavaScript (`run_js`), calculator, cron scheduling, and any MCP server the
