@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -723,6 +724,13 @@ const maxUploadBytes = 64 << 20 // 64 MiB
 func (s *Server) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 
+	// Same phase timeline as the async path (see handleIngestAsync): this route
+	// runs the identical work, just inside the request, so a slow synchronous
+	// upload has to be as diagnosable as a slow background one.
+	pl := documents.NewPhaseLog("(upload)")
+	defer pl.Done()
+	ctx := documents.WithPhaseLog(r.Context(), pl)
+
 	var req types.CreateDocumentRequest
 	var raw []byte // raw uploaded bytes (nil for raw-text JSON ingests), persisted to disk
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
@@ -736,15 +744,18 @@ func (s *Server) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
+	pl.Relabel(cmp.Or(req.OriginalName, req.Title))
+	pl.Phase("extract", fmt.Sprintf("%d chars, %d pages", len(req.Content), len(req.PageStarts)))
 
 	// Catalogue description: one small LLM call over the opening text, stored
 	// with the document so the assistant can resolve paraphrased references
 	// ("the new EEA regulation") from list_documents. Best-effort.
 	if req.Description == "" && s.Agent != nil {
-		req.Description = s.Agent.DescribeDocument(r.Context(), req.Title, req.Content)
+		req.Description = s.Agent.DescribeDocument(ctx, req.Title, req.Content)
+		pl.Phase("describe")
 	}
 
-	d, status, msg := s.ingestToScope(r.Context(), u, req, raw, nil)
+	d, status, msg := s.ingestToScope(ctx, u, req, raw, nil)
 	if msg != "" {
 		writeErr(w, status, msg)
 		return
@@ -882,15 +893,26 @@ func (s *Server) handleCreateDocumentAsync(w http.ResponseWriter, r *http.Reques
 		// Independent lifetime: the upload request returns immediately.
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer cancel()
+		// Per-phase timing: an ingestion that takes many minutes is the sum of a
+		// converter call, one LLM call and two embedding passes, and without this
+		// there is no way to tell afterwards which of them was slow. The log
+		// travels on ctx so the chunk/embed phases inside the documents package
+		// join the same timeline.
+		pl := documents.NewPhaseLog(in.filename)
+		defer pl.Done()
+		ctx = documents.WithPhaseLog(ctx, pl)
+
 		job.set("extracting")
 		req, _, msg := s.extractDocument(ctx, in)
 		if msg != "" {
 			job.fail(msg)
 			return
 		}
+		pl.Phase("extract", fmt.Sprintf("%d chars, %d pages", len(req.Content), len(req.PageStarts)))
 		if req.Description == "" && s.Agent != nil {
 			job.set("describing")
 			req.Description = s.Agent.DescribeDocument(ctx, req.Title, req.Content)
+			pl.Phase("describe")
 		}
 		// The progress callback flips this to "embedding" at the first batch.
 		job.set("chunking")
@@ -1030,24 +1052,25 @@ func (s *Server) extractDocument(ctx context.Context, in uploadInput) (req types
 		if isDOCX {
 			mime = docxMime
 		}
-		// Docling first when configured: structured text (layout, tables, OCR).
-		// PDFs go through Docling's JSON format so page citations survive; DOCX
-		// (unpaged) uses plain Markdown. Any failure falls back to the built-in
-		// extractors below.
+		// The configured converter (docling or xberg) first: structured text
+		// (layout, tables, OCR). PDFs go through its paged path so page citations
+		// survive; DOCX (unpaged) takes the plain Markdown one. Any failure falls
+		// back to the built-in extractors below.
 		var text string
-		if s.Docling != nil {
+		if s.Converter != nil {
+			name := s.Converter.Name()
 			var md string
 			var err error
 			if isPDF {
-				md, pageStarts, err = s.Docling.ConvertPaged(ctx, header.Filename, data)
+				md, pageStarts, err = s.Converter.ConvertPaged(ctx, header.Filename, data)
 			} else {
-				md, err = s.Docling.Convert(ctx, header.Filename, data)
+				md, err = s.Converter.Convert(ctx, header.Filename, data)
 			}
 			if err != nil {
 				pageStarts = nil
-				log.Printf("documents: docling convert %q failed, using built-in extractor: %v", header.Filename, err)
+				log.Printf("documents: %s convert %q failed, using built-in extractor: %v", name, header.Filename, err)
 			} else {
-				log.Printf("documents: docling converted %q (%d chars, %d pages)", header.Filename, len(md), len(pageStarts))
+				log.Printf("documents: %s converted %q (%d chars, %d pages)", name, header.Filename, len(md), len(pageStarts))
 				text = md
 			}
 		}

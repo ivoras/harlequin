@@ -82,6 +82,32 @@ VERBOSITY = 4
 # and the full llama-server argument list (everything except -m/--port/--host,
 # which are added automatically). "kind" only affects which columns are shown.
 SERVERS = [
+#    {
+#        "name": "chat",
+#        "kind": "chat",
+#        "model": "LFM2.5-8B-A1B-Q8_0.gguf",
+#        "port": 2234,
+#        # Mirrors llm_for_hermes_meral.sh (the chat model launch script).
+#        "args": [
+#            "-c", "100000", "--timeout", "3600",
+#            "-ctk", "q8_0", "-ctv", "q8_0", "--kv-unified",
+#            "--batch-size", "4096", "-np", "2",
+#            "--presence-penalty", "0.5", "--repeat-penalty", "1.05",
+#            "--temperature", "0.5", "--min_p", "0.05", "--top_p", "0.95",
+#            "-cram", "4096",
+#            "--ctx-checkpoints", "64", "--checkpoint-min-step", "256",
+#            "--cache-reuse", "2",
+#            "--reasoning-budget", "3000",
+#            "--reasoning-budget-message", "Thinking budget exceeded, answer now",
+#            "--reasoning-preserve",
+#            "--flash-attn", "on",
+#            "--spec-type", "ngram-map-k4v",
+#            "--spec-ngram-map-k4v-size-n", "8", 
+#            "--spec-ngram-map-k4v-size-m", "8",
+#            "--spec-ngram-map-k4v-min-hits", "2",
+#            "--spec-draft-n-max", "64"
+#        ],
+#    },
     {
         "name": "chat",
         "kind": "chat",

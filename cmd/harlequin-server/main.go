@@ -44,6 +44,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/userconfig"
 	"github.com/ivoras/harlequin/internal/server/webfetch"
 	"github.com/ivoras/harlequin/internal/server/websearch"
+	"github.com/ivoras/harlequin/internal/server/xberg"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
@@ -304,17 +305,23 @@ func main() {
 		defer ex.Close()
 	}
 
-	// Optional Docling converter for PDF/DOCX uploads. Registered even when the
-	// instance is currently down: each upload retries it and falls back to the
-	// built-in extractors on failure.
-	if base := cfg.Documents.Docling.BaseURL; base != "" {
-		dl := docling.New(base, cfg.Documents.Docling.Timeout.D(), cfg.Documents.Docling.FastValue())
-		if dl.Healthy(context.Background()) {
-			log.Printf("docling: converting PDF/DOCX uploads via %s", base)
-		} else {
-			log.Printf("docling: configured at %s but not responding; uploads will retry it and fall back to built-in extractors", base)
+	// Optional converter for PDF/DOCX uploads — docling or xberg, whichever is
+	// configured. Registered even when the instance is currently down: each
+	// upload retries it and falls back to the built-in extractors on failure.
+	if base := cfg.Documents.Xberg.BaseURL; base != "" {
+		if cfg.Documents.Docling.BaseURL != "" {
+			log.Printf("documents: both xberg and docling are configured; using xberg")
 		}
-		srv.Docling = dl
+		srv.Converter = xberg.New(base, cfg.Documents.Xberg.Timeout.D(), cfg.Documents.Xberg.FastValue())
+	} else if base := cfg.Documents.Docling.BaseURL; base != "" {
+		srv.Converter = docling.New(base, cfg.Documents.Docling.Timeout.D(), cfg.Documents.Docling.FastValue())
+	}
+	if c := srv.Converter; c != nil {
+		if c.Healthy(context.Background()) {
+			log.Printf("%s: converting PDF/DOCX uploads", c.Name())
+		} else {
+			log.Printf("%s: configured but not responding; uploads will retry it and fall back to built-in extractors", c.Name())
+		}
 	}
 
 	// Queue onboarding for any existing users who still need it.

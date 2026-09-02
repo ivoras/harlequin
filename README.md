@@ -413,6 +413,12 @@ llama-server -m Qwen3.6-35B-A3B-IQ4_XS-3.53bpw.gguf --port 2234 --host 0.0.0.0 -
 llama-server -m granite-embedding-311M-multilingual-r2-Q8_0.gguf --embeddings -c 768 --port 2235
 ```
 
+# Security considerations
+
+To power invite autocomplete, any signed-in user can list all account emails via the
+user directory endpoint — set `auth.user_directory: false` if org addresses
+should not be enumerable.
+
 
 # Running Docling (optional PDF/DOCX conversion)
 
@@ -445,9 +451,37 @@ Large or scanned PDFs can take a while to convert on CPU — Harlequin uses docl
 async conversion endpoint and polls for completion, so slow conversions don't block the
 request beyond the configured `timeout`.
 
+## xberg, an alternative document converter
 
-# Security considerations
+[xberg](https://github.com/xberg-io/xberg) fills the same role as Docling — layout analysis,
+table structure, OCR — with a Rust core instead of a Python service, which makes it
+considerably lighter to run alongside local models. Harlequin speaks to its HTTP server, so
+no cgo or native library is involved:
 
-To power invite autocomplete, any signed-in user can list all account emails via the
-user directory endpoint — set `auth.user_directory: false` if org addresses
-should not be enumerable.
+```sh
+xberg serve --host 127.0.0.1 --port 8000
+```
+
+```yaml
+documents:
+  xberg:
+    base_url: "http://127.0.0.1:8000"
+    timeout: "5m"
+    fast: true     # no OCR, no layout models; set false for OCR + layout-driven Markdown
+```
+
+Only one converter runs at a time: if both `xberg` and `docling` are configured, xberg wins
+and the server logs that it ignored the other. Everything else is unchanged — the same
+fallback to the built-in extractors on failure, and the same page mapping, so chunks from
+PDFs keep their page citations.
+
+Which one extracts your documents better is an empirical question, so decide it on your own
+files before switching:
+
+```sh
+go run ./cmd/extracttest -both docs/*.pdf
+```
+
+That runs every configured converter over each file in both fast and full-quality modes and
+reports timing, recovered structure, page-mapping validity, and how far the two disagree.
+See `cmd/AGENTS.md`.
