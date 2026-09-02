@@ -10,6 +10,11 @@ Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a fu
 
 ## What it does
 
+- **Multi-user** — email-identified accounts, owner/admin/user roles, email-code
+  self-registration, per-user usage accounting, audit log. Note: to power
+  invite autocomplete, any signed-in user can list all account emails via the
+  user directory endpoint — set `auth.user_directory: false` if org addresses
+  should not be enumerable.
 - **Server-side data** — everything lives server-side: personal (user) data,
   project data, and company-global data. Clients are thin clients, with no
   data storage, and *no local data access by default*.
@@ -35,17 +40,16 @@ Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a fu
   scopes, and org-defined skill overlays ("hats") with optional custom system
   prompts. The idea is that someone wearing a "hat" of certain skills can
   participate in multiple projects with those highly specific skills.
-- **Tools** — WebFetch/WebFetchDOM/WebFetchGrep (page analysis, structural
+- **LLM Tools** — WebFetch/WebFetchDOM/WebFetchGrep (page analysis, structural
   extraction, raw-HTML grep), WebSearch (Brave Search API), sandboxed
   JavaScript (`run_js`), calculator, cron scheduling, and any MCP server the
   user registers.
 - **Automation** — per-user cron jobs (JS or agent-turn), background memory
   extraction, notifications delivered in-app, by email, or via Telegram.
-- **Multi-user** — email-identified accounts, owner/admin/user roles, email-code
-  self-registration, per-user usage accounting, audit log. Note: to power
-  invite autocomplete, any signed-in user can list all account emails via the
-  user directory endpoint — set `auth.user_directory: false` if org addresses
-  should not be enumerable.
+- **JavaScript VM by default** - JS code executes in a sanboyed JS VM
+  directly on the server (no node.js dependancy), either when called directly
+  by the user with the `run_js` tool, *or* as templated JS code
+  [within skills](https://raw.githubusercontent.com/ivoras/harlequin/refs/heads/master/skills/example-greeter/SKILL.md).
 
 ## Tech
 
