@@ -46,10 +46,10 @@ Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a fu
   user registers.
 - **Automation** — per-user cron jobs (JS or agent-turn), background memory
   extraction, notifications delivered in-app, by email, or via Telegram.
-- **JavaScript VM by default** - JS code executes in a sanboyed JS VM
-  directly on the server (no node.js dependancy), either when called directly
+- **JavaScript VM by default** - JS code executes in a sanboxed JS VM
+  directly on the server (no node.js dependancy), either called directly
   by the user with the `run_js` tool, *or* as templated JS code
-  [within skills](https://raw.githubusercontent.com/ivoras/harlequin/refs/heads/master/skills/example-greeter/SKILL.md).
+  [within skill files](https://raw.githubusercontent.com/ivoras/harlequin/refs/heads/master/skills/example-greeter/SKILL.md).
 
 ## Tech
 
