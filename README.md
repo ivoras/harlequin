@@ -11,10 +11,7 @@ Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a fu
 ## What it does
 
 - **Multi-user** — email-identified accounts, owner/admin/user roles, email-code
-  self-registration, per-user usage accounting, audit log. Note: to power
-  invite autocomplete, any signed-in user can list all account emails via the
-  user directory endpoint — set `auth.user_directory: false` if org addresses
-  should not be enumerable.
+  self-registration, per-user usage accounting, audit log. 
 - **Server-side data** — everything lives server-side: personal (user) data,
   project data, and company-global data. Clients are thin clients, with no
   data storage, and *no local data access by default*.
@@ -447,3 +444,10 @@ documents:
 Large or scanned PDFs can take a while to convert on CPU — Harlequin uses docling-serve's
 async conversion endpoint and polls for completion, so slow conversions don't block the
 request beyond the configured `timeout`.
+
+
+# Security considerations
+
+To power invite autocomplete, any signed-in user can list all account emails via the
+user directory endpoint — set `auth.user_directory: false` if org addresses
+should not be enumerable.
