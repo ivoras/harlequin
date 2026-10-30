@@ -146,6 +146,27 @@ func (s *Store) RemoveMember(ctx context.Context, projectID, userID int64) error
 	return err
 }
 
+// Delete removes a project from the registry along with its members and invites
+// (the project's own data directory is the caller's to remove). Idempotent.
+func (s *Store) Delete(ctx context.Context, projectID int64) error {
+	tx, err := s.system.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// Explicit rather than relying on ON DELETE CASCADE alone.
+	for _, q := range []string{
+		`DELETE FROM project_invites WHERE project_id = ?`,
+		`DELETE FROM project_members WHERE project_id = ?`,
+		`DELETE FROM projects WHERE id = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, q, projectID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 // UserIDByEmail resolves an email to a user id (for invitations).
 func (s *Store) UserIDByEmail(ctx context.Context, email string) (int64, error) {
 	var id int64

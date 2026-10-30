@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api";
   import { activeProject, projectSheet, toast } from "../lib/stores";
-  import { switchToProject, leaveActiveProject, projectBylines } from "../lib/project";
+  import { switchToProject, leaveActiveProject, projectBylines, canDeleteProject, deleteProjectFlow } from "../lib/project";
   import { uploadWithProgress, ingestLabel } from "../lib/ingest";
   import { viewDocument } from "../lib/docview.svelte";
   import type { Project, ProjectMember, Document } from "../lib/types";
@@ -118,6 +118,13 @@
     }
   }
 
+  async function deleteSelectedProject() {
+    const p = projects.find((x) => x.id === selected);
+    if (!p || !(await deleteProjectFlow(p))) return;
+    projects = projects.filter((x) => x.id !== p.id);
+    selected = projects[0]?.id ?? 0;
+  }
+
   async function del(id: number) {
     try {
       await api.deleteDocument(id, "project", selected);
@@ -140,6 +147,9 @@
         }}>Switch to {projects.find((x) => x.id === selected)?.name}</button>
       {:else if selected && selected === $activeProject?.id}
         <button class="small" onclick={leaveActiveProject}>Leave project</button>
+      {/if}
+      {#if selected && canDeleteProject(projects.find((x) => x.id === selected)!)}
+        <button class="ghost danger small" onclick={deleteSelectedProject}>Delete project…</button>
       {/if}
       <button class="small" onclick={() => projectSheet.set(true)}>Manage…</button>
     </div>

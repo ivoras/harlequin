@@ -362,6 +362,12 @@ func (c *Client) DepartProject(ctx context.Context, id int64) error {
 	return c.do(ctx, http.MethodPost, fmt.Sprintf("/projects/%d/depart", id), nil, nil)
 }
 
+// DeleteProject permanently deletes a project and all its data. confirm must be
+// the project's exact name (the server rejects anything else).
+func (c *Client) DeleteProject(ctx context.Context, id int64, confirm string) error {
+	return c.do(ctx, http.MethodDelete, fmt.Sprintf("/projects/%d?confirm=%s", id, url.QueryEscape(confirm)), nil, nil)
+}
+
 // ListProjectInvites returns the caller's pending invitations.
 func (c *Client) ListProjectInvites(ctx context.Context) ([]types.ProjectInvite, error) {
 	var out []types.ProjectInvite

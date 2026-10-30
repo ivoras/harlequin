@@ -79,3 +79,14 @@ func (h *Hub) Broadcast(projectID int64, msg types.ChatMessage) {
 		delete(h.rooms, projectID)
 	}
 }
+
+// CloseRoom disconnects every subscriber of a project's room (the project was
+// deleted). Their channels close, which ends each connection's writer.
+func (h *Hub) CloseRoom(projectID int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for sub := range h.rooms[projectID] {
+		close(sub.ch)
+	}
+	delete(h.rooms, projectID)
+}

@@ -14,7 +14,7 @@ import (
 
 // runProject handles the /project command and its subcommands. Project management
 // (list/create/invite/accept/members/assign/sessions) plus switch/leave/depart
-// (leave = deselect/back to personal; depart = remove your membership), which
+// (leave = deselect/back to personal; depart = remove your membership; delete = destroy the project, creator/admin only), which
 // enter and exit the shared project context (and its chatroom side-pane).
 func (m *Model) runProject(args []string) tea.Cmd {
 	sub := "list"
@@ -147,6 +147,50 @@ func (m *Model) runProject(args []string) tea.Cmd {
 			return tea.Batch(m.bootstrapChat(), depart)
 		}
 		return depart
+	case "delete":
+		// Permanently delete a project (creator or admin only; the server
+		// enforces it). Needs a trailing --yes so it can't happen by accident;
+		// the server additionally requires the exact project name, which we echo.
+		ref, confirmed := strings.CutSuffix(rest, "--yes")
+		ref = strings.TrimSpace(ref)
+		if ref == "" && m.activeProjectID == 0 {
+			return infoCmd("usage: /project delete <id-or-name> --yes  (or switch to a project first)")
+		}
+		activeID := m.activeProjectID
+		isActiveName := ref == "" || (activeID != 0 && strings.EqualFold(ref, m.activeProjectName))
+		if n, err := strconv.ParseInt(ref, 10, 64); err == nil && n == activeID {
+			isActiveName = true
+		}
+		if !confirmed {
+			target := ref
+			if ref == "" {
+				target = m.activeProjectName
+			}
+			return infoCmd(fmt.Sprintf("this PERMANENTLY deletes project %q for all members: sessions, documents, memories, chat and files.\nIf you are sure: /project delete %s --yes", target, target))
+		}
+		del := func() tea.Msg {
+			targetID := activeID
+			if ref != "" {
+				resolved, err := m.resolveProjectRef(context.Background(), ref)
+				if err != nil {
+					return errMsg{err}
+				}
+				targetID = resolved
+			}
+			p, err := m.client.GetProject(context.Background(), targetID)
+			if err != nil {
+				return errMsg{err}
+			}
+			if err := m.client.DeleteProject(context.Background(), targetID, p.Name); err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{fmt.Sprintf("deleted project %q (#%d) and all its data", p.Name, targetID)}
+		}
+		if isActiveName && activeID != 0 {
+			m.leaveProject()
+			return tea.Batch(m.bootstrapChat(), del)
+		}
+		return del
 	case "invite":
 		if m.activeProjectID == 0 {
 			return infoCmd("switch to a project first: /project switch <id>")

@@ -27,7 +27,7 @@ var slashHelp = map[string]string{
 	"/mcp":     "list / add / test / authorize MCP servers",
 	"/memory":  "list / show / manage memories",
 	"/new":     "start a new session",
-	"/project": "manage projects (list/new/switch/invite/assign/leave/depart); switch/depart accept a project id or name",
+	"/project": "manage projects (list/new/switch/invite/assign/leave/depart/delete); switch/depart/delete accept a project id or name",
 	"/say":     "post a message to the project chatroom",
 	"/queue":   "list / del <n> / clear messages queued while busy",
 	"/quit":    "exit",

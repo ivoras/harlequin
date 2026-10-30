@@ -70,6 +70,44 @@ func New(ag Agent, log *sessionlog.Logger, idle time.Duration) *Hub {
 // Stop signals all session goroutines to exit (best-effort; in-flight turns end).
 func (h *Hub) Stop() { h.cancel() }
 
+// closeWait bounds how long CloseProject waits for an interrupted turn to wind
+// down before the caller deletes the project's data underneath it.
+const closeWait = 15 * time.Second
+
+// CloseProject tears down every live session of a deleted project: in-flight
+// turns are cancelled, connected clients are disconnected, and the goroutines
+// exit. It waits (bounded) for them so no turn is still writing to the project
+// database when its files are removed.
+func (h *Hub) CloseProject(projectID int64) {
+	var victims []*liveSession
+	h.mu.Lock()
+	for k, ls := range h.sessions {
+		if ls.projectID == projectID {
+			victims = append(victims, ls)
+			delete(h.sessions, k)
+		}
+	}
+	h.mu.Unlock()
+	deadline := time.After(closeWait)
+	for _, ls := range victims {
+		close(ls.done)
+		ls.mu.Lock()
+		for sub := range ls.subs {
+			close(sub.ch)
+			delete(ls.subs, sub)
+		}
+		cancel := ls.turnCancel
+		ls.mu.Unlock()
+		if cancel != nil {
+			cancel()
+		}
+		select {
+		case <-ls.exited:
+		case <-deadline:
+		}
+	}
+}
+
 // sessionKey identifies a live session. Project sessions are keyed by project id
 // (shared across all members → one live session); personal sessions by user id.
 func sessionKey(projectID, userID, sessID int64) string {
@@ -103,6 +141,8 @@ func (h *Hub) Attach(user *types.User, projectID int64, sess *types.Session) *Su
 			prompts:   make(chan string, promptQueueDepth),
 			activity:  make(chan struct{}, 1),
 			subs:      map[*subscriber]struct{}{},
+			done:      make(chan struct{}),
+			exited:    make(chan struct{}),
 		}
 		h.sessions[k] = ls
 		go ls.loop()
@@ -135,6 +175,8 @@ type liveSession struct {
 
 	prompts  chan string
 	activity chan struct{}
+	done     chan struct{} // closed by CloseProject: the loop must exit
+	exited   chan struct{} // closed when loop returns
 
 	mu       sync.Mutex
 	subs     map[*subscriber]struct{} // receive live events (added on resume)
@@ -151,11 +193,20 @@ type liveSession struct {
 // loop runs the session: it serializes prompts (one turn at a time) and reaps the
 // session after an idle period with no connection and no running turn.
 func (ls *liveSession) loop() {
+	defer close(ls.exited)
 	idle := time.NewTimer(ls.hub.idle)
 	defer idle.Stop()
 	for {
 		select {
+		case <-ls.done:
+			return
+
 		case content := <-ls.prompts:
+			select {
+			case <-ls.done: // closed while this prompt was queued: drop it
+				return
+			default:
+			}
 			stopTimer(idle)
 			ls.runTurn(content)
 			idle.Reset(ls.hub.idle)

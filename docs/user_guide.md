@@ -105,7 +105,7 @@ so you can follow a report's sources without leaving it.
 
 | Command | What it does |
 |---------|--------------|
-| `/project` | Manage projects: `list`, `new`, `switch`, `invite`, `assign` (move the current session into the project), `leave`, `depart`. |
+| `/project` | Manage projects: `list`, `new`, `switch`, `invite`, `assign` (move the current session into the project), `leave`, `depart`, `delete` (permanently delete a project, creator/admin only; needs `--yes`). |
 | `/say <message>` | Post a message to the active project's chatroom. |
 
 See the [Projects](#projects-1) chapter below for the full workflow.
@@ -205,6 +205,13 @@ projects you belong to unless they are members too.
 personal workspace — you stay a member. `/project depart` (web: "Depart
 project") removes your membership; the project and its content remain for the
 other members.
+
+**Deleting.** `/project delete <id-or-name> --yes` (web: "Delete project…",
+which asks you to type the project name) permanently deletes a project for
+**all** members: its sessions, documents, memories, chat history and uploaded
+files. Only the project's creator or an owner/admin may do it (an admin need
+not be a member). Live connections to the project are closed, and the other
+members get a notification. This cannot be undone.
 
 ## How skills resolve (scopes, projects, hats)
 
