@@ -2,7 +2,7 @@
   import { api, getToken, setToken } from "./lib/api";
   import { user, view, session, wornHat, toasts, toast, activeProject, projectSheet, type View } from "./lib/stores";
   import { sc } from "./lib/session.svelte";
-  import { switchToProject as libSwitchToProject, leaveActiveProject, cleanTitle, projectBylines } from "./lib/project";
+  import { switchToProject as libSwitchToProject, leaveActiveProject, cleanTitle, projectBylines, canDeleteProject, deleteProjectFlow } from "./lib/project";
   import DocViewer from "./lib/DocViewer.svelte";
   import { pc } from "./lib/projectchat.svelte";
   import type { Session, Project, ProjectInvite } from "./lib/types";
@@ -279,6 +279,11 @@
     } catch (e) {
       toast((e as Error).message, "error");
     }
+  }
+  async function deleteActiveProject() {
+    const p = $activeProject;
+    if (!p) return;
+    if (await deleteProjectFlow(p)) projects = projects.filter((x) => x.id !== p.id);
   }
   async function inviteMember() {
     const p = $activeProject;
@@ -577,6 +582,9 @@
             <button class="small" onclick={assignCurrentSession}>Assign current session</button>
             <button class="ghost small" onclick={leaveProject}>Leave project (back to personal)</button>
             <button class="ghost small" onclick={departProject}>Depart project (remove membership)</button>
+            {#if canDeleteProject($activeProject)}
+              <button class="ghost danger small" onclick={deleteActiveProject}>Delete project…</button>
+            {/if}
           </div>
         {/if}
       </div>

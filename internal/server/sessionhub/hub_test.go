@@ -97,3 +97,49 @@ func TestIdleExpiry(t *testing.T) {
 	}
 	t.Fatal("idle session was not reaped")
 }
+
+func TestCloseProjectDisconnectsAndExits(t *testing.T) {
+	fake := &fakeAgent{emitted: make(chan struct{}, 1), release: make(chan struct{})}
+	hub := New(fake, nil, time.Minute)
+	defer hub.Stop()
+	user, sess := testUserSess()
+
+	proj := hub.Attach(user, 5, sess)
+	defer proj.Close()
+	proj.Resume(0)
+	other := hub.Attach(user, 6, sess) // a different project must be untouched
+	defer other.Close()
+	other.Resume(0)
+	proj.Submit("hello")
+	select {
+	case <-fake.emitted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("turn did not start")
+	}
+	close(fake.release) // let the (cancel-ignoring) fake turn finish
+
+	done := make(chan struct{})
+	go func() { hub.CloseProject(5); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("CloseProject did not return")
+	}
+
+	// The project's subscriber channel is closed (after any buffered events).
+	deadline := time.After(2 * time.Second)
+	for open := true; open; {
+		select {
+		case _, ok := <-proj.Events():
+			open = ok
+		case <-deadline:
+			t.Fatal("subscriber channel not closed")
+		}
+	}
+	hub.mu.Lock()
+	n := len(hub.sessions)
+	hub.mu.Unlock()
+	if n != 1 {
+		t.Fatalf("live sessions after CloseProject = %d, want 1 (other project's)", n)
+	}
+}

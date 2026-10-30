@@ -2,8 +2,9 @@
 // sheet, the Projects tab, …). Switching opens one of the project's sessions
 // (or assigns a fresh one) and returns to the chat view.
 import { api } from "./api";
-import { activeProject, session, wornHat, view, toast } from "./stores";
-import type { Project } from "./types";
+import { activeProject, session, wornHat, view, toast, user } from "./stores";
+import { get } from "svelte/store";
+import { isElevated, type Project } from "./types";
 
 // projectBylines maps project id -> "by <creator email>" for projects whose
 // name is not unique in the given list (empty string when the name is unique
@@ -58,5 +59,35 @@ export async function leaveActiveProject(): Promise<void> {
     view.set("chat");
   } catch (e) {
     toast((e as Error).message, "error");
+  }
+}
+
+// canDeleteProject mirrors the server rule: the creator or an owner/admin.
+export function canDeleteProject(p: Project): boolean {
+  const u = get(user);
+  return !!u && (p.created_by === u.id || isElevated(u.role));
+}
+
+// deleteProjectFlow asks the user to type the project name, then permanently
+// deletes the project. Resolves true when it was deleted (the caller refreshes
+// its lists); leaves the active workspace first if it was the deleted project.
+export async function deleteProjectFlow(p: Project): Promise<boolean> {
+  const typed = prompt(
+    `This permanently deletes "${p.name}" for ALL members: its sessions, documents, memories, chat and files.\n\nType the project name to confirm:`,
+  );
+  if (typed === null) return false;
+  if (typed !== p.name) {
+    toast("name did not match — nothing deleted", "error");
+    return false;
+  }
+  try {
+    const wasActive = get(activeProject)?.id === p.id;
+    await api.deleteProject(p.id, p.name);
+    toast("deleted " + p.name);
+    if (wasActive) await leaveActiveProject();
+    return true;
+  } catch (e) {
+    toast((e as Error).message, "error");
+    return false;
   }
 }

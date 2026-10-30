@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -97,6 +98,75 @@ func (s *Server) handleDepartProject(w http.ResponseWriter, r *http.Request) {
 	if err := s.Projects.RemoveMember(r.Context(), id, u.ID); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleDeleteProject permanently deletes a project and all its data: registry
+// rows, sessions, memories, documents, chat and uploaded files. Only the
+// project's creator or an elevated role (owner/admin) may do it — an admin need
+// not be a member. The caller must echo the exact project name in ?confirm= so a
+// stray request can't destroy a workspace.
+func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
+	u, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	p, err := s.Projects.Get(r.Context(), id)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeErr(w, http.StatusNotFound, "not found")
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if p.CreatedBy != u.ID && !types.IsElevated(u.Role) {
+		writeErr(w, http.StatusForbidden, "only the project's creator or an admin can delete it")
+		return
+	}
+	if r.URL.Query().Get("confirm") != p.Name {
+		writeErr(w, http.StatusBadRequest, "confirmation required: pass the exact project name as ?confirm=")
+		return
+	}
+	ctx := r.Context()
+	// Registry first: with the memberships gone nothing can attach to the project
+	// again, then drop the live connections before pulling the data away.
+	if err := s.Projects.Delete(ctx, id); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if s.Hub != nil {
+		s.Hub.CloseProject(id)
+	}
+	if s.ChatHub != nil {
+		s.ChatHub.CloseRoom(id)
+	}
+	if err := s.Storage.DeleteProjectData(id); err != nil {
+		// The project is already unreachable; report the leftover loudly.
+		log.Printf("projects: deleted project %d (%q) but removing its data failed: %v", id, p.Name, err)
+		writeErr(w, http.StatusInternalServerError, "project deleted, but removing its files failed: "+err.Error())
+		return
+	}
+	_ = s.Storage.WithUser(ctx, u.ID, func(udb *sql.DB) error {
+		s.Audit.Log(ctx, udb, "project_delete", p.Name, nil)
+		return nil
+	})
+	if s.Notify != nil {
+		for _, m := range p.Members {
+			if m.UserID == u.ID {
+				continue
+			}
+			_ = s.Storage.WithUser(ctx, m.UserID, func(udb *sql.DB) error {
+				_, _ = s.Notify.Create(ctx, udb, types.Notification{
+					Title:       "Project deleted: " + p.Name,
+					Description: "Deleted by " + u.Email + "; its sessions, documents and memories are gone.",
+				})
+				return nil
+			})
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

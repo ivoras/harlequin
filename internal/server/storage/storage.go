@@ -158,6 +158,16 @@ func (m *Manager) ProjectFilesDir(projectID int64) (string, error) {
 	return dir, os.MkdirAll(dir, 0o755)
 }
 
+// DeleteProjectData removes a project's whole directory (db, WAL files, uploaded
+// files). The registry row must already be gone so nothing can reopen it.
+func (m *Manager) DeleteProjectData(projectID int64) error {
+	if projectID <= 0 {
+		return fmt.Errorf("invalid project id %d", projectID)
+	}
+	m.initedProject.Delete(projectID)
+	return os.RemoveAll(m.ProjectDir(projectID))
+}
+
 // openProject opens a project's database (first open per process migrates).
 func (m *Manager) openProject(projectID int64) (*sql.DB, error) {
 	path := m.ProjectDBPath(projectID)
