@@ -684,7 +684,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 						filesDir, _ = a.Storage.UserFilesDir(rc.userID)
 					}
 				}
-				if err := a.Docs.DeleteFromAndFile(ctx, db, doc.ID, filesDir); err != nil {
+				if err := a.Docs.DeleteFrom(ctx, db, filesDir, doc.ID); err != nil {
 					return "", err
 				}
 				return fmt.Sprintf("Deleted document %s (%q); it is no longer in the corpus.", ref, doc.Title), nil

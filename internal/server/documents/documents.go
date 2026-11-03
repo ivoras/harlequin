@@ -459,13 +459,19 @@ func (s *Store) ListScoped(ctx context.Context, scopes []ScopeDB) ([]types.Docum
 	return out, nil
 }
 
-// DeleteFrom removes a document and its chunks/index rows from a specific corpus.
-func (s *Store) DeleteFrom(ctx context.Context, db *sql.DB, id int64) error {
+// DeleteFrom removes a document, its chunks/index rows and (after the commit)
+// its stored file from a specific corpus. filesDir is that corpus' files
+// directory; "" skips the file.
+func (s *Store) DeleteFrom(ctx context.Context, db *sql.DB, filesDir string, id int64) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	var stored string
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(stored_path, '') FROM documents WHERE id = ?`, id).Scan(&stored); err != nil && err != sql.ErrNoRows {
+		return err
+	}
 	rows, err := tx.QueryContext(ctx, `SELECT id FROM doc_chunks WHERE document_id = ?`, id)
 	if err != nil {
 		return err
@@ -480,30 +486,25 @@ func (s *Store) DeleteFrom(ctx context.Context, db *sql.DB, id int64) error {
 		chunkIDs = append(chunkIDs, cid)
 	}
 	rows.Close()
+	// Index errors abort the delete: a stale FTS/vec row would outlive its chunk.
 	for _, cid := range chunkIDs {
-		_, _ = tx.ExecContext(ctx, `DELETE FROM doc_chunks_fts WHERE rowid = ?`, cid)
-		_, _ = tx.ExecContext(ctx, `DELETE FROM doc_chunks_vec WHERE rowid = ?`, cid)
+		if _, err := tx.ExecContext(ctx, `DELETE FROM doc_chunks_fts WHERE rowid = ?`, cid); err != nil {
+			return fmt.Errorf("delete fts row: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM doc_chunks_vec WHERE rowid = ?`, cid); err != nil {
+			return fmt.Errorf("delete vec row: %w", err)
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM documents WHERE id = ?`, id); err != nil {
 		return err
 	}
-	return tx.Commit()
-}
-
-// DeleteFromAndFile deletes a document like DeleteFrom, and additionally
-// unlinks its persisted original file (stored_path) from filesDir when the
-// document has one — so save_doc/PDF/DOCX uploads don't leave orphaned files
-// behind on disk after deletion. The stored_path is read before the row is
-// removed; the file unlink is best-effort (a failure is logged, not fatal, and
-// never rolls back the DB deletion). Pass an empty filesDir to skip the unlink.
-func (s *Store) DeleteFromAndFile(ctx context.Context, db *sql.DB, id int64, filesDir string) error {
-	stored, _, _, _ := s.StoredFile(ctx, db, id)
-	if err := s.DeleteFrom(ctx, db, id); err != nil {
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 	if stored != "" && filesDir != "" {
-		if err := os.Remove(filepath.Join(filesDir, stored)); err != nil && !os.IsNotExist(err) {
-			log.Printf("documents: unlink stored file %q: %v", stored, err)
+		// Base(): stored_path is a bare filename; never let it escape filesDir.
+		if err := os.Remove(filepath.Join(filesDir, filepath.Base(stored))); err != nil && !os.IsNotExist(err) {
+			log.Printf("documents: delete %d: remove stored file %q: %v", id, stored, err)
 		}
 	}
 	return nil
