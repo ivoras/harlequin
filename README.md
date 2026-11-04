@@ -2,9 +2,9 @@
 
 ![Harlequin in action](docs/watchprice.gif)
 
-This repo is the answer to the questions I had: why all AI agent harnesses seem to be "local"? How would a "proper" client-server agentic system look like, from the aspects of scalability and common operation expectations?
+This started the answer to the questions I had: why all AI agent harnesses seem to be "local"? How would a "proper" client-server agentic system look like, from the aspects of scalability and common operation expectations?
 
-**You probably don't want to use it**, at least not yet. It's a research project in very early development.
+It has now became a "second-brain" style AI harness for teams that deal with a lot of document analysis, such as legal, research and accounding.
 
 Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a full harness on user's machine, users are running light-weight clients that connect to the server, which does all the work. The server can be self-hosted, or you can try the official public server. The server is user-aware, has acces roles, differentiates between user-specific data, shared (e.g. company-wide) data, and per-project data. It has "sytem admins can perform memory surgery" as a first-class feature. It can reach out to do web search, document analysis and synthesis, and has a proactive memory system. All this is available with small LLMs, because the author believes that (currently) most useful AI systems are ones with smart toolings and verbose skills, rather than those that stuff all data into huge contexts and just say "go do stuff" as a prompt. It doesn't use, or care about your local CLI tools, instead favouring server-side reproducibility and security isolation. Harlequin is not a coding agent harmness, and doesn't try to be omnipotent. It's not aiming for AGI, it's aiming to be the Ship Computer from Star Trek.
 
@@ -28,7 +28,10 @@ Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a fu
   vector retrieval with inline, clickable citations. The shipped skils can
   align two documents (`align_docs`) for version/topical comparison, verify
   quoted claims against sources, and save its own reports as searchable,
-  citation-pinned documents rendered in the web UI.
+  citation-pinned documents rendered in the web UI. Clicking a citation opens the
+  document scrolled to the cited passage. The agent can also edit its saved text
+  documents in place (replace / diff / append), and document lists in the web UI
+  update live when documents are added, edited or removed.
 - **Projects** — shared workspaces (members, sessions, documents, memories, live
   chatroom). Search can span *all* projects a user belongs to, with
   project-qualified references (`p3.17`) that stay valid anywhere, or they can
@@ -38,8 +41,8 @@ Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a fu
   prompts. The idea is that someone wearing a "hat" of certain skills can
   participate in multiple projects with those highly specific skills.
 - **LLM Tools** — WebFetch/WebFetchDOM/WebFetchGrep (page analysis, structural
-  extraction, raw-HTML grep), MarkdownFetch (URL or document → Markdown via
-  Docling), WebSearch (Brave Search API), sandboxed
+  extraction, raw-HTML grep), MarkdownFetch (full, unsummarised URL or document → Markdown via
+  Docling), file editing (`edit_file`, `edit_doc`), WebSearch (Brave Search API), sandboxed
   JavaScript (`run_js`), calculator, cron scheduling, and any MCP server the
   user registers.
 - **Automation** — per-user cron jobs (JS or agent-turn), background memory
@@ -147,7 +150,7 @@ Optional:
 |----------|---------|
 | `HARLEQUIN_DB_PATH` | Override SQLite database path (default: `<data_dir>/harlequin.db`) |
 | `BRAVE_API_KEY` | Enables the agent's `WebSearch` tool (Brave Search API); empty = tool disabled |
-| `ZYTE_API_KEY` | Zyte API fallback for `WebFetch` on bot-protected sites |
+| `ZYTE_API_KEY` | Zyte API: fallback for `WebFetch` on bot-protected sites, and the fetcher `MarkdownFetch` uses for web pages |
 | `TELEGRAM_BOT_TOKEN` | Outbound Telegram notification delivery |
 | `SMTP_PASSWORD` | SMTP auth for registration-code emails (see Self-registration) |
 | `HARLEQUIN_SECRET_KEY` | 32-byte base64 AES key encrypting MCP credentials at rest |
@@ -328,6 +331,9 @@ server:
   web:
     dir: "./web/dist"
 ```
+
+Set `server.org_name` (default `Unnamed`) to show your organisation's name next to the
+brand in the web UI and on the login screen.
 
 Now `http://<host>:<addr>/` serves the app and `…/api/v1/…` the API. Leave `web.dir`
 empty to disable serving.
