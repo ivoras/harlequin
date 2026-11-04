@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/jsrun"
 	"github.com/ivoras/harlequin/internal/server/llm"
+	"github.com/ivoras/harlequin/internal/server/llm/loopdetect"
 	"github.com/ivoras/harlequin/internal/server/mcp"
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/notify"
@@ -320,6 +322,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	var srvPromptMS, srvPredMS float64
 	var haveSrvTimings bool
 
+	loopRetries := 0
 	for step := 1; step <= a.MaxSteps; step++ {
 		rc.step = step
 		if ctx.Err() != nil {
@@ -334,7 +337,10 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 		})
 
 		reqStart := time.Now()
-		stream, err := a.Provider.Chat(ctx, llm.ChatRequest{
+		// A per-call context lets the loop detector cancel just this LLM call.
+		callCtx, cancelCall := context.WithCancel(ctx)
+		defer cancelCall()
+		stream, err := a.Provider.Chat(callCtx, llm.ChatRequest{
 			Messages:    msgs,
 			Tools:       toolDefs,
 			Temperature: llm.Ptr(a.Temperature),
@@ -351,6 +357,8 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 		var lastProvider, lastModel string
 		var firstTokenAt, doneAt time.Time
 		lastPPPct := -1 // prompt-progress throttle (per LLM call)
+		var thinkLoop, textLoop loopdetect.Detector
+		loopKind, loopEvidence := "", ""
 		for chunk := range stream {
 			if chunk.PromptProgress != nil {
 				// Live prefill progress (llama.cpp). Throttle to ~every 5% so the
@@ -376,23 +384,37 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 				firstTokenAt = time.Now()
 			}
 			if chunk.Err != nil {
+				// Keep what was generated before the failure: it is otherwise lost,
+				// and is what you need to see why a long call went wrong.
+				a.logPartialResponse(ctx, rc, assistantText, thinkingText, chunk.Err)
 				emit(types.StreamEvent{Type: types.SSEError, Error: chunk.Err.Error()})
 				a.logEvent(ctx, rc, sessionlog.TypeError, map[string]any{"error": chunk.Err.Error()})
 				return "", chunk.Err
 			}
 			if chunk.ThinkingDelta != "" {
 				thinkingText += chunk.ThinkingDelta
+				if hit, ev := thinkLoop.Feed(chunk.ThinkingDelta); hit {
+					loopKind, loopEvidence = "thinking_repeat", ev
+				} else if len(thinkingText) > maxThinkingChars {
+					loopKind, loopEvidence = "thinking_runaway", ""
+				}
 				emit(types.StreamEvent{Type: types.SSEThinking, Thinking: chunk.ThinkingDelta})
 				if a.Session.LogTokens() {
 					a.logEvent(ctx, rc, sessionlog.TypeThinkingDelta, map[string]any{"text": chunk.ThinkingDelta})
 				}
 			}
 			if chunk.TextDelta != "" {
+				if hit, ev := textLoop.Feed(chunk.TextDelta); hit && loopKind == "" {
+					loopKind, loopEvidence = "content_repeat", ev
+				}
 				assistantText += chunk.TextDelta
 				emit(types.StreamEvent{Type: types.SSEToken, Text: chunk.TextDelta})
 				if a.Session.LogTokens() {
 					a.logEvent(ctx, rc, sessionlog.TypeLLMDelta, map[string]any{"text": chunk.TextDelta})
 				}
+			}
+			if loopKind != "" {
+				break
 			}
 			if chunk.Done {
 				doneAt = time.Now()
@@ -438,6 +460,33 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 					}
 				}
 			}
+		}
+
+		if loopKind != "" {
+			cancelCall()
+			go func() { // let the provider goroutine finish; nobody reads the stream now
+				for range stream {
+				}
+			}()
+			a.logPartialResponse(ctx, rc, assistantText, thinkingText, fmt.Errorf("stopped: %s", loopKind))
+			a.logEvent(ctx, rc, sessionlog.TypeReasoningLoop, map[string]any{
+				"kind": loopKind, "thinking_chars": len(thinkingText), "content_chars": len(assistantText),
+				"evidence": truncateRunes(loopEvidence, 400), "seconds": time.Since(reqStart).Round(time.Second).Seconds(),
+				"retry": loopRetries < maxLoopRetries,
+			})
+			log.Printf("agent: LLM call stopped after %s: %s (%d thinking chars)", time.Since(reqStart).Round(time.Second), loopKind, len(thinkingText))
+			loopRetries++
+			if loopRetries > maxLoopRetries {
+				err := fmt.Errorf("the model got stuck repeating itself (%s) and was stopped; please try again or rephrase", loopKind)
+				emit(types.StreamEvent{Type: types.SSEError, Error: err.Error()})
+				a.logEvent(ctx, rc, sessionlog.TypeError, map[string]any{"error": err.Error()})
+				return "", err
+			}
+			// Retry the step once, nudging the model out of the rut. The notice is
+			// transient: it is not stored in the session.
+			msgs = append(msgs, llm.Message{Role: llm.RoleUser, Content: loopNudge})
+			step--
+			continue
 		}
 
 		// Accumulate model operation timing for this step: prefill = request start
@@ -732,4 +781,36 @@ func fromLLMToolCalls(tcs []llm.ToolCall) []types.ToolCall {
 		out[i] = types.ToolCall{ID: t.ID, Name: t.Function.Name, Arguments: t.Function.Arguments}
 	}
 	return out
+}
+
+const (
+	// maxThinkingChars aborts a single LLM call whose reasoning alone exceeds
+	// this (~75k tokens): far beyond any legitimate step, and the signature of a
+	// runaway that does not repeat verbatim, so the loop detector cannot see it.
+	maxThinkingChars = 300_000
+	// maxLoopRetries is how many times a turn re-asks after stopping a looping call.
+	maxLoopRetries = 1
+	loopNudge      = "[Harlequin notice] Your previous attempt was stopped because your reasoning got stuck repeating itself. Do not continue that line of reasoning. Pick the simplest reasonable approach and act now: call a tool, or answer. If you need a decision from the user, use ask_user."
+)
+
+// logPartialResponse records an LLM call that did not complete (error or
+// cancelled): the text generated so far, with the thinking cut to its tail so a
+// runaway cannot bloat the log.
+func (a *Agent) logPartialResponse(ctx context.Context, rc *runContext, content, thinking string, cause error) {
+	const keep = 20000
+	tail := thinking
+	if len(tail) > keep {
+		tail = "…" + tail[len(tail)-keep:]
+	}
+	a.logEvent(ctx, rc, sessionlog.TypeLLMResponse, map[string]any{
+		"partial": true, "error": cause.Error(),
+		"content": content, "thinking_chars": len(thinking), "thinking_tail": tail,
+	})
+}
+
+func truncateRunes(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n]) + "…"
+	}
+	return s
 }

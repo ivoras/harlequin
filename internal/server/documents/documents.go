@@ -305,9 +305,24 @@ func (s *Store) IngestIntoProgress(ctx context.Context, db *sql.DB, req types.Cr
 
 	pl := PhaseLogFrom(ctx)
 
-	chunks, err := s.chunkContent(ctx, req.Content)
+	n, err := s.indexChunks(ctx, tx, docID, req.Content, req.PageStarts, progress)
 	if err != nil {
-		return nil, fmt.Errorf("chunk document: %w", err)
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	pl.Phase("db-write", fmt.Sprintf("%d chunks", n))
+	return &types.Document{ID: docID, Title: req.Title, URI: req.URI, Mime: mime, CreatedBy: userID, Chunks: n, OriginalName: req.OriginalName}, nil
+}
+
+// indexChunks chunks content, embeds the chunks and writes them (rows, FTS and
+// vector index) under docID within tx. It returns the number of chunks written.
+func (s *Store) indexChunks(ctx context.Context, tx *sql.Tx, docID int64, content string, pageStarts []int, progress func(done, total int)) (int, error) {
+	pl := PhaseLogFrom(ctx)
+	chunks, err := s.chunkContent(ctx, content)
+	if err != nil {
+		return 0, fmt.Errorf("chunk document: %w", err)
 	}
 	if len(chunks) > 0 {
 		texts := make([]string, len(chunks))
@@ -322,7 +337,7 @@ func (s *Store) IngestIntoProgress(ctx context.Context, db *sql.DB, req types.Cr
 			end := min(start+embedBatch, len(texts))
 			bv, err := s.embedder.Embed(ctx, texts[start:end])
 			if err != nil {
-				return nil, fmt.Errorf("embed document: %w", err)
+				return 0, fmt.Errorf("embed document: %w", err)
 			}
 			vecs = append(vecs, bv...)
 			if progress != nil {
@@ -331,33 +346,77 @@ func (s *Store) IngestIntoProgress(ctx context.Context, db *sql.DB, req types.Cr
 		}
 		pl.Phase("embed-chunks", fmt.Sprintf("%d chunks", len(texts)))
 		for i, c := range chunks {
-			page := pageFor(c.start, req.PageStarts) // 0 when the source has no pages
+			page := pageFor(c.start, pageStarts) // 0 when the source has no pages
 			r, err := tx.ExecContext(ctx,
 				`INSERT INTO doc_chunks(document_id, ord, content, page) VALUES (?, ?, ?, ?)`, docID, i, c.text, page)
 			if err != nil {
-				return nil, err
+				return 0, err
 			}
 			chunkID, _ := r.LastInsertId()
 			if _, err := tx.ExecContext(ctx, `INSERT INTO doc_chunks_fts(rowid, content) VALUES (?, ?)`, chunkID, c.text); err != nil {
-				return nil, err
+				return 0, err
 			}
 			if i < len(vecs) {
 				blob, err := sqlite_vec.SerializeFloat32(vecs[i])
 				if err != nil {
-					return nil, err
+					return 0, err
 				}
 				if _, err := tx.ExecContext(ctx, `INSERT INTO doc_chunks_vec(rowid, embedding) VALUES (?, ?)`, chunkID, blob); err != nil {
-					return nil, err
+					return 0, err
 				}
 			}
 		}
 	}
+	return len(chunks), nil
+}
 
-	if err := tx.Commit(); err != nil {
-		return nil, err
+// ReplaceContent re-chunks and re-indexes an existing document with new text,
+// keeping its id, title and scope (so references to the document stay valid).
+// Its chunks are rebuilt, so chunk ids — and page numbers, which only a paged
+// source has — change.
+func (s *Store) ReplaceContent(ctx context.Context, db *sql.DB, docID int64, content string) (int, error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
 	}
-	pl.Phase("db-write", fmt.Sprintf("%d chunks", len(chunks)))
-	return &types.Document{ID: docID, Title: req.Title, URI: req.URI, Mime: mime, CreatedBy: userID, Chunks: len(chunks), OriginalName: req.OriginalName}, nil
+	defer tx.Rollback()
+	var exists int
+	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM documents WHERE id = ?`, docID).Scan(&exists); err != nil {
+		return 0, fmt.Errorf("document %d: %w", docID, err)
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM doc_chunks WHERE document_id = ?`, docID)
+	if err != nil {
+		return 0, err
+	}
+	var old []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		old = append(old, id)
+	}
+	rows.Close()
+	for _, id := range old {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM doc_chunks_fts WHERE rowid = ?`, id); err != nil {
+			return 0, fmt.Errorf("delete fts row: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM doc_chunks_vec WHERE rowid = ?`, id); err != nil {
+			return 0, fmt.Errorf("delete vec row: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM doc_chunks WHERE document_id = ?`, docID); err != nil {
+		return 0, err
+	}
+	n, err := s.indexChunks(ctx, tx, docID, content, nil, nil)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
 // ReindexChunkVectors re-embeds every chunk's content and rewrites its

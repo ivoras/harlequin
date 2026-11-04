@@ -179,3 +179,49 @@ func TestDeleteDocTool(t *testing.T) {
 		t.Fatalf("shared delete should be refused for a non-elevated user, got: %q", out)
 	}
 }
+
+// TestSaveDocFromSource covers save_doc's source parameter: a sandbox file is
+// read server-side and saved verbatim; content+source together, a missing file,
+// and non-UTF-8 data are rejected.
+func TestSaveDocFromSource(t *testing.T) {
+	ctx := context.Background()
+	sqlDB, err := db.Open(":memory:", db.Shared, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+
+	a := &Agent{DataDir: t.TempDir(), Docs: documents.NewStore(sqlDB, crossCheckFakeEmbedder{dim: 4})}
+	rc := &runContext{userDB: sqlDB, userID: 1}
+	save := a.buildTools(ctx, rc)["save_doc"].handler
+
+	combined := "# Combined\n\nČlanak 1. Zakon.\n\nČlanak 2. Izmjena."
+	if err := a.tmpRoot(1).Write("combined.md", []byte(combined)); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.tmpRoot(1).Write("bin.dat", []byte{0xff, 0xfe, 0x00, 0x01}); err != nil {
+		t.Fatal(err)
+	}
+
+	out, _ := save(ctx, rc, map[string]any{"title": "Combined", "source": "tmp://combined.md", "scope": "personal", "is_raw": true})
+	if !strings.Contains(out, "Saved as document") {
+		t.Fatalf("source save failed: %q", out)
+	}
+	docs, err := a.Docs.List(ctx)
+	if err != nil || len(docs) != 1 {
+		t.Fatalf("expected one saved document, got %d (err %v)", len(docs), err)
+	}
+
+	for name, args := range map[string]map[string]any{
+		"both":     {"title": "x", "source": "tmp://combined.md", "content": "inline", "is_raw": true},
+		"missing":  {"title": "x", "source": "tmp://nope.md", "is_raw": true},
+		"binary":   {"title": "x", "source": "tmp://bin.dat", "is_raw": true},
+		"badproto": {"title": "x", "source": "http://example.com/a.md", "is_raw": true},
+		"neither":  {"title": "x", "is_raw": true},
+	} {
+		out, _ := save(ctx, rc, args)
+		if !strings.HasPrefix(out, "error:") {
+			t.Errorf("%s: expected an error, got %q", name, out)
+		}
+	}
+}

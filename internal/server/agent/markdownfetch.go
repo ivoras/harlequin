@@ -33,7 +33,7 @@ const (
 - Very long results are truncated and say so.
 `
 	// markdownFetchMaxRunes caps what is returned to the model.
-	markdownFetchMaxRunes = 100000
+	markdownFetchMaxRunes = 1000000
 	// markdownFetchMaxBytes caps the download handed to the converter.
 	markdownFetchMaxBytes = 50 << 20
 )
