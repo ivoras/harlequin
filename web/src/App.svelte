@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api, getToken, setToken } from "./lib/api";
-  import { user, view, session, wornHat, toasts, toast, activeProject, projectSheet, type View } from "./lib/stores";
+  import { user, view, session, wornHat, toasts, toast, activeProject, projectSheet, orgName, loadOrgName, type View } from "./lib/stores";
   import { sc } from "./lib/session.svelte";
   import { switchToProject as libSwitchToProject, leaveActiveProject, cleanTitle, projectBylines, canDeleteProject, deleteProjectFlow } from "./lib/project";
   import { initSession, ensureSession, setURLParams } from "./lib/workspace";
@@ -9,6 +9,7 @@
   import { pc } from "./lib/projectchat.svelte";
   import type { Session, Project, ProjectInvite } from "./lib/types";
   import Login from "./views/Login.svelte";
+  loadOrgName();
   import Chat from "./views/Chat.svelte";
   import Skills from "./views/Skills.svelte";
   import Hats from "./views/Hats.svelte";
@@ -315,6 +316,7 @@
   <header class="app-header">
     <button class="iconbtn" onclick={openSessions} aria-label="Sessions">☰</button>
     <span class="brand">Harlequin</span>
+    {#if $orgName}<span class="org" title={$orgName}>{$orgName}</span>{/if}
     <select class="chip projectselect" value={$activeProject?.id ?? 0} onchange={onSelectProject} title="Project">
       <option value={0}>&lt;no project selected&gt;</option>
       {#each projects as p (p.id)}

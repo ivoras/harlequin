@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, setToken } from "../lib/api";
-  import { user, view, session, activeProject, toast, type View } from "../lib/stores";
+  import { onMount } from "svelte";
+  import { user, view, session, activeProject, toast, orgName, loadOrgName, type View } from "../lib/stores";
   import { ensureSession } from "../lib/workspace";
   import { cleanTitle } from "../lib/project";
   import { viewDocument } from "../lib/docview.svelte";
@@ -95,17 +96,14 @@
     inp.onchange = () => inp.files && ui.upload([...inp.files], ui.defaultTarget());
     inp.click();
   }
-  let orgName = $state("");
-  $effect(() => {
-    api.org().then((o) => (orgName = o.name)).catch(() => {});
-  });
+  onMount(loadOrgName);
 </script>
 
 <aside class="sidebar">
   <div class="sb-top">
     <img src="/favicon.png" alt="" class="logo" />
     <span class="brand">Harlequin</span>
-    {#if orgName}<span class="org" title="Organisation">{orgName}</span>{/if}
+    {#if $orgName}<span class="org" title="Organisation">{$orgName}</span>{/if}
     <span class="spacer"></span>
     <button class="icon-btn" onclick={() => (ui.sidebarOpen = false)} title="Hide sidebar ({MOD}+B)" aria-label="Hide sidebar">
       <Icon name="panelLeft" />

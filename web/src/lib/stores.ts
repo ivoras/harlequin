@@ -1,6 +1,6 @@
 import { writable } from "svelte/store";
 import type { User, Project } from "./types";
-import { setActiveProject } from "./api";
+import { api, setActiveProject } from "./api";
 
 // The signed-in user (null = logged out).
 export const user = writable<User | null>(null);
@@ -43,4 +43,14 @@ export function toast(text: string, kind: "info" | "error" = "info"): void {
   const id = ++tid;
   toasts.update((t) => [...t, { id, text, kind }]);
   setTimeout(() => toasts.update((t) => t.filter((x) => x.id !== id)), 6000);
+}
+
+// Organisation name from server config (empty until loaded / on older servers).
+export const orgName = writable<string>("");
+export async function loadOrgName() {
+  try {
+    orgName.set((await api.org()).name);
+  } catch {
+    /* cosmetic; ignore */
+  }
 }

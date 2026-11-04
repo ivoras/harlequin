@@ -118,6 +118,8 @@ hr { border: none; border-top: 1px solid var(--border); }
   position: relative; z-index: 10; /* header floats above the scrolling content */
 }
 .app-header .brand { font-weight: 750; color: var(--accent); letter-spacing: 0.04em; }
+.app-header .org { color: var(--muted); font-size: 11px; max-width: 22vw; min-width: 0; flex: 0 1 auto;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: -4px; }
 .app-header .title { color: var(--muted); font-size: 13px; flex: 1; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-header .iconbtn { background: transparent; border: none; box-shadow: none; padding: 6px 8px; font-size: 18px; }

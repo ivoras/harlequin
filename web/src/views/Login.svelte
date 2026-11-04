@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api, setToken, setBase, getBase } from "../lib/api";
-  import { user, toast } from "../lib/stores";
+  import { user, toast, orgName, loadOrgName } from "../lib/stores";
 
   // mode: "login" | "register" (collecting email+password) | "verify" (entering code)
   let mode = $state<"login" | "register" | "verify">("login");
@@ -19,6 +19,7 @@
   async function probeRegistration() {
     try {
       setBase(base.trim());
+      loadOrgName();
       const r = await api.registrationEnabled();
       canRegister = r.enabled;
     } catch (e) {
@@ -85,6 +86,7 @@
     <div style="text-align:center;">
       <img src="/logo.png" alt="" class="loginlogo" />
       <div class="brand" style="font-size:26px; color:var(--accent);">Harlequin</div>
+      {#if $orgName}<div class="small" style="font-weight:600;">{$orgName}</div>{/if}
       <div class="muted small">
         {#if mode === "login"}Sign in to your agent server
         {:else if mode === "register"}Create an account
