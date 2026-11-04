@@ -1,0 +1,11 @@
+/* Rendered-markdown tables, shared by the desktop and mobile pages (each loads
+   its own base stylesheet, so this is imported by both entry points). Wide
+   tables scroll sideways instead of overflowing; the align attribute marked
+   emits for :--: / --: columns is honoured via text-align: inherit + the
+   [align] rules. */
+.md table { border-collapse: collapse; margin: 0.6em 0; display: block; max-width: 100%; overflow-x: auto; }
+.md th, .md td { border: 1px solid var(--border, var(--border-soft)); padding: 5px 10px; text-align: inherit; vertical-align: top; }
+.md th[align="left"], .md td[align="left"] { text-align: left; }
+.md th[align="center"], .md td[align="center"] { text-align: center; }
+.md th[align="right"], .md td[align="right"] { text-align: right; }
+.md th { background: var(--surface-2); text-align: left; }
