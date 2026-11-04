@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api, getToken, setToken } from "../lib/api";
-  import { user, view, session, wornHat, toasts, activeProject, projectSheet, docsVersion } from "../lib/stores";
+  import { user, view, session, wornHat, toasts, activeProject, projectSheet, docsVersion, sessionsVersion } from "../lib/stores";
   import { sc } from "../lib/session.svelte";
   import { pc } from "../lib/projectchat.svelte";
   import { docView } from "../lib/docview.svelte";
@@ -91,6 +91,15 @@
     if (v === seenDocsVersion) return;
     seenDocsVersion = v;
     if ($user) ui.docsChanged();
+  });
+  // The auto-titler also pushes a re-list signal (covers project sessions, which
+  // get no session-title notification).
+  let seenSessionsVersion = $sessionsVersion;
+  $effect(() => {
+    const v = $sessionsVersion;
+    if (v === seenSessionsVersion) return;
+    seenSessionsVersion = v;
+    if ($user) ui.loadSessions();
   });
   // Auto-titler updates arrive as session-title notifications → patch the row.
   $effect(() => {

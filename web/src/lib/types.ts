@@ -97,6 +97,7 @@ export const SSE = {
   Notification: "notification",
   DocumentsChanged: "documents_changed",
   StepReset: "step_reset",
+  SessionsChanged: "sessions_changed",
   Chat: "chat",
 } as const;
 

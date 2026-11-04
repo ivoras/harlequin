@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ivoras/harlequin/internal/server/docevents"
 	"github.com/ivoras/harlequin/internal/server/llm"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
@@ -71,7 +72,7 @@ func (a *Agent) titlePass(ctx context.Context) {
 			if !a.llmFree() {
 				return context.Canceled
 			}
-			a.titleOne(ctx, udb, userID, c.ID, c.Interface)
+			a.titleOne(ctx, udb, 0, userID, c.ID, c.Interface)
 		}
 		return nil
 	})
@@ -85,7 +86,7 @@ func (a *Agent) titlePass(ctx context.Context) {
 			if !a.llmFree() {
 				return context.Canceled
 			}
-			a.titleOne(ctx, pdb, 0, c.ID, c.Interface)
+			a.titleOne(ctx, pdb, projectID, 0, c.ID, c.Interface)
 		}
 		return nil
 	})
@@ -93,7 +94,7 @@ func (a *Agent) titlePass(ctx context.Context) {
 
 // titleOne summarizes one session into a title, persists it, and notifies
 // the client to refresh its header.
-func (a *Agent) titleOne(ctx context.Context, udb *sql.DB, userID, sessID int64, iface string) {
+func (a *Agent) titleOne(ctx context.Context, udb *sql.DB, projectID, userID, sessID int64, iface string) {
 	msgs, err := a.Sessions.Messages(ctx, udb, sessID)
 	if err != nil || len(msgs) == 0 {
 		return
@@ -106,7 +107,13 @@ func (a *Agent) titleOne(ctx context.Context, udb *sql.DB, userID, sessID int64,
 		log.Printf("auto-title: set title for sess %d (user %d): %v", sessID, userID, err)
 		return
 	}
-	log.Printf("auto-title: sess %d (user %d) -> %q", sessID, userID, title)
+	log.Printf("auto-title: sess %d (user %d, project %d) -> %q", sessID, userID, projectID, title)
+	// Sidebars list titles; tell connected clients to re-list.
+	if projectID != 0 {
+		a.DocEvents.Publish(docevents.Event{Op: docevents.SessionTitled, Scope: "project", ProjectID: projectID})
+	} else {
+		a.DocEvents.Publish(docevents.Event{Op: docevents.SessionTitled, Scope: "personal", UserID: userID})
+	}
 	// Notify only the interface that owns this session, and only if it's live —
 	// no point telling clients that aren't listening.
 	// (userID 0 = project session: no single owner to notify; clients see it on refresh.)

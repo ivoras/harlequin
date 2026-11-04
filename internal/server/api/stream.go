@@ -11,6 +11,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"github.com/go-chi/chi/v5"
+	"github.com/ivoras/harlequin/internal/server/docevents"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
@@ -188,6 +189,12 @@ func (s *Server) serveSessionWS(w http.ResponseWriter, r *http.Request, user *ty
 				return
 			}
 		case de := <-dsub.C:
+			if de.Op == docevents.SessionTitled {
+				if err := wsjson.Write(ctx, c, types.StreamEvent{Type: types.SSESessionsChanged}); err != nil {
+					return
+				}
+				continue
+			}
 			out := types.StreamEvent{Type: types.SSEDocumentsChanged, Doc: &types.DocChange{
 				Op: de.Op, Scope: de.Scope, ProjectID: de.ProjectID, DocID: de.DocID}}
 			if err := wsjson.Write(ctx, c, out); err != nil {

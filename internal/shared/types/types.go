@@ -437,6 +437,8 @@ const (
 	// updated or deleted (payload in StreamEvent.Doc); clients answer by
 	// re-listing documents. Connection-level: not part of a turn's replay buffer.
 	SSEDocumentsChanged = "documents_changed"
+	// SSESessionsChanged: a visible session's title changed (auto-title); re-list sessions.
+	SSESessionsChanged = "sessions_changed"
 )
 
 // DocChange is the payload of an SSEDocumentsChanged event.

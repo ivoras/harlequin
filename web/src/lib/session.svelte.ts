@@ -5,7 +5,7 @@ import { api } from "./api";
 import { SessionSocket } from "./ws";
 import { SSE, NOTIFY_SESSION_TITLE } from "./types";
 import type { Message, StreamEvent, Notification } from "./types";
-import { session, toast, lastModel, bumpDocs } from "./stores";
+import { session, toast, lastModel, bumpDocs, bumpSessions } from "./stores";
 
 export type Item =
   | { kind: "msg"; role: "user" | "assistant"; content: string }
@@ -281,6 +281,9 @@ class SessionController {
         // auto_run notifications are left for a client that runs them.
         break;
       }
+      case SSE.SessionsChanged:
+        bumpSessions();
+        break;
       case SSE.StepReset: {
         // The failed step's unfinished thinking/text (everything after the last
         // tool or user item) is re-streamed from scratch.
