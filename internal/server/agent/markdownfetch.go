@@ -25,8 +25,10 @@ type MarkdownConverter interface {
 const (
 	markdownFetchDescription = `
 - Fetches a URL and converts it to Markdown with Docling (layout analysis, tables, multi-column text) — returns the CONTENT itself, not an AI summary.
-- Works on web pages and, above all, on documents: PDF, DOCX, PPTX, XLSX, HTML, Markdown, CSV. Prefer it over WebFetch when you need the full text of a document or a faithful table/structure, e.g. to quote it or to save it with save_doc.
-- Prefer WebFetch when you only need a specific answer from an ordinary web page (cheaper: no conversion service, short answer).
+- PREFER THIS TOOL whenever the user wants to read the entire, unabridged content of a web page or document ("show me the page", "read it all", "the full text of ...", "what exactly does it say") — WebFetch only returns a short AI-generated answer and drops everything the prompt did not ask about.
+- Also use it when you need faithful structure (tables, headings) or the full text to quote, or to save with save_doc.
+- Web pages are retrieved through the Zyte browser API when configured (JavaScript-rendered content, bot-protected sites); documents (PDF, DOCX, PPTX, XLSX, Markdown, CSV) are downloaded directly.
+- Prefer WebFetch only when you need one specific answer from an ordinary page (cheaper: no conversion service, short answer).
 - Input: a valid URL (auto-upgrades HTTP→HTTPS). Redirects are followed.
 - Very long results are truncated and say so.
 `
@@ -75,6 +77,17 @@ func (a *Agent) markdownFetch(ctx context.Context, rc *runContext, args map[stri
 	}
 	if len(raw.Body) > markdownFetchMaxBytes {
 		return fmt.Sprintf("error: %s is too large to convert (%d MiB; limit %d MiB)", rawURL, len(raw.Body)>>20, markdownFetchMaxBytes>>20), nil
+	}
+	// Web pages go through Zyte's browser API when available: it returns the
+	// rendered DOM, so JS-built content and bot walls don't truncate the page.
+	// Documents (PDF etc.) must come from the direct download — Zyte only
+	// returns HTML. On any Zyte failure the direct body is used.
+	if !raw.ViaZyte && strings.Contains(raw.ContentType, "html") && a.WebFetcher.ZyteEnabled() {
+		if z, zerr := a.WebFetcher.FetchRawZyte(ctx, rawURL); zerr == nil {
+			raw = z
+		} else {
+			log.Printf("markdownfetch: zyte failed for %s, using the direct fetch: %v", rawURL, zerr)
+		}
 	}
 	fetchMS := time.Since(start).Milliseconds()
 

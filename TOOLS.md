@@ -98,8 +98,9 @@ say" questions. (15-min cache; reports cross-host redirects to call again.)
 **Why:** get a URL's *content* as Markdown, not an AI answer — downloads the page or
 document (PDF, DOCX, PPTX, XLSX, HTML, Markdown, CSV) and converts it with Docling
 (layout analysis, tables). Use when you need the full text or faithful structure
-(to quote it, or `save_doc` it); use `WebFetch` for a quick answer from an ordinary
-page. Only registered when a document converter (`documents.docling`/`xberg`) is
+(to quote it, or `save_doc` it) or when the user wants the entire unabridged page;
+use `WebFetch` for a quick answer from an ordinary page. Web pages are fetched via
+the Zyte browser API when `ZYTE_API_KEY` is set (documents are downloaded directly). Only registered when a document converter (`documents.docling`/`xberg`) is
 configured. Output is capped at 100,000 characters (marked when truncated).
 **Example:** `MarkdownFetch({"url": "https://example.com/annual-report.pdf"})`
 

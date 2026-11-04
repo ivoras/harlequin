@@ -235,6 +235,35 @@ func (c *Client) FetchRaw(ctx context.Context, url string) (RawResult, error) {
 // zyteEnabled reports whether the Zyte fallback is configured.
 func (c *Client) zyteEnabled() bool { return c.zyteKey != "" }
 
+// ZyteEnabled reports whether a Zyte API key is configured.
+func (c *Client) ZyteEnabled() bool { return c.zyteEnabled() }
+
+// FetchRawZyte retrieves url through the Zyte browserHtml API unconditionally
+// (a rendered DOM, so JS-built content and bot walls are covered), unlike
+// FetchRaw where Zyte is only the fallback for a blocked direct fetch. It
+// errors when Zyte is not configured. Zyte returns rendered HTML only — never a
+// binary document — and results share the 15-minute cache under their own key.
+func (c *Client) FetchRawZyte(ctx context.Context, url string) (RawResult, error) {
+	if !c.zyteEnabled() {
+		return RawResult{}, errors.New("zyte is not configured")
+	}
+	url = upgradeScheme(strings.TrimSpace(url))
+	if url == "" {
+		return RawResult{}, errors.New("empty url")
+	}
+	key := "zyte:" + url
+	if r, ok := c.cacheGet(key); ok {
+		r.Cached = true
+		return r, nil
+	}
+	raw, err := c.fetchViaZyte(ctx, url, "requested explicitly")
+	if err != nil {
+		return RawResult{}, err
+	}
+	c.cachePut(key, raw)
+	return raw, nil
+}
+
 // hostOf extracts the lowercased host of a URL (the Zyte-domain cache key).
 func hostOf(rawURL string) string {
 	u, err := url.Parse(rawURL)
