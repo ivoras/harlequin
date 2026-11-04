@@ -130,6 +130,15 @@ func main() {
 	}
 	router := llm.NewRoutingProvider(providers, cfg.Routing.DefaultProvider, cfg.Routing.FallbackOrder, cfg.Routing.ModelRules, ctxWindows, nil)
 	router.SetFallbackModel(cfg.Routing.FallbackModel)
+	suite := cfg.ModelSuite
+	if suite == "" {
+		suite = "(none: explicit providers)"
+	}
+	log.Printf("models: suite=%s default_provider=%s fallback_order=%v fallback_model=%q", suite, cfg.Routing.DefaultProvider, cfg.Routing.FallbackOrder, cfg.Routing.FallbackModel)
+	for _, p := range cfg.Providers {
+		log.Printf("models: provider %q -> %s @ %s", p.Name, p.Model, p.BaseURL)
+	}
+	log.Printf("models: embeddings=%s (dim %d) web_fetch=%q", cfg.Embeddings.Model, cfg.Embeddings.Dim, cfg.Agent.WebFetch.Model)
 
 	embedder := embed.New(cfg.Embeddings.BaseURL, cfg.Embeddings.APIKey, cfg.Embeddings.Model, cfg.Embeddings.Dim, cfg.Embeddings.QueryPrefix, cfg.Embeddings.DocPrefix)
 
