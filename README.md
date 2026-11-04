@@ -365,6 +365,7 @@ server {
     location / {
         try_files $uri /index.html;
     }
+    location = /m { return 301 /m/; }
     location /m/ {
         try_files $uri /m/index.html;
     }
