@@ -3,6 +3,8 @@
 
 server:
   addr: ":8080"
+  # Organisation name shown next to the brand in the web UI.
+  org_name: "Unnamed"
   # Optionally serve the static browser UI at / (same origin as /api/v1, no CORS).
   # Web UI. Left empty, the server serves the UI embedded in the binary at
   # build time (`make build` embeds a fresh web build; a fully self-contained

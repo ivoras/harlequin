@@ -95,12 +95,17 @@
     inp.onchange = () => inp.files && ui.upload([...inp.files], ui.defaultTarget());
     inp.click();
   }
+  let orgName = $state("");
+  $effect(() => {
+    api.org().then((o) => (orgName = o.name)).catch(() => {});
+  });
 </script>
 
 <aside class="sidebar">
   <div class="sb-top">
     <img src="/favicon.png" alt="" class="logo" />
     <span class="brand">Harlequin</span>
+    {#if orgName}<span class="org" title="Organisation">{orgName}</span>{/if}
     <span class="spacer"></span>
     <button class="icon-btn" onclick={() => (ui.sidebarOpen = false)} title="Hide sidebar ({MOD}+B)" aria-label="Hide sidebar">
       <Icon name="panelLeft" />
@@ -228,6 +233,8 @@
     background: var(--sidebar); border-right: 1px solid var(--border-soft); }
   .sb-top { display: flex; align-items: center; gap: 8px; padding: 10px 10px 6px 14px; height: 48px; }
   .logo { width: 22px; height: 22px; border-radius: 5px; }
+  .org { color: var(--text-dim, var(--muted, inherit)); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .org::before { content: "·"; margin-right: 6px; }
   .brand { font-weight: 750; letter-spacing: 0.03em; color: var(--accent-text); }
   .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
   .sb-actions { display: flex; flex-direction: column; gap: 4px; padding: 4px 10px 10px; }
