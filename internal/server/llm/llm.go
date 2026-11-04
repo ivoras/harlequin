@@ -163,6 +163,7 @@ type OpenAICompatible struct {
 	baseURL        string
 	apiKey         string
 	model          string
+	local          bool // served on this machine (see Local)
 	client         *http.Client
 	ppAvg          *ppTracker // rolling prompt-processing rate, drives the dynamic timeout
 	returnProgress bool       // request llama.cpp prompt-processing progress events
@@ -193,14 +194,13 @@ func (p *OpenAICompatible) Name() string { return p.name }
 // Model returns the provider's default model.
 func (p *OpenAICompatible) Model() string { return p.model }
 
-// Local reports whether this is the locally-served model: by convention, the
-// provider named "local" in server.yaml. Local inference shares this machine's
-// compute, so concurrent requests degrade each other; hosted APIs do not.
-func (p *OpenAICompatible) Local() bool { return p.name == LocalProviderName }
+// Local reports whether this is a locally-served model (model spec `local:
+// true`). Local inference shares this machine's compute, so concurrent requests
+// degrade each other; hosted APIs do not.
+func (p *OpenAICompatible) Local() bool { return p.local }
 
-// LocalProviderName is the server.yaml provider name that marks the
-// locally-served model (see Local).
-const LocalProviderName = "local"
+// SetLocal marks the provider as served on this machine.
+func (p *OpenAICompatible) SetLocal(v bool) { p.local = v }
 
 type streamRequest struct {
 	Model              string         `json:"model"`

@@ -113,24 +113,26 @@ Both binaries read a YAML config file plus a `.env` file. YAML holds non-secret 
 - Client: copy `configs/client.example.yaml`. Client config lives at
   `~/.config/harlequin/client.yaml` by default.
 
-#### Provider outages and `fallback_model`
+#### Models: suites, fallback, outages
+
+`server.yaml` defines the models in `model_suites` and selects one with `model_suite`
+(required). A suite names the three roles: **chat** (drives the conversation), **aux**
+(small/fast model for WebFetch analysis; omit it to reuse chat) and **embed**
+(embeddings). The example config ships `local` (llama.cpp lineup), `openrouter` and
+`deepseek` (hosted). Everything about a model is declared next to its name: `price`,
+`context_window`, `local: true` (a model served on this machine, so background LLM work
+waits for live turns) and, for chat, a `fallback_model`. The server logs the active
+suite, providers and fallback model at startup (`models:` lines).
 
 Transient LLM failures (network errors, HTTP 429/5xx, a stream cut off mid-answer) are
-retried automatically with backoff. If the model stays unreachable, set
-`routing.fallback_model` to a model on the same gateway to take over, e.g.
-`fallback_model: "tensorx/qwen/qwen3.8-flash-next"` (add its `context_windows` and `prices`
-entries; a conversation too long for its window is not sent to it). When a turn does fail,
-the error is saved in the session, so it is visible in every client, including after a reload.
+retried automatically with backoff. If the chat model stays unreachable, the server
+switches to its `fallback_model` (a model on the same endpoint; give it a
+`fallback_context_window`, since a conversation too long for it is not sent and the turn
+errors instead). When a turn does fail, the error is saved in the session, so it is
+visible in every client, including after a reload.
 
-#### Model suites
-
-The three model roles — **chat** (drives the conversation), **aux** (small/fast
-model for WebFetch analysis), and **embed** (embeddings) — can be switched as a
-bundle by setting `model_suite` to one of the named `model_suites` in
-`server.yaml`. The example config ships three: `local` (llama.cpp lineup),
-`openrouter`, and `deepseek` (deepseek-v4-flash chat/aux + qwen3-embedding-4b
-embeddings, all hosted). Switching the *embedding* model changes vector
-dimensions and requires a one-time rebuild:
+Switching the *embedding* model changes vector dimensions and requires a one-time
+rebuild:
 
 ```sh
 ./bin/harlequin-server reindex-vectors --config server.yaml

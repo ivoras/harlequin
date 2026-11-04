@@ -1,6 +1,10 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"strings"
+	"testing"
+)
 
 func fl(v float64) *float64 { return &v }
 
@@ -104,5 +108,46 @@ func TestResolveModelSuiteErrors(t *testing.T) {
 	c := &Config{}
 	if err := c.resolveModelSuite(); err != nil || len(c.Providers) != 0 {
 		t.Fatalf("empty suite should no-op: err=%v providers=%v", err, c.Providers)
+	}
+}
+
+// Prices, context windows, the local flag and the fallback model are declared
+// next to the model and flow into the maps/routing the server consumes; explicit
+// top-level entries win.
+func TestResolveModelSuitePerModelSettings(t *testing.T) {
+	c := &Config{
+		ModelSuite: "s",
+		Prices:     map[string]Price{"chat-m": {PromptPer1K: 9}},
+		ModelSuites: map[string]ModelSuite{"s": {
+			Chat: ModelSpec{
+				BaseURL: "http://x/v1", Model: "chat-m", Local: true, ContextWindow: 1000,
+				Price:         &Price{PromptPer1K: 1, CompletionPer1K: 2},
+				FallbackModel: "fb-m", FallbackContextWindow: 500, FallbackPrice: &Price{PromptPer1K: 3},
+			},
+			Embed: ModelSpec{BaseURL: "http://x/v1", Model: "embed-m", Price: &Price{PromptPer1K: 4}},
+		}},
+	}
+	if err := c.resolveModelSuite(); err != nil {
+		t.Fatal(err)
+	}
+	if !c.Providers[0].Local || c.Routing.FallbackModel != "fb-m" {
+		t.Fatalf("provider=%+v routing=%+v", c.Providers[0], c.Routing)
+	}
+	if c.Prices["chat-m"].PromptPer1K != 9 || c.Prices["fb-m"].PromptPer1K != 3 || c.Prices["embed-m"].PromptPer1K != 4 {
+		t.Fatalf("prices = %+v (top-level chat-m must win)", c.Prices)
+	}
+	if c.ContextWindows["chat-m"] != 1000 || c.ContextWindows["fb-m"] != 500 {
+		t.Fatalf("context windows = %+v", c.ContextWindows)
+	}
+}
+
+func TestLoadRejectsLegacyProviders(t *testing.T) {
+	t.Setenv("JWT_SECRET", "x")
+	f := t.TempDir() + "/c.yaml"
+	if err := os.WriteFile(f, []byte("providers:\n  - name: a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(f); err == nil || !strings.Contains(err.Error(), "model_suites") {
+		t.Fatalf("err = %v, want a pointer to model_suites", err)
 	}
 }

@@ -18,18 +18,24 @@ server:
 data_dir: "./data"
 data_retention_days: 7     # delete session logs + per-user tmp dumps older than this; omit for default 7; 0 = keep forever
 
-# Model suites: a named bundle of the three model roles — chat (drives the
-# conversation), aux (small/fast model for WebFetch/WebFetchDOM analysis), and
-# embed (embeddings). Set `model_suite` to one of `model_suites` to swap all
-# three at once (endpoints, models, keys, params). When `model_suite` is set it
-# SUPERSEDES the explicit `providers` / `routing` / `embeddings` sections below;
-# leave it empty to use those instead.
+# Models. A model suite names the three model roles this server runs: chat
+# (drives the conversation), aux (small/fast model for WebFetch/WebFetchDOM
+# analysis; omit it, or make it equal to chat, to reuse chat) and embed
+# (embeddings). `model_suite` selects the active one (required).
 #
-# Notes: the chat role becomes the default provider; an aux role on a different
-# endpoint/model becomes a second provider that WebFetch routes to (an aux equal
-# to chat just reuses it). Switching the embed model usually changes `dim`, which
-# requires recreating the vec0 tables — run `harlequin-server reindex-vectors`.
-model_suite: ""   # "" = use the explicit providers below; or "local" / "openrouter" / "deepseek"
+# Everything about a model sits next to its name:
+#   price                    per 1K tokens, for usage accounting (optional)
+#   context_window           max input tokens; omit to use the provider's /v1/models value
+#   local: true              served on this machine (llama.cpp): background LLM work
+#                            (memory extraction, auto-titling) waits for live turns
+#   return_progress: true    llama.cpp only: stream live prompt-processing progress
+#   fallback_model (chat)    a model on the same endpoint, used when the chat model stays
+#     + fallback_context_window / fallback_price
+#                            unreachable after retries (outage, 429/5xx, dropped streams);
+#                            a conversation longer than the fallback's window errors instead
+# Switching the embed model usually changes `dim`, which requires recreating the
+# vec0 tables — run `harlequin-server reindex-vectors`.
+model_suite: "local"   # "local" / "openrouter" / "deepseek" below, or your own
 
 model_suites:
   local:                                     # local llama-server lineup (see llm_for_harlequin.py)
@@ -37,13 +43,15 @@ model_suites:
       base_url: "http://127.0.0.1:2234/v1"
       model: "local-chat"                    # llama-server ignores the name; serves the loaded model
       api_key_env: ""
-      return_progress: true                  # llama.cpp only
+      local: true
+      return_progress: true
       context_window: 100000
       temperature: 0.5
     aux:
       base_url: "http://127.0.0.1:2236/v1"
       model: "local-aux"
       api_key_env: ""
+      local: true
       return_progress: true
       context_window: 24576
       temperature: 0.1
@@ -63,6 +71,9 @@ model_suites:
       model: "minimax/minimax-m3"
       api_key_env: "OPENROUTER_API_KEY"
       temperature: 0.5
+      # price: {prompt_per_1k: 0.0003, completion_per_1k: 0.0012}
+      # fallback_model: "deepseek/deepseek-v4-flash"
+      # fallback_context_window: 262144
     aux:                                     # same model as chat -> one provider serves both
       base_url: "https://openrouter.ai/api/v1"
       model: "minimax/minimax-m3"
@@ -79,8 +90,6 @@ model_suites:
       model: "deepseek/deepseek-v4-flash"
       api_key_env: "OPENROUTER_API_KEY"
       temperature: 0.5
-      # context_window omitted: discovered from the provider's /v1/models at
-      # startup; set it explicitly if discovery doesn't return a value.
     aux:                                     # same model as chat -> one provider serves both
       base_url: "https://openrouter.ai/api/v1"
       model: "deepseek/deepseek-v4-flash"
@@ -97,56 +106,9 @@ model_suites:
       query_prefix: "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: "
       doc_prefix: ""
 
-# Explicit chat LLM providers (used only when `model_suite` above is empty). The
-# router tries them according to `routing` rules and falls back on error/timeout.
-# The name "local" is special: it marks the locally-served model, for which the
-# server serializes background LLM work (memory extraction, auto-titling,
-# memory sweeps) behind live turns. Remote providers run such work in parallel.
-providers:
-  - name: local
-    base_url: "http://127.0.0.1:8081/v1"   # llama.cpp --server in OpenAI mode
-    model: "local-model"
-    # Optional; llama.cpp/OpenAI-compatible servers can auto-discover via GET /v1/models (meta.n_ctx).
-    context_window: 32768
-    api_key_env: ""                          # local server usually needs no key
-    return_progress: true                    # llama.cpp only: stream live prompt-processing progress before the first token
-  - name: openrouter
-    base_url: "https://openrouter.ai/api/v1"
-    model: "openai/gpt-4o-mini"
-    api_key_env: "OPENROUTER_API_KEY"
-
-routing:
-  default_provider: "local"
-  fallback_order: ["local", "openrouter"]
-  # Optional explicit per-model rules: model name -> provider name.
-  model_rules: {}
-  # Model tried when the primary is unreachable after retries (same default provider).
-  # Add its context_windows/prices entries. Empty = none.
-  fallback_model: ""
-
-# Estimated cost per 1K tokens, keyed by model. Used for usage accounting.
-prices:
-  "openai/gpt-4o-mini":
-    prompt_per_1k: 0.00015
-    completion_per_1k: 0.0006
-
-# Max input context per model (tokens). Also set context_window on a provider.
-context_windows:
-  "local-model": 32768
-  "openai/gpt-4o-mini": 128000
-
-# Dedicated embeddings provider (independent of the chat LLM).
-embeddings:
-  base_url: "http://127.0.0.1:8082/v1"
-  model: "text-embedding-3-small"
-  dim: 1536
-  api_key_env: "EMBED_API_KEY"
-  # Prompt convention of the embedding model. Asymmetric retrieval models prepend
-  # an instruction to queries (and sometimes a tag to documents); e.g.
-  # snowflake-arctic-embed-l-v2.0 uses query_prefix "query: " and no doc prefix.
-  # Leave empty for symmetric models (e.g. OpenAI text-embedding-*).
-  query_prefix: ""
-  doc_prefix: ""
+# Optional per-model overrides, keyed by model name (they win over the values
+# declared in the suite above): prices:  {"model": {prompt_per_1k: .., completion_per_1k: ..}}
+# and context_windows:  {"model": <tokens>}.
 
 # Document RAG chunker (optional; defaults to mechanical "overlap").
 #   chunker: "overlap" | "semadj"   semadj = adjacent-sentence semantic chunking
@@ -187,6 +149,10 @@ agent:
   # processing, tok/s), TG (token generation, tok/s), and wall-clock time.
   # Disabled by default; timing is always recorded in the session log.
   report_timing: false
+  # Background task that gives idle, generically-named sessions (personal and
+  # project) a short LLM-written title. Default enabled.
+  # auto_title:
+  #   enabled: true
 
 memory:
   auto_extract: true
