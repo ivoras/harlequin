@@ -94,6 +94,15 @@ HTML→Markdown, and analyses it with a small model. Best for "what does this pa
 say" questions. (15-min cache; reports cross-host redirects to call again.)
 **Example:** `WebFetch({"url": "https://example.com/pricing", "prompt": "What are the plan tiers and prices?"})`
 
+### `MarkdownFetch`
+**Why:** get a URL's *content* as Markdown, not an AI answer — downloads the page or
+document (PDF, DOCX, PPTX, XLSX, HTML, Markdown, CSV) and converts it with Docling
+(layout analysis, tables). Use when you need the full text or faithful structure
+(to quote it, or `save_doc` it); use `WebFetch` for a quick answer from an ordinary
+page. Only registered when a document converter (`documents.docling`/`xberg`) is
+configured. Output is capped at 100,000 characters (marked when truncated).
+**Example:** `MarkdownFetch({"url": "https://example.com/annual-report.pdf"})`
+
 ### `WebFetchDOM`
 **Why:** precise scraping, not summarisation — returns the page's HTML structure as
 JSON (candidate lists with ready-to-use CSS selectors; `selector=` for one record

@@ -38,7 +38,8 @@ Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a fu
   prompts. The idea is that someone wearing a "hat" of certain skills can
   participate in multiple projects with those highly specific skills.
 - **LLM Tools** — WebFetch/WebFetchDOM/WebFetchGrep (page analysis, structural
-  extraction, raw-HTML grep), WebSearch (Brave Search API), sandboxed
+  extraction, raw-HTML grep), MarkdownFetch (URL or document → Markdown via
+  Docling), WebSearch (Brave Search API), sandboxed
   JavaScript (`run_js`), calculator, cron scheduling, and any MCP server the
   user registers.
 - **Automation** — per-user cron jobs (JS or agent-turn), background memory

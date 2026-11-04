@@ -42,6 +42,8 @@ type Agent struct {
 	Sessions   *session.Store
 	Session    *sessionlog.Logger
 	WebFetcher *webfetch.Client
+	// MarkdownConverter (docling/xberg) backs the MarkdownFetch tool; nil disables it.
+	MarkdownConverter MarkdownConverter
 	// WebSearch, if configured, provides the WebSearch tool (Brave Search API).
 	WebSearch *websearch.Client
 	MCP        *mcp.Manager
