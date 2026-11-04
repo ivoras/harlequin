@@ -11,10 +11,12 @@ import type { DocChunkInfo, Document } from "./types";
 // --- The viewer's state (null = closed) ---
 export const docView = $state<{
   current: { title: string; text: string; blob: Blob; filename: string } | null;
-}>({ current: null });
+  focus: string; // chunk text to scroll to once rendered ("" = none)
+}>({ current: null, focus: "" });
 
 export function closeDocView() {
   docView.current = null;
+  docView.focus = "";
 }
 
 // openDocBlob opens a fetched document in a new tab via a blob: URL. Text
@@ -31,6 +33,7 @@ export function openDocBlob(blob: Blob, anchor = "") {
 // showTextDoc opens the sidebar on a text blob (markdown rendered by the
 // viewer component).
 export async function showTextDoc(blob: Blob, title: string, filename: string) {
+  // (focus is set by the caller before this, and cleared by closeDocView)
   const text = (await blob.text()).replace(/^\uFEFF/, "");
   const name = filename || title || "document";
   docView.current = { title: title || filename || "document", text, blob, filename: /\.\w+$/.test(name) ? name : name + ".md" };
@@ -70,6 +73,33 @@ export async function viewDocument(d: Document, projectID: number) {
       toast((err as Error).message || `couldn't open "${d.title}"`, "error");
     }
   }
+}
+
+// focusCited is a Svelte action for the element holding the rendered document:
+// it scrolls to (and flashes) the block containing the cited chunk. Chunk text
+// is raw markdown and the view is rendered HTML, so compare letters+digits only.
+const normText = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+export function focusCited(el: HTMLElement, _dep?: unknown) {
+  function run() {
+    const focus = docView.focus;
+    if (!focus || !docView.current) return;
+    docView.focus = "";
+    const want = normText(focus).slice(0, 60);
+    if (want.length < 12) return;
+    queueMicrotask(() => {
+      for (const b of el.querySelectorAll<HTMLElement>("p, li, h1, h2, h3, h4, h5, h6, pre, td, blockquote")) {
+        const have = normText(b.textContent ?? "");
+        if (have.includes(want) || (have.length >= 12 && want.startsWith(have.slice(0, 60)))) {
+          b.scrollIntoView({ block: "start" });
+          b.classList.add("cite-focus");
+          setTimeout(() => b.classList.remove("cite-focus"), 2500);
+          return;
+        }
+      }
+    });
+  }
+  run();
+  return { update: run };
 }
 
 // --- Document citations (d.u.N spans produced by renderMarkdown) ---
@@ -119,6 +149,7 @@ export async function onCiteClick(e: Event) {
     const projectID = info.scope === "project" ? info.project_id || sc.currentProjectID : 0;
     const file = await api.fetchDocumentFile(info.document_id, info.scope, projectID);
     const anchor = info.mime === "application/pdf" && info.page ? `#page=${info.page}` : "";
+    docView.focus = info.text ?? "";
     await openDoc(file, info.title || "", anchor);
   } catch (err) {
     toast((err as Error).message, "error");

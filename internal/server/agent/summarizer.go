@@ -75,6 +75,20 @@ func (a *Agent) titlePass(ctx context.Context) {
 		}
 		return nil
 	})
+	// Project sessions live in the project db, invisible to the per-user scan.
+	_ = a.Storage.EachProject(ctx, func(projectID int64, pdb *sql.DB) error {
+		sessions, err := a.Sessions.UntitledWithUserMessage(ctx, pdb)
+		if err != nil {
+			return nil
+		}
+		for _, c := range sessions {
+			if !a.llmFree() {
+				return context.Canceled
+			}
+			a.titleOne(ctx, pdb, 0, c.ID, c.Interface)
+		}
+		return nil
+	})
 }
 
 // titleOne summarizes one session into a title, persists it, and notifies
@@ -95,7 +109,8 @@ func (a *Agent) titleOne(ctx context.Context, udb *sql.DB, userID, sessID int64,
 	log.Printf("auto-title: sess %d (user %d) -> %q", sessID, userID, title)
 	// Notify only the interface that owns this session, and only if it's live —
 	// no point telling clients that aren't listening.
-	if a.Notify != nil && a.Presence != nil && a.Presence.Alive(userID, iface, interfaceAliveWindow) {
+	// (userID 0 = project session: no single owner to notify; clients see it on refresh.)
+	if userID != 0 && a.Notify != nil && a.Presence != nil && a.Presence.Alive(userID, iface, interfaceAliveWindow) {
 		cid := sessID
 		_, _ = a.Notify.Create(ctx, udb, types.Notification{
 			Kind:      types.NotifyKindSessionTitle,

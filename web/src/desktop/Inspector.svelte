@@ -3,7 +3,7 @@
   import { sc } from "../lib/session.svelte";
   import { pc } from "../lib/projectchat.svelte";
   import { renderMarkdown } from "../lib/markdown";
-  import { docView, closeDocView, openDocBlob, downloadDoc, onCiteClick, onDocrefClick, onCodeCopy } from "../lib/docview.svelte";
+  import { docView, closeDocView, openDocBlob, downloadDoc, onCiteClick, onDocrefClick, onCodeCopy, focusCited } from "../lib/docview.svelte";
   import Context from "../views/Context.svelte";
   import Icon from "./Icon.svelte";
   import { ui, type InspectorTab } from "./state.svelte";
@@ -81,7 +81,7 @@
         <button class="icon-btn" title="Close document" onclick={closeDoc}><Icon name="x" /></button>
       </div>
       <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-      <div class="doc-body md" onclick={(e) => { onCiteClick(e); onDocrefClick(e); onCodeCopy(e); }}>
+      <div class="doc-body md" use:focusCited={[docView.current.text, docView.focus]} onclick={(e) => { onCiteClick(e); onDocrefClick(e); onCodeCopy(e); }}>
         {@html renderMarkdown(docView.current.text)}
       </div>
     </div>

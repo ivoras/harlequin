@@ -125,9 +125,9 @@ func (s *Store) ChunkInfo(ctx context.Context, db *sql.DB, localID int64) (*type
 	var info types.DocChunkInfo
 	var hasFile bool
 	err := db.QueryRowContext(ctx,
-		`SELECT c.document_id, c.page, COALESCE(d.title, ''), COALESCE(d.mime, ''), COALESCE(d.stored_path, '') != ''
+		`SELECT c.document_id, c.page, COALESCE(d.title, ''), COALESCE(d.mime, ''), COALESCE(d.stored_path, '') != '', SUBSTR(c.content, 1, 600)
 		 FROM doc_chunks c JOIN documents d ON d.id = c.document_id WHERE c.id = ?`, localID).
-		Scan(&info.DocumentID, &info.Page, &info.Title, &info.Mime, &hasFile)
+		Scan(&info.DocumentID, &info.Page, &info.Title, &info.Mime, &hasFile, &info.Text)
 	if err != nil {
 		return nil, err
 	}

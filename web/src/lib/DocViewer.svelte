@@ -3,7 +3,8 @@
   // (chat citations/docrefs, the Projects tab's View buttons) opens documents
   // identically. State + handlers live in docview.svelte.ts.
   import { renderMarkdown } from "./markdown";
-  import { docView, closeDocView, openDocBlob, downloadDoc, onCiteClick, onDocrefClick, onCodeCopy } from "./docview.svelte";
+  import { docView, closeDocView, openDocBlob, downloadDoc, onCiteClick, onDocrefClick, onCodeCopy, focusCited } from "./docview.svelte";
+
 </script>
 
 {#if docView.current}
@@ -17,7 +18,7 @@
       <button class="ghost" onclick={closeDocView}>Close</button>
     </header>
     <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
-    <div class="body md" onclick={(e) => { onCiteClick(e); onDocrefClick(e); onCodeCopy(e); }}>
+    <div class="body md" use:focusCited={[docView.current.text, docView.focus]} onclick={(e) => { onCiteClick(e); onDocrefClick(e); onCodeCopy(e); }}>
       {@html renderMarkdown(docView.current.text)}
     </div>
   </aside>

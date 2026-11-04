@@ -705,6 +705,8 @@ type DocChunkInfo struct {
 	// qualified d.p<id>.N citation, or the request's project parameter), so the
 	// client can open the document file against the right corpus.
 	ProjectID int64 `json:"project_id,omitempty"`
+	// Text is the start of the chunk, so a viewer can scroll to where it sits.
+	Text string `json:"text,omitempty"`
 }
 
 // IngestJobStatus is the pollable state of an asynchronous document ingestion
