@@ -2,17 +2,32 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1"
-    />
-    <meta name="theme-color" content="#1a1626" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="/favicon.png" />
-    <link rel="apple-touch-icon" href="/favicon.png" />
     <title>Harlequin</title>
+    <script>
+      // Phones get the mobile UI (/m/) unless the user explicitly chose the
+      // desktop one; an explicit "mobile" choice sticks on any screen. Keeps
+      // ?s=&p= so session links work in both UIs. Runs before the bundle so
+      // there is no flash of the wrong layout.
+      try {
+        var pref = localStorage.getItem("harlequin.ui");
+        // The /m/ guard prevents a redirect loop if a server or proxy without
+        // the /m/ fallback hands this page out for /m/ paths.
+        var atMobile = location.pathname.indexOf("/m/") === 0;
+        if (!atMobile && (pref === "mobile" || (!pref && matchMedia("(max-width: 760px)").matches))) {
+          location.replace("/m/" + location.search + location.hash);
+        }
+      } catch (e) {}
+      // Apply the saved theme before first paint (see src/desktop/theme.ts).
+      try {
+        var t = localStorage.getItem("harlequin.theme");
+        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/desktop/main.ts"></script>
   </body>
 </html>

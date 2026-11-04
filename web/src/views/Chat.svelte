@@ -2,25 +2,16 @@
   import { session, user, toast } from "../lib/stores";
   import { sc } from "../lib/session.svelte";
   import { renderMarkdown } from "../lib/markdown";
-  import { matchSlash, runSlash, availableCommands } from "../lib/slash";
+  import { availableCommands } from "../lib/slash";
+  import { Composer } from "../lib/composer.svelte";
   import { onCiteHover, onCiteClick, onDocrefClick, onCodeCopy } from "../lib/docview.svelte";
 
   // Chat is a thin view over the app-scoped session controller (sc), which owns
-  // the WebSocket and chat state so it survives view switches. Only view-local
-  // concerns (composer text, scrolling, focus, slash commands) live here.
-  let input = $state("");
+  // the WebSocket and chat state so it survives view switches. Composer
+  // behaviour (slash menu, history recall, submit) lives in lib/composer.
   let scrollEl: HTMLDivElement | undefined;
-  let inputEl: HTMLTextAreaElement | undefined;
-
-  // Slash-command autocomplete + help, mirroring the TUI.
-  let slashSel = $state(0);
-  let showHelp = $state(false);
   const admin = $derived(!!$user && ($user.role === "owner" || $user.role === "admin"));
-  const suggestions = $derived(matchSlash(input, admin));
-  // Keep the highlighted suggestion in range as the list narrows.
-  $effect(() => {
-    if (slashSel >= suggestions.length) slashSel = 0;
-  });
+  const c = new Composer(() => admin);
 
   // Whole-message copy: copies the raw markdown source, not the rendered HTML.
   let copiedIdx = $state(-1);
@@ -63,124 +54,8 @@
   $effect(() => {
     if (sc.loading) return;
     const last = sc.items.at(-1);
-    if (last && last.kind === "ask" && last.options.length === 0) inputEl?.focus();
+    if (last && last.kind === "ask" && last.options.length === 0) c.focus();
   });
-
-  // Auto-grow the composer with its content; the CSS max-height caps it.
-  // Called from oninput and explicitly after programmatic clears, since
-  // setting `input` from code doesn't fire the input event.
-  function resizeInput() {
-    // rAF so programmatic `input` changes have reached the DOM before measuring.
-    requestAnimationFrame(() => {
-      if (!inputEl) return;
-      inputEl.style.height = "auto";
-      inputEl.style.height = `${inputEl.scrollHeight}px`;
-    });
-  }
-
-  // --- Input history recall ---
-  // ArrowUp in an empty (or unmodified-recall) composer walks back through
-  // previous user messages for editing/resend; ArrowDown walks toward
-  // newest/empty. The cursor resets whenever the user types normally.
-  let histIdx = -1; // -1 = not recalling; otherwise index into userHistory() (0 = newest)
-  let histRecalled = ""; // exact text last inserted by recall, to detect edits
-  function userHistory(): string[] {
-    const out: string[] = [];
-    for (const it of sc.items) if (it.kind === "msg" && it.role === "user") out.push(it.content);
-    return out.reverse();
-  }
-  function recall(delta: number) {
-    const hist = userHistory();
-    const next = histIdx + delta;
-    if (next < -1 || next >= hist.length) return;
-    histIdx = next;
-    histRecalled = next === -1 ? "" : hist[next];
-    input = histRecalled;
-    resizeInput();
-  }
-  function resetHistory() {
-    histIdx = -1;
-    histRecalled = "";
-  }
-  function onInput(e: Event) {
-    // Any edit that diverges from the recalled text ends the recall session.
-    if ((e.currentTarget as HTMLTextAreaElement).value !== histRecalled) resetHistory();
-    resizeInput();
-  }
-
-  // submit runs a slash command (lines starting with "/") or sends a message.
-  async function submit() {
-    const text = input.trim();
-    if (!text) return;
-    resetHistory();
-    if (text.startsWith("/")) {
-      input = "";
-      slashSel = 0;
-      resizeInput();
-      if ((await runSlash(text, admin)) === "help") showHelp = true;
-      return;
-    }
-    if (!$session.id) return;
-    input = "";
-    resizeInput();
-    sc.send(text);
-  }
-  function answerAsk(opt: string) {
-    input = opt;
-    submit();
-  }
-  function completeSlash() {
-    if (suggestions.length) {
-      input = suggestions[slashSel].name + " ";
-      slashSel = 0;
-      inputEl?.focus();
-    }
-  }
-  function onKey(e: KeyboardEvent) {
-    if (suggestions.length) {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        slashSel = Math.min(slashSel + 1, suggestions.length - 1);
-        return;
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        slashSel = Math.max(slashSel - 1, 0);
-        return;
-      }
-      if (e.key === "Tab") {
-        e.preventDefault();
-        completeSlash();
-        return;
-      }
-      // Enter accepts the highlighted suggestion, unless the typed text is
-      // already exactly that command — then fall through and run it.
-      if (e.key === "Enter" && !e.shiftKey && input.trim() !== suggestions[slashSel].name) {
-        e.preventDefault();
-        completeSlash();
-        return;
-      }
-    }
-    // History recall — only when the slash menu isn't consuming the arrows,
-    // and only from an empty composer or an unmodified recall, so normal
-    // multiline cursor movement in typed text still works.
-    const recalling = histIdx >= 0 && input === histRecalled;
-    if (e.key === "ArrowUp" && (input === "" || recalling)) {
-      e.preventDefault();
-      if (input === "" && !recalling) resetHistory(); // stale cursor after a programmatic clear
-      recall(1);
-      return;
-    }
-    if (e.key === "ArrowDown" && recalling) {
-      e.preventDefault();
-      recall(-1);
-      return;
-    }
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      submit();
-    }
-  }
 </script>
 
 <div class="chat">
@@ -223,7 +98,7 @@
             <div>{it.question}</div>
             {#if it.options.length}
               <div class="row" style="flex-wrap:wrap; gap:6px;">
-                {#each it.options as o}<button class="small" onclick={() => answerAsk(o)}>{o}</button>{/each}
+                {#each it.options as o}<button class="small" onclick={() => c.answer(o)}>{o}</button>{/each}
               </div>
             {:else}
               <div class="muted small">Type your answer below.</div>
@@ -240,16 +115,16 @@
     </div>
   </div>
 
-  {#if showHelp}
-    <div class="scrim" role="presentation" onclick={() => (showHelp = false)}></div>
+  {#if c.showHelp}
+    <div class="scrim" role="presentation" onclick={() => (c.showHelp = false)}></div>
     <aside class="sheet bottom">
       <header><strong>Commands</strong><span class="spacer"></span>
-        <button class="ghost" onclick={() => (showHelp = false)}>Close</button></header>
+        <button class="ghost" onclick={() => (c.showHelp = false)}>Close</button></header>
       <div class="body list">
-        {#each availableCommands(admin) as c}
+        {#each availableCommands(admin) as cmd}
           <div class="row" style="gap:8px; align-items:baseline;">
-            <code>{c.name}{#if c.args} {c.args}{/if}</code>
-            <span class="muted small">{c.desc}</span>
+            <code>{cmd.name}{#if cmd.args} {cmd.args}{/if}</code>
+            <span class="muted small">{cmd.desc}</span>
           </div>
         {/each}
         <div class="muted small">Other actions are in the tabs and the ☰ sessions drawer.</div>
@@ -269,23 +144,23 @@
         {/each}
       </div>
     {/if}
-    {#if suggestions.length}
+    {#if c.suggestions.length}
       <div class="container col slashmenu" style="gap:2px; padding-bottom:6px;">
-        {#each suggestions as c, i}
-          <button class="slashitem row" class:sel={i === slashSel}
-            onmouseenter={() => (slashSel = i)} onclick={completeSlash}>
-            <code>{c.name}{#if c.args} {c.args}{/if}</code>
-            <span class="muted small">{c.desc}</span>
+        {#each c.suggestions as cmd, i}
+          <button class="slashitem row" class:sel={i === c.slashSel}
+            onmouseenter={() => (c.slashSel = i)} onclick={c.completeSlash}>
+            <code>{cmd.name}{#if cmd.args} {cmd.args}{/if}</code>
+            <span class="muted small">{cmd.desc}</span>
           </button>
         {/each}
       </div>
     {/if}
     <div class="container row" style="align-items:flex-end; gap:8px;">
-      <textarea rows="1" placeholder={sc.loading ? "Message (will queue)…" : "Message or /command…"} bind:value={input} bind:this={inputEl} onkeydown={onKey} oninput={onInput}></textarea>
+      <textarea rows="1" placeholder={sc.loading ? "Message (will queue)…" : "Message or /command…"} bind:value={c.input} bind:this={c.el} onkeydown={c.onKey} oninput={c.onInput}></textarea>
       {#if sc.loading}
         <button class="danger" onclick={() => sc.stop()} title="Stop">■</button>
       {:else}
-        <button class="primary" onclick={submit} disabled={!input.trim() || (!$session.id && !input.trim().startsWith("/"))}>Send</button>
+        <button class="primary" onclick={() => c.submit()} disabled={!c.input.trim() || (!$session.id && !c.input.trim().startsWith("/"))}>Send</button>
       {/if}
     </div>
     {#if sc.reconnecting}

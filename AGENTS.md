@@ -5,7 +5,7 @@ Client-server AI agent system in Go. A REST + WebSocket **server** talks to LLMs
 ## Binaries
 - `cmd/harlequin-server` — REST + WebSocket API, LLM access, SQLite, agent loop, skills.
 - `cmd/harlequin` — TUI client (Claude Code-like; dark-purple/light-green theme).
-- `web/` — mobile-first browser SPA (Svelte 5 + Vite; not a Go binary). `make web-build` → `web/dist`, served by the server when `server.web.dir` is set. Run `make web-build` after editing `web/`. User-facing features go in **both** clients (TUI + web).
+- `web/` — browser SPA (Svelte 5 + Vite; not a Go binary), one build with two pages over a shared core: the **desktop** UI at `/` (`web/index.html` → `src/desktop/`: sidebar + chat + right inspector, command palette, drag-and-drop uploads, light/dark theme) and the **mobile** UI at `/m/` (`web/m/index.html` → `src/App.svelte` + `src/views/`). Shared state and behaviour live in `src/lib/` (API client, session/WebSocket controller, composer, workspace boot, docs viewer state); desktop reuses several mobile `views/` (Memory, Skills, Cron, Hats, MCP, Config, Usage, Context, Login) and its `desktop.css` defines the same utility classes they rely on. The server's SPA fallback routes `/m/*` to `m/index.html`. `make web-build` → `web/dist`, served by the server when `server.web.dir` is set. Run `make web-build` after editing `web/`. User-facing features go in **all** clients (TUI + desktop web + mobile web).
 
 ## Stack
 - Go 1.25. Router `go-chi/chi/v5`; Agent session streams, and chat are over WebSocket (`coder/websocket`).

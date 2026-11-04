@@ -15,10 +15,11 @@ activeProject.subscribe((p) => setActiveProject(p?.id ?? 0));
 // Whether the /project management sheet is open.
 export const projectSheet = writable<boolean>(false);
 
-// Which top-level view is shown (chat + management panels).
+// Which top-level view is shown (chat + management panels). "files" is
+// desktop-only (the mobile UI splits it across documents/projects).
 export type View =
   | "chat" | "skills" | "hats" | "memory" | "documents" | "projects"
-  | "mcp" | "cron" | "config" | "usage" | "context";
+  | "mcp" | "cron" | "config" | "usage" | "context" | "files";
 export const view = writable<View>("chat");
 
 // The active session shown in the header (title is auto-updated by the

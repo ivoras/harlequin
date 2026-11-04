@@ -216,7 +216,9 @@ export const api = {
     const qs = v.toString();
     return req<void>("DELETE", `/documents/${id}${qs ? `?${qs}` : ""}`);
   },
-  searchDocuments: (query: string) => reqList<SearchResult>("GET", `/documents/search?q=${q(query)}`),
+  // projectID > 0 also searches that project's corpus (member-checked).
+  searchDocuments: (query: string, projectID = 0) =>
+    reqList<SearchResult>("GET", `/documents/search?q=${q(query)}${projectID ? `&project=${projectID}` : ""}`),
   // alignDocuments compares two documents (scoped refs like "u.2") and returns
   // the full deterministic alignment for the side-by-side view.
   alignDocuments: (a: string, b: string, mode: string, minSimilarity = 0, projectID = 0) => {

@@ -29,31 +29,37 @@ export function cleanTitle(t: string): string {
   return t === "Session" || t === "New session" || t === "New conversation" ? "" : t;
 }
 
-// switchToProject makes the project the active chat workspace.
+// switchToProject makes the project the active chat workspace. The target
+// session is resolved BEFORE the stores change, and the project + session are
+// set together: the app attaches whenever either changes, so flipping the
+// project first would briefly attach the old personal session under the
+// project (a 404 on its history).
 export async function switchToProject(p: Project): Promise<void> {
-  activeProject.set(p);
   try {
     const ps = await api.listProjectSessions(p.id);
+    let next: { id: number; title: string; hat: string };
     if (ps.length > 0) {
-      session.set({ id: ps[0].id, title: cleanTitle(ps[0].title) });
-      wornHat.set(ps[0].hat ?? "");
+      next = { id: ps[0].id, title: cleanTitle(ps[0].title), hat: ps[0].hat ?? "" };
     } else {
       const c = await api.createSession("Session", "");
       const { session_id } = await api.assignSession(p.id, c.id);
-      session.set({ id: session_id, title: "" });
-      wornHat.set("");
+      next = { id: session_id, title: "", hat: "" };
     }
+    activeProject.set(p);
+    session.set({ id: next.id, title: next.title });
+    wornHat.set(next.hat);
     view.set("chat");
   } catch (e) {
     toast((e as Error).message, "error");
   }
 }
 
-// leaveActiveProject returns to a fresh personal session.
+// leaveActiveProject returns to a fresh personal session (created first, for
+// the same reason as above).
 export async function leaveActiveProject(): Promise<void> {
-  activeProject.set(null);
   try {
     const c = await api.createSession("Session", "");
+    activeProject.set(null);
     session.set({ id: c.id, title: cleanTitle(c.title) });
     wornHat.set("");
     view.set("chat");

@@ -3,6 +3,8 @@
   import { user, view, session, wornHat, toasts, toast, activeProject, projectSheet, type View } from "./lib/stores";
   import { sc } from "./lib/session.svelte";
   import { switchToProject as libSwitchToProject, leaveActiveProject, cleanTitle, projectBylines, canDeleteProject, deleteProjectFlow } from "./lib/project";
+  import { initSession, ensureSession, setURLParams } from "./lib/workspace";
+  import { switchUI } from "./lib/uipref";
   import DocViewer from "./lib/DocViewer.svelte";
   import { pc } from "./lib/projectchat.svelte";
   import type { Session, Project, ProjectInvite } from "./lib/types";
@@ -49,7 +51,6 @@
   let showChatPane = $state(true);
 
   let started = false;
-  let creating = false;
 
   // Restore session from a stored token.
   $effect(() => {
@@ -112,80 +113,6 @@
       if (directory.length === 0) api.userDirectory().then((d) => (directory = d)).catch(() => {});
     }
   });
-
-  function intParam(name: string): number {
-    const v = new URLSearchParams(location.search).get(name);
-    const n = v ? parseInt(v, 10) : 0;
-    return Number.isFinite(n) && n > 0 ? n : 0;
-  }
-  function setURLParams(sessionID: number, projectID: number): void {
-    const url = new URL(location.href);
-    if (sessionID) url.searchParams.set("s", String(sessionID));
-    else url.searchParams.delete("s");
-    if (projectID) url.searchParams.set("p", String(projectID));
-    else url.searchParams.delete("p");
-    history.replaceState(null, "", url);
-  }
-
-  // On boot, resume the project (?p=) and session (?s=) named in the URL, if
-  // present; otherwise start a fresh personal session. A project session lives
-  // in that project's own session list, not the personal one, so the project
-  // must be restored FIRST — otherwise the session lookup misses it entirely
-  // and the app silently falls back to an unrelated (or brand new) session.
-  async function initSession() {
-    const pid = intParam("p");
-    const id = intParam("s");
-    if (pid) {
-      try {
-        const p = await api.getProject(pid);
-        activeProject.set(p);
-        if (id) {
-          const list = await api.listProjectSessions(pid);
-          const found = list.find((c) => c.id === id);
-          if (found) {
-            session.set({ id, title: cleanTitle(found.title) });
-            wornHat.set(found.hat ?? "");
-            return;
-          }
-          // The session named in the URL no longer belongs to this project
-          // (deleted, reassigned) — fall through to opening a project session.
-        }
-        await libSwitchToProject(p);
-        return;
-      } catch {
-        // Project gone or no longer a member: drop it and fall through to the
-        // plain personal-session path below rather than getting stuck.
-        activeProject.set(null);
-      }
-    }
-    if (id) {
-      try {
-        const list = await api.listSessions();
-        const found = list.find((c) => c.id === id);
-        session.set({ id, title: found ? cleanTitle(found.title) : "" });
-        wornHat.set(found?.hat ?? "");
-        return;
-      } catch {
-        /* fall through to a new session */
-      }
-    }
-    await ensureSession();
-  }
-
-
-  async function ensureSession() {
-    if (creating) return;
-    creating = true;
-    try {
-      const c = await api.createSession("Session", "");
-      session.set({ id: c.id, title: cleanTitle(c.title) });
-      wornHat.set("");
-    } catch (e) {
-      toast((e as Error).message, "error");
-    } finally {
-      creating = false;
-    }
-  }
 
   // Sessions drawer: type-to-filter (title substring, case-insensitive).
   const filteredSessions = $derived(
@@ -525,6 +452,7 @@
             </button>
           {/each}
         </div>
+        <button onclick={() => switchUI("desktop")}>🖥 Desktop version</button>
         <button class="danger" onclick={logout}>Log out</button>
       </div>
     </aside>

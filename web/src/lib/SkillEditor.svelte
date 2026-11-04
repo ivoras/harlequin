@@ -68,7 +68,7 @@
   }
 
   function onScroll() {
-    scrollTop = ta.scrollTop;
+    scrollTop = ta?.scrollTop ?? 0;
     if (gutter) gutter.scrollTop = scrollTop;
   }
 

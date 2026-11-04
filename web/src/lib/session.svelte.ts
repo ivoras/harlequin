@@ -45,6 +45,9 @@ class SessionController {
   ppLabel = $state("");
   queue = $state<string[]>([]);
   reconnecting = $state(false);
+  // Context-window use reported by the last finished turn (null until one
+  // finishes in this session); drives the desktop composer's context meter.
+  ctx = $state<{ model: string; tokens: number; max: number } | null>(null);
   // User-scoped alerts (persist across session switches, kept until dismissed).
   alerts = $state<Notification[]>([]);
 
@@ -85,6 +88,7 @@ class SessionController {
     this.optimisticUser = 0;
     this.streamingAssistant = null;
     this.queue = [];
+    this.ctx = null;
     this.socket?.close();
     this.socket = null;
     try {
@@ -123,7 +127,8 @@ class SessionController {
     try {
       await api.clearSession(this.currentId, this.projectID);
       this.items = [];
-        this.streamingAssistant = null;
+      this.streamingAssistant = null;
+      this.ctx = null;
       toast("context cleared");
     } catch (e) {
       toast((e as Error).message, "error");
@@ -284,7 +289,10 @@ class SessionController {
         toast(ev.error || "error", "error");
         break;
       case SSE.Done: {
-        if (ev.model) lastModel.set(ev.model);
+        if (ev.model) {
+          lastModel.set(ev.model);
+          this.ctx = { model: ev.model, tokens: ev.context_tokens || 0, max: ev.context_max || 0 };
+        }
         // Turn-end stats live inline in the transcript (like the TUI), not in
         // a separate element below the composer.
         const stats = turnStats(ev);

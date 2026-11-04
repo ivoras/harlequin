@@ -55,7 +55,7 @@
       return;
     }
     try {
-      results = await api.searchDocuments(q.trim());
+      results = await api.searchDocuments(q.trim(), $activeProject?.id ?? 0);
     } catch (e) {
       toast((e as Error).message, "error");
     }
