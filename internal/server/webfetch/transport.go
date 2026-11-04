@@ -24,9 +24,15 @@ type utlsTransport struct {
 }
 
 func newUTLSTransport(allowPrivate bool) *utlsTransport {
+	// ConfigureTransports wires the http2.Transport to a backing http.Transport;
+	// x/net >= 0.5x dereferences it in NewClientConn and panics on a bare &http2.Transport{}.
+	h2, err := http2.ConfigureTransports(&http.Transport{})
+	if err != nil {
+		h2 = &http2.Transport{}
+	}
 	return &utlsTransport{
 		dialer:       &net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second},
-		h2:           &http2.Transport{},
+		h2:           h2,
 		allowPrivate: allowPrivate,
 	}
 }
