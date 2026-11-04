@@ -43,6 +43,9 @@ Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a fu
   user registers.
 - **Automation** — per-user cron jobs (JS or agent-turn), background memory
   extraction, notifications delivered in-app, by email, or via Telegram.
+- **Two clients** — a terminal UI, and a web app with a desktop workspace layout
+  (sidebar, chat, side panel, command palette, drag-and-drop uploads, light/dark
+  themes) plus a touch-first mobile layout at `/m/`.
 - **JavaScript VM by default** - JS code executes in a sanboxed JS VM
   directly on the server (no node.js dependancy), either called directly
   by the user with the `run_js` tool, *or* as templated JS code
@@ -54,7 +57,7 @@ A client-server AI agent harness written in Go. A REST + WebSocket **server** co
 stores data in SQLite (FTS5 + vector search), runs an agentic tool-calling loop, and manages
 skills. Chat sessions live on the server (a goroutine per active session) and stream over a
 WebSocket, so a client can disconnect mid-turn and reconnect later to resume. A beautiful Bubble
-Tea **TUI client** and a mobile-first **web UI** talk to it. Multi-user, organisation-aware. All
+Tea **TUI client** and a **web UI** (desktop layout at `/`, mobile layout at `/m/`) talk to it. Multi-user, organisation-aware. All
 harness data stored in SQLite database files, not as scattered markdown file trees.
 
 See [AGENTS.md](AGENTS.md) for a thousand-mile architecture overview, and
@@ -296,8 +299,21 @@ Manage it from the TUI:
 
 ## Web UI
 
-A static, mobile-first browser client lives in [`web/`](web/) (Svelte 5 + Vite). It
-uses the same REST + WebSocket API as the TUI and announces itself as the `Web` interface.
+A static browser client lives in [`web/`](web/) (Svelte 5 + Vite). It uses the same
+REST + WebSocket API as the TUI and announces itself as the `Web` interface. One build
+produces two layouts over shared code:
+
+- **Desktop** at `/` — a conventional AI-workspace layout: a left sidebar (workspace /
+  project switcher, navigation, the workspace's files and sessions), the chat in the
+  middle, and a resizable right panel (project team chat, document viewer, session and
+  context details). Command palette (`Ctrl/⌘+K`), drag-and-drop file upload anywhere in
+  the window, and a light/dark theme that follows the OS.
+- **Mobile** at `/m/` — the touch-first layout (tab bar, drawers, bottom sheets).
+
+Phones opening `/` are redirected to `/m/` automatically; either UI has a link to the
+other, and an explicit choice is remembered per browser. Both keep the session and
+project in the URL (`?s=<session>&p=<project>`), so a link opens the same session in
+either layout.
 
 Build it, then have the server serve it at `/` (same origin as the API — no CORS):
 
@@ -315,8 +331,9 @@ server:
 Now `http://<host>:<addr>/` serves the app and `…/api/v1/…` the API. Leave `web.dir`
 empty to disable serving.
 
-**Development:** `make web-dev` runs Vite with hot reload; it proxies `/api` to the
-server (set `VITE_API_BASE`, default `http://127.0.0.1:8890`).
+**Development:** `make web-dev` runs Vite with hot reload (desktop at
+`http://localhost:5173/`, mobile at `…/m/`); it proxies `/api` to the server (set
+`VITE_API_BASE`, default `http://127.0.0.1:8890`).
 
 **Behind nginx (production):** serve the static build and reverse-proxy the API.
 The chat stream is a WebSocket (`…/api/v1/sessions/{id}/ws`) sharing the `/api/`
@@ -343,9 +360,13 @@ server {
     root /srv/harlequin/web/dist;
     index index.html;
 
-    # SPA: fall back to index.html for client-side routes.
+    # SPA: fall back to the right page's index.html for client-side routes
+    # (desktop at /, mobile at /m/).
     location / {
         try_files $uri /index.html;
+    }
+    location /m/ {
+        try_files $uri /m/index.html;
     }
 
     # API + WebSocket chat stream (same /api/ prefix; the map handles both).

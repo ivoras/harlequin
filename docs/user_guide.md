@@ -101,7 +101,71 @@ documents in a rendered side panel with buttons to view the raw file or
 download the original. Citations inside a rendered report are clickable too,
 so you can follow a report's sources without leaving it.
 
-### Projects
+### The web app
+
+The browser app comes in two layouts over the same account and data:
+
+- **Desktop** (`/`) — for keyboard-and-mouse use.
+- **Mobile** (`/m/`) — touch-first: a tab bar, a ☰ sessions drawer, bottom sheets.
+
+Phones are sent to the mobile layout automatically. To switch by hand, use
+**Mobile version** in the desktop's account menu (bottom of the sidebar) or
+**🖥 Desktop version** in the mobile ⋮ menu; the choice is remembered in that
+browser. The address bar keeps the session and project (`?s=…&p=…`), so a
+copied link opens the same session in either layout.
+
+**Desktop layout.** The left sidebar holds, top to bottom: **New session**,
+**Search** (the command palette), the **workspace switcher** (Personal or one
+of your projects; it also lists invitations and creates projects), the pages
+(Chat, Files, Memory, Skills, Scheduled jobs, Projects), the current
+workspace's **files** (the project's files in a project, otherwise your
+personal ones; click to open), and its **sessions**, grouped by last activity
+(hover a personal session to rename or delete it). Your account menu at the
+bottom has Settings, Hats, the theme (System / Light / Dark), the mobile
+switch, and Log out.
+
+The chat header shows the workspace, the session title (click to rename a
+personal session), and the **hat** worn by the session — click it to wear a
+different hat or take it off. The composer has an attach button, and after
+each turn a context meter (tokens used / context window, model); click it for
+the full context breakdown.
+
+The **side panel** on the right (toggle with the header's panel button) has
+up to three tabs: **Team chat** (the project chatroom, while a project is
+active), **Document** (opens whenever you click a citation, a document
+reference, or a file — text and reports render there; PDFs and DOCX open in a
+new browser tab), and **Session** (session details and the context-usage
+breakdown). Drag its left edge to resize it.
+
+**Settings** (account menu, or `Ctrl/⌘+,`) holds General (account, theme,
+mobile switch, and for owners/admins a broadcast alert), Hats, MCP servers,
+Config and Usage.
+
+**Files and uploads.** Drop files anywhere in the window to add them: by
+default they go to the active project, otherwise to your personal files. On
+the Files page you can pick the destination (owners/admins can also add to
+the shared org corpus) and drops there go to it; on the Projects page, drops
+go to the project you have selected. Progress shows in the bottom-left
+corner; failed uploads stay there until you dismiss them. The Files page also
+filters by scope, searches inside documents, adds pasted text as a document,
+and compares two documents side by side.
+
+**Keyboard shortcuts** (`⌘` on macOS):
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl+K` | Command palette — jump to any session, file, project, page or action |
+| `Ctrl+Shift+O` | New session |
+| `Ctrl+B` | Show / hide the sidebar |
+| `Ctrl+.` | Show / hide the side panel |
+| `Ctrl+,` | Settings |
+| `Enter` / `Shift+Enter` | Send / new line in the composer |
+| `↑` in an empty composer | Recall earlier messages |
+
+Slash commands work in the web composer too: type `/` for the menu
+(`/help`, `/project`, `/export`, `/clear`, and `/alert` for owners/admins).
+
+## Projects
 
 | Command | What it does |
 |---------|--------------|
@@ -149,37 +213,41 @@ is a shared workspace with documents, an AI chat session and a human chat sessio
 a members-only chatroom — while everything outside the project (your personal
 sessions, documents, and memories) stays private to you.
 
-**Creating and switching.** Anyone can create a project. In the browser, use
-the project selector in the header (or the **Manage…** sheet) to create one
-and switch to it; the Projects tab manages the selected project's members and
-documents. In the TUI, `/project new <name>` and `/project switch <name>`.
+**Creating and switching.** Anyone can create a project. In the desktop web
+app, use the workspace switcher at the top of the sidebar to create one and
+switch to it; the Projects page manages a project's members and files (mobile:
+the project selector in the header, the **Manage…** sheet, and the Projects
+tab). In the TUI, `/project new <name>` and `/project switch <name>`.
 While a project is active, chatting talks to the project's shared session —
 every member sees the same live conversation, including a turn already in
-progress — and a chatroom side pane appears (web: the 💬 toggle; TUI: split
-pane, post with `/say`).
+progress — and the project chatroom appears (desktop: the side panel's Team
+chat tab; mobile: the 💬 toggle; TUI: split pane, post with `/say`).
 
 **Sessions.** A new project starts with one AI session; create more as usual
 (`/new`) while the project is active, or move an existing personal session —
 and its whole history — into the project with **Assign current session**
 (TUI: `/project assign`). A session belongs to at most one project. To switch
-between a project's sessions: in the browser, open the sessions drawer (☰) —
-with a project active it lists that project's sessions; in the TUI, `/resume`
+between a project's sessions: on desktop, the sidebar lists the active
+project's sessions; on mobile, open the sessions drawer (☰); in the TUI, `/resume`
 opens the same project-aware picker (`/project sessions` prints the ids, and
 `/resume <id>` jumps directly).
 
-**Documents.** Upload into the project from the Projects tab (or
-`/upload project <path>` in the TUI); ingestion shows live progress. In a
+**Documents.** Drop files into the window while the project is active, or
+upload from the Files or Projects page (mobile: the Projects tab; TUI:
+`/upload project <path>`); ingestion shows live progress. In a
 project session the agent reads the project corpus alongside shared and
 personal scopes, and reports it saves (`save_doc`) land in the project corpus
 by default, citations pinned, so every member can find and open them.
 
 **Inviting members.** Any member can invite others. In the browser, the
-Projects tab shows the picked project's members and an "Invite by email" box
-(the Manage… sheet has the same box for the active project); as you type, the
+Projects page (mobile: Projects tab) shows the picked project's members and an
+"Invite by email" box (mobile's Manage… sheet has the same box for the active
+project); as you type, the
 field suggests account emails from the server's user directory — current
 members are left out of the suggestions. In the TUI, use `/project invite
 <email>`. The invitee gets an in-app notification and an entry in their
-Invitations list (Manage… sheet, or `/project invites` in the TUI) where they
+Invitations list (desktop: the workspace switcher or the Projects page;
+mobile: the Manage… sheet; TUI: `/project invites`) where they
 accept or decline; nothing is shared with them until they accept. Invites are
 by exact account email — the person must already have an account on the
 server. If email suggestions don't appear, the server may have the user
@@ -201,7 +269,9 @@ report keeps pointing at its true sources no matter where it's opened from.
 Project content is members-only throughout: another user's search never sees
 projects you belong to unless they are members too.
 
-**Leaving.** `/project leave` (web: "Leave project") just returns you to your
+**Leaving.** `/project leave` (web: "Leave workspace" on the desktop Projects
+page or picking Personal in the workspace switcher; mobile: "Leave project")
+just returns you to your
 personal workspace — you stay a member. `/project depart` (web: "Depart
 project") removes your membership; the project and its content remain for the
 other members.

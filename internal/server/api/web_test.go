@@ -10,6 +10,7 @@ import (
 func TestSPAHandler(t *testing.T) {
 	fsys := fstest.MapFS{
 		"index.html":        {Data: []byte("<html>spa</html>")},
+		"m/index.html":      {Data: []byte("<html>mobile</html>")},
 		"assets/app.js":     {Data: []byte("js")},
 		"assets/styles.css": {Data: []byte("css")},
 	}
@@ -32,6 +33,10 @@ func TestSPAHandler(t *testing.T) {
 		{"/skills", 200, "<html>spa</html>"},  // client route -> SPA
 		{"/assets/", 200, "<html>spa</html>"}, // directory -> SPA
 		{"/../../etc/passwd", 400, ""},        // traversal: rejected by net/http itself
+		{"/m/", 200, "<html>mobile</html>"},   // mobile UI
+		{"/m/skills", 200, "<html>mobile</html>"},
+		{"/m", 301, ""},
+		{"/mobile", 200, "<html>spa</html>"}, // only the exact /m/ prefix
 	} {
 		code, body := get(c.path)
 		if code != c.code || (c.want != "" && body != c.want) {

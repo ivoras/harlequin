@@ -7,6 +7,9 @@ import (
 	"strings"
 )
 
+// mobilePrefix is the path segment the mobile web UI is served under.
+const mobilePrefix = "m"
+
 // spaHandler serves the static web UI from fsys (a disk directory in dev, or
 // the filesystem embedded in the binary): a real file when the request maps to
 // one, otherwise index.html (so client-side routing / deep links work). The
@@ -22,7 +25,19 @@ func spaHandler(fsys fs.FS) http.Handler {
 				return
 			}
 		}
-		// Unknown path (or a directory): hand it to the SPA.
+		// Unknown path (or a directory): hand it to the SPA that owns it. The
+		// mobile UI is a second page under /m/ with its own index.html.
+		// path.Clean strips the trailing slash, so test the raw path for "/m".
+		if r.URL.Path == "/"+mobilePrefix {
+			http.Redirect(w, r, "/"+mobilePrefix+"/", http.StatusMovedPermanently)
+			return
+		}
+		if name == mobilePrefix || strings.HasPrefix(name, mobilePrefix+"/") {
+			if _, err := fs.Stat(fsys, mobilePrefix+"/index.html"); err == nil {
+				http.ServeFileFS(w, r, fsys, mobilePrefix+"/index.html")
+				return
+			}
+		}
 		http.ServeFileFS(w, r, fsys, "index.html")
 	})
 }
