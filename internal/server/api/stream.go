@@ -146,6 +146,13 @@ func (s *Server) serveSessionWS(w http.ResponseWriter, r *http.Request, user *ty
 	// Server-side notification push: a poller queries the user's pending
 	// notifications (the DB is the store) and feeds new ones to the writer, so
 	// clients no longer poll. Acks stay over REST (/notifications/{id}/ack).
+	// Document changes the user can see (own personal docs, shared, project docs
+	// of projects they belong to) are pushed too, so lists refresh without a reload.
+	dsub := s.DocEvents.Subscribe(user.ID, func(pid int64) bool {
+		ok, _ := s.Projects.IsMember(ctx, pid, user.ID)
+		return ok
+	})
+	defer s.DocEvents.Unsubscribe(dsub)
 	notifCh := make(chan types.StreamEvent, 16)
 	if s.Notify != nil {
 		go s.pollNotifications(ctx, user.ID, sess.Interface, notifCh)
@@ -178,6 +185,12 @@ func (s *Server) serveSessionWS(w http.ResponseWriter, r *http.Request, user *ty
 			}
 		case ev := <-notifCh:
 			if err := wsjson.Write(ctx, c, ev); err != nil {
+				return
+			}
+		case de := <-dsub.C:
+			out := types.StreamEvent{Type: types.SSEDocumentsChanged, Doc: &types.DocChange{
+				Op: de.Op, Scope: de.Scope, ProjectID: de.ProjectID, DocID: de.DocID}}
+			if err := wsjson.Write(ctx, c, out); err != nil {
 				return
 			}
 		}

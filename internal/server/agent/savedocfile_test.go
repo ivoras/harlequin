@@ -225,3 +225,43 @@ func TestSaveDocFromSource(t *testing.T) {
 		}
 	}
 }
+
+// Soft hyphens (U+00AD) in a saved document are stripped from the index and the
+// stored original, so lexical search finds the whole word.
+func TestSaveDocStripsSoftHyphens(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	mgr, err := storage.New(dir, filepath.Join(dir, "harlequin.db"), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mgr.Close()
+	sqlDB := mgr.Shared
+	a := &Agent{DataDir: dir, Docs: documents.NewStore(sqlDB, crossCheckFakeEmbedder{dim: 4}), Storage: mgr}
+	rc := &runContext{userDB: sqlDB, userID: 1}
+	save := a.buildTools(ctx, rc)["save_doc"].handler
+
+	if err := a.tmpRoot(1).Write("s.md", []byte("Hrvat­ski sabor donio je zakon o obveznim od­nosima.")); err != nil {
+		t.Fatal(err)
+	}
+	out, _ := save(ctx, rc, map[string]any{"title": "Soft", "source": "tmp://s.md", "scope": "personal", "is_raw": true})
+	if !strings.Contains(out, "Saved as document") {
+		t.Fatalf("save failed: %q", out)
+	}
+	docs, _ := a.Docs.List(ctx)
+	text, _ := a.Docs.FullText(ctx, sqlDB, docs[0].ID)
+	if strings.Contains(text, "­") || !strings.Contains(text, "Hrvatski sabor") {
+		t.Errorf("index text still has soft hyphens: %q", text)
+	}
+	stored, _, _, _ := a.Docs.StoredFile(ctx, sqlDB, docs[0].ID)
+	files, _ := mgr.UserFilesDir(1)
+	raw, _ := os.ReadFile(filepath.Join(files, stored))
+	if strings.Contains(string(raw), "­") {
+		t.Errorf("stored original still has soft hyphens: %q", raw)
+	}
+	var n int
+	sqlDB.QueryRow(`SELECT COUNT(*) FROM doc_chunks_fts WHERE doc_chunks_fts MATCH 'Hrvatski'`).Scan(&n)
+	if n != 1 {
+		t.Errorf("FTS should find 'Hrvatski', got %d hits", n)
+	}
+}

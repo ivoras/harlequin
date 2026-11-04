@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api, getToken, setToken } from "../lib/api";
-  import { user, view, session, wornHat, toasts, activeProject, projectSheet } from "../lib/stores";
+  import { user, view, session, wornHat, toasts, activeProject, projectSheet, docsVersion } from "../lib/stores";
   import { sc } from "../lib/session.svelte";
   import { pc } from "../lib/projectchat.svelte";
   import { docView } from "../lib/docview.svelte";
@@ -82,6 +82,15 @@
       if (pid && lastPid !== -1) ui.openInspector("team");
       lastPid = pid;
     }
+  });
+  // Server-pushed document changes (agent save/edit/delete, other clients, other
+  // project members) refresh the lists; the first run is the initial value.
+  let seenDocsVersion = $docsVersion;
+  $effect(() => {
+    const v = $docsVersion;
+    if (v === seenDocsVersion) return;
+    seenDocsVersion = v;
+    if ($user) ui.docsChanged();
   });
   // Auto-titler updates arrive as session-title notifications → patch the row.
   $effect(() => {

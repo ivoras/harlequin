@@ -5,7 +5,7 @@ import { api } from "./api";
 import { SessionSocket } from "./ws";
 import { SSE, NOTIFY_SESSION_TITLE } from "./types";
 import type { Message, StreamEvent, Notification } from "./types";
-import { session, toast, lastModel } from "./stores";
+import { session, toast, lastModel, bumpDocs } from "./stores";
 
 export type Item =
   | { kind: "msg"; role: "user" | "assistant"; content: string }
@@ -281,6 +281,9 @@ class SessionController {
         // auto_run notifications are left for a client that runs them.
         break;
       }
+      case SSE.DocumentsChanged:
+        bumpDocs();
+        break;
       case SSE.Error:
         // Keep the failure in the transcript (like the TUI's error block) so
         // the reason survives the transient toast.

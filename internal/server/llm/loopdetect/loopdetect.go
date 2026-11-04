@@ -15,11 +15,11 @@ import (
 )
 
 const (
-	maxBuf     = 48 << 10 // rolling window examined
+	maxBuf     = 128 << 10 // rolling window examined (must hold minRepeats periods of a long loop)
 	checkEvery = 2 << 10  // bytes of new text between checks
 	minTotal   = 6 << 10  // never fire before this much output
 	probeLen   = 240      // size of the tail slice searched for in the window
-	minRepeats = 4        // occurrences of the probe that mean "looping"
+	minRepeats = 10       // occurrences of the probe that mean "looping"; reasoning that re-quotes a source passage 4-6 times is not a loop
 
 	lineWindow   = 64 // non-trivial lines examined
 	minLines     = 24

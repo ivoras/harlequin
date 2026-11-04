@@ -49,7 +49,8 @@
   let newProjectName = $state("");
   let inviteEmail = $state("");
   let chatInput = $state("");
-  let showChatPane = $state(true);
+  // On phones the pane is a bottom sheet covering half the chat, so it starts closed there.
+  let showChatPane = $state(typeof matchMedia === "function" ? !matchMedia("(max-width: 640px)").matches : true);
 
   let started = false;
 

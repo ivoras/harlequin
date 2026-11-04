@@ -18,6 +18,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/auth"
 	"github.com/ivoras/harlequin/internal/server/config"
 	"github.com/ivoras/harlequin/internal/server/cron"
+	"github.com/ivoras/harlequin/internal/server/docevents"
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/email"
 	"github.com/ivoras/harlequin/internal/server/mcp"
@@ -80,6 +81,7 @@ type Server struct {
 	// failure the built-in extractors (PDFExtract, docxextract) take over.
 	Converter DocConverter
 	Hub       *sessionhub.Hub
+	DocEvents *docevents.Bus // document change notifications pushed to connected clients
 	Projects  *project.Store
 	ChatHub   *projectchat.Hub
 

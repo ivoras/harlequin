@@ -101,7 +101,9 @@ document (PDF, DOCX, PPTX, XLSX, HTML, Markdown, CSV) and converts it with Docli
 (to quote it, or `save_doc` it) or when the user wants the entire unabridged page;
 use `WebFetch` for a quick answer from an ordinary page. Web pages are fetched via
 the Zyte browser API when `ZYTE_API_KEY` is set (documents are downloaded directly). Only registered when a document converter (`documents.docling`/`xberg`) is
-configured. Output is capped at 1,000,000 characters (marked when truncated).
+configured. Output is capped at 1,000,000 characters (marked when truncated). The
+result is in the model's context afterwards; the description tells it to use it
+directly rather than fetching the same URL again.
 **Example:** `MarkdownFetch({"url": "https://example.com/annual-report.pdf"})`
 
 ### `WebFetchDOM`

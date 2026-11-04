@@ -408,7 +408,7 @@ func fullText(n *html.Node) string {
 	var rec func(*html.Node)
 	rec = func(node *html.Node) {
 		if node.Type == html.TextNode {
-			b.WriteString(node.Data)
+			b.WriteString(stripSoftHyphens(node.Data))
 			b.WriteByte(' ')
 		}
 		for c := node.FirstChild; c != nil; c = c.NextSibling {
@@ -424,12 +424,16 @@ func ownText(n *html.Node) string {
 	var b strings.Builder
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
 		if c.Type == html.TextNode {
-			b.WriteString(c.Data)
+			b.WriteString(stripSoftHyphens(c.Data))
 			b.WriteByte(' ')
 		}
 	}
 	return strings.Join(strings.Fields(b.String()), " ")
 }
+
+// stripSoftHyphens removes U+00AD (invisible hyphenation hints). They sit inside
+// words in many sources and silently break search and exact-quote matching.
+func stripSoftHyphens(s string) string { return strings.ReplaceAll(s, "\u00ad", "") }
 
 // docOrder assigns each node a document-order index for stable result sorting.
 func docOrder(root *html.Node) map[*html.Node]int {

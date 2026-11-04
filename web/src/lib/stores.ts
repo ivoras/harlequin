@@ -54,3 +54,13 @@ export async function loadOrgName() {
     /* cosmetic; ignore */
   }
 }
+
+// Bumped (debounced) when the server reports that a visible document was created,
+// updated or deleted — by the agent, another client or another project member —
+// so views holding a document list reload. Own-UI actions reload directly.
+export const docsVersion = writable<number>(0);
+let docsBump: ReturnType<typeof setTimeout> | undefined;
+export function bumpDocs(): void {
+  clearTimeout(docsBump);
+  docsBump = setTimeout(() => docsVersion.update((n) => n + 1), 300);
+}

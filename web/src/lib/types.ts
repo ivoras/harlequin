@@ -95,6 +95,7 @@ export const SSE = {
   UserMessage: "user_message",
   Synced: "synced",
   Notification: "notification",
+  DocumentsChanged: "documents_changed",
   Chat: "chat",
 } as const;
 
@@ -141,6 +142,8 @@ export interface StreamEvent {
   notification?: Notification;
   // SSE.Chat payload (project chatroom).
   chat?: ChatMessage;
+  // SSE.DocumentsChanged payload: a document visible to the user changed.
+  doc?: { op: "created" | "updated" | "deleted"; scope: string; project_id?: number; doc_id?: number };
 }
 
 export interface Notification {

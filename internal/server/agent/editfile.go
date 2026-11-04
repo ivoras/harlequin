@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/ivoras/harlequin/internal/server/docevents"
 	"github.com/ivoras/harlequin/internal/server/documents"
 )
 
@@ -142,6 +143,7 @@ func (a *Agent) editDocEntry() toolEntry {
 			if err != nil {
 				return "error: " + err.Error(), nil
 			}
+			out = documents.StripSoftHyphens(out)
 			if strings.TrimSpace(out) == "" {
 				return "error: the edit would leave the document empty; use delete_doc to remove it.", nil
 			}
@@ -154,6 +156,7 @@ func (a *Agent) editDocEntry() toolEntry {
 			if err != nil {
 				return "", err
 			}
+			a.publishDocChange(docevents.Updated, doc.Scope, rc, doc.ID)
 			tmp := path + ".tmp"
 			if err := os.WriteFile(tmp, []byte(out), 0o600); err == nil {
 				err = os.Rename(tmp, path)
