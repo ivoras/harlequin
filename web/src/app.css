@@ -279,3 +279,6 @@ hr { border: none; border-top: 1px solid var(--border); }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .tabs { display: flex; gap: 6px; }
 .tabs button.active { color: var(--accent); border-color: var(--accent-dim); }
+
+/* Block a document citation scrolled to (see focusCited in lib/docview.svelte.ts). */
+.cite-focus { background: color-mix(in srgb, var(--accent, #7c3aed) 22%, transparent); border-radius: 4px; transition: background 1s; }
