@@ -2,6 +2,7 @@ package sessionhub
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -141,5 +142,67 @@ func TestCloseProjectDisconnectsAndExits(t *testing.T) {
 	hub.mu.Unlock()
 	if n != 1 {
 		t.Fatalf("live sessions after CloseProject = %d, want 1 (other project's)", n)
+	}
+}
+
+// failAgent runs a turn that streams a little, then fails (emitting its own
+// error, like the real agent loop does).
+type failAgent struct{}
+
+func (failAgent) LastMessageID(context.Context, int64, int64, int64) (int64, error) { return 0, nil }
+func (failAgent) Run(_ context.Context, _, _, _ int64, _, _, _, _, content string, emit func(types.StreamEvent)) error {
+	emit(types.StreamEvent{Type: types.SSEUserMessage, Text: content})
+	emit(types.StreamEvent{Type: types.SSEThinking, Thinking: "hmm"})
+	emit(types.StreamEvent{Type: types.SSEError, Error: "boom"})
+	return errors.New("boom")
+}
+
+// A client that dropped mid-turn and reconnects AFTER the turn failed must still
+// receive the error and the done event (it used to get nothing, leaving a phone
+// stuck on the last thinking block); a cold reload shows the error once, not the
+// whole finished turn; and the failure is emitted exactly once.
+func TestResumeAfterFailedTurnDeliversError(t *testing.T) {
+	hub := New(failAgent{}, nil, time.Minute)
+	defer hub.Stop()
+	user, sess := testUserSess()
+
+	a := hub.Attach(user, 0, sess)
+	defer a.Close()
+	a.Resume(0)
+	a.Submit("go")
+	deadline := time.After(2 * time.Second)
+	for {
+		_, replay := hub.Attach(user, 0, sess).Resume(0)
+		if len(replay) > 0 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("turn never finished")
+		case <-time.After(20 * time.Millisecond):
+		}
+	}
+
+	// Warm client that had seen only seq 1..2 (user echo + thinking).
+	w := hub.Attach(user, 0, sess)
+	defer w.Close()
+	synced, tail := w.Resume(2)
+	if synced.Running {
+		t.Fatal("turn should be over")
+	}
+	var types_ []string
+	for _, ev := range tail {
+		types_ = append(types_, string(ev.Type))
+	}
+	if len(tail) != 2 || tail[0].Type != types.SSEError || tail[1].Type != types.SSEDone {
+		t.Fatalf("warm replay after failure = %v, want [error done] (error exactly once)", types_)
+	}
+
+	// Cold reload: only the error, not the finished turn's events.
+	c := hub.Attach(user, 0, sess)
+	defer c.Close()
+	_, cold := c.Resume(0)
+	if len(cold) != 1 || cold[0].Type != types.SSEError || cold[0].Error != "boom" {
+		t.Fatalf("cold replay after failure = %+v, want a single error", cold)
 	}
 }

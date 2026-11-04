@@ -1,6 +1,6 @@
 <script lang="ts">
   import { api } from "../lib/api";
-  import { user, activeProject, toast } from "../lib/stores";
+  import { user, activeProject, toast, docsVersion } from "../lib/stores";
   import { isElevated } from "../lib/types";
   import { uploadWithProgress, ingestLabel } from "../lib/ingest";
   import type { AlignPair, AlignResult, AlignSection, Document, SearchResult } from "../lib/types";
@@ -47,6 +47,7 @@
   // $effect runs on mount and whenever the active project changes.
   $effect(() => {
     void $activeProject;
+    void $docsVersion; // server-pushed document changes
     load();
   });
   async function search() {

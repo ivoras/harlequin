@@ -207,3 +207,17 @@ func TestSkeletonDepth(t *testing.T) {
 		t.Error("Paths=true should set Path")
 	}
 }
+
+func TestTextContentStripsSoftHyphens(t *testing.T) {
+	d, err := Parse([]byte("<html><body><p>Hrvat­ski sa­bor</p></body></html>"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ns, err := d.Query("p", 100)
+	if err != nil || len(ns) != 1 {
+		t.Fatalf("query: %v %v", ns, err)
+	}
+	if strings.Contains(ns[0].Text, "­") || ns[0].Text != "Hrvatski sabor" {
+		t.Errorf("soft hyphens not stripped: %q", ns[0].Text)
+	}
+}

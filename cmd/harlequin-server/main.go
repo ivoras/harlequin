@@ -18,6 +18,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/auth"
 	"github.com/ivoras/harlequin/internal/server/config"
 	"github.com/ivoras/harlequin/internal/server/cron"
+	"github.com/ivoras/harlequin/internal/server/docevents"
 	"github.com/ivoras/harlequin/internal/server/docling"
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/email"
@@ -247,6 +248,7 @@ func main() {
 	} else if base := cfg.Documents.Docling.BaseURL; base != "" {
 		docConv = docling.New(base, cfg.Documents.Docling.Timeout.D(), cfg.Documents.Docling.FastValue())
 	}
+	docEvents := docevents.New() // document change pushes to connected clients
 	ag := &agent.Agent{
 		Provider:            router,
 		Storage:             store,
@@ -258,6 +260,7 @@ func main() {
 		Session:             sessionLog,
 		WebFetcher:          webFetcher,
 		MarkdownConverter:   docConv, // MarkdownFetch tool; nil when no converter is configured
+		DocEvents:           docEvents,
 		WebSearch:           websearch.New(cfg.WebSearch.APIKey, cfg.WebSearch.APIBase),
 		MCP:                 mcpManager,
 		WebFetchModel:       cfg.Agent.WebFetch.Model,
@@ -306,6 +309,7 @@ func main() {
 		Presence:   presenceTracker,
 		Email:      emailSender,
 		Hub:        hub,
+		DocEvents:  docEvents,
 		Projects:   projectStore,
 		ChatHub:    projectchat.New(),
 	}

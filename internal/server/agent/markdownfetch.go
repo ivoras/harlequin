@@ -30,6 +30,7 @@ const (
 - Web pages are retrieved through the Zyte browser API when configured (JavaScript-rendered content, bot-protected sites); documents (PDF, DOCX, PPTX, XLSX, Markdown, CSV) are downloaded directly.
 - Prefer WebFetch only when you need one specific answer from an ordinary page (cheaper: no conversion service, short answer).
 - Input: a valid URL (auto-upgrades HTTP→HTTPS). Redirects are followed.
+- The result is the content itself and is now in your context: work from it directly. Do NOT fetch the same URL again (not with MarkdownFetch, WebFetch, WebFetchDOM or fetch() in run_js) — a repeat fetch wastes time and money and returns the same text. Re-fetch only if the page has since changed or the result was truncated.
 - Very long results are truncated and say so.
 `
 	// markdownFetchMaxRunes caps what is returned to the model.

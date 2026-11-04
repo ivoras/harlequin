@@ -24,7 +24,7 @@ func htmlToMarkdown(htmlBytes []byte, baseURL string) (string, string) {
 	if err != nil {
 		return string(htmlBytes), title
 	}
-	return strings.TrimSpace(string(mdBytes)), title
+	return strings.TrimSpace(strings.ReplaceAll(string(mdBytes), "\u00ad", "")), title
 }
 
 // findTitle returns the document's <title> text, if any.

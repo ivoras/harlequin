@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/ivoras/harlequin/internal/server/docevents"
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/jsrun"
 	"github.com/ivoras/harlequin/internal/server/llm"
@@ -607,6 +608,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 					}
 					content = strings.TrimSpace(string(data))
 				}
+				content = documents.StripSoftHyphens(content)
 				if title == "" || content == "" {
 					return "error: title and content (or a non-empty source file) are required", nil
 				}
@@ -658,6 +660,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 				// reconstructing it from chunk boundaries (which don't preserve original
 				// whitespace and can visibly mangle content, e.g. splitting a citation).
 				a.storeSavedDocFile(ctx, db, scope, rc, doc, content)
+				a.publishDocChange(docevents.Created, scope, rc, doc.ID)
 				return fmt.Sprintf("Saved as document %s.%d (%d sections); it is now searchable with search_docs.",
 					scopeLetter(scope), doc.ID, doc.Chunks), nil
 			},
@@ -712,6 +715,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 				if err := a.Docs.DeleteFrom(ctx, db, filesDir, doc.ID); err != nil {
 					return "", err
 				}
+				a.publishDocChange(docevents.Deleted, doc.Scope, rc, doc.ID)
 				return fmt.Sprintf("Deleted document %s (%q); it is no longer in the corpus.", ref, doc.Title), nil
 			},
 		}
@@ -1245,4 +1249,13 @@ func memoryRefError(err error, kind, value string) string {
 		return fmt.Sprintf("error: %s %q is ambiguous (%v); use id instead", kind, value, err)
 	}
 	return "error: " + err.Error()
+}
+
+// publishDocChange tells connected clients a document changed (no-op without a bus).
+func (a *Agent) publishDocChange(op, scope string, rc *runContext, docID int64) {
+	ev := docevents.Event{Op: op, Scope: scope, UserID: rc.userID, DocID: docID}
+	if scope == documents.ScopeProject {
+		ev.ProjectID = rc.projectID
+	}
+	a.DocEvents.Publish(ev)
 }

@@ -20,6 +20,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ivoras/harlequin/internal/server/auth"
+	"github.com/ivoras/harlequin/internal/server/docevents"
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/docxextract"
 	"github.com/ivoras/harlequin/internal/server/email"
@@ -851,6 +852,9 @@ func (s *Server) ingestToScope(ctx context.Context, u *types.User, req types.Cre
 	if err != nil {
 		return nil, http.StatusInternalServerError, err.Error()
 	}
+	if d != nil {
+		s.DocEvents.Publish(docevents.Event{Op: docevents.Created, Scope: scope, ProjectID: req.ProjectID, UserID: u.ID, DocID: d.ID})
+	}
 	return d, 0, ""
 }
 
@@ -1171,6 +1175,8 @@ func (s *Server) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	pid, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64)
+	s.DocEvents.Publish(docevents.Event{Op: docevents.Deleted, Scope: scope, ProjectID: pid, UserID: u.ID, DocID: id})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 

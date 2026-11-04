@@ -188,6 +188,7 @@ type liveSession struct {
 	// turn began: the cut between history (load from DB) and the live buffer.
 	committedThrough int64
 	turnCancel       context.CancelFunc
+	turnSawErr       bool // an SSEError was emitted this turn (so the hub need not add one)
 }
 
 // loop runs the session: it serializes prompts (one turn at a time) and reaps the
@@ -260,6 +261,7 @@ func (ls *liveSession) runTurn(content string) {
 	turnCtx, cancel := context.WithCancel(ls.hub.baseCtx)
 	ls.mu.Lock()
 	ls.buf = nil // fresh buffer; seq keeps incrementing across turns
+	ls.turnSawErr = false
 	ls.running = true
 	ls.committedThrough = startID
 	ls.turnCancel = cancel
@@ -270,11 +272,12 @@ func (ls *liveSession) runTurn(content string) {
 	ls.mu.Lock()
 	ls.running = false
 	ls.turnCancel = nil
+	sawErr := ls.turnSawErr
 	ls.mu.Unlock()
 	cancel()
 
 	// Surface a hard error not already streamed by the loop (skip interrupts).
-	if err != nil && turnCtx.Err() == nil {
+	if err != nil && turnCtx.Err() == nil && !sawErr {
 		ls.emit(types.StreamEvent{Type: types.SSEError, Error: err.Error()})
 	}
 	// Run emits SSEDone only on success, but clients end the turn only on
@@ -294,6 +297,9 @@ func (ls *liveSession) emit(ev types.StreamEvent) {
 	ls.seq++
 	ev.Seq = ls.seq
 	ls.buf = append(ls.buf, ev)
+	if ev.Type == types.SSEError {
+		ls.turnSawErr = true
+	}
 	for sub := range ls.subs {
 		select {
 		case sub.ch <- ev:
@@ -345,9 +351,23 @@ func (ls *liveSession) resume(sub *subscriber, haveSeq int) (types.StreamEvent, 
 		Seq:              ls.seq,
 	}
 	var replay []types.StreamEvent
-	if ls.running {
+	switch {
+	case ls.running || haveSeq > 0:
+		// An in-flight turn, or a warm client that dropped mid-turn and came back
+		// after it ended: it must still receive what it missed (tool results, the
+		// error, the final done) or its transcript is stuck at the last thing it saw.
 		for _, ev := range ls.buf {
 			if ev.Seq > haveSeq {
+				replay = append(replay, ev)
+			}
+		}
+	default:
+		// Cold resume after a finished turn: the committed history the client loads
+		// already holds the turn's messages, but errors are not stored there, so
+		// replay just the failure(s) — the user must still be able to see why the
+		// turn ended. (The buffer is cleared when the next turn starts.)
+		for _, ev := range ls.buf {
+			if ev.Type == types.SSEError {
 				replay = append(replay, ev)
 			}
 		}

@@ -285,6 +285,7 @@ func (s *Store) IngestInto(ctx context.Context, db *sql.DB, req types.CreateDocu
 // IngestIntoProgress is IngestInto with a progress callback for the embedding
 // phase, called after each embedded batch with (done, total) chunk counts.
 func (s *Store) IngestIntoProgress(ctx context.Context, db *sql.DB, req types.CreateDocumentRequest, userID int64, progress func(done, total int)) (*types.Document, error) {
+	req.Content = StripSoftHyphens(req.Content)
 	mime := req.Mime
 	if mime == "" {
 		mime = "text/plain"
@@ -375,6 +376,7 @@ func (s *Store) indexChunks(ctx context.Context, tx *sql.Tx, docID int64, conten
 // Its chunks are rebuilt, so chunk ids — and page numbers, which only a paged
 // source has — change.
 func (s *Store) ReplaceContent(ctx context.Context, db *sql.DB, docID int64, content string) (int, error) {
+	content = StripSoftHyphens(content)
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -1028,3 +1030,8 @@ func chunkText(text string, base int) []chunkRec {
 	}
 	return chunks
 }
+
+// StripSoftHyphens removes U+00AD (invisible hyphenation hints) from text. Sources
+// such as legal-gazette HTML embed them mid-word ("Hrvat\u00adski"); left in, they
+// break lexical search and exact-quote verification while looking identical.
+func StripSoftHyphens(s string) string { return strings.ReplaceAll(s, "\u00ad", "") }

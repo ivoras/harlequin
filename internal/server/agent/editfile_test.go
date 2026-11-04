@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ivoras/harlequin/internal/server/docevents"
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/storage"
 	"github.com/ivoras/harlequin/internal/shared/types"
@@ -127,5 +128,58 @@ func TestEditDocTool(t *testing.T) {
 	}
 	if out, _ := edit(ctx, rc, map[string]any{"doc": "u.9999", "append": "x"}); !strings.HasPrefix(out, "error:") {
 		t.Errorf("missing doc should error: %q", out)
+	}
+}
+
+// save_doc, edit_doc and delete_doc each tell the doc-event bus, so connected
+// clients refresh their lists.
+func TestDocToolsPublishChangeEvents(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	mgr, err := storage.New(dir, filepath.Join(dir, "harlequin.db"), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mgr.Close()
+	sqlDB := mgr.Shared
+
+	bus := docevents.New()
+	owner := bus.Subscribe(1, nil)
+	other := bus.Subscribe(2, nil)
+	a := &Agent{DataDir: dir, Docs: documents.NewStore(sqlDB, crossCheckFakeEmbedder{dim: 4}), Storage: mgr, DocEvents: bus}
+	rc := &runContext{userDB: sqlDB, userID: 1}
+	tools := a.buildTools(ctx, rc)
+
+	out, _ := tools["save_doc"].handler(ctx, rc, map[string]any{"title": "T", "content": "Some text to keep.", "scope": "personal", "is_raw": true})
+	if !strings.Contains(out, "Saved as document") {
+		t.Fatalf("save: %q", out)
+	}
+	ref := out[strings.Index(out, "u."):]
+	ref = ref[:strings.IndexAny(ref, " (")]
+	next := func(s *docevents.Sub) (docevents.Event, bool) {
+		select {
+		case ev := <-s.C:
+			return ev, true
+		default:
+			return docevents.Event{}, false
+		}
+	}
+	if ev, ok := next(owner); !ok || ev.Op != docevents.Created || ev.Scope != "personal" {
+		t.Fatalf("save_doc event = %+v ok=%v", ev, ok)
+	}
+	if out, _ := tools["edit_doc"].handler(ctx, rc, map[string]any{"doc": ref, "append": "more"}); !strings.Contains(out, "Edited document") {
+		t.Fatalf("edit: %q", out)
+	}
+	if ev, ok := next(owner); !ok || ev.Op != docevents.Updated {
+		t.Fatalf("edit_doc event = %+v ok=%v", ev, ok)
+	}
+	if out, _ := tools["delete_doc"].handler(ctx, rc, map[string]any{"doc": ref}); !strings.Contains(out, "Deleted document") {
+		t.Fatalf("delete: %q", out)
+	}
+	if ev, ok := next(owner); !ok || ev.Op != docevents.Deleted {
+		t.Fatalf("delete_doc event = %+v ok=%v", ev, ok)
+	}
+	if _, ok := next(other); ok {
+		t.Error("another user received a personal-document event")
 	}
 }

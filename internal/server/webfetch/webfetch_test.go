@@ -116,3 +116,10 @@ func TestCache(t *testing.T) {
 		t.Fatal("expired entry should not be returned")
 	}
 }
+
+func TestHTMLToMarkdownStripsSoftHyphens(t *testing.T) {
+	md, _ := htmlToMarkdown([]byte("<html><body><p>Hrvat­ski sabor</p></body></html>"), "https://example.com/")
+	if strings.Contains(md, "­") || !strings.Contains(md, "Hrvatski sabor") {
+		t.Errorf("got %q", md)
+	}
+}

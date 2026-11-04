@@ -430,7 +430,19 @@ const (
 	// SSEChat is a project chatroom message broadcast to connected members
 	// (payload in StreamEvent.Chat).
 	SSEChat = "chat"
+	// SSEDocumentsChanged tells the client a document it can see was created,
+	// updated or deleted (payload in StreamEvent.Doc); clients answer by
+	// re-listing documents. Connection-level: not part of a turn's replay buffer.
+	SSEDocumentsChanged = "documents_changed"
 )
+
+// DocChange is the payload of an SSEDocumentsChanged event.
+type DocChange struct {
+	Op        string `json:"op"`    // created | updated | deleted
+	Scope     string `json:"scope"` // personal | shared | project
+	ProjectID int64  `json:"project_id,omitempty"`
+	DocID     int64  `json:"doc_id,omitempty"`
+}
 
 // WebSocket client→server frame types (WSClientMessage.Type).
 const (
@@ -498,6 +510,8 @@ type StreamEvent struct {
 	// Notification (SSENotification) is a server→user notification pushed to the
 	// connected client.
 	Notification *Notification `json:"notification,omitempty"`
+	// Doc (SSEDocumentsChanged) describes a document change visible to the user.
+	Doc *DocChange `json:"doc,omitempty"`
 	// Chat (SSEChat) is a project chatroom message.
 	Chat *ChatMessage `json:"chat,omitempty"`
 }

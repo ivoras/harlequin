@@ -17,6 +17,7 @@ import (
 
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/jsrun"
+	"github.com/ivoras/harlequin/internal/server/docevents"
 	"github.com/ivoras/harlequin/internal/server/llm"
 	"github.com/ivoras/harlequin/internal/server/llm/loopdetect"
 	"github.com/ivoras/harlequin/internal/server/mcp"
@@ -46,6 +47,8 @@ type Agent struct {
 	WebFetcher *webfetch.Client
 	// MarkdownConverter (docling/xberg) backs the MarkdownFetch tool; nil disables it.
 	MarkdownConverter MarkdownConverter
+	// DocEvents, if set, is told about documents the agent creates, edits or deletes.
+	DocEvents *docevents.Bus
 	// WebSearch, if configured, provides the WebSearch tool (Brave Search API).
 	WebSearch *websearch.Client
 	MCP        *mcp.Manager
