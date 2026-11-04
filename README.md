@@ -55,6 +55,10 @@ Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a fu
   by the user with the `run_js` tool, *or* as templated JS code
   [within skill files](https://raw.githubusercontent.com/ivoras/harlequin/refs/heads/master/skills/example-greeter/SKILL.md).
 
+## What it does not
+
+- **It's not a coding agent** - it doesn't operate on code repos.
+
 ## Tech
 
 A client-server AI agent harness written in Go. A REST + WebSocket **server** communicates with LLMs,
