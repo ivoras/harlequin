@@ -198,6 +198,10 @@ type RoutingConfig struct {
 	DefaultProvider string            `yaml:"default_provider"`
 	FallbackOrder   []string          `yaml:"fallback_order"`
 	ModelRules      map[string]string `yaml:"model_rules"`
+	// FallbackModel is tried (on the default provider) when the primary model is
+	// unreachable after retries — e.g. a different model on the same gateway.
+	// Add its context_windows and prices entries. Empty = no model fallback.
+	FallbackModel string `yaml:"fallback_model"`
 }
 
 // Price is the per-1K-token cost for a model.

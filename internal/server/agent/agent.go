@@ -15,9 +15,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ivoras/harlequin/internal/server/docevents"
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/jsrun"
-	"github.com/ivoras/harlequin/internal/server/docevents"
 	"github.com/ivoras/harlequin/internal/server/llm"
 	"github.com/ivoras/harlequin/internal/server/llm/loopdetect"
 	"github.com/ivoras/harlequin/internal/server/mcp"
@@ -51,7 +51,7 @@ type Agent struct {
 	DocEvents *docevents.Bus
 	// WebSearch, if configured, provides the WebSearch tool (Brave Search API).
 	WebSearch *websearch.Client
-	MCP        *mcp.Manager
+	MCP       *mcp.Manager
 	// Cron, if set, lets the agent schedule/list/delete the user's cron jobs.
 	Cron CronStore
 	// Projects, if set, lets the search tools reach every project the user is
@@ -131,19 +131,19 @@ type runContext struct {
 	sessDB *sql.DB
 	// projectID is non-zero for a project session; projectDB then holds the
 	// project's data (sessions/messages/memory). nil/zero for a personal session.
-	projectID  int64
-	projectDB  *sql.DB
+	projectID int64
+	projectDB *sql.DB
 	// foreignProjDBs caches read-only handles to OTHER projects the user is a
 	// member of, opened lazily when a p<id>.N reference is resolved and closed
 	// when the turn ends (closeForeignDBs).
 	foreignProjDBs map[int64]*sql.DB
-	hat        *types.Hat // the session's worn hat, or nil
+	hat            *types.Hat // the session's worn hat, or nil
 	// skillInfos is the hat-aware visible-skill catalogue, resolved once per
 	// turn (after loadHat) and reused by the system prompt, the catalogue log,
 	// and skill-tool registration.
 	skillInfos []types.SkillInfo
-	api        string     // transport this session arrived over (e.g. "REST")
-	iface      string     // interface/medium this session uses (e.g. "TUI")
+	api        string // transport this session arrived over (e.g. "REST")
+	iface      string // interface/medium this session uses (e.g. "TUI")
 	turn       int
 	step       int
 	emit       EmitFunc
@@ -195,11 +195,13 @@ func (a *Agent) Run(ctx context.Context, projectID, sessionID, userID int64, use
 				rc.projectDB = projDB
 				ft, err := a.turn(ctx, rc, userContent)
 				finalText = ft
+				a.recordTurnError(ctx, rc, err)
 				return err
 			})
 		}
 		ft, err := a.turn(ctx, rc, userContent)
 		finalText = ft
+		a.recordTurnError(ctx, rc, err)
 		return err
 	}
 	if err := a.Storage.WithUser(ctx, userID, run); err != nil {
@@ -302,6 +304,9 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 
 	msgs := []llm.Message{{Role: llm.RoleSystem, Content: systemPrompt}}
 	for _, m := range history {
+		if m.Role == llm.RoleError {
+			continue // stored failure notice, for display only
+		}
 		msgs = append(msgs, llm.Message{
 			Role: m.Role, Content: m.Content, ToolCalls: toLLMToolCalls(m.ToolCalls),
 			ToolCallID: m.ToolCallID, Name: m.Name,
@@ -326,6 +331,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	var haveSrvTimings bool
 
 	loopRetries := 0
+	streamRetries := 0 // consecutive transient mid-stream failures of the current step
 	for step := 1; step <= a.MaxSteps; step++ {
 		rc.step = step
 		if ctx.Err() != nil {
@@ -347,6 +353,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 			Messages:    msgs,
 			Tools:       toolDefs,
 			Temperature: llm.Ptr(a.Temperature),
+			UseFallback: streamRetries > maxStreamRetries,
 		})
 		if err != nil {
 			emit(types.StreamEvent{Type: types.SSEError, Error: err.Error()})
@@ -362,6 +369,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 		lastPPPct := -1 // prompt-progress throttle (per LLM call)
 		var thinkLoop, textLoop loopdetect.Detector
 		loopKind, loopEvidence := "", ""
+		retryStep := false
 		for chunk := range stream {
 			if chunk.PromptProgress != nil {
 				// Live prefill progress (llama.cpp). Throttle to ~every 5% so the
@@ -390,6 +398,28 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 				// Keep what was generated before the failure: it is otherwise lost,
 				// and is what you need to see why a long call went wrong.
 				a.logPartialResponse(ctx, rc, assistantText, thinkingText, chunk.Err)
+				if ctx.Err() == nil && llm.IsTransient(chunk.Err) && streamRetries < a.maxStreamAttempts() {
+					// The provider dropped the stream mid-answer. Discard the partial
+					// step and run it again (the last attempt on the fallback model).
+					cancelCall()
+					go func() { // drain so the provider goroutine can finish
+						for range stream {
+						}
+					}()
+					wait := llm.RetryBackoff[min(streamRetries, len(llm.RetryBackoff)-1)]
+					streamRetries++
+					log.Printf("agent: LLM stream failed (%v) — retrying step %d in %s (attempt %d/%d)", chunk.Err, step, wait, streamRetries, a.maxStreamAttempts())
+					a.logEvent(ctx, rc, sessionlog.TypeLLMRetry, map[string]any{
+						"error": chunk.Err.Error(), "attempt": streamRetries, "wait_seconds": wait.Seconds(),
+						"fallback_next": streamRetries > maxStreamRetries,
+					})
+					if !llm.SleepBackoff(ctx, wait) {
+						return "", ctx.Err()
+					}
+					emit(types.StreamEvent{Type: types.SSEStepReset})
+					retryStep = true
+					break
+				}
 				emit(types.StreamEvent{Type: types.SSEError, Error: chunk.Err.Error()})
 				a.logEvent(ctx, rc, sessionlog.TypeError, map[string]any{"error": chunk.Err.Error()})
 				return "", chunk.Err
@@ -465,6 +495,12 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 			}
 		}
 
+		if retryStep {
+			step--
+			continue
+		}
+		streamRetries = 0
+
 		if loopKind != "" {
 			cancelCall()
 			go func() { // let the provider goroutine finish; nobody reads the stream now
@@ -488,6 +524,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 			// Retry the step once, nudging the model out of the rut. The notice is
 			// transient: it is not stored in the session.
 			msgs = append(msgs, llm.Message{Role: llm.RoleUser, Content: loopNudge})
+			emit(types.StreamEvent{Type: types.SSEStepReset})
 			step--
 			continue
 		}
@@ -793,7 +830,10 @@ const (
 	maxThinkingChars = 300_000
 	// maxLoopRetries is how many times a turn re-asks after stopping a looping call.
 	maxLoopRetries = 1
-	loopNudge      = "[Harlequin notice] Your previous attempt was stopped because your reasoning got stuck repeating itself. Do not continue that line of reasoning. Pick the simplest reasonable approach and act now: call a tool, or answer. If you need a decision from the user, use ask_user."
+	// maxStreamRetries is how many times a step whose stream died mid-answer is
+	// re-run on the primary model before one last attempt on the fallback model.
+	maxStreamRetries = 2
+	loopNudge        = "[Harlequin notice] Your previous attempt was stopped because your reasoning got stuck repeating itself. Do not continue that line of reasoning. Pick the simplest reasonable approach and act now: call a tool, or answer. If you need a decision from the user, use ask_user."
 )
 
 // logPartialResponse records an LLM call that did not complete (error or
@@ -816,4 +856,24 @@ func truncateRunes(s string, n int) string {
 		return string(r[:n]) + "…"
 	}
 	return s
+}
+
+// maxStreamAttempts is the retry budget for a mid-stream failure: the primary
+// retries, plus one attempt on the fallback model when one is configured.
+func (a *Agent) maxStreamAttempts() int {
+	if fb, ok := a.Provider.(interface{ HasFallback() bool }); ok && fb.HasFallback() {
+		return maxStreamRetries + 1
+	}
+	return maxStreamRetries
+}
+
+// recordTurnError stores a failed turn's error in the session so every client
+// shows why the turn ended, also after a reload. It is never sent to a model.
+func (a *Agent) recordTurnError(ctx context.Context, rc *runContext, turnErr error) {
+	if turnErr == nil || ctx.Err() != nil || rc.sessDB == nil {
+		return
+	}
+	if _, err := a.Sessions.AddMessage(context.WithoutCancel(ctx), rc.sessDB, rc.sessionID, llm.RoleError, turnErr.Error(), nil); err != nil {
+		log.Printf("agent: store turn error for session %d: %v", rc.sessionID, err)
+	}
 }

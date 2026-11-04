@@ -105,6 +105,9 @@ func main() {
 	for model := range cfg.Routing.ModelRules {
 		configuredModels[model] = true
 	}
+	if cfg.Routing.FallbackModel != "" {
+		configuredModels[cfg.Routing.FallbackModel] = true
+	}
 	for _, p := range cfg.Providers {
 		if p.ContextWindow > 0 {
 			ctxWindows[p.Model] = p.ContextWindow
@@ -126,6 +129,7 @@ func main() {
 		}
 	}
 	router := llm.NewRoutingProvider(providers, cfg.Routing.DefaultProvider, cfg.Routing.FallbackOrder, cfg.Routing.ModelRules, ctxWindows, nil)
+	router.SetFallbackModel(cfg.Routing.FallbackModel)
 
 	embedder := embed.New(cfg.Embeddings.BaseURL, cfg.Embeddings.APIKey, cfg.Embeddings.Model, cfg.Embeddings.Dim, cfg.Embeddings.QueryPrefix, cfg.Embeddings.DocPrefix)
 
@@ -340,7 +344,7 @@ func main() {
 
 	// Background maintenance: expire memories, sweep old session logs, and evict
 	// stale per-user tmp dumps (hourly).
-	go maintenance(store, memStore, sessionLog, ag, cfg.DataRetentionDaysValue())
+	go maintenance(authStore, store, memStore, sessionLog, ag, cfg.DataRetentionDaysValue())
 
 	// Start the cron scheduler (1-minute granularity; each due job runs in its
 	// own goroutine).
@@ -401,7 +405,7 @@ func (a webFetchAdapter) FetchRaw(ctx context.Context, url string) (jsrun.FetchR
 	return jsrun.FetchResult{Status: r.Status, Body: r.Body, FinalURL: r.FinalURL, ContentType: r.ContentType}, nil
 }
 
-func maintenance(store *storage.Manager, mem *memory.Store, sessionLog *sessionlog.Logger, ag *agent.Agent, dataRetentionDays int) {
+func maintenance(authStore *auth.Store, store *storage.Manager, mem *memory.Store, sessionLog *sessionlog.Logger, ag *agent.Agent, dataRetentionDays int) {
 	const sweepInterval = time.Hour
 	ticker := time.NewTicker(sweepInterval)
 	defer ticker.Stop()
@@ -414,6 +418,7 @@ func maintenance(store *storage.Manager, mem *memory.Store, sessionLog *sessionl
 		})
 		sessionLog.SweepRetention(dataRetentionDays)
 		ag.SweepTmp(dataRetentionDays)
+		authStore.PruneTokens(ctx)
 	}
 	sweep() // run once at startup, then every hour
 	for range ticker.C {

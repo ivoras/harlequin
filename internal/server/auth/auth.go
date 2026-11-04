@@ -29,12 +29,15 @@ var (
 	ErrNoPendingRegistration = errors.New("no pending registration")
 	ErrCodeExpired           = errors.New("verification code expired")
 	ErrTooManyAttempts       = errors.New("too many verification attempts")
+	ErrCodeTooSoon           = errors.New("a verification code was just sent")
 )
 
 // Registration tuning.
 const (
-	registrationCodeTTL = 15 * time.Minute
-	maxVerifyAttempts   = 5
+	registrationCodeTTL  = 15 * time.Minute
+	maxVerifyAttempts    = 5
+	registrationCooldown = time.Minute
+	tokenTTL             = 90 * 24 * time.Hour
 )
 
 // ctxKey is the private type for context keys.
@@ -173,10 +176,16 @@ func (s *Store) issueToken(ctx context.Context, userID int64) (string, error) {
 	token := base64.RawURLEncoding.EncodeToString(buf)
 	sum := sha256Hex(token)
 	if _, err := s.db.ExecContext(ctx,
-		`INSERT INTO api_tokens(user_id, token_sha256) VALUES (?, ?)`, userID, sum); err != nil {
+		`INSERT INTO api_tokens(user_id, token_sha256, expires_at) VALUES (?, ?, ?)`, userID, sum, time.Now().Add(tokenTTL)); err != nil {
 		return "", err
 	}
 	return token, nil
+}
+
+// PruneTokens deletes expired API tokens.
+func (s *Store) PruneTokens(ctx context.Context) {
+	_, _ = s.db.ExecContext(ctx, `DELETE FROM api_tokens WHERE (expires_at IS NOT NULL AND expires_at < ?) OR (expires_at IS NULL AND created_at < ?)`,
+		time.Now(), time.Now().Add(-tokenTTL))
 }
 
 // StartRegistration records (or replaces) a pending self-registration for email
@@ -193,6 +202,24 @@ func (s *Store) StartRegistration(ctx context.Context, email, password string) (
 		return "", err
 	}
 
+	// A new request must not hand out fresh guesses: keep the attempt count while
+	// the previous code is still live, and rate-limit how often codes are issued.
+	attempts := 0
+	var prevExpires time.Time
+	switch err := s.db.QueryRowContext(ctx,
+		`SELECT attempts, expires_at FROM pending_registrations WHERE email = ?`, email).Scan(&attempts, &prevExpires); {
+	case err == nil:
+		now := time.Now()
+		if now.Before(prevExpires.Add(registrationCooldown - registrationCodeTTL)) {
+			return "", ErrCodeTooSoon
+		}
+		if !now.Before(prevExpires) {
+			attempts = 0 // old code expired: start over
+		}
+	case !errors.Is(err, sql.ErrNoRows):
+		return "", err
+	}
+
 	pwHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return "", err
@@ -205,17 +232,17 @@ func (s *Store) StartRegistration(ctx context.Context, email, password string) (
 	expires := time.Now().Add(registrationCodeTTL)
 
 	// Upsert so re-requesting before verifying refreshes the code, password and
-	// expiry, and resets the attempt counter.
+	// expiry (the attempt counter carries over, see above).
 	_, err = s.db.ExecContext(ctx,
 		`INSERT INTO pending_registrations(email, password_hash, code_hash, attempts, expires_at)
-		 VALUES (?, ?, ?, 0, ?)
+		 VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT(email) DO UPDATE SET
 		   password_hash = excluded.password_hash,
 		   code_hash     = excluded.code_hash,
-		   attempts      = 0,
+		   attempts      = excluded.attempts,
 		   expires_at    = excluded.expires_at,
 		   created_at    = CURRENT_TIMESTAMP`,
-		email, string(pwHash), codeHash, expires)
+		email, string(pwHash), codeHash, attempts, expires)
 	if err != nil {
 		return "", err
 	}

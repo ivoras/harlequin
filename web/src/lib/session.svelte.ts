@@ -281,6 +281,17 @@ class SessionController {
         // auto_run notifications are left for a client that runs them.
         break;
       }
+      case SSE.StepReset: {
+        // The failed step's unfinished thinking/text (everything after the last
+        // tool or user item) is re-streamed from scratch.
+        while (this.items.length) {
+          const l = this.items[this.items.length - 1];
+          if (l.kind === "thinking" || (l.kind === "msg" && l.role === "assistant")) this.items.pop();
+          else break;
+        }
+        this.streamingAssistant = null;
+        break;
+      }
       case SSE.DocumentsChanged:
         bumpDocs();
         break;
@@ -316,6 +327,9 @@ class SessionController {
 function toItems(m: Message): Item[] {
   if (m.role === "user" || m.role === "assistant") {
     return m.content ? [{ kind: "msg", role: m.role, content: m.content }] : [];
+  }
+  if (m.role === "error") {
+    return [{ kind: "error", text: m.content }];
   }
   if (m.role === "tool") {
     return [{ kind: "tool", name: m.name || "tool", args: "", output: m.content, ms: 0, done: true }];

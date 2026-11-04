@@ -223,9 +223,9 @@ type Notification struct {
 // Project is a shared workspace: a collection of members, sessions, documents,
 // memories, and a chatroom, each project backed by its own database.
 type Project struct {
-	ID        int64     `json:"id"`
-	Name      string    `json:"name"`
-	CreatedBy int64     `json:"created_by"`
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	CreatedBy int64  `json:"created_by"`
 	// CreatedByEmail is the creator's email (list/detail responses), so clients
 	// can disambiguate projects with duplicate names.
 	CreatedByEmail string    `json:"created_by_email,omitempty"`
@@ -417,6 +417,9 @@ const (
 	SSEAskUser        = "ask_user"
 	SSEPromptProgress = "prompt_progress" // llama.cpp prefill progress, before first token
 	SSEDone           = "done"
+	// SSEStepReset: the step streamed so far failed and is being re-run; clients
+	// drop its unfinished thinking/text so the retry does not repeat it.
+	SSEStepReset = "step_reset"
 	// SSEUserMessage echoes the user's prompt as the first event of a turn, so a
 	// (re)connecting client renders it from the stream rather than optimistically
 	// — making resume a single source of truth.

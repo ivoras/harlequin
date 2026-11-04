@@ -21,6 +21,8 @@ const (
 	RoleUser      = "user"
 	RoleAssistant = "assistant"
 	RoleTool      = "tool"
+	// RoleError marks a stored turn failure: shown to the user, never sent to a model.
+	RoleError = "error"
 )
 
 // Message is a single chat message in OpenAI format.
@@ -69,6 +71,9 @@ type ChatRequest struct {
 	// delegate calls like WebFetch analysis, where a tiny reasoning model would
 	// otherwise spend its whole budget thinking and return no answer.
 	DisableThinking bool
+	// UseFallback sends the request straight to the router's fallback model,
+	// skipping the primary (set by the agent after repeated mid-stream failures).
+	UseFallback bool
 }
 
 // Ptr returns a pointer to v (for optional request fields).
@@ -273,7 +278,7 @@ func (p *OpenAICompatible) Chat(ctx context.Context, req ChatRequest) (<-chan Ch
 		defer resp.Body.Close()
 		fail()
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("provider %s: status %d: %s", p.name, resp.StatusCode, strings.TrimSpace(string(msg)))
+		return nil, &HTTPStatusError{Provider: p.name, Code: resp.StatusCode, Body: strings.TrimSpace(string(msg))}
 	}
 	log.Printf("llm[%s]: model %s, ~%d prompt tokens, idle timeout %s (avg PP %.0f tok/s)",
 		p.name, model, estTokens, timeout.Round(time.Second), p.ppAvg.avg())

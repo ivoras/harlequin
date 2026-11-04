@@ -160,7 +160,7 @@ func seedTree(ctx context.Context, shared *sql.DB, baked fs.FS, root string, spe
 
 // RepairDescriptions back-fills empty skill description columns from the
 // stored SKILL.md frontmatter. The 0004 migrations copied old skill_overrides
-// rows with description = '' (SQL can't parse YAML frontmatter), and listings
+// rows with description = ” (SQL can't parse YAML frontmatter), and listings
 // now trust the column, so empty rows must be healed once per database.
 // Idempotent; a no-op when nothing is empty.
 func RepairDescriptions(ctx context.Context, db *sql.DB) error {
