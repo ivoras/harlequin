@@ -12,6 +12,9 @@ const (
 	Created = "created"
 	Updated = "updated"
 	Deleted = "deleted"
+	// SessionTitled is not a document change: a session got its auto-title, so
+	// clients should re-list sessions (Scope/ProjectID/UserID say whose).
+	SessionTitled = "session_titled"
 )
 
 // Event describes one document change.

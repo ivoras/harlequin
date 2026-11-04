@@ -60,6 +60,11 @@ export async function loadOrgName() {
 // so views holding a document list reload. Own-UI actions reload directly.
 export const docsVersion = writable<number>(0);
 let docsBump: ReturnType<typeof setTimeout> | undefined;
+// Bumped when the server reports a session list change (auto-title arrived).
+export const sessionsVersion = writable<number>(0);
+export function bumpSessions(): void {
+  sessionsVersion.update((n) => n + 1);
+}
 export function bumpDocs(): void {
   clearTimeout(docsBump);
   docsBump = setTimeout(() => docsVersion.update((n) => n + 1), 300);
