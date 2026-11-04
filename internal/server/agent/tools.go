@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/jsrun"
@@ -438,6 +439,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 	}
 
 	reg["Grep"] = a.grepEntry()
+	reg["edit_file"] = a.editFileEntry()
 
 	if a.WebSearch.Configured() {
 		reg["WebSearch"] = a.webSearchEntry()
@@ -574,21 +576,39 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 
 	if a.Docs != nil {
 		reg["save_doc"] = toolEntry{
-			def: fnTool("save_doc", `Save a text you produced (a report, analysis, or summary worth keeping) as a document in the corpus, so it can be found later with search_docs. Keep any [d.x.N] citations in the content — they remain linked to their source documents. Omit scope unless the user asks: the default is right (the project corpus in a project session, else the user's personal documents). Scope "shared" (org-wide, visible to all users) is available to owners/admins only. Set is_raw to true only when the content is original writing you authored (e.g. a story, a draft, freeform prose) rather than a report drawn from the corpus — this skips the quoted-citation check, so any quotation marks in the text are treated as ordinary prose, not as excerpts that must cite a source document.`, map[string]any{
+			def: fnTool("save_doc", `Save a text you produced (a report, analysis, or summary worth keeping) as a document in the corpus, so it can be found later with search_docs. Pass the text either inline as content, or — for anything long (a combined or converted document, a fetched page) — as source: a file you already built in your sandbox, e.g. "tmp://combined.md" (write it with run_js's tmp.write, or save a fetched page with WebFetchDOM's save_file); the file is read server-side so the text never has to pass through your output. Pass exactly one of content or source. Keep any [d.x.N] citations in the content — they remain linked to their source documents. Omit scope unless the user asks: the default is right (the project corpus in a project session, else the user's personal documents). Scope "shared" (org-wide, visible to all users) is available to owners/admins only. Set is_raw to true only when the content is original writing you authored (e.g. a story, a draft, freeform prose) rather than a report drawn from the corpus — this skips the quoted-citation check, so any quotation marks in the text are treated as ordinary prose, not as excerpts that must cite a source document.`, map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"title":   map[string]any{"type": "string", "description": "Document title, e.g. \"Comparison: Regulation 2025 vs 2026\""},
-					"content": map[string]any{"type": "string", "description": "The full text to save (Markdown)"},
+					"content": map[string]any{"type": "string", "description": "The full text to save (Markdown). Omit when source is given."},
+					"source":  map[string]any{"type": "string", "description": "Sandbox file to save instead of inline content, e.g. tmp://combined.md or storage://report.md (UTF-8 text/Markdown). Omit when content is given."},
 					"scope":   map[string]any{"type": "string", "enum": []string{"personal", "project", "shared"}},
 					"is_raw":  map[string]any{"type": "boolean", "description": "True if content is original writing you authored (not sourced from the corpus); skips the quoted-citation check. Default false."},
 				},
-				"required": []string{"title", "content"},
+				"required": []string{"title"},
 			}),
 			handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 				title := strings.TrimSpace(argString(args, "title"))
 				content := strings.TrimSpace(argString(args, "content"))
+				if src := strings.TrimSpace(argString(args, "source")); src != "" {
+					if content != "" {
+						return "error: pass either content or source, not both", nil
+					}
+					root, _, rel, err := a.resolveNamespaceRoot(rc, src)
+					if err != nil {
+						return "error: " + err.Error(), nil
+					}
+					data, err := root.Read(rel)
+					if err != nil {
+						return fmt.Sprintf("error: cannot read source %s: %v", src, err), nil
+					}
+					if !utf8.Valid(data) {
+						return fmt.Sprintf("error: source %s is not UTF-8 text; save_doc stores text/Markdown only", src), nil
+					}
+					content = strings.TrimSpace(string(data))
+				}
 				if title == "" || content == "" {
-					return "error: title and content are required", nil
+					return "error: title and content (or a non-empty source file) are required", nil
 				}
 				scope, _ := args["scope"].(string)
 				if scope == "" {
@@ -642,6 +662,8 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 					scopeLetter(scope), doc.ID, doc.Chunks), nil
 			},
 		}
+
+		reg["edit_doc"] = a.editDocEntry()
 
 		reg["delete_doc"] = toolEntry{
 			def: fnTool("delete_doc", `Permanently delete a document from the corpus, given its scoped id (u.N / s.N / p.N — resolve it with list_documents first). This removes the document and all its chunks; it cannot be undone, and search_docs/align_docs will no longer find it. Only delete when the user has clearly asked to; if you are unsure which document they mean, use list_documents and confirm with ask_user first. Personal (u.N) documents are always yours to delete; a project (p.N) document is deleted from the current project's corpus; a shared (s.N) document may be deleted by owners/admins only.`, map[string]any{

@@ -101,7 +101,7 @@ document (PDF, DOCX, PPTX, XLSX, HTML, Markdown, CSV) and converts it with Docli
 (to quote it, or `save_doc` it) or when the user wants the entire unabridged page;
 use `WebFetch` for a quick answer from an ordinary page. Web pages are fetched via
 the Zyte browser API when `ZYTE_API_KEY` is set (documents are downloaded directly). Only registered when a document converter (`documents.docling`/`xberg`) is
-configured. Output is capped at 100,000 characters (marked when truncated).
+configured. Output is capped at 1,000,000 characters (marked when truncated).
 **Example:** `MarkdownFetch({"url": "https://example.com/annual-report.pdf"})`
 
 ### `WebFetchDOM`
@@ -116,6 +116,15 @@ path) for follow-up searching with `Grep`.
 - list items: `WebFetchDOM({"url": "https://news.site/list", "selector": "li.headline"})`
 - locate a value: `WebFetchDOM({"url": "https://news.site/list", "grep": "Breaking:"})`
 - save for grepping: `WebFetchDOM({"url": "https://news.site/list", "save_file": "news.html"})`
+
+### `edit_file`
+**Why:** edit a sandbox file (`tmp://`, `storage://`) in place without re-sending
+it — build a long document section by section (`append`; creates the file),
+fix a passage (`old_string`+`new_string`) or apply a unified `diff`, then publish it
+with `save_doc(source=...)`. All-or-nothing; errors say what to fix.
+**Examples:**
+- `edit_file({"path": "tmp://combined.md", "append": "## Part 2\n…"})`
+- `edit_file({"path": "tmp://combined.md", "old_string": "Članak 5.", "new_string": "Članak 5.a"})`
 
 ### `Grep`
 **Why:** ripgrep-style content search over files saved in your sandbox namespaces
@@ -177,8 +186,24 @@ this to make their reports queryable afterwards. Every long quoted excerpt in
 the content must be immediately followed by its `[d.x.N]` citation — `save_doc`
 verifies each one against the chunk's real text and **refuses to save** (with
 the specific mismatch) if a quote is uncited or cited to the wrong chunk; fix
-and call it again.
-**Example:** `save_doc({"title": "Comparison: Regulation 2025 vs 2026", "content": "<report>"})`
+and call it again. For long texts pass `source` (e.g. `"tmp://combined.md"`)
+instead of `content`: the sandbox file is read server-side, so the text never has
+to pass through the model's output.
+**Examples:**
+- `save_doc({"title": "Comparison: Regulation 2025 vs 2026", "content": "<report>"})`
+- `save_doc({"title": "Combined law", "source": "tmp://combined.md", "is_raw": true})`
+
+### `edit_doc`
+**Why:** change a saved text/Markdown document in place — keeps its id, title and
+scope, re-indexes it for `search_docs`, and updates the stored original. One
+operation per call: `old_string`+`new_string` (exact, must be unique unless
+`replace_all`), `diff` (unified diff; hunks are located by content so line numbers
+may be off; all-or-nothing), or `append`. Only documents whose original is
+text/Markdown (saved with `save_doc`, or uploaded `.md`/`.txt`) can be edited;
+PDF/DOCX originals are refused (save an edited copy instead). Shared documents:
+owner/admin only. Chunk ids change on edit, so `[d.x.N]` citations *into* the
+document may stop matching (document ids stay valid).
+**Example:** `edit_doc({"doc": "p.7", "append": "## Addendum\nNew section…"})`
 
 ---
 
