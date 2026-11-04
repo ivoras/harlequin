@@ -1,0 +1,157 @@
+package agent
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"mime"
+	"net/http"
+	"net/url"
+	"path"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"github.com/ivoras/harlequin/internal/server/sessionlog"
+)
+
+// MarkdownConverter turns a document's bytes into Markdown. It is satisfied by
+// docling.Client (and xberg.Client); the filename's extension tells the
+// converter which input format it is looking at.
+type MarkdownConverter interface {
+	Convert(ctx context.Context, filename string, data []byte) (string, error)
+}
+
+const (
+	markdownFetchDescription = `
+- Fetches a URL and converts it to Markdown with Docling (layout analysis, tables, multi-column text) — returns the CONTENT itself, not an AI summary.
+- Works on web pages and, above all, on documents: PDF, DOCX, PPTX, XLSX, HTML, Markdown, CSV. Prefer it over WebFetch when you need the full text of a document or a faithful table/structure, e.g. to quote it or to save it with save_doc.
+- Prefer WebFetch when you only need a specific answer from an ordinary web page (cheaper: no conversion service, short answer).
+- Input: a valid URL (auto-upgrades HTTP→HTTPS). Redirects are followed.
+- Very long results are truncated and say so.
+`
+	// markdownFetchMaxRunes caps what is returned to the model.
+	markdownFetchMaxRunes = 100000
+	// markdownFetchMaxBytes caps the download handed to the converter.
+	markdownFetchMaxBytes = 50 << 20
+)
+
+// markdownFetchEntry registers the MarkdownFetch tool (needs a web fetcher and
+// a configured document converter).
+func (a *Agent) markdownFetchEntry() toolEntry {
+	return toolEntry{
+		def: fnTool("MarkdownFetch", markdownFetchDescription, map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"url": map[string]any{"type": "string", "format": "uri", "description": "The URL of the page or document to fetch and convert to Markdown"},
+			},
+			"required":             []string{"url"},
+			"additionalProperties": false,
+		}),
+		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+			return a.markdownFetch(ctx, rc, args)
+		},
+	}
+}
+
+func (a *Agent) markdownFetch(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+	if a.WebFetcher == nil || a.MarkdownConverter == nil {
+		return "error: MarkdownFetch is not enabled on this server", nil
+	}
+	rawURL, _ := args["url"].(string)
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return "error: url is required", nil
+	}
+
+	start := time.Now()
+	raw, err := a.WebFetcher.FetchRaw(ctx, rawURL) // same anti-bot + SSRF-guarded path as WebFetch
+	if err != nil {
+		a.logEvent(ctx, rc, sessionlog.TypeWebFetch, map[string]any{
+			"tool": "MarkdownFetch", "url": rawURL, "ok": false, "error": err.Error(),
+		})
+		log.Printf("markdownfetch: GET %s failed: %v", rawURL, err)
+		return fmt.Sprintf("error: failed to fetch %s: %v", rawURL, err), nil
+	}
+	if len(raw.Body) > markdownFetchMaxBytes {
+		return fmt.Sprintf("error: %s is too large to convert (%d MiB; limit %d MiB)", rawURL, len(raw.Body)>>20, markdownFetchMaxBytes>>20), nil
+	}
+	fetchMS := time.Since(start).Milliseconds()
+
+	filename, ok := markdownFetchFilename(raw.FinalURL, rawURL, raw.ContentType, raw.Body)
+	if !ok {
+		return fmt.Sprintf("error: %s has content type %q, which cannot be converted to Markdown (supported: PDF, DOCX, PPTX, XLSX, HTML, Markdown, CSV); use WebFetch or WebFetchGrep for it", rawURL, raw.ContentType), nil
+	}
+
+	convStart := time.Now()
+	md, err := a.MarkdownConverter.Convert(ctx, filename, raw.Body)
+	convMS := time.Since(convStart).Milliseconds()
+	if err != nil {
+		a.logEvent(ctx, rc, sessionlog.TypeWebFetch, map[string]any{
+			"tool": "MarkdownFetch", "url": rawURL, "final_url": raw.FinalURL, "ok": false,
+			"error": err.Error(), "fetch_ms": fetchMS, "convert_ms": convMS, "bytes": len(raw.Body),
+		})
+		log.Printf("markdownfetch: convert %s (%s) failed after %dms: %v", rawURL, filename, convMS, err)
+		return fmt.Sprintf("error: failed to convert %s to Markdown: %v", rawURL, err), nil
+	}
+	a.logEvent(ctx, rc, sessionlog.TypeWebFetch, map[string]any{
+		"tool": "MarkdownFetch", "url": rawURL, "final_url": raw.FinalURL, "ok": true,
+		"cached": raw.Cached, "via_zyte": raw.ViaZyte, "fetch_ms": fetchMS, "convert_ms": convMS,
+		"bytes": len(raw.Body), "md_chars": len(md), "file": filename,
+	})
+	log.Printf("markdownfetch: %s (%s, %d bytes -> %d chars; fetch %dms, convert %dms)",
+		rawURL, filename, len(raw.Body), len(md), fetchMS, convMS)
+
+	if utf8.RuneCountInString(md) > markdownFetchMaxRunes {
+		r := []rune(md)
+		md = string(r[:markdownFetchMaxRunes]) + fmt.Sprintf("\n\n[content truncated at %d characters of %d]", markdownFetchMaxRunes, len(r))
+	}
+	return md, nil
+}
+
+// markdownFetchExts maps the extensions the converter understands.
+var markdownFetchExts = map[string]bool{
+	".pdf": true, ".docx": true, ".pptx": true, ".xlsx": true,
+	".html": true, ".htm": true, ".md": true, ".csv": true,
+}
+
+// markdownFetchTypes maps response content types to a converter filename extension.
+var markdownFetchTypes = map[string]string{
+	"application/pdf": ".pdf",
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document":   ".docx",
+	"application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         ".xlsx",
+	"text/html":             ".html",
+	"application/xhtml+xml": ".html",
+	"text/markdown":         ".md",
+	"text/csv":              ".csv",
+}
+
+// markdownFetchFilename picks the filename (and so the input format) handed to
+// the converter. A specific response Content-Type wins; for generic or missing
+// ones (URLs like /download?id=7 often serve octet-stream) the URL's extension
+// is used, and the body is sniffed as a last resort.
+func markdownFetchFilename(finalURL, reqURL, contentType string, body []byte) (string, bool) {
+	ct, _, _ := mime.ParseMediaType(contentType)
+	if ext, ok := markdownFetchTypes[ct]; ok {
+		return "document" + ext, true
+	}
+	// Generic types ("application/octet-stream", missing, wrong) fall back to the
+	// URL path's extension.
+	for _, u := range []string{finalURL, reqURL} {
+		if p, err := url.Parse(u); err == nil {
+			if ext := strings.ToLower(path.Ext(p.Path)); markdownFetchExts[ext] {
+				return "document" + ext, true
+			}
+		}
+	}
+	if ct == "" || ct == "application/octet-stream" || strings.HasPrefix(ct, "text/") {
+		switch sniff := http.DetectContentType(body); {
+		case strings.HasPrefix(sniff, "application/pdf"):
+			return "document.pdf", true
+		case strings.HasPrefix(sniff, "text/html"):
+			return "document.html", true
+		}
+	}
+	return "", false
+}

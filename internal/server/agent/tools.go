@@ -447,6 +447,9 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 		reg["WebFetch"] = a.webFetchEntry()
 		reg["WebFetchDOM"] = a.webFetchDOMEntry()
 		reg["WebFetchGrep"] = a.webFetchGrepEntry()
+		if a.MarkdownConverter != nil {
+			reg["MarkdownFetch"] = a.markdownFetchEntry()
+		}
 	}
 
 	if a.Docs != nil {

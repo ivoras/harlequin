@@ -235,6 +235,18 @@ func main() {
 	tgClient := telegram.New(cfg.Telegram.BotToken, cfg.Telegram.APIBase)
 	dispatch := notifyx.NewDispatcher(notifyStore, emailSender, tgClient, userCfgStore)
 
+	// Optional converter for PDF/DOCX uploads — docling or xberg, whichever is
+	// configured. Registered even when the instance is currently down: each
+	// upload retries it and falls back to the built-in extractors on failure.
+	var docConv api.DocConverter
+	if base := cfg.Documents.Xberg.BaseURL; base != "" {
+		if cfg.Documents.Docling.BaseURL != "" {
+			log.Printf("documents: both xberg and docling are configured; using xberg")
+		}
+		docConv = xberg.New(base, cfg.Documents.Xberg.Timeout.D(), cfg.Documents.Xberg.FastValue())
+	} else if base := cfg.Documents.Docling.BaseURL; base != "" {
+		docConv = docling.New(base, cfg.Documents.Docling.Timeout.D(), cfg.Documents.Docling.FastValue())
+	}
 	ag := &agent.Agent{
 		Provider:            router,
 		Storage:             store,
@@ -245,6 +257,7 @@ func main() {
 		Sessions:            sessStore,
 		Session:             sessionLog,
 		WebFetcher:          webFetcher,
+		MarkdownConverter:   docConv, // MarkdownFetch tool; nil when no converter is configured
 		WebSearch:           websearch.New(cfg.WebSearch.APIKey, cfg.WebSearch.APIBase),
 		MCP:                 mcpManager,
 		WebFetchModel:       cfg.Agent.WebFetch.Model,
@@ -305,17 +318,7 @@ func main() {
 		defer ex.Close()
 	}
 
-	// Optional converter for PDF/DOCX uploads — docling or xberg, whichever is
-	// configured. Registered even when the instance is currently down: each
-	// upload retries it and falls back to the built-in extractors on failure.
-	if base := cfg.Documents.Xberg.BaseURL; base != "" {
-		if cfg.Documents.Docling.BaseURL != "" {
-			log.Printf("documents: both xberg and docling are configured; using xberg")
-		}
-		srv.Converter = xberg.New(base, cfg.Documents.Xberg.Timeout.D(), cfg.Documents.Xberg.FastValue())
-	} else if base := cfg.Documents.Docling.BaseURL; base != "" {
-		srv.Converter = docling.New(base, cfg.Documents.Docling.Timeout.D(), cfg.Documents.Docling.FastValue())
-	}
+	srv.Converter = docConv
 	if c := srv.Converter; c != nil {
 		if c.Healthy(context.Background()) {
 			log.Printf("%s: converting PDF/DOCX uploads", c.Name())
