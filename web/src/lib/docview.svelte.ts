@@ -9,8 +9,11 @@ import { toast } from "./stores";
 import type { DocChunkInfo, Document } from "./types";
 
 // --- The viewer's state (null = closed) ---
+// DocRef identifies a document unambiguously (see docPageURL).
+export type DocRef = { scope: string; id: number; projectID: number };
+
 export const docView = $state<{
-  current: { title: string; text: string; blob: Blob; filename: string } | null;
+  current: { title: string; text: string; blob: Blob; filename: string; ref?: DocRef } | null;
   focus: string; // chunk text to scroll to once rendered ("" = none)
 }>({ current: null, focus: "" });
 
@@ -32,16 +35,16 @@ export function openDocBlob(blob: Blob, anchor = "") {
 
 // showTextDoc opens the sidebar on a text blob (markdown rendered by the
 // viewer component).
-export async function showTextDoc(blob: Blob, title: string, filename: string) {
+export async function showTextDoc(blob: Blob, title: string, filename: string, ref?: DocRef) {
   // (focus is set by the caller before this, and cleared by closeDocView)
   const text = (await blob.text()).replace(/^\uFEFF/, "");
   const name = filename || title || "document";
-  docView.current = { title: title || filename || "document", text, blob, filename: /\.\w+$/.test(name) ? name : name + ".md" };
+  docView.current = { title: title || filename || "document", text, blob, filename: /\.\w+$/.test(name) ? name : name + ".md", ref };
 }
 
 // openDoc routes a fetched document: text into the sidebar, the rest into a tab.
-export async function openDoc(file: { blob: Blob; filename: string }, title: string, anchor = "") {
-  if (file.blob.type.startsWith("text/")) await showTextDoc(file.blob, title, file.filename);
+export async function openDoc(file: { blob: Blob; filename: string }, title: string, anchor = "", ref?: DocRef) {
+  if (file.blob.type.startsWith("text/")) await showTextDoc(file.blob, title, file.filename, ref);
   else openDocBlob(file.blob, anchor);
 }
 
@@ -56,6 +59,22 @@ export function downloadDoc() {
   URL.revokeObjectURL(url);
 }
 
+// docPageURL is the document's own page: /doc/u.12 (personal), /doc/s.3
+// (shared), /doc/p3.17 (project 3, document 17) — the same notation as chat
+// references, with the project always spelled out so the URL means the same
+// thing everywhere. Personal ids are per user, so a /doc/u.N link only opens
+// for its owner. The page fetches through the API with the viewer's own login.
+export function docPageURL(r: DocRef): string {
+  const s = r.scope === "project" ? "p" + r.projectID : r.scope === "shared" ? "s" : "u";
+  return `/doc/${s}.${r.id}`;
+}
+
+// openDocPage shows the open document as a standalone page in a new tab.
+export function openDocPage() {
+  const r = docView.current?.ref;
+  if (r) window.open(docPageURL(r), "_blank", "noopener");
+}
+
 // viewDocument opens a document row (e.g. the Projects tab's View button)
 // exactly like clicking its reference in chat: stored original first (text →
 // sidebar, PDF/DOCX → tab), extracted-text fallback for documents with no
@@ -63,12 +82,13 @@ export function downloadDoc() {
 export async function viewDocument(d: Document, projectID: number) {
   const scope = d.scope ?? "";
   try {
+    const ref = { scope, id: d.id, projectID };
     const file = await api.fetchDocumentFile(d.id, scope, projectID);
-    await openDoc(file, d.title);
+    await openDoc(file, d.title, "", ref);
   } catch {
     try {
       const res = await api.getDocumentContent(d.id, scope, projectID);
-      await showTextDoc(new Blob([res.content], { type: "text/markdown;charset=utf-8" }), d.title, "");
+      await showTextDoc(new Blob([res.content], { type: "text/markdown;charset=utf-8" }), d.title, "", { scope, id: d.id, projectID });
     } catch (err) {
       toast((err as Error).message || `couldn't open "${d.title}"`, "error");
     }
@@ -150,7 +170,7 @@ export async function onCiteClick(e: Event) {
     const file = await api.fetchDocumentFile(info.document_id, info.scope, projectID);
     const anchor = info.mime === "application/pdf" && info.page ? `#page=${info.page}` : "";
     docView.focus = info.text ?? "";
-    await openDoc(file, info.title || "", anchor);
+    await openDoc(file, info.title || "", anchor, { scope: info.scope, id: info.document_id, projectID });
   } catch (err) {
     toast((err as Error).message, "error");
   }
@@ -183,12 +203,13 @@ export async function onDocrefClick(e: Event) {
   }
   if (!scope || !id) return;
   try {
+    const dref = { scope, id, projectID };
     const file = await api.fetchDocumentFile(id, scope, projectID);
-    await openDoc(file, ref);
+    await openDoc(file, ref, "", dref);
   } catch {
     try {
       const res = await api.getDocumentContent(id, scope, projectID);
-      await showTextDoc(new Blob([res.content], { type: "text/markdown;charset=utf-8" }), ref, "");
+      await showTextDoc(new Blob([res.content], { type: "text/markdown;charset=utf-8" }), ref, "", { scope, id, projectID });
     } catch (err) {
       toast((err as Error).message || `couldn't open ${ref}`, "error");
     }

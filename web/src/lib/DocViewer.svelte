@@ -3,7 +3,7 @@
   // (chat citations/docrefs, the Projects tab's View buttons) opens documents
   // identically. State + handlers live in docview.svelte.ts.
   import { renderMarkdown } from "./markdown";
-  import { docView, closeDocView, openDocBlob, downloadDoc, onCiteClick, onDocrefClick, onCodeCopy, focusCited } from "./docview.svelte";
+  import { docView, closeDocView, openDocPage, downloadDoc, onCiteClick, onDocrefClick, onCodeCopy, focusCited } from "./docview.svelte";
 
 </script>
 
@@ -13,7 +13,9 @@
     <header>
       <strong class="doctitle" title={docView.current.title}>{docView.current.title}</strong>
       <span class="spacer"></span>
-      <button class="ghost small" title="Open the raw file in a new tab" onclick={() => docView.current && openDocBlob(docView.current.blob)}>Raw ↗</button>
+      {#if docView.current.ref}
+        <button class="ghost small" title="Open as a page in a new tab" onclick={openDocPage}>Page ↗</button>
+      {/if}
       <button class="ghost small" title="Download the original markdown" onclick={downloadDoc}>Download ⬇</button>
       <button class="ghost" onclick={closeDocView}>Close</button>
     </header>
