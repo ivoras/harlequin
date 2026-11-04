@@ -100,6 +100,8 @@ func (s *Server) Router() http.Handler {
 		// Public self-registration (gated by config; the handlers themselves
 		// enforce auth.allow_registration).
 		r.Get("/auth/registration", s.handleRegistrationStatus)
+		// Public so the login screen can show the organisation name.
+		r.Get("/org", s.handleOrg)
 		r.Post("/auth/register", s.handleRegister)
 		r.Post("/auth/verify", s.handleVerify)
 		// OAuth redirect target for MCP authorization (browser-facing; the state
@@ -129,7 +131,6 @@ func (s *Server) Router() http.Handler {
 
 			r.Post("/auth/logout", s.handleLogout)
 			r.Get("/me", s.handleMe)
-			r.Get("/org", s.handleOrg)
 			r.Post("/users", s.handleCreateUser)
 			r.Get("/users/directory", s.handleUserDirectory)
 

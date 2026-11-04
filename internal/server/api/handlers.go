@@ -150,7 +150,8 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, u)
 }
 
-// handleOrg returns the configured organisation name for display in clients.
+// handleOrg returns the configured organisation name for display in clients
+// (public: it is shown on the login screen).
 func (s *Server) handleOrg(w http.ResponseWriter, r *http.Request) {
 	name := "Unnamed"
 	if s.Cfg != nil && s.Cfg.Server.OrgName != "" {
