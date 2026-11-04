@@ -3,7 +3,7 @@
   import { sc } from "../lib/session.svelte";
   import { pc } from "../lib/projectchat.svelte";
   import { renderMarkdown } from "../lib/markdown";
-  import { docView, closeDocView, openDocBlob, downloadDoc, onCiteClick, onDocrefClick, onCodeCopy, focusCited } from "../lib/docview.svelte";
+  import { docView, closeDocView, openDocPage, downloadDoc, onCiteClick, onDocrefClick, onCodeCopy, focusCited } from "../lib/docview.svelte";
   import Context from "../views/Context.svelte";
   import Icon from "./Icon.svelte";
   import { ui, type InspectorTab } from "./state.svelte";
@@ -76,7 +76,9 @@
       <div class="doc-head">
         <strong class="ellipsize" title={docView.current.title}>{docView.current.title}</strong>
         <span class="spacer"></span>
-        <button class="icon-btn" title="Open raw in a new tab" onclick={() => docView.current && openDocBlob(docView.current.blob)}><Icon name="external" /></button>
+        {#if docView.current.ref}
+          <button class="icon-btn" title="Open as a page in a new tab" onclick={openDocPage}><Icon name="external" /></button>
+        {/if}
         <button class="icon-btn" title="Download" onclick={downloadDoc}><Icon name="download" /></button>
         <button class="icon-btn" title="Close document" onclick={closeDoc}><Icon name="x" /></button>
       </div>

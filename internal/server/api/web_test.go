@@ -11,6 +11,7 @@ func TestSPAHandler(t *testing.T) {
 	fsys := fstest.MapFS{
 		"index.html":        {Data: []byte("<html>spa</html>")},
 		"m/index.html":      {Data: []byte("<html>mobile</html>")},
+		"doc/index.html":    {Data: []byte("<html>doc</html>")},
 		"assets/app.js":     {Data: []byte("js")},
 		"assets/styles.css": {Data: []byte("css")},
 	}
@@ -36,7 +37,10 @@ func TestSPAHandler(t *testing.T) {
 		{"/m/", 200, "<html>mobile</html>"},   // mobile UI
 		{"/m/skills", 200, "<html>mobile</html>"},
 		{"/m", 301, ""},
-		{"/mobile", 200, "<html>spa</html>"}, // only the exact /m/ prefix
+		{"/doc/p3.17", 200, "<html>doc</html>"}, // standalone document page
+		{"/doc/s.12", 200, "<html>doc</html>"},
+		{"/documents", 200, "<html>spa</html>"}, // only the exact /doc prefix
+		{"/mobile", 200, "<html>spa</html>"},    // only the exact /m/ prefix
 	} {
 		code, body := get(c.path)
 		if code != c.code || (c.want != "" && body != c.want) {

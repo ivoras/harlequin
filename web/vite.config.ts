@@ -1,8 +1,9 @@
 import { defineConfig, loadEnv } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 
-// Static SPA with two pages sharing src/lib: the desktop UI at / (index.html)
-// and the mobile UI at /m/ (m/index.html). In dev, proxy /api to the running
+// Static SPA with three pages sharing src/lib: the desktop UI at / (index.html),
+// the mobile UI at /m/ (m/index.html) and standalone document pages at /doc/<ref>
+// (doc/index.html). In dev, proxy /api to the running
 // server so the browser stays same-origin (no CORS). Override the target with
 // VITE_API_BASE.
 export default defineConfig(({ mode }) => {
@@ -17,6 +18,7 @@ export default defineConfig(({ mode }) => {
         input: {
           desktop: "index.html", // relative to the project root (web/)
           mobile: "m/index.html",
+          doc: "doc/index.html",
         },
       },
     },
