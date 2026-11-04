@@ -54,11 +54,11 @@ type Config struct {
 	// Embeddings below are used as-is.
 	ModelSuite     string                `yaml:"model_suite"`
 	ModelSuites    map[string]ModelSuite `yaml:"model_suites"`
-	Providers      []ProviderConfig      `yaml:"providers"`
-	Routing        RoutingConfig         `yaml:"routing"`
+	Providers      []ProviderConfig      `yaml:"-"` // built from the active model suite
+	Routing        RoutingConfig         `yaml:"-"` // built from the active model suite
 	Prices         map[string]Price      `yaml:"prices"`
 	ContextWindows map[string]int        `yaml:"context_windows"` // model id -> max input tokens
-	Embeddings     EmbeddingsConfig      `yaml:"embeddings"`
+	Embeddings     EmbeddingsConfig      `yaml:"-"`               // built from the active model suite
 	Documents      DocumentsConfig       `yaml:"documents"`
 	Agent          AgentConfig           `yaml:"agent"`
 	Memory         MemoryConfig          `yaml:"memory"`
@@ -166,6 +166,18 @@ type ModelSpec struct {
 	ContextWindow  int      `yaml:"context_window"`
 	ReturnProgress bool     `yaml:"return_progress"`
 	Temperature    *float64 `yaml:"temperature"`
+	// Local marks a model served on this machine (llama.cpp): background LLM work
+	// then waits for live turns instead of running alongside them.
+	Local bool `yaml:"local"`
+	// Price is the model's cost, for usage accounting (a top-level `prices:` entry
+	// for the same model overrides it).
+	Price *Price `yaml:"price"`
+	// Fallback* (chat role): a model on the same endpoint tried when this one is
+	// unreachable after retries. Its context window is checked before use (a
+	// longer conversation is not sent to it).
+	FallbackModel         string `yaml:"fallback_model"`
+	FallbackContextWindow int    `yaml:"fallback_context_window"`
+	FallbackPrice         *Price `yaml:"fallback_price"`
 	// Tools (aux role only) offers the WebFetch analysis model tools to follow
 	// links / compute. Default enabled; set false for a small aux that answers
 	// purely from the fetched content (extraction-only). See WebFetchConfig.Tools.
@@ -188,6 +200,8 @@ type ProviderConfig struct {
 	// first token). Only enable for llama.cpp servers; other backends may reject
 	// the unknown request field.
 	ReturnProgress bool `yaml:"return_progress"`
+	// Local: served on this machine (see ModelSpec.Local).
+	Local bool `yaml:"-"`
 
 	// APIKey is resolved from APIKeyEnv at load time.
 	APIKey string `yaml:"-"`
@@ -539,6 +553,14 @@ func Load(path string) (*Config, error) {
 		if err := yaml.Unmarshal(raw, cfg); err != nil {
 			return nil, fmt.Errorf("parse config: %w", err)
 		}
+		var legacy map[string]any
+		if yaml.Unmarshal(raw, &legacy) == nil {
+			for _, k := range []string{"providers", "routing", "embeddings"} {
+				if _, ok := legacy[k]; ok {
+					return nil, fmt.Errorf("config: top-level %q is no longer supported; define the chat/aux/embed models in model_suites and select one with model_suite", k)
+				}
+			}
+		}
 	}
 
 	if err := cfg.resolveModelSuite(); err != nil {
@@ -578,7 +600,7 @@ func (c *Config) resolveModelSuite() error {
 
 	providers := []ProviderConfig{{
 		Name: "chat", BaseURL: chat.BaseURL, Model: chat.Model, APIKeyEnv: chat.APIKeyEnv,
-		ContextWindow: chat.ContextWindow, ReturnProgress: chat.ReturnProgress,
+		ContextWindow: chat.ContextWindow, ReturnProgress: chat.ReturnProgress, Local: chat.Local,
 	}}
 	rules := map[string]string{}
 	webFetchModel := "" // empty => WebFetch uses the default (chat) provider/model
@@ -587,17 +609,42 @@ func (c *Config) resolveModelSuite() error {
 	if aux.BaseURL != "" && aux.Model != "" && (aux.BaseURL != chat.BaseURL || aux.Model != chat.Model) {
 		providers = append(providers, ProviderConfig{
 			Name: "aux", BaseURL: aux.BaseURL, Model: aux.Model, APIKeyEnv: aux.APIKeyEnv,
-			ContextWindow: aux.ContextWindow, ReturnProgress: aux.ReturnProgress,
+			ContextWindow: aux.ContextWindow, ReturnProgress: aux.ReturnProgress, Local: aux.Local,
 		})
 		rules[aux.Model] = "aux"
 		webFetchModel = aux.Model
 	}
 
 	c.Providers = providers
-	c.Routing.DefaultProvider = "chat"
-	c.Routing.ModelRules = rules
-	if len(c.Routing.FallbackOrder) == 0 {
-		c.Routing.FallbackOrder = []string{"chat"}
+	c.Routing = RoutingConfig{DefaultProvider: "chat", FallbackOrder: []string{"chat"}, ModelRules: rules, FallbackModel: chat.FallbackModel}
+
+	// Per-model prices and context windows live next to the model; explicit
+	// top-level `prices:` / `context_windows:` entries win.
+	if c.Prices == nil {
+		c.Prices = map[string]Price{}
+	}
+	if c.ContextWindows == nil {
+		c.ContextWindows = map[string]int{}
+	}
+	for _, m := range []struct {
+		model string
+		price *Price
+		ctx   int
+	}{
+		{chat.Model, chat.Price, chat.ContextWindow},
+		{aux.Model, aux.Price, aux.ContextWindow},
+		{suite.Embed.Model, suite.Embed.Price, 0},
+		{chat.FallbackModel, chat.FallbackPrice, chat.FallbackContextWindow},
+	} {
+		if m.model == "" {
+			continue
+		}
+		if _, ok := c.Prices[m.model]; !ok && m.price != nil {
+			c.Prices[m.model] = *m.price
+		}
+		if _, ok := c.ContextWindows[m.model]; !ok && m.ctx > 0 {
+			c.ContextWindows[m.model] = m.ctx
+		}
 	}
 
 	c.Embeddings.BaseURL = suite.Embed.BaseURL
@@ -709,8 +756,8 @@ func (c *Config) validate() error {
 	if c.JWTSecret == "" {
 		return fmt.Errorf("JWT_SECRET must be set (in .env or environment)")
 	}
-	if len(c.Providers) == 0 {
-		return fmt.Errorf("at least one provider must be configured")
+	if c.ModelSuite == "" {
+		return fmt.Errorf("model_suite must name an entry of model_suites")
 	}
 	for _, p := range c.Providers {
 		if p.Name == "" || p.BaseURL == "" || p.Model == "" {

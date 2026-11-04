@@ -85,6 +85,7 @@ func main() {
 	for _, p := range cfg.Providers {
 		prov := llm.NewOpenAICompatible(p.Name, p.BaseURL, p.APIKey, p.Model)
 		prov.SetReturnProgress(p.ReturnProgress)
+		prov.SetLocal(p.Local)
 		providers[p.Name] = prov
 	}
 	// Usage is recorded in the agent loop where the user/session are known,
@@ -130,13 +131,9 @@ func main() {
 	}
 	router := llm.NewRoutingProvider(providers, cfg.Routing.DefaultProvider, cfg.Routing.FallbackOrder, cfg.Routing.ModelRules, ctxWindows, nil)
 	router.SetFallbackModel(cfg.Routing.FallbackModel)
-	suite := cfg.ModelSuite
-	if suite == "" {
-		suite = "(none: explicit providers)"
-	}
-	log.Printf("models: suite=%s default_provider=%s fallback_order=%v fallback_model=%q", suite, cfg.Routing.DefaultProvider, cfg.Routing.FallbackOrder, cfg.Routing.FallbackModel)
+	log.Printf("models: suite=%s default_provider=%s fallback_order=%v fallback_model=%q", cfg.ModelSuite, cfg.Routing.DefaultProvider, cfg.Routing.FallbackOrder, cfg.Routing.FallbackModel)
 	for _, p := range cfg.Providers {
-		log.Printf("models: provider %q -> %s @ %s", p.Name, p.Model, p.BaseURL)
+		log.Printf("models: provider %q -> %s @ %s (local=%v)", p.Name, p.Model, p.BaseURL, p.Local)
 	}
 	log.Printf("models: embeddings=%s (dim %d) web_fetch=%q", cfg.Embeddings.Model, cfg.Embeddings.Dim, cfg.Agent.WebFetch.Model)
 
