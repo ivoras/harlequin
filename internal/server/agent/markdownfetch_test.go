@@ -27,3 +27,11 @@ func TestMarkdownFetchFilename(t *testing.T) {
 		}
 	}
 }
+
+func TestMarkdownFetchSaveName(t *testing.T) {
+	for in, want := range map[string]string{"base.md": "base.md", " tmp://base.md ": "base.md", "": "", "storage://x.md": "", "tmp://": ""} {
+		if got := markdownFetchSaveName(in); got != want {
+			t.Errorf("markdownFetchSaveName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
