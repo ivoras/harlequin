@@ -8,7 +8,7 @@
 
   let hats = $state<Hat[]>([]);
   let skills = $state<SkillInfo[]>([]);
-  let editing = $state<{ name: string; path: string; initial?: string } | null>(null);
+  let editing = $state<{ name: string; path: string; initial?: string; readonly?: boolean } | null>(null);
   let filesOf = $state<{ name: string; files: string[] } | null>(null);
   let addSel = $state<Record<string, string>>({}); // hat -> skill picked in its add-select
 
@@ -105,6 +105,11 @@
     filesOf = null;
     editing = { name, path };
   }
+  // Anyone who can wear a hat can read what it runs; only admins edit.
+  function viewFile(name: string, path: string) {
+    filesOf = null;
+    editing = { name, path, readonly: true };
+  }
   // Open the system-prompt editor; when the hat has no custom prompt yet, seed
   // the body with the default system prompt template so specialising starts
   // from the real default.
@@ -193,6 +198,8 @@
                   {#if admin}
                     <button class="ovbtn" title="edit overlay" onclick={() => editFile(h.name, `skills/${sk}/SKILL.md`)}>✎</button>
                     <button class="ovbtn" title="remove overlay" onclick={() => rmSkill(h, sk)}>✕</button>
+                  {:else}
+                    <button class="ovbtn" title="view this hat's copy" onclick={() => viewFile(h.name, `skills/${sk}/SKILL.md`)}>view</button>
                   {/if}
                 </span>
               {/each}
@@ -215,6 +222,10 @@
               <span class="spacer"></span>
               <button class="ghost danger small" onclick={() => del(h)}>Delete hat</button>
             </div>
+          {:else}
+            <div class="row small" style="gap:6px;">
+              <button class="small" onclick={() => showFiles(h)} title="Read the hat's prompt and skill copies (only owners and admins can edit hats)">Files</button>
+            </div>
           {/if}
         </div>
       {/each}
@@ -236,7 +247,8 @@
         <div class="row">
           <span class="mono small">{path}</span>
           <span class="spacer"></span>
-          {#if admin}<button class="small" onclick={() => editFile(filesOf!.name, path)}>Edit</button>{/if}
+          {#if admin}<button class="small" onclick={() => editFile(filesOf!.name, path)}>Edit</button>
+          {:else}<button class="small" onclick={() => viewFile(filesOf!.name, path)}>View</button>{/if}
         </div>
       {/each}
     </div>
@@ -244,7 +256,7 @@
 {/if}
 
 {#if editing}
-  <SkillEditor name={editing.name} path={editing.path} initial={editing.initial} hat onClose={onEditorClosed} />
+  <SkillEditor name={editing.name} path={editing.path} initial={editing.initial} readonly={editing.readonly} hat onClose={onEditorClosed} />
 {/if}
 
 <style>

@@ -196,7 +196,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.phase = phaseChat
 		m.editor = nil
-		m.appendBlock("info", "saved "+msg.name+"/"+msg.relpath)
+		if msg.overriddenBy != "" {
+			m.appendBlock("error", "saved "+msg.name+"/"+msg.relpath+" — but "+hatOverrideNote(msg.overriddenBy))
+		} else {
+			m.appendBlock("info", "saved "+msg.name+"/"+msg.relpath)
+		}
 		return m, m.input.Focus()
 
 	case memoryEditorLoadedMsg:

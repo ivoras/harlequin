@@ -55,6 +55,7 @@ They resolve across scopes: project (when one is active), then shared
 | `/hat create <name> [description]` | (admin) Create a hat. |
 | `/hat edit <name> [file]` | (admin) Edit a hat file in the built-in editor (default `system_prompt.md`; overlays live at `skills/<skill>/…`). |
 | `/hat files <name>` | List a hat's files (prompt + skill overlays). |
+| `/hat view <name> [file]` | Show a hat file read-only (default `system_prompt.md`; overlays are `skills/<skill>/SKILL.md` etc.). Anyone can read a hat; only owners/admins edit. |
 | `/hat addskill <hat> <skill>` | (admin) Copy the currently-resolved skill into the hat's overlay, ready for specialising. |
 | `/hat rmskill <hat> <skill>` | (admin) Remove a skill overlay from the hat. |
 | `/hat prompt <name> on\|off` | (admin) Toggle the hat's custom system prompt; `off` keeps its content but the default prompt is used. Creating a custom prompt starts from a copy of the default. |
@@ -337,3 +338,12 @@ Because a *deeper* scope wins (shared beats user, project beats shared), a copy
 you edit in a shallower scope can be silently invisible. `/skills` flags this:
 `web-extractor [shared, shadows user]` means a user-scope copy exists but the
 shared one is being served.
+
+A worn hat shadows the same way, only harder: its copy of a skill wins over
+every scope. While you wear a hat, `/skills` marks those skills
+`overridden by hat <name>`, and `/skill edit` (and the web skill editor) warn
+that your edit won't take effect until you take the hat off. Hats are edited
+only by owners and admins; anyone can read what a hat runs with
+`/hat view <name> skills/<skill>/SKILL.md`, or in the web Hats page (**view** next to an
+overlay, or **Files** → **View**). To get a hat's skill changed
+for everyone, ask an admin.
