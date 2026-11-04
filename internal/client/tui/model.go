@@ -6,6 +6,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -462,7 +463,9 @@ func (m *Model) renderThinking(text string, streaming bool) string {
 func errCmd(err error) tea.Cmd { return func() tea.Msg { return errMsg{err} } }
 func infoCmd(s string) tea.Cmd { return func() tea.Msg { return infoMsg{s} } }
 
-func renderSkillList(infos []types.SkillInfo) string {
+// renderSkillList lists skills; hat/overlays name the worn hat and the skills
+// it carries its own copies of, which win over the listed copies while worn.
+func renderSkillList(infos []types.SkillInfo, hat string, overlays []string) string {
 	var sb strings.Builder
 	sb.WriteString("Skills:\n")
 	for _, i := range infos {
@@ -470,6 +473,9 @@ func renderSkillList(infos []types.SkillInfo) string {
 		if len(i.AlsoIn) > 0 {
 			// Copies in shallower scopes are shadowed — edits there are invisible.
 			scope += ", shadows " + strings.Join(i.AlsoIn, "+")
+		}
+		if slices.Contains(overlays, i.Name) {
+			scope += ", overridden by hat " + hat
 		}
 		fmt.Fprintf(&sb, "  %s [%s] — %s\n", i.Name, scope, i.Description)
 	}

@@ -26,26 +26,31 @@ type skillEditor struct {
 	writable []string
 	// isHat: the buffer is a hat file (hats are shared-only, saved directly).
 	isHat bool
+	// overriddenBy names the worn hat when it carries its own copy of this
+	// skill: the hat's copy wins, so a save here doesn't change what runs.
+	overriddenBy string
 }
 
 // skillEditorLoadedMsg carries a skill file fetched for editing.
 type skillEditorLoadedMsg struct {
 	name, relpath, scope, fromScope, content string
 	isHat                                    bool
+	overriddenBy                             string
 	err                                      error
 }
 
 // skillEditorSavedMsg is emitted after a save attempt.
 type skillEditorSavedMsg struct {
-	name, relpath string
-	err           error
+	name, relpath, overriddenBy string
+	err                         error
 }
 
 // openSkillEditor fetches the file, then opens the editor overlay.
 func (m *Model) openSkillEditor(name, relpath, scope string) tea.Cmd {
 	return func() tea.Msg {
 		content, fromScope, err := m.client.GetSkillFile(context.Background(), name, relpath)
-		return skillEditorLoadedMsg{name: name, relpath: relpath, scope: scope, fromScope: fromScope, content: content, err: err}
+		return skillEditorLoadedMsg{name: name, relpath: relpath, scope: scope, fromScope: fromScope, content: content,
+			overriddenBy: m.hatOverriding(name), err: err}
 	}
 }
 
@@ -99,12 +104,13 @@ func (m *Model) startSkillEditor(msg skillEditorLoadedMsg) tea.Cmd {
 	ta.SetStyles(st)
 
 	m.editor = &skillEditor{
-		ta:        ta,
-		name:      msg.name,
-		relpath:   msg.relpath,
-		scope:     msg.scope,
-		fromScope: msg.fromScope,
-		isHat:     msg.isHat,
+		ta:           ta,
+		name:         msg.name,
+		relpath:      msg.relpath,
+		scope:        msg.scope,
+		fromScope:    msg.fromScope,
+		isHat:        msg.isHat,
+		overriddenBy: msg.overriddenBy,
 	}
 	m.phase = phaseEditor
 	return m.editor.ta.Focus()
@@ -195,7 +201,7 @@ func (m *Model) saveSkillEditor(scope string) tea.Cmd {
 		return nil
 	}
 	ed.picking = false
-	name, relpath, content, isHat := ed.name, ed.relpath, ed.ta.Value(), ed.isHat
+	name, relpath, content, isHat, over := ed.name, ed.relpath, ed.ta.Value(), ed.isHat, ed.overriddenBy
 	return func() tea.Msg {
 		var err error
 		if isHat {
@@ -203,7 +209,7 @@ func (m *Model) saveSkillEditor(scope string) tea.Cmd {
 		} else {
 			err = m.client.PutSkillFile(context.Background(), name, relpath, scope, content)
 		}
-		return skillEditorSavedMsg{name: name, relpath: relpath, err: err}
+		return skillEditorSavedMsg{name: name, relpath: relpath, overriddenBy: over, err: err}
 	}
 }
 
@@ -244,8 +250,15 @@ func (m *Model) editorView() string {
 		hint = ed.status + "  ·  " + hint
 	}
 	footer := m.styles.Help.Render(hint)
+	if ed.overriddenBy != "" {
+		// Persistent, above the hint: the edit won't run while the hat is worn.
+		footer = m.styles.Error.Render("⚠ "+hatOverrideNote(ed.overriddenBy)) + "\n" + footer
+	}
 
 	bodyH := m.height - 4
+	if ed.overriddenBy != "" {
+		bodyH--
+	}
 	if bodyH < 3 {
 		bodyH = 3
 	}
@@ -259,4 +272,23 @@ func orDash(s string) string {
 		return "-"
 	}
 	return s
+}
+
+// hatOverriding returns the worn hat's name when that hat carries its own copy
+// of the skill (so edits to the normal copy are invisible while it's worn),
+// else "". Best-effort: a failed lookup just skips the warning.
+func (m *Model) hatOverriding(skill string) string {
+	hat := m.currentHat
+	if hat == "" {
+		return ""
+	}
+	h, err := m.client.GetHat(context.Background(), hat)
+	if err != nil || !slices.Contains(h.OverlaySkills, skill) {
+		return ""
+	}
+	return hat
+}
+
+func hatOverrideNote(hat string) string {
+	return "your " + hat + " hat has its own copy of this skill, used while you wear it; edits here take effect after /hat off"
 }

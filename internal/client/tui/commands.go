@@ -34,6 +34,7 @@ const helpText = `Commands:
   /hat create <name> [description]     (admin) create a hat
   /hat edit <name> [file]              (admin) edit a hat file (default system_prompt.md)
   /hat files <name>     list a hat's files (prompt + skill overlays)
+  /hat view <name> [file]              show a hat file read-only (default system_prompt.md)
   /hat addskill <hat> <skill>          (admin) copy the resolved skill into the hat's overlay
   /hat prompt <name> on|off            (admin) toggle the hat's custom prompt (content is kept)
   /hat rmskill <hat> <skill>           (admin) remove a skill overlay from the hat
@@ -167,7 +168,13 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 			if err != nil {
 				return errMsg{err}
 			}
-			return infoMsg{renderSkillList(infos)}
+			var overlays []string
+			if m.currentHat != "" {
+				if h, herr := m.client.GetHat(context.Background(), m.currentHat); herr == nil {
+					overlays = h.OverlaySkills
+				}
+			}
+			return infoMsg{renderSkillList(infos, m.currentHat, overlays)}
 		}
 	case "/skill":
 		return m.handleSkillSub(args)
@@ -295,7 +302,7 @@ func (m *Model) handleHatSub(args []string) tea.Cmd {
 		}
 	case "edit":
 		if !m.canManageShared() {
-			return infoCmd("/hat edit is owner/admin only")
+			return infoCmd("/hat edit is owner/admin only — /hat view <name> [file] shows a hat's files")
 		}
 		if len(args) < 2 {
 			return infoCmd("usage: /hat edit <name> [file]  (default file: system_prompt.md; overlay files are skills/<skill>/…)")
@@ -305,6 +312,22 @@ func (m *Model) handleHatSub(args []string) tea.Cmd {
 			relpath = args[2]
 		}
 		return m.openHatEditor(name, relpath)
+	case "view", "cat":
+		// Read-only: anyone who can wear a hat may read what it runs.
+		if len(args) < 2 {
+			return infoCmd("usage: /hat view <name> [file]  (default file: system_prompt.md; overlay files are skills/<skill>/…)")
+		}
+		name, relpath := args[1], "system_prompt.md"
+		if len(args) > 2 {
+			relpath = args[2]
+		}
+		return func() tea.Msg {
+			content, err := m.client.GetHatFile(context.Background(), name, relpath)
+			if err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{"=== hat://" + name + "/" + relpath + " ===\n" + content}
+		}
 	case "files":
 		if len(args) < 2 {
 			return infoCmd("usage: /hat files <name>")
@@ -320,7 +343,7 @@ func (m *Model) handleHatSub(args []string) tea.Cmd {
 				rels = append(rels, rel)
 			}
 			sort.Strings(rels)
-			return infoMsg{"Files of hat " + name + ":\n  " + strings.Join(rels, "\n  ")}
+			return infoMsg{"Files of hat " + name + " (read one with /hat view " + name + " <file>):\n  " + strings.Join(rels, "\n  ")}
 		}
 	case "addskill":
 		if !m.canManageShared() {

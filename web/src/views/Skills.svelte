@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api } from "../lib/api";
-  import { user, activeProject, toast } from "../lib/stores";
+  import { user, activeProject, wornHat, toast } from "../lib/stores";
+  import { hatOverlays, hatOverrideNote } from "../lib/hats";
   import { isElevated } from "../lib/types";
   import type { SkillInfo, SkillFiles } from "../lib/types";
   import SkillEditor from "../lib/SkillEditor.svelte";
@@ -27,6 +28,13 @@
     }
   }
   onMount(load);
+
+  // Skills the worn hat overrides: their normal copies (listed here) don't run.
+  let overlays = $state<string[]>([]);
+  $effect(() => {
+    const h = $wornHat;
+    hatOverlays(h).then((ov) => $wornHat === h && (overlays = ov));
+  });
 
   async function viewSkill(name: string) {
     try {
@@ -102,6 +110,9 @@
             {#if s.also_in?.length}
               <span class="pill warn" title="A copy in {s.also_in.join(', ')} is shadowed by the {s.source} version — edits there are invisible.">shadows {s.also_in.join(", ")}</span>
             {/if}
+            {#if overlays.includes(s.name)}
+              <span class="pill warn" title={hatOverrideNote($wornHat)}>overridden by hat {$wornHat}</span>
+            {/if}
             <span class="spacer"></span>
             <button class="small" onclick={() => edit(s.name, "SKILL.md")}>Edit</button>
             <button class="small" onclick={() => viewSkill(s.name)}>Files</button>
@@ -127,6 +138,7 @@
       <button class="ghost" onclick={() => (open = null)}>Close</button>
     </header>
     <div class="body col">
+      {#if overlays.includes(open.name)}<div class="small warn">⚠ {hatOverrideNote($wornHat)}</div>{/if}
       {#each Object.entries(open.files) as [path, content]}
         <div class="row">
           <div class="muted small mono">=== {path} ===</div>

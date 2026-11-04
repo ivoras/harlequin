@@ -1,19 +1,25 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api } from "./api";
-  import { toast, user, activeProject } from "./stores";
+  import { toast, user, activeProject, wornHat } from "./stores";
   import { isElevated } from "./types";
+  import { hatOverlays, hatOverrideNote } from "./hats";
 
   // A small text editor: line-number gutter, active-line highlight, and the
   // usual textarea editing operations. Loads one skill file and saves it back
-  // into the chosen scope.
+  // into the chosen scope. readonly turns it into a viewer (e.g. a hat file
+  // for a user who may wear the hat but not edit it).
   let {
     name,
     path,
     hat = false,
+    readonly = false,
     initial,
     onClose,
-  }: { name: string; path: string; hat?: boolean; initial?: string; onClose: () => void } = $props();
+  }: { name: string; path: string; hat?: boolean; readonly?: boolean; initial?: string; onClose: () => void } = $props();
+
+  // Set when the worn hat overrides this skill, so edits here are invisible.
+  let overriddenBy = $state("");
 
   let content = $state("");
   let scope = $state("user"); // save target; defaults to the resolved scope once loaded
@@ -38,6 +44,8 @@
   let lineCount = $derived(content.split("\n").length);
 
   onMount(async () => {
+    const worn = $wornHat;
+    if (!hat && worn) hatOverlays(worn).then((ov) => (overriddenBy = ov.includes(name) ? worn : ""));
     try {
       if (initial !== undefined) {
         // Caller-provided starting content (e.g. a hat prompt seeded from the
@@ -73,11 +81,12 @@
   }
 
   async function save() {
+    if (readonly) return;
     saving = true;
     try {
       if (hat) await api.putHatFile(name, path, content);
       else await api.putSkillFile(name, path, scope, content);
-      toast(`saved ${name}/${path}`);
+      toast(overriddenBy ? `saved ${name}/${path} — not used while you wear the “${overriddenBy}” hat` : `saved ${name}/${path}`, overriddenBy ? "error" : "info");
       onClose();
     } catch (e) {
       toast((e as Error).message, "error");
@@ -101,7 +110,9 @@
   <header>
     <strong class="mono">{hat ? "hat" : "skill"}://{name}/{path}</strong>
     <span class="spacer"></span>
-    {#if !hat}
+    {#if readonly}
+      <span class="pill">read-only</span>
+    {:else if !hat}
       <label class="small muted">save to
         <select bind:value={scope}>
           {#each writable as w}
@@ -110,10 +121,11 @@
         </select>
       </label>
     {/if}
-    <button class="small" onclick={save} disabled={saving || loading}>Save</button>
+    {#if !readonly}<button class="small" onclick={save} disabled={saving || loading}>Save</button>{/if}
     <button class="ghost" onclick={onClose}>Close</button>
   </header>
-  <div class="meta muted small">resolved from: {fromScope || "-"} · Ctrl-S save · Esc close</div>
+  {#if overriddenBy}<div class="hat-warn small">{hatOverrideNote(overriddenBy)}</div>{/if}
+  <div class="meta muted small">{readonly ? "read-only · Esc close" : `resolved from: ${fromScope || "-"} · Ctrl-S save · Esc close`}</div>
   {#if loading}
     <div class="muted small" style="padding:12px;">Loading…</div>
   {:else}
@@ -134,6 +146,7 @@
           oninput={caretLine}
           onscroll={onScroll}
           onkeydown={onKeydown}
+          {readonly}
           spellcheck="false"
           wrap="off"
         ></textarea>
@@ -150,6 +163,13 @@
   }
   .meta {
     padding: 2px 12px 8px;
+  }
+  .hat-warn {
+    margin: 4px 12px 6px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--warn, #c90);
+    color: var(--warn, #c90);
   }
   .editor {
     flex: 1;
