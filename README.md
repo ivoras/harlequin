@@ -113,6 +113,15 @@ Both binaries read a YAML config file plus a `.env` file. YAML holds non-secret 
 - Client: copy `configs/client.example.yaml`. Client config lives at
   `~/.config/harlequin/client.yaml` by default.
 
+#### Provider outages and `fallback_model`
+
+Transient LLM failures (network errors, HTTP 429/5xx, a stream cut off mid-answer) are
+retried automatically with backoff. If the model stays unreachable, set
+`routing.fallback_model` to a model on the same gateway to take over, e.g.
+`fallback_model: "tensorx/qwen/qwen3.8-flash-next"` (add its `context_windows` and `prices`
+entries; a conversation too long for its window is not sent to it). When a turn does fail,
+the error is saved in the session, so it is visible in every client, including after a reload.
+
 #### Model suites
 
 The three model roles — **chat** (drives the conversation), **aux** (small/fast

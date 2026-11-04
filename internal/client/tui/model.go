@@ -32,7 +32,7 @@ const (
 	phaseRegisterPass
 	phaseRegisterCode
 	phaseChat
-	phaseAsk      // interactive ask_user answering
+	phaseAsk          // interactive ask_user answering
 	phaseSessions     // interactive session picker (resume)
 	phaseEditor       // built-in skill-file editor overlay
 	phaseMemoryEditor // built-in memory editor overlay

@@ -96,6 +96,7 @@ export const SSE = {
   Synced: "synced",
   Notification: "notification",
   DocumentsChanged: "documents_changed",
+  StepReset: "step_reset",
   Chat: "chat",
 } as const;
 

@@ -362,15 +362,9 @@ func (ls *liveSession) resume(sub *subscriber, haveSeq int) (types.StreamEvent, 
 			}
 		}
 	default:
-		// Cold resume after a finished turn: the committed history the client loads
-		// already holds the turn's messages, but errors are not stored there, so
-		// replay just the failure(s) — the user must still be able to see why the
-		// turn ended. (The buffer is cleared when the next turn starts.)
-		for _, ev := range ls.buf {
-			if ev.Type == types.SSEError {
-				replay = append(replay, ev)
-			}
-		}
+		// Cold resume after a finished turn: the committed history the client
+		// loads already holds the turn's messages and, for a failed turn, its
+		// stored error message — nothing to replay.
 	}
 	ls.subs[sub] = struct{}{}
 	return synced, replay

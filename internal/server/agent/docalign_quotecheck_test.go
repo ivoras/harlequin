@@ -79,4 +79,3 @@ func TestVerifyCitedQuotes(t *testing.T) {
 		t.Fatalf("a short quoted phrase should be exempt from the citation requirement, got: %v", problems)
 	}
 }
-

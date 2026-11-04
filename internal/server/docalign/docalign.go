@@ -435,7 +435,7 @@ func patience(ak, bk []string, aLo, aHi, bLo, bHi int, out *[][2]int) {
 // lisByB keeps the longest subsequence of candidates (already in A order) whose
 // B indices strictly increase — the classic patience-sorting step.
 func lisByB(cand [][2]int) [][2]int {
-	tails := []int{}      // tails[k] = index into cand of the smallest B-tail of a k+1-long chain
+	tails := []int{} // tails[k] = index into cand of the smallest B-tail of a k+1-long chain
 	prev := make([]int, len(cand))
 	for i, c := range cand {
 		lo, hi := 0, len(tails)

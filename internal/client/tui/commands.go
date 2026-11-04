@@ -768,9 +768,9 @@ func (m *Model) handleDocsList() tea.Cmd {
 				name = d.OriginalName
 			}
 			fmt.Fprintf(&sb, "  %-8s %s  (%s, %s, %d chunks)\n", docRef(d, pid), name, d.Scope, d.Mime, d.Chunks)
-		if d.Description != "" {
-			fmt.Fprintf(&sb, "        %s\n", d.Description)
-		}
+			if d.Description != "" {
+				fmt.Fprintf(&sb, "        %s\n", d.Description)
+			}
 		}
 		return infoMsg{strings.TrimRight(sb.String(), "\n")}
 	}
@@ -792,7 +792,9 @@ func (m *Model) handleDocsDelete(args []string) tea.Cmd {
 		switch scope {
 		case "personal", "shared", "project":
 		default:
-			return func() tea.Msg { return errMsg{fmt.Errorf("scope must be personal, shared, or project (or use a ref like p3.19)")} }
+			return func() tea.Msg {
+				return errMsg{fmt.Errorf("scope must be personal, shared, or project (or use a ref like p3.19)")}
+			}
 		}
 		n, err := strconv.ParseInt(args[1], 10, 64)
 		if err != nil {
@@ -810,7 +812,9 @@ func (m *Model) handleDocsDelete(args []string) tea.Cmd {
 		case m.activeProjectID != 0:
 			projectID = m.activeProjectID
 		default:
-			return func() tea.Msg { return errMsg{fmt.Errorf("no active project; switch to one with /project switch first")} }
+			return func() tea.Msg {
+				return errMsg{fmt.Errorf("no active project; switch to one with /project switch first")}
+			}
 		}
 	}
 	return func() tea.Msg {
@@ -927,7 +931,9 @@ func (m *Model) handleDocsView(args []string) tea.Cmd {
 		case m.activeProjectID != 0:
 			projectID = m.activeProjectID
 		default:
-			return func() tea.Msg { return errMsg{fmt.Errorf("no active project; switch to one with /project switch first")} }
+			return func() tea.Msg {
+				return errMsg{fmt.Errorf("no active project; switch to one with /project switch first")}
+			}
 		}
 	}
 	return func() tea.Msg {

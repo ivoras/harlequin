@@ -35,6 +35,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
+	if s.limited(w, r, "login", req.Email, 10) {
+		return
+	}
 	token, user, err := s.Auth.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
@@ -79,8 +82,15 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "password must be at least 8 characters")
 		return
 	}
+	if s.limited(w, r, "register", addr, 3) {
+		return
+	}
 	code, err := s.Auth.StartRegistration(r.Context(), addr, req.Password)
 	if err != nil {
+		if errors.Is(err, auth.ErrCodeTooSoon) {
+			writeErr(w, http.StatusTooManyRequests, "a code was just sent — wait a minute before requesting another")
+			return
+		}
 		if errors.Is(err, auth.ErrUserExists) {
 			writeErr(w, http.StatusConflict, "an account with that email already exists")
 			return
@@ -112,6 +122,9 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	addr := strings.ToLower(strings.TrimSpace(req.Email))
+	if s.limited(w, r, "verify", addr, 10) {
+		return
+	}
 	token, user, err := s.Auth.VerifyRegistration(r.Context(), addr, strings.TrimSpace(req.Code))
 	if err != nil {
 		switch {
@@ -120,7 +133,7 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, auth.ErrCodeExpired):
 			writeErr(w, http.StatusGone, "verification code expired — please register again")
 		case errors.Is(err, auth.ErrTooManyAttempts):
-			writeErr(w, http.StatusTooManyRequests, "too many attempts — please register again")
+			writeErr(w, http.StatusTooManyRequests, "too many attempts — wait for the code to expire (15 minutes), then register again")
 		case errors.Is(err, auth.ErrInvalidCredentials):
 			writeErr(w, http.StatusUnauthorized, "incorrect verification code")
 		case errors.Is(err, auth.ErrUserExists):

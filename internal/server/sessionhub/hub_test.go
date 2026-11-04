@@ -159,8 +159,8 @@ func (failAgent) Run(_ context.Context, _, _, _ int64, _, _, _, _, content strin
 
 // A client that dropped mid-turn and reconnects AFTER the turn failed must still
 // receive the error and the done event (it used to get nothing, leaving a phone
-// stuck on the last thinking block); a cold reload shows the error once, not the
-// whole finished turn; and the failure is emitted exactly once.
+// stuck on the last thinking block); a cold reload replays nothing (the error is
+// stored in the history); and the failure is emitted exactly once.
 func TestResumeAfterFailedTurnDeliversError(t *testing.T) {
 	hub := New(failAgent{}, nil, time.Minute)
 	defer hub.Stop()
@@ -172,8 +172,8 @@ func TestResumeAfterFailedTurnDeliversError(t *testing.T) {
 	a.Submit("go")
 	deadline := time.After(2 * time.Second)
 	for {
-		_, replay := hub.Attach(user, 0, sess).Resume(0)
-		if len(replay) > 0 {
+		synced, _ := hub.Attach(user, 0, sess).Resume(0)
+		if !synced.Running && synced.Seq >= 4 { // user echo, thinking, error, done
 			break
 		}
 		select {
@@ -198,11 +198,12 @@ func TestResumeAfterFailedTurnDeliversError(t *testing.T) {
 		t.Fatalf("warm replay after failure = %v, want [error done] (error exactly once)", types_)
 	}
 
-	// Cold reload: only the error, not the finished turn's events.
+	// Cold reload: nothing replayed — the failure is stored in the session's
+	// messages (role "error") by the agent, which clients load as history.
 	c := hub.Attach(user, 0, sess)
 	defer c.Close()
 	_, cold := c.Resume(0)
-	if len(cold) != 1 || cold[0].Type != types.SSEError || cold[0].Error != "boom" {
-		t.Fatalf("cold replay after failure = %+v, want a single error", cold)
+	if len(cold) != 0 {
+		t.Fatalf("cold replay after failure = %+v, want none", cold)
 	}
 }

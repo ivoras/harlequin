@@ -28,6 +28,7 @@ const (
 	TypeSkillLoaded     = "skill_loaded"
 	TypeUsage           = "usage"
 	TypeError           = "error"
+	TypeLLMRetry        = "llm_retry"      // a stream failed transiently and the step is being re-run
 	TypeReasoningLoop   = "reasoning_loop" // a streaming LLM call was cancelled for repeating itself / running away
 	TypeSessionEnd      = "session_end"
 	// WebFetch tool: the network fetch and the delegated (inner) LLM call that

@@ -58,6 +58,7 @@ type DocConverter interface {
 
 // Server holds the dependencies for the HTTP handlers.
 type Server struct {
+	limiter    rateLimiter // auth-route attempt limits (zero value ready)
 	Cfg        *config.Config
 	Storage    *storage.Manager
 	Auth       *auth.Store

@@ -269,7 +269,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.activeProjectID = msg.id
 		m.activeProjectName = msg.name
-		m.client.SetProject(msg.id) // skills etc. now resolve the project scope
+		m.client.SetProject(msg.id)    // skills etc. now resolve the project scope
 		m.switchSession(msg.sessionID) // resets the socket; keeps activeProjectID
 		m.phase = phaseChat
 		m.blocks = nil
@@ -420,6 +420,10 @@ func (m *Model) handleStreamEvent(ev types.StreamEvent) (tea.Model, tea.Cmd) {
 	case types.SSEToolResult:
 		m.ppProgress = "" // clear any delegated (e.g. WebFetch) prefill progress
 		m.appendBlock("tool", "  ↳ "+truncate(strings.TrimSpace(ev.Output), 200))
+	case types.SSEStepReset:
+		m.streaming.Reset()
+		m.streamingThinking.Reset()
+		m.refreshViewport()
 	case types.SSEError:
 		m.appendBlock("error", ev.Error)
 	case types.SSENotification:
@@ -813,6 +817,8 @@ func (m *Model) renderHistory(msgs []types.Message) {
 			}
 		case "tool":
 			m.appendBlock("tool", "  ↳ "+truncate(strings.TrimSpace(msg.Content), 200))
+		case "error":
+			m.appendBlock("error", msg.Content)
 		}
 	}
 }

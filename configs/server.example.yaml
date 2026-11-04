@@ -120,6 +120,9 @@ routing:
   fallback_order: ["local", "openrouter"]
   # Optional explicit per-model rules: model name -> provider name.
   model_rules: {}
+  # Model tried when the primary is unreachable after retries (same default provider).
+  # Add its context_windows/prices entries. Empty = none.
+  fallback_model: ""
 
 # Estimated cost per 1K tokens, keyed by model. Used for usage accounting.
 prices:

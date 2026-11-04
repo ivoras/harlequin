@@ -57,6 +57,9 @@ func (a *Agent) ContextBreakdown(ctx context.Context, projectID, sessionID, user
 		}
 		var messagesTokens int
 		for _, m := range history {
+			if m.Role == llm.RoleError {
+				continue
+			}
 			messagesTokens += llm.EstimateMessageTokens(llm.Message{
 				Role: m.Role, Content: m.Content, ToolCalls: toLLMToolCalls(m.ToolCalls),
 				ToolCallID: m.ToolCallID, Name: m.Name,

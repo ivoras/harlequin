@@ -358,7 +358,6 @@ func runBackfillSlotKeys(args []string) {
 	fmt.Printf("done: reindexed %d slot key(s) total\n", total)
 }
 
-
 // phaseProgress returns a live \r-progress printer for one reindex phase, and
 // prints nothing for empty phases. Call the returned done() to end the line.
 func phaseProgress(label string) (func(done, total int), func()) {
