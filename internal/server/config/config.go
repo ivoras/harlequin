@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ivoras/harlequin/internal/server/email"
@@ -130,6 +131,9 @@ func (a AuthConfig) AllowRegistrationValue() bool {
 // ServerConfig holds HTTP server settings.
 type ServerConfig struct {
 	Addr string `yaml:"addr"`
+	// OrgName is the organisation name shown next to the brand in the web UI
+	// (default "Unnamed").
+	OrgName string `yaml:"org_name"`
 	// Web optionally serves the static browser SPA at / (same origin as the API).
 	Web WebUIConfig `yaml:"web"`
 }
@@ -615,6 +619,9 @@ func (c *Config) resolveModelSuite() error {
 }
 
 func (c *Config) applyDefaults() {
+	if strings.TrimSpace(c.Server.OrgName) == "" {
+		c.Server.OrgName = "Unnamed"
+	}
 	if c.Server.Addr == "" {
 		c.Server.Addr = ":8080"
 	}

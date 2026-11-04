@@ -150,6 +150,15 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, u)
 }
 
+// handleOrg returns the configured organisation name for display in clients.
+func (s *Server) handleOrg(w http.ResponseWriter, r *http.Request) {
+	name := "Unnamed"
+	if s.Cfg != nil && s.Cfg.Server.OrgName != "" {
+		name = s.Cfg.Server.OrgName
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"name": name})
+}
+
 // handleUserDirectory lists every account's id and email — deliberately only
 // those two fields — for any authenticated user, so clients can offer
 // autocomplete when inviting project members. Org members already see each
