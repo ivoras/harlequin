@@ -1,6 +1,7 @@
 // Boot-time session/project restore shared by both web UIs: the active session
 // and project live in the URL (?s=&p=) so a refresh (or a link opened in the
 // other UI) resumes the same session in the same project.
+import { get } from "svelte/store";
 import { api } from "./api";
 import { session, wornHat, activeProject, toast } from "./stores";
 import { switchToProject, cleanTitle } from "./project";
@@ -28,7 +29,15 @@ export async function ensureSession(): Promise<void> {
   creating = true;
   try {
     const c = await api.createSession("Session", "");
-    session.set({ id: c.id, title: cleanTitle(c.title) });
+    // In a project the session must live in the project db (assigning moves it
+    // and returns the new id); otherwise the project route 404s on the personal id.
+    const proj = get(activeProject);
+    if (proj) {
+      const { session_id } = await api.assignSession(proj.id, c.id);
+      session.set({ id: session_id, title: "" });
+    } else {
+      session.set({ id: c.id, title: cleanTitle(c.title) });
+    }
     wornHat.set("");
   } catch (e) {
     toast((e as Error).message, "error");
