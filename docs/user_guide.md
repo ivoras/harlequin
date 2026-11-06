@@ -307,7 +307,12 @@ upload from the Files or Projects page (mobile: the Projects tab; TUI:
 `/upload project <path>`); ingestion shows live progress. In a
 project session the agent reads the project corpus alongside shared and
 personal scopes, and reports it saves (`save_doc`) land in the project corpus
-by default, citations pinned, so every member can find and open them.
+by default, citations pinned, so every member can find and open them. To move or
+copy a project file into another of your projects, open its **…** menu in the
+sidebar (while in the project) and pick **Move to project…** or **Copy to
+project…**, then the target project. Its text, search index and original file
+go along; after a move, old citations and `p<project>.<id>` references to it
+no longer resolve.
 
 **Inviting members.** Any member can invite others. In the browser, the
 Projects page (mobile: Projects tab) shows the picked project's members and an

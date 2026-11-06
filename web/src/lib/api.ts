@@ -304,6 +304,9 @@ export const api = {
   getProject: (id: number) => req<Project>("GET", `/projects/${id}`),
   inviteToProject: (id: number, email: string) => req<void>("POST", `/projects/${id}/invite`, { email }),
   removeProjectMember: (id: number, userID: number) => req<void>("DELETE", `/projects/${id}/members/${userID}`),
+  // Move or copy a project document into another project the caller belongs to.
+  transferProjectDoc: (id: number, docID: number, toProject: number, mode: "move" | "copy") =>
+    req<{ doc_id: number }>("POST", `/projects/${id}/documents/${docID}/transfer`, { to_project: toProject, mode }),
   departProject: (id: number) => req<void>("POST", `/projects/${id}/depart`),
   deleteProject: (id: number, confirmName: string) =>
     req<void>("DELETE", `/projects/${id}?confirm=${encodeURIComponent(confirmName)}`),

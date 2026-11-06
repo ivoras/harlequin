@@ -547,6 +547,108 @@ func (s *Store) ListScoped(ctx context.Context, scopes []ScopeDB) ([]types.Docum
 	return out, nil
 }
 
+// CopyInto copies document id from corpus src into corpus dst — its row,
+// chunks, FTS and vector index rows (vectors are copied as-is, no re-embedding;
+// all corpora share one embedding dimension) and its stored original file
+// (srcFiles -> dstFiles, renamed for the new id). Returns the new id. The
+// source is left untouched; a move deletes it afterwards, so a failure part-way
+// leaves the original rather than losing it.
+func (s *Store) CopyInto(ctx context.Context, src, dst *sql.DB, srcFiles, dstFiles string, id int64) (int64, error) {
+	var title, uri, mime, createdAt, original, stored, desc string
+	var createdBy sql.NullInt64
+	err := src.QueryRowContext(ctx,
+		`SELECT COALESCE(title,''), COALESCE(uri,''), COALESCE(mime,''), created_by, COALESCE(created_at,''),
+		        COALESCE(original_name,''), COALESCE(stored_path,''), COALESCE(description,'')
+		 FROM documents WHERE id = ?`, id).Scan(&title, &uri, &mime, &createdBy, &createdAt, &original, &stored, &desc)
+	if err != nil {
+		return 0, err
+	}
+	type chunk struct {
+		ord, page int
+		content   string
+		metadata  sql.NullString
+		vec       []byte
+	}
+	rows, err := src.QueryContext(ctx,
+		`SELECT c.ord, c.page, c.content, c.metadata, v.embedding
+		 FROM doc_chunks c LEFT JOIN doc_chunks_vec v ON v.rowid = c.id
+		 WHERE c.document_id = ? ORDER BY c.ord, c.id`, id)
+	if err != nil {
+		return 0, err
+	}
+	var chunks []chunk
+	for rows.Next() {
+		var c chunk
+		if err := rows.Scan(&c.ord, &c.page, &c.content, &c.metadata, &c.vec); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		chunks = append(chunks, c)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	tx, err := dst.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx,
+		`INSERT INTO documents(title, uri, mime, created_by, created_at, original_name, description)
+		 VALUES (?, ?, ?, ?, COALESCE(NULLIF(?, ''), CURRENT_TIMESTAMP), ?, ?)`,
+		title, uri, mime, createdBy, createdAt, sql.NullString{String: original, Valid: original != ""}, desc)
+	if err != nil {
+		return 0, err
+	}
+	newID, _ := res.LastInsertId()
+	for _, c := range chunks {
+		r, err := tx.ExecContext(ctx, `INSERT INTO doc_chunks(document_id, ord, content, metadata, page) VALUES (?, ?, ?, ?, ?)`,
+			newID, c.ord, c.content, c.metadata, c.page)
+		if err != nil {
+			return 0, err
+		}
+		cid, _ := r.LastInsertId()
+		if _, err := tx.ExecContext(ctx, `INSERT INTO doc_chunks_fts(rowid, content) VALUES (?, ?)`, cid, c.content); err != nil {
+			return 0, fmt.Errorf("copy fts row: %w", err)
+		}
+		if len(c.vec) > 0 {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO doc_chunks_vec(rowid, embedding) VALUES (?, ?)`, cid, c.vec); err != nil {
+				return 0, fmt.Errorf("copy vec row: %w", err)
+			}
+		}
+	}
+	// Copy the original file under a name for the new id ("<id>-<rest>").
+	var newStored string
+	if stored != "" && srcFiles != "" && dstFiles != "" {
+		data, err := os.ReadFile(filepath.Join(srcFiles, filepath.Base(stored)))
+		if err != nil && !os.IsNotExist(err) {
+			return 0, fmt.Errorf("read stored file: %w", err)
+		}
+		if err == nil {
+			rest := filepath.Base(stored)
+			if i := strings.IndexByte(rest, '-'); i > 0 && strings.Trim(rest[:i], "0123456789") == "" {
+				rest = rest[i+1:]
+			}
+			newStored = fmt.Sprintf("%d-%s", newID, rest)
+			if err := os.WriteFile(filepath.Join(dstFiles, newStored), data, 0o600); err != nil {
+				return 0, fmt.Errorf("write stored file: %w", err)
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE documents SET stored_path = ? WHERE id = ?`, newStored, newID); err != nil {
+				return 0, err
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		if newStored != "" {
+			_ = os.Remove(filepath.Join(dstFiles, newStored))
+		}
+		return 0, err
+	}
+	return newID, nil
+}
+
 // DeleteFrom removes a document, its chunks/index rows and (after the commit)
 // its stored file from a specific corpus. filesDir is that corpus' files
 // directory; "" skips the file.

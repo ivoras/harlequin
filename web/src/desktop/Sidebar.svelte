@@ -9,6 +9,7 @@
   import type { Document, Project, Session } from "../lib/types";
   import Icon from "./Icon.svelte";
   import WorkspaceSwitcher from "./WorkspaceSwitcher.svelte";
+  import TransferDocDialog from "./TransferDocDialog.svelte";
   import McpTools from "./McpTools.svelte";
   import { ui, openSession, relTime, MOD } from "./state.svelte";
   import { theme, setTheme } from "./theme.svelte";
@@ -24,6 +25,9 @@
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     fileMenu = fileMenu?.d === d ? null : { d, x: r.left, y: r.bottom + 2 };
   }
+
+  // Move/copy-to-project dialog for a project file.
+  let transfer = $state<{ d: Document; from: Project; mode: "move" | "copy" } | null>(null);
 
   // The "…" menu of a personal session row (fixed-positioned, like fileMenu).
   let sessMenu = $state<{ c: Session; x: number; y: number } | null>(null);
@@ -186,6 +190,11 @@
     {/if}
   </section>
 
+  {#if transfer}
+    <TransferDocDialog doc={transfer.d} from={transfer.from} projects={ui.projects} mode={transfer.mode}
+      onclose={() => { transfer = null; ui.loadDocs(); }} />
+  {/if}
+
   {#if sessMenu}
     {@const c = sessMenu.c}
     <div class="menu-click-away" role="presentation" onclick={() => (sessMenu = null)}></div>
@@ -212,6 +221,17 @@
   {#if fileMenu}
     <div class="menu-click-away" role="presentation" onclick={() => (fileMenu = null)}></div>
     <div class="popover" role="menu" style="position:fixed; left:{fileMenu.x}px; top:{fileMenu.y}px; min-width:150px;">
+      {#if fileMenu.d.scope === "project" && $activeProject}
+        <button class="menu-item" role="menuitem" title="Move this file into another of your projects"
+          onclick={() => { const d = fileMenu!.d; fileMenu = null; transfer = { d, from: $activeProject!, mode: "move" }; }}>
+          <Icon name="folder" size={14} /><span class="grow">Move to project…</span>
+        </button>
+        <button class="menu-item" role="menuitem" title="Copy this file into another of your projects (the original stays)"
+          onclick={() => { const d = fileMenu!.d; fileMenu = null; transfer = { d, from: $activeProject!, mode: "copy" }; }}>
+          <Icon name="copy" size={14} /><span class="grow">Copy to project…</span>
+        </button>
+        <div class="menu-sep"></div>
+      {/if}
       <button class="menu-item del" role="menuitem"
         title="Permanently delete this file, its Markdown text and its search index entries"
         onclick={() => { const d = fileMenu!.d; fileMenu = null; ui.deleteDoc(d, $activeProject?.id ?? 0); }}>

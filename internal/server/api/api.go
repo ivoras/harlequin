@@ -226,6 +226,7 @@ func (s *Server) Router() http.Handler {
 				r.Post("/projects/{id}/invite", s.handleInviteProject)
 				r.Post("/projects/{id}/depart", s.handleDepartProject)
 				r.Delete("/projects/{id}/members/{uid}", s.handleRemoveMember)
+				r.Post("/projects/{id}/documents/{docID}/transfer", s.handleTransferProjectDocument)
 				r.Get("/projects/{id}/sessions", s.handleListProjectSessions)
 				r.Post("/projects/{id}/sessions/{sid}", s.handleAssignSession)
 				r.Get("/projects/{id}/messages", s.handleProjectMessages)

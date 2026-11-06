@@ -11,6 +11,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/ivoras/harlequin/internal/server/auth"
+	"github.com/ivoras/harlequin/internal/server/docevents"
+	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/project"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
@@ -435,4 +437,76 @@ func (s *Server) dismissInviteAlert(r *http.Request, userID, inviteID int64) {
 	_ = s.Storage.WithUser(r.Context(), userID, func(udb *sql.DB) error {
 		return s.Notify.DismissKind(r.Context(), udb, types.NotifyKindProjectInvite(inviteID))
 	})
+}
+
+// handleTransferProjectDocument moves or copies a project document into another
+// project (body {"to_project": id, "mode": "move"|"copy"}). The caller must be
+// a member of both; any member may already add and delete a project's files.
+// The copy keeps its text, chunks, search index and original file, under a new
+// id; a move then deletes the original (so old p<id>.N references to it break).
+func (s *Server) handleTransferProjectDocument(w http.ResponseWriter, r *http.Request) {
+	u, from, ok := s.projectMember(w, r)
+	if !ok {
+		return
+	}
+	docID, _ := strconv.ParseInt(chi.URLParam(r, "docID"), 10, 64)
+	var req struct {
+		ToProject int64  `json:"to_project"`
+		Mode      string `json:"mode"`
+	}
+	if err := decode(r, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if req.Mode != "move" && req.Mode != "copy" {
+		writeErr(w, http.StatusBadRequest, `mode must be "move" or "copy"`)
+		return
+	}
+	if req.ToProject == from || req.ToProject <= 0 {
+		writeErr(w, http.StatusBadRequest, "pick a different target project")
+		return
+	}
+	if member, _ := s.Projects.IsMember(r.Context(), req.ToProject, u.ID); !member {
+		writeErr(w, http.StatusForbidden, "you are not a member of the target project")
+		return
+	}
+	srcFiles, err := s.Storage.ProjectFilesDir(from)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	dstFiles, err := s.Storage.ProjectFilesDir(req.ToProject)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	var newID int64
+	err = s.Storage.WithProject(r.Context(), from, func(src *sql.DB) error {
+		return s.Storage.WithProject(r.Context(), req.ToProject, func(dst *sql.DB) error {
+			var e error
+			if newID, e = s.Docs.CopyInto(r.Context(), src, dst, srcFiles, dstFiles, docID); e != nil {
+				return e
+			}
+			if req.Mode == "move" {
+				// The copy is committed: a failure here leaves a duplicate, never a loss.
+				if e := s.Docs.DeleteFrom(r.Context(), src, srcFiles, docID); e != nil {
+					return fmt.Errorf("copied to the target project, but removing the original failed: %w", e)
+				}
+			}
+			return nil
+		})
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		writeErr(w, http.StatusNotFound, "document not found in this project")
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.DocEvents.Publish(docevents.Event{Op: docevents.Created, Scope: documents.ScopeProject, ProjectID: req.ToProject, UserID: u.ID, DocID: newID})
+	if req.Mode == "move" {
+		s.DocEvents.Publish(docevents.Event{Op: docevents.Deleted, Scope: documents.ScopeProject, ProjectID: from, UserID: u.ID, DocID: docID})
+	}
+	writeJSON(w, http.StatusOK, map[string]int64{"doc_id": newID})
 }
