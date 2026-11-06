@@ -7,6 +7,7 @@
   import Mcp from "../views/Mcp.svelte";
   import Config from "../views/Config.svelte";
   import Usage from "../views/Usage.svelte";
+  import Audit from "../views/Audit.svelte";
   import Users from "../views/Users.svelte";
   import Icon from "./Icon.svelte";
   import { ui, type SettingsTab } from "./state.svelte";
@@ -23,6 +24,7 @@
     { id: "mcp", label: "MCP servers", icon: "plug" },
     { id: "config", label: "Config", icon: "key" },
     { id: "usage", label: "Usage", icon: "chart" },
+    ...(isOwner($user?.role) ? [{ id: "audit" as SettingsTab, label: "Audit", icon: "shield" }] : []),
   ]);
   const themes: { id: ThemePref; label: string; icon: string }[] = [
     { id: "system", label: "System", icon: "monitor" },
@@ -139,6 +141,8 @@
         <Config />
       {:else if ui.settingsTab === "usage"}
         <Usage />
+      {:else if ui.settingsTab === "audit" && isOwner($user?.role)}
+        <Audit />
       {/if}
     </div>
   </div>

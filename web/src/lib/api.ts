@@ -1,7 +1,7 @@
 // Typed REST client mirroring internal/client/apiclient. Same-origin by default
 // (base ""), so the server (or nginx) serves both the SPA and /api/v1. A base URL
 // can be overridden for a standalone/decoupled deployment.
-import { INTERFACE } from "./types";
+import { INTERFACE, type AuditEntry, type AuditStats } from "./types";
 import type {
   LoginResponse, User, Session, Message, Hat, SkillInfo, SkillFiles, SkillFile, DocChunkInfo,
   Memory, MemoryConflict, SearchResult, MCPServer, RegisterMCPRequest,
@@ -319,6 +319,9 @@ export const api = {
   projectMessages: (projectID: number, sessionID: number) =>
     reqList<Message>("GET", `/projects/${projectID}/messages?sid=${sessionID}`),
 
+  // audit log search + statistics (owner/admin); params: q, action, user (email), from/to (ISO), tz, limit
+  auditSearch: (p: URLSearchParams) => reqList<AuditEntry>("GET", `/audit?${p}`),
+  auditStats: (p: URLSearchParams) => req<AuditStats>("GET", `/audit/stats?${p}`),
   // misc
   usage: () => reqList<UsageRecord>("GET", "/usage"),
   // Per-day totals; tz is the viewer's UTC offset in minutes so days break at local midnight.
