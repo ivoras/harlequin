@@ -7,6 +7,7 @@
   import Icon from "./Icon.svelte";
   import TopBar from "./TopBar.svelte";
   import FileTable from "./FileTable.svelte";
+  import TransferDocDialog from "./TransferDocDialog.svelte";
   import { ui } from "./state.svelte";
 
   // Browse projects (a local pick — browsing does not switch the chat
@@ -115,6 +116,8 @@
     inp.onchange = () => inp.files && ui.upload([...inp.files], target);
     inp.click();
   }
+  // Move/copy-to-project dialog for a project file.
+  let transfer = $state<{ d: Document; from: Project; mode: "move" | "copy" } | null>(null);
 </script>
 
 <TopBar label="Projects" />
@@ -198,7 +201,8 @@
             <button class="small" onclick={pick}><Icon name="upload" size={13} /> Upload</button>
           </div>
           {#if docs.length}
-            <FileTable {docs} projectID={sel.id} projectName={sel.name} showScope={false} canDelete={() => true} onDelete={delDoc} />
+            <FileTable {docs} projectID={sel.id} projectName={sel.name} showScope={false} canDelete={() => true} onDelete={delDoc}
+              onTransfer={(d, mode) => (transfer = { d, from: sel!, mode })} />
           {:else}
             <div class="faint small">No files yet — drop files on this page to add them to {sel.name}.</div>
           {/if}
@@ -221,6 +225,11 @@
     {/if}
   </div>
 </div>
+
+{#if transfer}
+  <TransferDocDialog doc={transfer.d} from={transfer.from} projects={ui.projects} mode={transfer.mode}
+    onclose={() => { transfer = null; ui.docsChanged(); }} />
+{/if}
 
 <style>
   .split { flex: 1; min-height: 0; display: flex; }
