@@ -207,3 +207,72 @@ func TestResumeAfterFailedTurnDeliversError(t *testing.T) {
 		t.Fatalf("cold replay after failure = %+v, want none", cold)
 	}
 }
+
+// whoAgent records which user each turn ran as, and blocks each turn until released.
+type whoAgent struct {
+	ran     chan int64
+	release chan struct{}
+}
+
+func (w *whoAgent) LastMessageID(context.Context, int64, int64, int64) (int64, error) { return 0, nil }
+
+func (w *whoAgent) Run(ctx context.Context, _, _, userID int64, _, _, _, _, _ string, emit func(types.StreamEvent)) error {
+	w.ran <- userID
+	select {
+	case <-w.release:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	emit(types.StreamEvent{Type: types.SSEDone})
+	return nil
+}
+
+// In a shared project session each turn runs as the member who sent the prompt,
+// and DropUser cuts only the removed member off (connection, queued prompts).
+func TestProjectTurnsRunAsSenderAndDropUser(t *testing.T) {
+	w := &whoAgent{ran: make(chan int64, 4), release: make(chan struct{}, 4)}
+	hub := New(w, nil, time.Minute)
+	defer hub.Stop()
+	sess := &types.Session{ID: 7, API: types.APIREST, Interface: types.InterfaceWeb}
+	alice := &types.User{ID: 1, Email: "a@x", Role: types.RoleAdmin}
+	bob := &types.User{ID: 2, Email: "b@x", Role: types.RoleUser}
+
+	a := hub.Attach(alice, 5, sess) // alice opens the session first
+	defer a.Close()
+	a.Resume(0)
+	b := hub.Attach(bob, 5, sess)
+	defer b.Close()
+	b.Resume(0)
+
+	b.Submit("from bob")
+	if got := <-w.ran; got != bob.ID {
+		t.Fatalf("bob's prompt ran as user %d", got)
+	}
+	b.Submit("bob again, queued") // queued behind the running turn
+	hub.DropUser(5, bob.ID)       // interrupts bob's turn, drops his queued prompt
+
+	if _, open := <-b.Events(); open {
+		// drain until closed
+		for range b.Events() {
+		}
+	}
+	a.Submit("from alice")
+	select {
+	case got := <-w.ran:
+		if got != alice.ID {
+			t.Fatalf("after removal, next turn ran as user %d (bob's queued prompt not dropped?)", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("alice's turn did not run")
+	}
+	w.release <- struct{}{}
+	// Alice stays connected.
+	select {
+	case _, open := <-a.Events():
+		if !open {
+			t.Fatal("alice was disconnected by bob's removal")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("no events for alice")
+	}
+}

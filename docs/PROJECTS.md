@@ -27,6 +27,7 @@ walkthrough (with every client's buttons and commands) is in the
 | Create a project | any user | workspace switcher, TUI `/project new <name>` |
 | Invite someone | any member | Projects page "Invite by email", TUI `/project invite <email>` |
 | Accept / decline an invite | the invitee | Invitations list, TUI `/project invites` |
+| Remove another member | the project's creator, or any owner/admin | ✕ on the member (Projects page), TUI `/project remove <email>` |
 | Leave the project (depart) | yourself | "Depart project", TUI `/project depart` |
 | Delete the project | its creator, or any owner/admin (need not be a member) | "Delete project…" (type the name to confirm), TUI `/project delete <id-or-name> --yes` |
 
@@ -35,9 +36,13 @@ in-app notification, and nothing is shared with them until they accept. The
 invite box suggests account emails from the server's user directory (unless
 `auth.user_directory: false`).
 
-Limits today: there is no way to add someone without their accepting, to see or
-cancel pending invites, or to remove *another* member — members can only remove
-themselves. If the last member departs, the project remains (memberless) until
+A removed member is cut off immediately: their connections to the project's
+sessions and team chat are closed, their queued prompts are dropped, a turn
+they were running is stopped, and they're notified. They can be re-invited. The
+creator can't be removed (delete the project instead).
+
+Limits today: there is no way to add someone without their accepting, or to see
+or cancel pending invites. If the last member departs, the project remains (memberless) until
 its creator or an owner/admin deletes it. Deleting a project removes its
 sessions, documents, memories, chat history and files for **all** members,
 closes live connections to it, and notifies the other members; it can't be
@@ -54,8 +59,9 @@ undone. Deleting a user account removes that user's memberships.
   sees the same conversation, including a turn already in progress, and can
   reconnect mid-turn without losing it. Prompts from several members are queued
   and run one turn at a time.
-- A turn runs with the **acting member's** identity: their role, personal
-  memories and documents, their own skills, MCP servers and scheduled jobs. The
+- A turn runs with the identity of the **member who sent the prompt**: their
+  role, personal memories and documents, their own skills, MCP servers (and
+  sign-ins) and scheduled jobs, and its cost is recorded to them. The
   conversation itself, and anything the agent writes to the project, is shared.
 - The session's cost shown under Context usage adds up every member's turns.
 

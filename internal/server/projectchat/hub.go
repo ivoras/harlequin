@@ -25,15 +25,16 @@ func New() *Hub { return &Hub{rooms: map[int64]map[*Subscriber]struct{}{}} }
 
 // Subscriber is one connected member's live message queue.
 type Subscriber struct {
-	ch chan types.ChatMessage
+	ch     chan types.ChatMessage
+	userID int64
 }
 
 // Events is the stream of broadcast messages for this connection.
 func (s *Subscriber) Events() <-chan types.ChatMessage { return s.ch }
 
 // Join registers a connection to a project's room.
-func (h *Hub) Join(projectID int64) *Subscriber {
-	sub := &Subscriber{ch: make(chan types.ChatMessage, subBuffer)}
+func (h *Hub) Join(projectID, userID int64) *Subscriber {
+	sub := &Subscriber{ch: make(chan types.ChatMessage, subBuffer), userID: userID}
 	h.mu.Lock()
 	room := h.rooms[projectID]
 	if room == nil {
@@ -77,6 +78,19 @@ func (h *Hub) Broadcast(projectID int64, msg types.ChatMessage) {
 	}
 	if len(room) == 0 {
 		delete(h.rooms, projectID)
+	}
+}
+
+// DropUser disconnects one member (removed from the project) from its room;
+// their client's reconnect then fails the membership check.
+func (h *Hub) DropUser(projectID, userID int64) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for sub := range h.rooms[projectID] {
+		if sub.userID == userID {
+			close(sub.ch)
+			delete(h.rooms[projectID], sub)
+		}
 	}
 }
 
