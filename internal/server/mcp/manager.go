@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"strings"
@@ -35,6 +36,13 @@ type ManagerConfig struct {
 	// connect, so this is what actually prevents an unreachable server from
 	// hanging a request. Default 5s.
 	DialTimeout time.Duration
+	// WithUser opens a user's database for the duration of fn. Token refreshes
+	// happen inside pooled sessions long after the request that dialed them
+	// closed its handle, so rotated tokens are persisted through this.
+	WithUser func(ctx context.Context, userID int64, fn func(userDB *sql.DB) error) error
+	// OnAuthLost is called (once per loss; the dead token is deleted first) when
+	// a user's OAuth sign-in can no longer be refreshed. May be nil.
+	OnAuthLost func(ctx context.Context, userID int64, userDB *sql.DB, srv Server)
 }
 
 // Manager dials and pools MCP sessions, caches tool lists, and drives the OAuth
@@ -72,6 +80,7 @@ type pendingAuth struct {
 // PendingAuth identifies an in-flight authorization for the callback handler.
 type PendingAuth struct {
 	UserID   int64
+	Scope    string
 	Name     string
 	ReturnTo string // relative web-UI path to send the browser back to ("" = none)
 }
@@ -132,7 +141,7 @@ func (m *Manager) authSatisfied(ctx context.Context, userDB *sql.DB, srv Server)
 }
 
 // httpClientFor returns an auth-injecting HTTP client for srv.
-func (m *Manager) httpClientFor(ctx context.Context, userDB *sql.DB, srv Server) (*http.Client, error) {
+func (m *Manager) httpClientFor(ctx context.Context, userID int64, userDB *sql.DB, srv Server) (*http.Client, error) {
 	switch srv.AuthType {
 	case AuthNone:
 		return &http.Client{Transport: m.base, Timeout: 60 * time.Second}, nil
@@ -149,16 +158,20 @@ func (m *Manager) httpClientFor(ctx context.Context, userDB *sql.DB, srv Server)
 		if tok == nil {
 			return nil, ErrNeedAuth
 		}
+		if tok.RefreshToken == "" && !tok.Expiry.IsZero() && time.Now().After(tok.Expiry) {
+			m.authLost(userID, userDB, srv)
+			return nil, ErrNeedAuth
+		}
 		hc := &http.Client{Transport: m.base}
-		ts := tokenSource(ctx, hc, m.reg, userDB, srv, tok)
+		ts := tokenSource(ctx, hc, m, userID, srv, tok)
 		return &http.Client{Transport: &oauth2.Transport{Source: ts, Base: m.base}, Timeout: 60 * time.Second}, nil
 	}
 	return nil, fmt.Errorf("mcp: unknown auth type %q", srv.AuthType)
 }
 
 // connect dials a fresh session (no pooling).
-func (m *Manager) connect(ctx context.Context, userDB *sql.DB, srv Server) (*mcpsdk.ClientSession, error) {
-	hc, err := m.httpClientFor(ctx, userDB, srv)
+func (m *Manager) connect(ctx context.Context, userID int64, userDB *sql.DB, srv Server) (*mcpsdk.ClientSession, error) {
+	hc, err := m.httpClientFor(ctx, userID, userDB, srv)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +198,7 @@ func (m *Manager) session(ctx context.Context, userID int64, userDB *sql.DB, srv
 	}
 	m.mu.Unlock()
 
-	sess, err := m.connect(ctx, userDB, srv)
+	sess, err := m.connect(ctx, userID, userDB, srv)
 	if err != nil {
 		return nil, err
 	}
@@ -302,6 +315,41 @@ func (m *Manager) invalidate(scope, name string) {
 	m.mu.Unlock()
 }
 
+// authLost deletes a user's dead OAuth token, drops their pooled session and
+// reports it. userDB may be nil (refresh inside a pooled session): it is then
+// opened via cfg.WithUser.
+func (m *Manager) authLost(userID int64, userDB *sql.DB, srv Server) {
+	log.Printf("mcp: user %d sign-in to %s/%s lost (refresh impossible); token removed", userID, srv.Scope, srv.Name)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	m.drop(key(userID, srv.Scope, srv.Name))
+	fn := func(udb *sql.DB) error {
+		if err := m.reg.DeleteToken(ctx, udb, srv.Scope, srv.Name); err != nil {
+			return err
+		}
+		if m.cfg.OnAuthLost != nil {
+			m.cfg.OnAuthLost(ctx, userID, udb, srv)
+		}
+		return nil
+	}
+	var err error
+	if userDB != nil {
+		err = fn(userDB)
+	} else {
+		err = m.withUser(ctx, userID, fn)
+	}
+	if err != nil {
+		log.Printf("mcp: clearing lost token for user %d %s/%s: %v", userID, srv.Scope, srv.Name, err)
+	}
+}
+
+func (m *Manager) withUser(ctx context.Context, userID int64, fn func(*sql.DB) error) error {
+	if m.cfg.WithUser == nil {
+		return errors.New("mcp: no user database opener configured")
+	}
+	return m.cfg.WithUser(ctx, userID, fn)
+}
+
 // Invalidate is the exported entry point used by the API layer after mutations.
 func (m *Manager) Invalidate(scope, name string) { m.invalidate(scope, name) }
 
@@ -395,7 +443,7 @@ func (m *Manager) Pending(state string) (PendingAuth, bool) {
 	if !ok || time.Now().After(p.expires) {
 		return PendingAuth{}, false
 	}
-	return PendingAuth{UserID: p.userID, Name: p.name, ReturnTo: p.returnTo}, true
+	return PendingAuth{UserID: p.userID, Scope: p.scope, Name: p.name, ReturnTo: p.returnTo}, true
 }
 
 // CompleteAuth exchanges the authorization code and stores the resulting tokens

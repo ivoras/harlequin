@@ -117,3 +117,13 @@ export function consumeMCPOAuthResult(): boolean {
   history.replaceState(null, "", url);
   return true;
 }
+
+// mcpSignInTarget extracts the server from an "mcp-signin:<scope>/<name>"
+// reminder, or null for any other notification. Names can't contain "/".
+export function mcpSignInTarget(kind?: string): { scope: string; name: string } | null {
+  const pre = "mcp-signin:";
+  if (!kind?.startsWith(pre)) return null;
+  const rest = kind.slice(pre.length);
+  const i = rest.indexOf("/");
+  return i > 0 ? { scope: rest.slice(0, i), name: rest.slice(i + 1) } : null;
+}

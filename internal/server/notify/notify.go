@@ -94,6 +94,15 @@ func (s *Store) setStatus(ctx context.Context, db *sql.DB, id int64, status stri
 	return err
 }
 
+// DismissKind dismisses every not-yet-dismissed notification of kind (e.g. a
+// sign-in reminder once the user has signed in).
+func (s *Store) DismissKind(ctx context.Context, db *sql.DB, kind string) error {
+	_, err := db.ExecContext(ctx,
+		`UPDATE notifications SET status = ?, delivered_at = CURRENT_TIMESTAMP WHERE kind = ? AND status != ?`,
+		StatusDismissed, kind, StatusDismissed)
+	return err
+}
+
 // ExistsKind reports whether any notification of the given kind exists (any
 // status), used to avoid re-queuing one-shot notifications like onboarding.
 func (s *Store) ExistsKind(ctx context.Context, db *sql.DB, kind string) (bool, error) {

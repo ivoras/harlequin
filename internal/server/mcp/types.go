@@ -10,6 +10,8 @@
 // server's tool list.
 package mcp
 
+import "github.com/ivoras/harlequin/internal/shared/types"
+
 const (
 	// ScopeShared and ScopeUser are the two registration scopes.
 	ScopeShared = "shared"
@@ -86,4 +88,20 @@ type Status struct {
 	NeedsAuth     bool   // true if OAuth authorization is required but missing
 	ToolCount     int    // number of tools (when connected during a status probe)
 	Err           string // last connection/listing error, if any
+}
+
+// SignInNotice is the user reminder to sign in to an OAuth server: lost=true
+// when an existing sign-in expired or was revoked, false for a newly shared one.
+func SignInNotice(srv Server, lost bool) types.Notification {
+	title := "Sign in to MCP server " + srv.Name
+	desc := "An administrator added it for everyone; its tools are available to the assistant once you sign in."
+	if lost {
+		title = "Sign in to MCP server " + srv.Name + " again"
+		desc = "Your sign-in expired or was revoked, so the assistant can't use its tools until you sign in again."
+	}
+	return types.Notification{
+		Kind:        types.NotifyKindMCPSignIn(srv.Scope, srv.Name),
+		Title:       title,
+		Description: desc + " Web: Sign in on this alert or under Settings → MCP servers. TUI: /mcp auth " + srv.Scope + "/" + srv.Name,
+	}
 }

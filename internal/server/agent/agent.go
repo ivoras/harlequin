@@ -152,12 +152,12 @@ type runContext struct {
 	// mcpNeedAuth lists "scope/name" of enabled OAuth MCP servers skipped this
 	// turn because the user hasn't signed in (set by registerMCPTools).
 	mcpNeedAuth []string
-	api        string // transport this session arrived over (e.g. "REST")
-	iface      string // interface/medium this session uses (e.g. "TUI")
-	turn       int
-	step       int
-	emit       EmitFunc
-	memWritten []string // content stored/changed via memory_write or memory_change (auto-extract dedup)
+	api         string // transport this session arrived over (e.g. "REST")
+	iface       string // interface/medium this session uses (e.g. "TUI")
+	turn        int
+	step        int
+	emit        EmitFunc
+	memWritten  []string // content stored/changed via memory_write or memory_change (auto-extract dedup)
 	// Memory-usefulness instrumentation (no learning yet — just measurement):
 	// memRecalled is every composite id surfaced by memory_search this turn;
 	// memUseful is the subset the model explicitly cited via memory_feedback (only

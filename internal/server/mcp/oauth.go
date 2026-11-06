@@ -5,11 +5,14 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -129,6 +132,19 @@ func registerClient(ctx context.Context, hc *http.Client, meta *OAuthMeta, clien
 		// Surface the server's error body — providers often explain (e.g. an
 		// "invalid_redirect_uri" when DCR is restricted to specific clients).
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		var oe struct {
+			Error       string `json:"error"`
+			Description string `json:"error_description"`
+		}
+		if json.Unmarshal(body, &oe) == nil && oe.Error == "invalid_redirect_uri" {
+			host := meta.RegistrationEndpoint
+			if u, err := url.Parse(host); err == nil {
+				host = u.Host
+			}
+			return "", "", fmt.Errorf("mcp: %s only lets pre-approved apps sign in and rejected Harlequin's callback URL %s. "+
+				"Ask the provider to allow that redirect URI, or use an API key if they offer one (provider said: %s)",
+				host, redirectURI, oe.Description)
+		}
 		detail := strings.TrimSpace(string(body))
 		if detail == "" {
 			detail = resp.Status
@@ -182,41 +198,67 @@ func exchangeCode(ctx context.Context, hc *http.Client, meta *OAuthMeta, redirec
 }
 
 // persistingTokenSource wraps an oauth2.TokenSource and writes any refreshed
-// token back to the user's database so rotations survive restarts.
+// token back to the user's database so rotations survive restarts. It lives in
+// a pooled session that outlives the dialing request, so it opens the user DB
+// itself (via the Manager) rather than holding a request-scoped handle.
 type persistingTokenSource struct {
 	base   oauth2.TokenSource
-	reg    *Registry
-	userDB *sql.DB
-	scope  string
-	name   string
+	m      *Manager
+	userID int64
+	srv    Server
+	mu     sync.Mutex
 	last   *oauth2.Token
 }
 
 func (p *persistingTokenSource) Token() (*oauth2.Token, error) {
 	tok, err := p.base.Token()
 	if err != nil {
+		if grantLost(err) {
+			p.m.authLost(p.userID, nil, p.srv)
+		}
 		return nil, err
 	}
-	if p.last == nil || tok.AccessToken != p.last.AccessToken || tok.RefreshToken != p.last.RefreshToken {
-		_ = p.reg.SaveToken(context.Background(), p.userDB, p.scope, p.name, tok)
-		p.last = tok
+	p.mu.Lock()
+	changed := p.last == nil || tok.AccessToken != p.last.AccessToken || tok.RefreshToken != p.last.RefreshToken
+	p.last = tok
+	p.mu.Unlock()
+	if changed {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := p.m.withUser(ctx, p.userID, func(udb *sql.DB) error {
+			return p.m.reg.SaveToken(ctx, udb, p.srv.Scope, p.srv.Name, tok)
+		}); err != nil {
+			log.Printf("mcp: persist refreshed token for user %d %s/%s: %v", p.userID, p.srv.Scope, p.srv.Name, err)
+		}
 	}
 	return tok, nil
 }
 
+// grantLost reports whether a token-refresh failure means the sign-in is dead
+// (revoked/expired refresh token) rather than a transient outage.
+func grantLost(err error) bool {
+	var re *oauth2.RetrieveError
+	if !errors.As(err, &re) {
+		return false
+	}
+	return re.ErrorCode == "invalid_grant" || (re.Response != nil && re.Response.StatusCode == http.StatusUnauthorized)
+}
+
 // tokenSource returns an HTTP-client-ready TokenSource for a stored token that
 // refreshes and persists automatically.
-func tokenSource(ctx context.Context, hc *http.Client, reg *Registry, userDB *sql.DB, srv Server, tok *oauth2.Token) oauth2.TokenSource {
+func tokenSource(ctx context.Context, hc *http.Client, m *Manager, userID int64, srv Server, tok *oauth2.Token) oauth2.TokenSource {
 	cfg := oauthConfig(srv.OAuth, "")
-	ctx = context.WithValue(ctx, oauth2.HTTPClient, hc)
-	return &persistingTokenSource{
+	// The refresh runs later, inside pooled sessions: don't tie it to the
+	// dialing request's context.
+	ctx = context.WithValue(context.WithoutCancel(ctx), oauth2.HTTPClient, hc)
+	// ReuseTokenSource serialises refreshes and only calls through when expired.
+	return oauth2.ReuseTokenSource(tok, &persistingTokenSource{
 		base:   cfg.TokenSource(ctx, tok),
-		reg:    reg,
-		userDB: userDB,
-		scope:  srv.Scope,
-		name:   srv.Name,
+		m:      m,
+		userID: userID,
+		srv:    srv,
 		last:   tok,
-	}
+	})
 }
 
 // wellKnown returns the RFC 8414/9728 metadata URLs for raw: the well-known

@@ -4,7 +4,7 @@
   import { sc } from "../lib/session.svelte";
   import { pc } from "../lib/projectchat.svelte";
   import { docView } from "../lib/docview.svelte";
-  import { initSession, ensureSession, setURLParams, consumeMCPOAuthResult } from "../lib/workspace";
+  import { initSession, ensureSession, setURLParams, consumeMCPOAuthResult, authorizeMCP, mcpSignInTarget } from "../lib/workspace";
   import Login from "../views/Login.svelte";
   import Memory from "../views/Memory.svelte";
   import Skills from "../views/Skills.svelte";
@@ -232,6 +232,10 @@
               </div>
               {#if a.prompt}
                 <button class="small" onclick={() => { view.set("chat"); sc.runAlert(a); }}><Icon name="play" size={12} /> Run</button>
+              {/if}
+              {#if mcpSignInTarget(a.kind)}
+                {@const t = mcpSignInTarget(a.kind)!}
+                <button class="small primary" onclick={() => authorizeMCP(t.scope, t.name)}><Icon name="plug" size={12} /> Sign in</button>
               {/if}
               <button class="icon-btn" onclick={() => sc.dismissAlert(a)} aria-label="Dismiss"><Icon name="x" size={14} /></button>
             </div>

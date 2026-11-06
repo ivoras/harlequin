@@ -160,8 +160,10 @@ tools; its gear button opens Settings → MCP servers, where you register a
 server by name and URL, with no authentication, an API key / request header,
 or OAuth. For an OAuth
 server you're sent to the provider to sign in right after registering, and
-then returned to Harlequin (use **Sign in** / **Re-authorize** later if access
-expires). Owners/admins can register a server for everyone in the
+then returned to Harlequin. If a sign-in later expires or is revoked, or an
+admin shares a new OAuth server, you get an alert with a **Sign in** button
+(TUI: `/mcp auth <scope/name>`), and the assistant tells you to sign in if you
+ask for something that server provides. Owners/admins can register a server for everyone in the
 organisation; each user still signs in to it with their own account. On the
 mobile UI the same page is under the menu's **MCP servers**. MCP must be
 enabled on the server (`mcp.enabled: true`), and OAuth and API-key servers also need
