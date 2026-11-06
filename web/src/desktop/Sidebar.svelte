@@ -6,7 +6,7 @@
   import { cleanTitle } from "../lib/project";
   import { viewDocument } from "../lib/docview.svelte";
   import { switchUI } from "../lib/uipref";
-  import type { Session } from "../lib/types";
+  import type { Document, Session } from "../lib/types";
   import Icon from "./Icon.svelte";
   import WorkspaceSwitcher from "./WorkspaceSwitcher.svelte";
   import { ui, openSession, relTime, MOD } from "./state.svelte";
@@ -15,6 +15,14 @@
   let filter = $state("");
   let userMenu = $state(false);
   let filesOpen = $state(true);
+  // The "…" menu of a sidebar file row; fixed-positioned from the button's
+  // rect because the list scrolls (an absolute popover would be clipped).
+  let fileMenu = $state<{ d: Document; x: number; y: number } | null>(null);
+  function openFileMenu(d: Document, e: MouseEvent) {
+    e.stopPropagation();
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    fileMenu = fileMenu?.d === d ? null : { d, x: r.left, y: r.bottom + 2 };
+  }
 
   const nav: { id: View; label: string; icon: string }[] = [
     { id: "chat", label: "Chat", icon: "message" },
@@ -145,10 +153,14 @@
     {#if filesOpen}
       <div class="sb-files">
         {#each wsDocs.slice(0, 8) as d (`${d.scope}:${d.id}`)}
-          <button class="file-item" title={d.description || d.title}
-            onclick={() => viewDocument(d, d.scope === "project" ? ($activeProject?.id ?? 0) : 0)}>
-            <Icon name="file" size={14} /> <span class="grow">{d.title}</span>
-          </button>
+          <div class="file-row" class:open={fileMenu?.d === d}>
+            <button class="file-item" title={d.description || d.title}
+              onclick={() => viewDocument(d, d.scope === "project" ? ($activeProject?.id ?? 0) : 0)}>
+              <Icon name="file" size={14} /> <span class="grow">{d.title}</span>
+            </button>
+            <button class="icon-btn file-more" aria-label="More actions for {d.title}" aria-haspopup="menu"
+              aria-expanded={fileMenu?.d === d} onclick={(e) => openFileMenu(d, e)}><Icon name="more" size={14} /></button>
+          </div>
         {/each}
         {#if wsDocs.length === 0}
           <div class="sb-empty">Drop files anywhere to add them.</div>
@@ -158,6 +170,17 @@
       </div>
     {/if}
   </section>
+
+  {#if fileMenu}
+    <div class="menu-click-away" role="presentation" onclick={() => (fileMenu = null)}></div>
+    <div class="popover" role="menu" style="position:fixed; left:{fileMenu.x}px; top:{fileMenu.y}px; min-width:150px;">
+      <button class="menu-item del" role="menuitem"
+        title="Permanently delete this file, its Markdown text and its search index entries"
+        onclick={() => { const d = fileMenu!.d; fileMenu = null; ui.deleteDoc(d, $activeProject?.id ?? 0); }}>
+        <Icon name="trash" size={14} /><span class="grow">Delete…</span>
+      </button>
+    </div>
+  {/if}
 
   <section class="sb-section sessions">
     <div class="sb-head">
@@ -257,6 +280,10 @@
   .chev.open { transform: rotate(90deg); }
   .sb-files { display: flex; flex-direction: column; max-height: 30vh; overflow-y: auto; }
   .file-item { font-size: 13px; min-height: 26px; }
+  .file-row { position: relative; }
+  .file-more { display: none; position: absolute; right: 2px; top: 50%; transform: translateY(-50%); padding: 3px; }
+  .file-row:hover .file-more, .file-row:focus-within .file-more, .file-row.open .file-more { display: inline-flex; }
+  .menu-item.del { color: var(--danger); }
   .file-item.more { color: var(--faint); padding-left: 31px; }
   .sb-empty { color: var(--faint); font-size: 12px; padding: 4px 8px 6px; }
   .sb-filter { padding: 4px 0 6px; }
