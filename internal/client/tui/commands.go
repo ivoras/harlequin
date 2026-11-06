@@ -500,7 +500,7 @@ func (m *Model) handleMCPSub(args []string, raw string) tea.Cmd {
 			if err != nil {
 				return errMsg{err}
 			}
-			return infoMsg{"Open this URL in a browser to authorize, then run /mcp test " + scope + "/" + name + ":\n" + res.AuthorizeURL}
+			return infoMsg{"Open this URL in a browser to authorize, then run /mcp test " + mcpScopeLabel(scope) + "/" + name + ":\n" + res.AuthorizeURL}
 		}
 	default:
 		return infoCmd("usage: /mcp [list|show <s/name>|add ...|test <s/name>|auth <s/name>|del <s/name>]")
