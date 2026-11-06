@@ -39,8 +39,8 @@ const helpText = `Commands:
   /hat prompt <name> on|off            (admin) toggle the hat's custom prompt (content is kept)
   /hat rmskill <hat> <skill>           (admin) remove a skill overlay from the hat
   /hat del <name>       (admin) delete a hat
-  /mcp                  list MCP servers (shared + your own) and status
-  /mcp show <s/name>    show one MCP server (scope = shared|user)
+  /mcp                  list MCP servers (organisation + your personal ones) and status
+  /mcp show <s/name>    show one MCP server (scope = organisation|personal)
   /mcp add <s/name> <url> [header Name:"Value" [Name2:"Value2" ...] | oauth]  register an MCP server
   /mcp test <s/name>    connect and list the server's tools
   /mcp auth <s/name>    authorize an OAuth MCP server (prints a URL to open)
@@ -413,12 +413,24 @@ func (m *Model) handleHatSub(args []string) tea.Cmd {
 	}
 }
 
-// parseMCPRef parses "scope/name" or bare "name" (default scope "user").
+// mcpScopeLabel is how a scope is shown to users; parseMCPRef accepts the
+// labels too, so a listed "personal/foo" can be pasted back into /mcp commands.
+func mcpScopeLabel(scope string) string {
+	if scope == "shared" {
+		return "organisation"
+	}
+	return "personal"
+}
+
+// parseMCPRef parses "scope/name" or bare "name" (default: personal). Scope is
+// personal|user or organisation|organization|shared.
 func parseMCPRef(s string) (scope, name string) {
 	if i := strings.Index(s, "/"); i >= 0 {
-		scope, name = strings.ToLower(s[:i]), s[i+1:]
-		if scope == "shared" || scope == "user" {
-			return scope, name
+		switch sc := strings.ToLower(s[:i]); sc {
+		case "shared", "organisation", "organization":
+			return "shared", s[i+1:]
+		case "user", "personal":
+			return "user", s[i+1:]
 		}
 	}
 	return "user", s
@@ -589,7 +601,7 @@ func renderMCPList(servers []types.MCPServer) string {
 	var sb strings.Builder
 	sb.WriteString("MCP servers (scope/name — auth — status):\n")
 	for _, s := range servers {
-		fmt.Fprintf(&sb, " %s/%-16s %-7s %s\n", s.Scope, s.Name, s.AuthType, mcpStatusText(s))
+		fmt.Fprintf(&sb, " %s/%-16s %-7s %s\n", mcpScopeLabel(s.Scope), s.Name, s.AuthType, mcpStatusText(s))
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }
@@ -611,7 +623,7 @@ func mcpStatusText(s types.MCPServer) string {
 
 func renderMCPDetail(s types.MCPServer) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "MCP server %s/%s\n", s.Scope, s.Name)
+	fmt.Fprintf(&sb, "MCP server %s/%s\n", mcpScopeLabel(s.Scope), s.Name)
 	fmt.Fprintf(&sb, "  url:    %s\n", s.URL)
 	fmt.Fprintf(&sb, "  auth:   %s", s.AuthType)
 	if len(s.HeaderNames) > 0 {
