@@ -78,19 +78,7 @@
       toast((e as Error).message, "error");
     }
   }
-  async function assignCurrent() {
-    const p = $activeProject;
-    if (!p || !$session.id) return;
-    if (!confirm(`Move the current session into "${p.name}"? Every member will see it.`)) return;
-    try {
-      const { session_id } = await api.assignSession(p.id, $session.id);
-      session.set({ id: session_id, title: $session.title });
-      toast("session assigned to " + p.name);
-      ui.loadSessions();
-    } catch (e) {
-      toast((e as Error).message, "error");
-    }
-  }
+
   async function depart(p: Project) {
     if (!confirm(`Depart "${p.name}"? This removes your membership.`)) return;
     try {
@@ -180,13 +168,6 @@
           {/if}
         </div>
 
-        {#if $activeProject?.id === sel.id}
-          <div class="card row">
-            <Icon name="message" />
-            <span class="muted small" style="flex:1;">Move the session you're chatting in into this project so every member can see and continue it.</span>
-            <button class="small" onclick={assignCurrent}>Assign current session</button>
-          </div>
-        {/if}
 
         <section>
           <h3>Members <span class="faint">{members.length || ""}</span></h3>

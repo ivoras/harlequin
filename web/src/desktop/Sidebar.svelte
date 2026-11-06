@@ -6,7 +6,7 @@
   import { cleanTitle } from "../lib/project";
   import { viewDocument } from "../lib/docview.svelte";
   import { switchUI } from "../lib/uipref";
-  import type { Document, Session } from "../lib/types";
+  import type { Document, Project, Session } from "../lib/types";
   import Icon from "./Icon.svelte";
   import WorkspaceSwitcher from "./WorkspaceSwitcher.svelte";
   import McpTools from "./McpTools.svelte";
@@ -23,6 +23,31 @@
     e.stopPropagation();
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     fileMenu = fileMenu?.d === d ? null : { d, x: r.left, y: r.bottom + 2 };
+  }
+
+  // The "…" menu of a personal session row (fixed-positioned, like fileMenu).
+  let sessMenu = $state<{ c: Session; x: number; y: number } | null>(null);
+  function openSessMenu(c: Session, e: MouseEvent) {
+    e.stopPropagation();
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    sessMenu = sessMenu?.c === c ? null : { c, x: Math.max(8, r.right - 190), y: r.bottom + 2 };
+  }
+  // Moving a personal session into a project shares its whole history with the
+  // members. If it's the open session, follow it into the project.
+  async function moveToProject(c: Session, p: Project) {
+    const title = cleanTitle(c.title) || "New session";
+    if (!confirm(`Move "${title}" into the project "${p.name}"?\n\nIt leaves your personal sessions, and every member of the project will see it and its whole history.`)) return;
+    try {
+      const { session_id } = await api.assignSession(p.id, c.id);
+      ui.sessions = ui.sessions.filter((x) => x.id !== c.id);
+      toast(`moved "${title}" to ${p.name}`);
+      if (c.id === $session.id) {
+        activeProject.set(p);
+        session.set({ id: session_id, title: cleanTitle(c.title) });
+      }
+    } catch (err) {
+      toast((err as Error).message, "error");
+    }
   }
 
   const nav: { id: View; label: string; icon: string }[] = [
@@ -173,6 +198,29 @@
     {/if}
   </section>
 
+  {#if sessMenu}
+    {@const c = sessMenu.c}
+    <div class="menu-click-away" role="presentation" onclick={() => (sessMenu = null)}></div>
+    <div class="popover" role="menu" style="position:fixed; left:{sessMenu.x}px; top:{sessMenu.y}px; min-width:190px; max-height:60vh; overflow-y:auto;">
+      <button class="menu-item" role="menuitem" onclick={(e) => { sessMenu = null; rename(c, e); }}>
+        <Icon name="pencil" size={14} /><span class="grow">Rename…</span>
+      </button>
+      <div class="menu-label">Move to project…</div>
+      {#each ui.projects as p (p.id)}
+        <button class="menu-item" role="menuitem" title="Move this session and its history into {p.name}; every member will see it"
+          onclick={() => { sessMenu = null; moveToProject(c, p); }}>
+          <Icon name="folder" size={14} /><span class="grow">{p.name}</span>
+        </button>
+      {:else}
+        <div class="sb-empty">No projects yet — create one in the workspace switcher.</div>
+      {/each}
+      <div class="menu-sep"></div>
+      <button class="menu-item del" role="menuitem" onclick={(e) => { sessMenu = null; del(c, e); }}>
+        <Icon name="trash" size={14} /><span class="grow">Delete…</span>
+      </button>
+    </div>
+  {/if}
+
   {#if fileMenu}
     <div class="menu-click-away" role="presentation" onclick={() => (fileMenu = null)}></div>
     <div class="popover" role="menu" style="position:fixed; left:{fileMenu.x}px; top:{fileMenu.y}px; min-width:150px;">
@@ -201,10 +249,8 @@
             <span class="grow">{cleanTitle(c.title) || "New session"}</span>
             <span class="when faint">{relTime(c.updated_at)}</span>
             {#if !$activeProject}
-              <span class="sess-actions">
-                <button class="icon-btn" onclick={(e) => rename(c, e)} aria-label="Rename"><Icon name="pencil" size={13} /></button>
-                <button class="icon-btn" onclick={(e) => del(c, e)} aria-label="Delete"><Icon name="trash" size={13} /></button>
-              </span>
+              <button class="icon-btn sess-more" class:open={sessMenu?.c === c} aria-label="More actions for this session"
+                aria-haspopup="menu" aria-expanded={sessMenu?.c === c} onclick={(e) => openSessMenu(c, e)}><Icon name="more" size={14} /></button>
             {/if}
           </div>
         {/each}
@@ -297,10 +343,10 @@
   .sess:hover { background: var(--hover); }
   .sess.active { background: var(--surface); box-shadow: var(--shadow-1); }
   .sess .when { font-size: 11px; }
-  .sess-actions { display: none; gap: 0; }
-  .sess:hover .sess-actions { display: inline-flex; }
-  .sess:hover .when { display: none; }
-  .sess-actions :global(button) { padding: 3px; }
+  /* The "…" button only shows on hover/focus (or while its menu is open). */
+  .sess-more { display: none; padding: 3px; }
+  .sess:hover .sess-more, .sess:focus-within .sess-more, .sess-more.open { display: inline-flex; }
+  .sess:hover .when, .sess:focus-within .when { display: none; }
   .sb-user { position: relative; padding: 8px 10px; border-top: 1px solid var(--border-soft); }
   .user-btn { width: 100%; justify-content: flex-start; gap: 9px; background: transparent; border: none; box-shadow: none;
     padding: 5px 6px; text-align: left; }
