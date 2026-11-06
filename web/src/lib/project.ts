@@ -99,6 +99,26 @@ export async function respondToInvite(inviteID: number, accept: boolean, project
   }
 }
 
+// moveSessionToProject moves a PERSONAL session (and its history) into project
+// p after confirming; if it is the open session, the app follows it into the
+// project. Resolves the session's new (project) id, or null if cancelled/failed.
+export async function moveSessionToProject(c: { id: number; title: string }, p: Project): Promise<number | null> {
+  const title = cleanTitle(c.title) || "New session";
+  if (!confirm(`Move "${title}" into the project "${p.name}"?\n\nIt leaves your personal sessions, and every member of the project will see it and its whole history.`)) return null;
+  try {
+    const { session_id } = await api.assignSession(p.id, c.id);
+    toast(`moved "${title}" to ${p.name}`);
+    if (c.id === get(session).id && !get(activeProject)) {
+      activeProject.set(p);
+      session.set({ id: session_id, title: cleanTitle(c.title) });
+    }
+    return session_id;
+  } catch (e) {
+    toast((e as Error).message, "error");
+    return null;
+  }
+}
+
 // canDeleteProject mirrors the server rule: the creator or an owner/admin.
 export function canDeleteProject(p: Project): boolean {
   const u = get(user);

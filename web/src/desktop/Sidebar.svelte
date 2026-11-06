@@ -3,7 +3,7 @@
   import { onMount } from "svelte";
   import { user, view, session, activeProject, toast, orgName, loadOrgName, type View } from "../lib/stores";
   import { ensureSession } from "../lib/workspace";
-  import { cleanTitle } from "../lib/project";
+  import { cleanTitle, moveSessionToProject } from "../lib/project";
   import { viewDocument } from "../lib/docview.svelte";
   import { switchUI } from "../lib/uipref";
   import type { Document, Project, Session } from "../lib/types";
@@ -32,22 +32,8 @@
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     sessMenu = sessMenu?.c === c ? null : { c, x: Math.max(8, r.right - 190), y: r.bottom + 2 };
   }
-  // Moving a personal session into a project shares its whole history with the
-  // members. If it's the open session, follow it into the project.
   async function moveToProject(c: Session, p: Project) {
-    const title = cleanTitle(c.title) || "New session";
-    if (!confirm(`Move "${title}" into the project "${p.name}"?\n\nIt leaves your personal sessions, and every member of the project will see it and its whole history.`)) return;
-    try {
-      const { session_id } = await api.assignSession(p.id, c.id);
-      ui.sessions = ui.sessions.filter((x) => x.id !== c.id);
-      toast(`moved "${title}" to ${p.name}`);
-      if (c.id === $session.id) {
-        activeProject.set(p);
-        session.set({ id: session_id, title: cleanTitle(c.title) });
-      }
-    } catch (err) {
-      toast((err as Error).message, "error");
-    }
+    if ((await moveSessionToProject(c, p)) !== null) ui.sessions = ui.sessions.filter((x) => x.id !== c.id);
   }
 
   const nav: { id: View; label: string; icon: string }[] = [
