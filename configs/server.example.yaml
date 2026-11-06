@@ -191,7 +191,8 @@ auth:
   user_directory: true              # GET /users/directory (all accounts' id+email, any authenticated user; powers invite autocomplete in the web UI).
                                     # Default true; set false if org emails should not be enumerable by regular users — invites by typed email still work.
 
-# Outbound email, used to deliver registration magic codes. When smtp_host is
+# Outbound email: registration magic codes, notifications, and the agent's send_email tool
+# (enabled only when smtp_host is set). When smtp_host is
 # empty the code is logged to the server console instead (handy in development),
 # so registration still works without a mail server.
 email:
@@ -199,7 +200,7 @@ email:
   smtp_port: 587                    # 465 = implicit TLS; localhost/127.0.0.1/::1 = plaintext (no STARTTLS, for a local relay); anything else uses STARTTLS
   smtp_username: ""                 # SMTP auth username (omit for unauthenticated relays)
   smtp_password_env: SMTP_PASSWORD  # env var holding the SMTP password (like api_key_env; never put the secret in YAML)
-  from: ""                          # From address (defaults to smtp_username)
+  from: ""                          # sender: "Name <addr>" or a bare address (defaults to smtp_username); the display name is shown in mail clients
 
 # Outbound Telegram notification delivery (a cron watch can deliver via telegram).
 # Active only when a bot token is set AND a user has registered their chat id

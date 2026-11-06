@@ -17,6 +17,7 @@ import (
 
 	"github.com/ivoras/harlequin/internal/server/docevents"
 	"github.com/ivoras/harlequin/internal/server/documents"
+	"github.com/ivoras/harlequin/internal/server/email"
 	"github.com/ivoras/harlequin/internal/server/jsrun"
 	"github.com/ivoras/harlequin/internal/server/llm"
 	"github.com/ivoras/harlequin/internal/server/llm/loopdetect"
@@ -38,6 +39,9 @@ import (
 type Agent struct {
 	Provider llm.Provider
 	Storage  *storage.Manager
+	// Email, when SMTP is configured, enables the send_email tool.
+	Email      *email.Sender
+	emailLimit emailLimiter
 	// Vision: the chat model accepts images, so attached image documents are
 	// sent inline (see attachImages).
 	Vision     bool

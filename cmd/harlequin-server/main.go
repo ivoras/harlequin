@@ -280,6 +280,7 @@ func main() {
 		ReportTiming:        cfg.Agent.ReportTiming,
 		MaxSteps:            cfg.Agent.MaxSteps,
 		Vision:              cfg.ChatVision(),
+		Email:               emailSender,
 		Temperature:         cfg.Agent.TemperatureValue(),
 		AutoExtract:         cfg.Memory.AutoExtract,
 		MemDefaultTTL:       cfg.Memory.DefaultTTL.D(),

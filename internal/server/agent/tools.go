@@ -439,6 +439,10 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 		}
 	}
 
+	if a.Email.Configured() && a.Docs != nil {
+		reg["send_email"] = a.sendEmailEntry()
+	}
+
 	reg["Grep"] = a.grepEntry()
 	reg["edit_file"] = a.editFileEntry()
 
