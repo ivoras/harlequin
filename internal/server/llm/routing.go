@@ -15,6 +15,29 @@ const primaryDownFor = 30 * time.Second
 // UsageRecorder is called after each completion with token usage. It is optional.
 type UsageRecorder func(ctx context.Context, provider, model string, u Usage)
 
+// Attribution says whose spend an LLM call is: the user (whose db records it)
+// and, when it serves a session, which one. Carried on the request context so
+// every call made on a session's behalf — turn steps, delegated sub-calls,
+// post-turn memory extraction and its judges, titling — is recorded the same way.
+type Attribution struct {
+	UserID    int64
+	ProjectID int64 // non-zero for a project session
+	SessionID int64 // 0 = not tied to a session
+}
+
+type attributionKey struct{}
+
+// WithAttribution returns ctx carrying a.
+func WithAttribution(ctx context.Context, a Attribution) context.Context {
+	return context.WithValue(ctx, attributionKey{}, a)
+}
+
+// AttributionFrom returns the attribution on ctx, if any.
+func AttributionFrom(ctx context.Context) (Attribution, bool) {
+	a, ok := ctx.Value(attributionKey{}).(Attribution)
+	return a, ok
+}
+
 // RoutingProvider wraps an ordered set of providers and implements routing +
 // fallback. It selects a provider by per-model rules (or the default) and, on
 // failure, falls back to the next provider in the configured order.

@@ -99,6 +99,15 @@ func (a *Agent) titleOne(ctx context.Context, udb *sql.DB, projectID, userID, se
 	if err != nil || len(msgs) == 0 {
 		return
 	}
+	// Bill the title to the session. A project session has no acting user here,
+	// so it goes to its owner (the member who created it).
+	payer := userID
+	if projectID != 0 {
+		_ = udb.QueryRowContext(ctx, `SELECT owner_user_id FROM sessions WHERE id = ?`, sessID).Scan(&payer)
+	}
+	if payer != 0 {
+		ctx = llm.WithAttribution(ctx, llm.Attribution{UserID: payer, ProjectID: projectID, SessionID: sessID})
+	}
 	title, err := a.generateTitle(ctx, msgs)
 	if err != nil || title == "" {
 		return

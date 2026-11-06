@@ -111,6 +111,8 @@ func (a *Agent) ExtractMemoriesFromText(ctx context.Context, userID int64, sourc
 		input += " (" + source + ")"
 	}
 	input += ":\n" + text
+	// Not a session's spend, but still the uploader's (shows in their usage).
+	ctx = llm.WithAttribution(ctx, llm.Attribution{UserID: userID})
 	n := a.distillAndStore(ctx, userID, memextract.DocumentPrompt, input, nil, canShareMemory, docMemoryTimeout)
 	log.Printf("documents: memory bridge stored %s from %q (uploaded by user %d)", n, source, userID)
 }

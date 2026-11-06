@@ -109,9 +109,7 @@ type Agent struct {
 	// timing (prompt processing, token generation, wall clock) to the client.
 	ReportTiming bool
 
-	// RecordUsage, if set, is called with attributed token usage per completion.
 	// userDB is the caller's open per-user database.
-	RecordUsage func(ctx context.Context, userDB *sql.DB, userID, projectID int64, sessionID *int64, provider, model string, u llm.Usage)
 	// ContextMax, if set, returns the model's max context window in tokens.
 	ContextMax func(model string) int
 }
@@ -192,6 +190,10 @@ func (a *Agent) Run(ctx context.Context, projectID, sessionID, userID int64, use
 	if iface == "" {
 		iface = types.InterfaceTUI
 	}
+	// Every LLM call made for this turn (and its post-turn extraction) is
+	// recorded against this session; see llm.Attribution.
+	attr := llm.Attribution{UserID: userID, ProjectID: projectID, SessionID: sessionID}
+	ctx = llm.WithAttribution(ctx, attr)
 	rc := &runContext{sessionID: sessionID, userID: userID, username: username, canShareMemory: types.IsElevated(role), api: api, iface: iface, projectID: projectID, turn: 1, emit: emit}
 	defer rc.closeForeignDBs() // cross-project handles opened for p<id>.N refs
 
@@ -221,7 +223,7 @@ func (a *Agent) Run(ctx context.Context, projectID, sessionID, userID int64, use
 	// Background auto memory extraction (opens its own databases).
 	if a.AutoExtract {
 		written := append([]string(nil), rc.memWritten...)
-		go a.extractMemories(context.Background(), projectID, userID, userContent, finalText, written, rc.canShareMemory)
+		go a.extractMemories(llm.WithAttribution(context.Background(), attr), projectID, userID, userContent, finalText, written, rc.canShareMemory)
 	}
 	return nil
 }
@@ -502,7 +504,6 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 						"ttft_ms":           chunk.TTFTMS,
 						"duration_ms":       time.Since(reqStart).Milliseconds(),
 					})
-					a.recordUsage(ctx, rc, chunk.Provider, chunk.Model, *chunk.Usage)
 				}
 			}
 		}
@@ -891,19 +892,4 @@ func (a *Agent) recordTurnError(ctx context.Context, rc *runContext, turnErr err
 	if _, err := a.Sessions.AddMessage(context.WithoutCancel(ctx), rc.sessDB, rc.sessionID, llm.RoleError, turnErr.Error(), nil); err != nil {
 		log.Printf("agent: store turn error for session %d: %v", rc.sessionID, err)
 	}
-}
-
-// recordUsage attributes one LLM call's usage (and cost) to the turn's session.
-// Rows live in the acting user's db; project sessions are tagged with the
-// project id since their session ids live in the project db's id space.
-func (a *Agent) recordUsage(ctx context.Context, rc *runContext, provider, model string, u llm.Usage) {
-	if a.RecordUsage == nil || rc == nil || rc.userDB == nil {
-		return
-	}
-	var sid *int64
-	if rc.sessionID != 0 {
-		id := rc.sessionID
-		sid = &id
-	}
-	a.RecordUsage(ctx, rc.userDB, rc.userID, rc.projectID, sid, provider, model, u)
 }

@@ -129,7 +129,7 @@ func main() {
 			log.Printf("context window: provider %q: /v1/models discovery failed (%v); set context_window in config", p.Name, err)
 		}
 	}
-	router := llm.NewRoutingProvider(providers, cfg.Routing.DefaultProvider, cfg.Routing.FallbackOrder, cfg.Routing.ModelRules, ctxWindows, nil)
+	router := llm.NewRoutingProvider(providers, cfg.Routing.DefaultProvider, cfg.Routing.FallbackOrder, cfg.Routing.ModelRules, ctxWindows, recordUsage(store, usageStore))
 	router.SetFallbackModel(cfg.Routing.FallbackModel)
 	log.Printf("models: suite=%s default_provider=%s fallback_order=%v fallback_model=%q", cfg.ModelSuite, cfg.Routing.DefaultProvider, cfg.Routing.FallbackOrder, cfg.Routing.FallbackModel)
 	for _, p := range cfg.Providers {
@@ -296,12 +296,7 @@ func main() {
 		Notify:              notifyStore,
 		NotifyDispatch:      dispatch,
 		Presence:            presenceTracker,
-		RecordUsage: func(ctx context.Context, userDB *sql.DB, userID, projectID int64, sessionID *int64, provider, model string, u llm.Usage) {
-			if err := usageStore.Record(ctx, userDB, projectID, sessionID, provider, model, u.PromptTokens, u.CachedPromptTokens(), u.CompletionTokens, u.Cost); err != nil {
-				log.Printf("usage: record for user %d: %v", userID, err)
-			}
-		},
-		ContextMax: router.ContextMax,
+		ContextMax:          router.ContextMax,
 	}
 
 	// Live sessions: each active chat is a server-side goroutine that survives
@@ -445,5 +440,29 @@ func maintenance(authStore *auth.Store, store *storage.Manager, mem *memory.Stor
 	sweep() // run once at startup, then every hour
 	for range ticker.C {
 		sweep()
+	}
+}
+
+// recordUsage stores each finished LLM call's usage and cost in the attributed
+// user's db (see llm.Attribution); calls without attribution (e.g. document
+// descriptions) are only in the server log's per-call stats line.
+func recordUsage(store *storage.Manager, us *usage.Store) llm.UsageRecorder {
+	return func(ctx context.Context, provider, model string, u llm.Usage) {
+		at, ok := llm.AttributionFrom(ctx)
+		if !ok || at.UserID == 0 {
+			return
+		}
+		var sid *int64
+		if at.SessionID != 0 {
+			sid = &at.SessionID
+		}
+		// The call's own ctx may be at its deadline by now; the write must land.
+		wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if err := store.WithUser(wctx, at.UserID, func(udb *sql.DB) error {
+			return us.Record(wctx, udb, at.ProjectID, sid, provider, model, u.PromptTokens, u.CachedPromptTokens(), u.CompletionTokens, u.Cost)
+		}); err != nil {
+			log.Printf("usage: record for user %d: %v", at.UserID, err)
+		}
 	}
 }
