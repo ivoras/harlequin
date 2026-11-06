@@ -122,8 +122,10 @@
 <aside class="sidebar">
   <div class="sb-top">
     <img src="/favicon.png" alt="" class="logo" />
-    <span class="brand">Harlequin</span>
-    {#if $orgName}<span class="org" title="Organisation">{$orgName}</span>{/if}
+    <span class="brandline">
+      <span class="brand">Harlequin</span>
+      {#if $orgName}<span class="org" title="Organisation">{$orgName}</span>{/if}
+    </span>
     <span class="spacer"></span>
     <button class="icon-btn" onclick={() => (ui.sidebarOpen = false)} title="Hide sidebar ({MOD}+B)" aria-label="Hide sidebar">
       <Icon name="panelLeft" />
@@ -288,8 +290,12 @@
     background: var(--sidebar); border-right: 1px solid var(--border-soft); }
   .sb-top { display: flex; align-items: center; gap: 8px; padding: 10px 10px 6px 14px; height: 48px; }
   .logo { width: 22px; height: 22px; border-radius: 5px; }
+  /* Brand and org name share a text baseline (different font sizes, so
+     centring their boxes would leave the smaller one sitting too high). */
+  .brandline { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
   .org { color: var(--text-dim, var(--muted, inherit)); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .org::before { content: "·"; margin-right: 6px; }
+  .brand { flex: none; }
   .brand { font-weight: 750; letter-spacing: 0.03em; color: var(--accent-text); }
   .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
   .sb-actions { display: flex; flex-direction: column; gap: 4px; padding: 4px 10px 10px; }
