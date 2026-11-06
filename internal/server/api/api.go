@@ -134,6 +134,7 @@ func (s *Server) Router() http.Handler {
 
 			r.Post("/auth/logout", s.handleLogout)
 			r.Get("/me", s.handleMe)
+			r.Post("/me/password", s.handleChangeOwnPassword)
 			r.Get("/users", s.handleListUsers)
 			r.Post("/users", s.handleCreateUser)
 			r.Patch("/users/{id}", s.handleUpdateUser)

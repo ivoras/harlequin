@@ -166,6 +166,41 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, u)
 }
 
+// handleChangeOwnPassword lets any user change their own password after
+// proving the current one. All tokens are revoked (auth.ChangePassword), so
+// the client must log in again.
+func (s *Server) handleChangeOwnPassword(w http.ResponseWriter, r *http.Request) {
+	u, _ := auth.UserFromContext(r.Context())
+	var req struct {
+		Current string `json:"current"`
+		New     string `json:"new"`
+	}
+	if err := decode(r, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if s.limited(w, r, "login", u.Email, 10) {
+		return
+	}
+	if len(req.New) < 8 {
+		writeErr(w, http.StatusBadRequest, "password must be at least 8 characters")
+		return
+	}
+	if _, _, err := s.Auth.Login(r.Context(), u.Email, req.Current); err != nil {
+		if errors.Is(err, auth.ErrInvalidCredentials) {
+			writeErr(w, http.StatusForbidden, "current password is incorrect")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := s.Auth.ChangePassword(r.Context(), u.Email, req.New); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 // handleOrg returns the configured organisation name for display in clients
 // (public: it is shown on the login screen).
 func (s *Server) handleOrg(w http.ResponseWriter, r *http.Request) {

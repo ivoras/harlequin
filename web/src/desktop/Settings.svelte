@@ -16,6 +16,7 @@
   // the same components the mobile UI uses.
   const tabs: { id: SettingsTab; label: string; icon: string }[] = $derived([
     { id: "general", label: "General", icon: "settings" },
+    { id: "login", label: "Login", icon: "key" },
     // Only owners can manage accounts (the API enforces it too).
     ...(isOwner($user?.role) ? [{ id: "users" as SettingsTab, label: "Users", icon: "users" }] : []),
     { id: "hats", label: "Hats", icon: "hat" },
@@ -29,6 +30,24 @@
     { id: "dark", label: "Dark", icon: "moon" },
   ];
   let alertText = $state("");
+  let curPw = $state("");
+  let newPw = $state("");
+  let newPw2 = $state("");
+
+  async function changePassword() {
+    if (newPw.length < 8) return toast("password must be at least 8 characters", "error");
+    if (newPw !== newPw2) return toast("passwords do not match", "error");
+    try {
+      await api.changePassword(curPw, newPw);
+      // The server revoked every token; sign straight back in.
+      const r = await api.login($user!.email, newPw);
+      setToken(r.token);
+      curPw = newPw = newPw2 = "";
+      toast("password changed");
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  }
 
   function close() {
     ui.settingsTab = null;
@@ -98,6 +117,17 @@
             </div>
           {/if}
           <div style="margin-top: 12px;"><button class="danger" onclick={logout}><Icon name="logout" size={14} /> Log out</button></div>
+        </div></section>
+      {:else if ui.settingsTab === "login"}
+        <section class="panel"><div class="container col">
+          <h3>Change password</h3>
+          <form class="col" style="max-width:360px;" onsubmit={(e) => { e.preventDefault(); changePassword(); }}>
+            <input type="password" placeholder="Current password" autocomplete="current-password" bind:value={curPw} />
+            <input type="password" placeholder="New password (min 8 characters)" autocomplete="new-password" bind:value={newPw} />
+            <input type="password" placeholder="Repeat new password" autocomplete="new-password" bind:value={newPw2} />
+            <div><button type="submit" disabled={!curPw || !newPw}>Change password</button></div>
+          </form>
+          <p class="muted small">Other devices and sessions signed in with the old password will be logged out.</p>
         </div></section>
       {:else if ui.settingsTab === "users" && isOwner($user?.role)}
         <Users />
