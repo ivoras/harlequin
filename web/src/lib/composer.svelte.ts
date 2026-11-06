@@ -26,9 +26,11 @@ export interface AttachTarget {
 
 let attachSeq = 0;
 
-function scopedRef(d: Document, projectID: number): string {
-  if (d.scope === "personal") return `u.${d.id}`;
-  if (d.scope === "project") return `p${projectID}.${d.id}`;
+// The upload target decides the scope (the ingest result's own scope field is
+// advisory), so a reference always names the corpus the file was sent to.
+function scopedRef(d: Document, t: AttachTarget): string {
+  if (t.scope === "personal") return `u.${d.id}`;
+  if (t.scope === "project") return `p${t.projectID}.${d.id}`;
   return `s.${d.id}`;
 }
 
@@ -80,7 +82,7 @@ export class Composer {
             { scope: target.scope, projectID: target.projectID || undefined },
             (p) => set({ label: ingestLabel(p) }),
           );
-          set({ state: "done", ref: scopedRef(d, target.projectID), label: "" });
+          set({ state: "done", ref: scopedRef(d, target), label: "" });
           onDone?.();
         } catch (e) {
           set({ state: "error", label: (e as Error).message });
