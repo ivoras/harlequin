@@ -133,9 +133,12 @@ export const api = {
   // Directory of all accounts (id + email only), for invite autocomplete.
   userDirectory: () => reqList<{ id: number; email: string }>("GET", "/users/directory"),
   // user management (owner only)
-  listUsers: () => reqList<User>("GET", "/users"),
-  createUser: (r: { email: string; password: string; role: string }) => req<User>("POST", "/users", r),
-  updateUser: (id: number, r: { role?: string; password?: string }) => req<void>("PATCH", `/users/${id}`, r),
+  // can_email: the server can e-mail sign-in details (SMTP configured).
+  listUsers: () => req<{ users: User[] | null; can_email: boolean }>("GET", "/users"),
+  createUser: (r: { email: string; password: string; role: string; send_email?: boolean }) =>
+    req<User & { email_sent: boolean; email_error?: string }>("POST", "/users", r),
+  updateUser: (id: number, r: { role?: string; password?: string; send_email?: boolean }) =>
+    req<{ email_sent: boolean; email_error?: string }>("PATCH", `/users/${id}`, r),
   deleteUser: (id: number) => req<void>("DELETE", `/users/${id}`),
 
   // sessions

@@ -181,6 +181,16 @@ func (s *Store) SetRole(ctx context.Context, id int64, role string) error {
 	return tx.Commit()
 }
 
+// EmailByID returns an account's email address.
+func (s *Store) EmailByID(ctx context.Context, id int64) (string, error) {
+	var email string
+	err := s.db.QueryRowContext(ctx, `SELECT email FROM users WHERE id = ?`, id).Scan(&email)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrUserNotFound
+	}
+	return email, err
+}
+
 // SetPassword sets an account's password by id and revokes its API tokens.
 func (s *Store) SetPassword(ctx context.Context, id int64, password string) error {
 	var email string
@@ -442,7 +452,7 @@ func (s *Store) Middleware(next http.Handler) http.Handler {
 			writeUnauthorized(w)
 			return
 		}
-		ctx := context.WithValue(r.Context(), userCtxKey, user)
+		ctx := ContextWithUser(r.Context(), user)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -462,6 +472,11 @@ func writeUnauthorized(w http.ResponseWriter) {
 }
 
 // UserFromContext returns the authenticated user from the request context.
+// ContextWithUser returns ctx carrying the authenticated user (as Middleware does).
+func ContextWithUser(ctx context.Context, u *types.User) context.Context {
+	return context.WithValue(ctx, userCtxKey, u)
+}
+
 func UserFromContext(ctx context.Context) (*types.User, bool) {
 	u, ok := ctx.Value(userCtxKey).(*types.User)
 	return u, ok
