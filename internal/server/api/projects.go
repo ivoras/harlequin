@@ -282,7 +282,7 @@ func (s *Server) handleAssignSession(w http.ResponseWriter, r *http.Request) {
 	var newID int64
 	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
 		return s.Storage.WithProject(r.Context(), id, func(pdb *sql.DB) error {
-			n, e := s.Projects.MoveSessionToProject(r.Context(), udb, pdb, sid, u.ID)
+			n, e := s.Projects.MoveSessionToProject(r.Context(), udb, pdb, id, sid, u.ID)
 			newID = n
 			return e
 		})

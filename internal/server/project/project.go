@@ -252,7 +252,7 @@ func (s *Store) Decline(ctx context.Context, inviteID, userID int64) error {
 // it from the user DB. Returns the new project-session id. The two writes aren't
 // one atomic transaction (separate sqlite files); the user-side delete runs last,
 // so a failure leaves the source intact rather than losing data.
-func (s *Store) MoveSessionToProject(ctx context.Context, userDB, projDB *sql.DB, userSessionID, ownerID int64) (int64, error) {
+func (s *Store) MoveSessionToProject(ctx context.Context, userDB, projDB *sql.DB, projectID, userSessionID, ownerID int64) (int64, error) {
 	// Read the session header from the user DB.
 	var title, api, iface string
 	var hat sql.NullString
@@ -299,6 +299,13 @@ func (s *Store) MoveSessionToProject(ctx context.Context, userDB, projDB *sql.DB
 		}
 	}
 	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	// Re-point the session's usage rows so its cost tally follows it.
+	if _, err := userDB.ExecContext(ctx,
+		`UPDATE usage SET session_id = ?, project_id = ? WHERE session_id = ? AND project_id IS NULL`,
+		newID, projectID, userSessionID); err != nil {
 		return 0, err
 	}
 

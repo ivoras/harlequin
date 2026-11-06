@@ -558,6 +558,20 @@ type ContextBreakdown struct {
 	ContextMax int               `json:"context_max"`
 	Total      int               `json:"total"`
 	Categories []ContextCategory `json:"categories"`
+	// Cost is the session's LLM spend so far (all members, for a project session).
+	Cost *SessionCost `json:"cost,omitempty"`
+}
+
+// SessionCost tallies a session's recorded LLM calls. USD mixes provider-
+// reported costs (ReportedCalls of them) with price-table estimates for the
+// rest; calls with neither count as 0.
+type SessionCost struct {
+	USD              float64 `json:"usd"`
+	Calls            int     `json:"calls"`
+	ReportedCalls    int     `json:"reported_calls"`
+	PromptTokens     int     `json:"prompt_tokens"`
+	CachedTokens     int     `json:"cached_tokens"`
+	CompletionTokens int     `json:"completion_tokens"`
 }
 
 // SkillInfo describes a skill in a listing.

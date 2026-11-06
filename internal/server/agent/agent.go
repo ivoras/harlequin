@@ -111,7 +111,7 @@ type Agent struct {
 
 	// RecordUsage, if set, is called with attributed token usage per completion.
 	// userDB is the caller's open per-user database.
-	RecordUsage func(ctx context.Context, userDB *sql.DB, userID int64, sessionID *int64, provider, model string, u llm.Usage)
+	RecordUsage func(ctx context.Context, userDB *sql.DB, userID, projectID int64, sessionID *int64, provider, model string, u llm.Usage)
 	// ContextMax, if set, returns the model's max context window in tokens.
 	ContextMax func(model string) int
 }
@@ -236,7 +236,6 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	a.preemptBackgroundLLM()
 
 	sessionID := rc.sessionID
-	userID := rc.userID
 	emit := rc.emit
 
 	a.logEvent(ctx, rc, sessionlog.TypeSessionStart, map[string]any{
@@ -500,13 +499,10 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 						"total_tokens":      chunk.Usage.TotalTokens,
 						"cached_tokens":     chunk.Usage.CachedPromptTokens(),
 						"cost_usd":          chunk.Usage.Cost,
-						"ttft_ms":           msSince(reqStart, firstTokenAt),
+						"ttft_ms":           chunk.TTFTMS,
 						"duration_ms":       time.Since(reqStart).Milliseconds(),
 					})
-					if a.RecordUsage != nil {
-						cid := sessionID
-						a.RecordUsage(ctx, rc.userDB, userID, &cid, chunk.Provider, chunk.Model, *chunk.Usage)
-					}
+					a.recordUsage(ctx, rc, chunk.Provider, chunk.Model, *chunk.Usage)
 				}
 			}
 		}
@@ -897,10 +893,17 @@ func (a *Agent) recordTurnError(ctx context.Context, rc *runContext, turnErr err
 	}
 }
 
-// msSince is the milliseconds from start to t, or -1 if t is unset.
-func msSince(start, t time.Time) int64 {
-	if t.IsZero() {
-		return -1
+// recordUsage attributes one LLM call's usage (and cost) to the turn's session.
+// Rows live in the acting user's db; project sessions are tagged with the
+// project id since their session ids live in the project db's id space.
+func (a *Agent) recordUsage(ctx context.Context, rc *runContext, provider, model string, u llm.Usage) {
+	if a.RecordUsage == nil || rc == nil || rc.userDB == nil {
+		return
 	}
-	return t.Sub(start).Milliseconds()
+	var sid *int64
+	if rc.sessionID != 0 {
+		id := rc.sessionID
+		sid = &id
+	}
+	a.RecordUsage(ctx, rc.userDB, rc.userID, rc.projectID, sid, provider, model, u)
 }

@@ -157,7 +157,36 @@ func formatContextBreakdown(bd *types.ContextBreakdown) string {
 	} else {
 		fmt.Fprintf(&sb, "  %-18s %8s tokens\n", "Total", formatTokenCount(bd.Total))
 	}
+	if c := bd.Cost; c != nil && c.Calls > 0 {
+		fmt.Fprintf(&sb, "  Session cost: %s over %d LLM call(s); %s prompt (%d%% cached), %s generated",
+			formatUSD(c.USD), c.Calls, formatTokenCount(c.PromptTokens), cachedPct(c), formatTokenCount(c.CompletionTokens))
+		if c.ReportedCalls < c.Calls {
+			fmt.Fprintf(&sb, " — %d call(s) estimated from configured prices", c.Calls-c.ReportedCalls)
+		}
+		sb.WriteString("\n")
+	}
 	return strings.TrimRight(sb.String(), "\n")
+}
+
+// formatUSD keeps small per-session costs readable (cents are often too coarse).
+func formatUSD(v float64) string {
+	switch {
+	case v == 0:
+		return "$0"
+	case v < 0.01:
+		return fmt.Sprintf("$%.4f", v)
+	case v < 1:
+		return fmt.Sprintf("$%.3f", v)
+	default:
+		return fmt.Sprintf("$%.2f", v)
+	}
+}
+
+func cachedPct(c *types.SessionCost) int {
+	if c.PromptTokens <= 0 {
+		return 0
+	}
+	return c.CachedTokens * 100 / c.PromptTokens
 }
 
 func truncateModelName(model string) string {

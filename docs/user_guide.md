@@ -147,7 +147,10 @@ up to three tabs: **Team chat** (the project chatroom, while a project is
 active), **Document** (opens whenever you click a citation, a document
 reference, or a file — text and reports render there; PDFs and DOCX open in a
 new browser tab), and **Session** (session details and the context-usage
-breakdown). Drag its left edge to resize it.
+breakdown, including the session's LLM cost so far — the provider's reported
+cost where available, otherwise estimated from configured prices, marked ≈;
+a project session's cost covers every member's turns). The TUI's `/context`
+shows the same. Drag its left edge to resize it.
 
 **Settings** (account menu, or `Ctrl/⌘+,`) holds General (account, theme,
 mobile switch, and for owners/admins a broadcast alert), Hats, MCP servers,

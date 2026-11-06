@@ -407,9 +407,18 @@ export interface ContextCategory {
   tokens: number;
 }
 
+export interface SessionCost {
+  usd: number;
+  calls: number;
+  reported_calls: number; // the rest are price-table estimates
+  prompt_tokens: number;
+  cached_tokens: number;
+  completion_tokens: number;
+}
 export interface ContextBreakdown {
   model: string;
   context_max: number;
   total: number;
   categories: ContextCategory[];
+  cost?: SessionCost; // session's LLM spend so far
 }
