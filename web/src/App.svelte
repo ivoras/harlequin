@@ -2,7 +2,7 @@
   import { api, getToken, setToken } from "./lib/api";
   import { user, view, session, wornHat, toasts, toast, activeProject, projectSheet, orgName, loadOrgName, invitesVersion, type View } from "./lib/stores";
   import { sc } from "./lib/session.svelte";
-  import { switchToProject as libSwitchToProject, leaveActiveProject, cleanTitle, projectBylines, canDeleteProject, deleteProjectFlow, inviteIDFromKind, respondToInvite } from "./lib/project";
+  import { switchToProject as libSwitchToProject, leaveActiveProject, cleanTitle, projectBylines, canDeleteProject, deleteProjectFlow, inviteIDFromKind, respondToInvite, moveSessionToProject } from "./lib/project";
   import { initSession, ensureSession, setURLParams, consumeMCPOAuthResult, authorizeMCP, mcpSignInTarget } from "./lib/workspace";
   import { switchUI } from "./lib/uipref";
   import DocViewer from "./lib/DocViewer.svelte";
@@ -232,16 +232,18 @@
       toast((e as Error).message, "error");
     }
   }
-  async function assignCurrentSession() {
-    const p = $activeProject;
-    if (!p || !$session.id) return;
-    try {
-      const { session_id } = await api.assignSession(p.id, $session.id);
-      toast("session assigned to " + p.name);
-      session.set({ id: session_id, title: $session.title });
-    } catch (e) {
-      toast((e as Error).message, "error");
-    }
+  // The personal session whose "move to project" picker is open in the drawer.
+  let moveFor = $state<number | null>(null);
+  async function toggleMove(c: Session, e: Event) {
+    e.stopPropagation();
+    moveFor = moveFor === c.id ? null : c.id;
+    if (moveFor !== null && projects.length === 0) await loadProjects();
+  }
+  async function moveTo(c: Session, p: Project) {
+    if ((await moveSessionToProject(c, p)) === null) return;
+    moveFor = null;
+    sessions = sessions.filter((x) => x.id !== c.id);
+    if (c.id === $session.id) sessionDrawer = false;
   }
   async function takeOffHat() {
     if (!$session.id) return;
@@ -448,9 +450,20 @@
             </div>
             {#if !$activeProject}
               <button class="ghost small" onclick={(e) => renameSession(c, e)} aria-label="Rename">✏️</button>
+              <button class="ghost small" onclick={(e) => toggleMove(c, e)} aria-label="Move to project" aria-expanded={moveFor === c.id}>📁</button>
               <button class="ghost danger small" onclick={(e) => deleteSession(c, e)} aria-label="Delete">✕</button>
             {/if}
           </div>
+          {#if moveFor === c.id}
+            <div class="card col" style="gap:6px;">
+              <div class="muted small">Move "{c.title}" into a project (every member will see it):</div>
+              {#each projects as p (p.id)}
+                <button class="small" onclick={() => moveTo(c, p)}>📁 {p.name}</button>
+              {:else}
+                <div class="muted small">No projects yet — create one from the project selector.</div>
+              {/each}
+            </div>
+          {/if}
         {/each}
         {#if filteredSessions.length === 0}<div class="muted small">No sessions.</div>{/if}
       </div>
@@ -527,7 +540,6 @@
             <button class="small" onclick={inviteMember} disabled={!inviteEmail.trim()}>Invite</button>
           </div>
           <div class="row" style="flex-wrap:wrap; gap:8px;">
-            <button class="small" onclick={assignCurrentSession}>Assign current session</button>
             <button class="ghost small" onclick={leaveProject}>Leave project (back to personal)</button>
             <button class="ghost small" onclick={departProject}>Depart project (remove membership)</button>
             {#if canDeleteProject($activeProject)}

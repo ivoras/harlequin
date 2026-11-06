@@ -258,16 +258,35 @@ func (m *Model) runProject(args []string) tea.Cmd {
 			return infoMsg{strings.TrimRight(sb.String(), "\n")}
 		}
 	case "assign":
-		if m.activeProjectID == 0 {
-			return infoCmd("switch to a project first")
+		// Moves the CURRENT PERSONAL session into a project. Inside a project the
+		// current session is already a project session, whose id would be looked
+		// up among personal sessions (wrong session or not found) — so refuse.
+		if m.activeProjectID != 0 {
+			return infoCmd("/project assign moves your current personal session; leave the project first (/project leave), open the personal session, then /project assign <id-or-name>")
 		}
-		pid, sid := m.activeProjectID, m.sessionID
+		if rest == "" {
+			return infoCmd("usage: /project assign <id-or-name>  (moves the current personal session, with its history, into that project)")
+		}
+		if m.sessionID == 0 {
+			return infoCmd("no current session to move")
+		}
+		sid := m.sessionID
 		return func() tea.Msg {
-			newID, err := m.client.AssignSession(context.Background(), pid, sid)
+			ctx := context.Background()
+			pid, err := m.resolveProjectRef(ctx, rest)
 			if err != nil {
 				return errMsg{err}
 			}
-			return infoMsg{fmt.Sprintf("assigned session to the project (now #%d)", newID)}
+			p, err := m.client.GetProject(ctx, pid)
+			if err != nil {
+				return errMsg{err}
+			}
+			newID, err := m.client.AssignSession(ctx, pid, sid)
+			if err != nil {
+				return errMsg{err}
+			}
+			// Follow the moved session into the project.
+			return projectSwitchedMsg{id: p.ID, name: p.Name, sessionID: newID}
 		}
 	case "sessions":
 		if m.activeProjectID == 0 {
@@ -287,7 +306,7 @@ func (m *Model) runProject(args []string) tea.Cmd {
 			return infoMsg{strings.TrimRight(sb.String(), "\n")}
 		}
 	default:
-		return infoCmd("usage: /project [list|new <name>|invites|accept <id>|decline <id>|switch <id>|invite <email>|remove <email>|members|assign|sessions|leave]")
+		return infoCmd("usage: /project [list|new <name>|invites|accept <id>|decline <id>|switch <id>|invite <email>|remove <email>|members|assign <id-or-name>|sessions|leave]")
 	}
 }
 

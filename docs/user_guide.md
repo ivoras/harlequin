@@ -228,7 +228,7 @@ Slash commands work in the web composer too: type `/` for the menu
 
 | Command | What it does |
 |---------|--------------|
-| `/project` | Manage projects: `list`, `new`, `switch`, `invites`, `accept <id>`, `decline <id>`, `invite <email>`, `remove <email>` (remove a member from the active project; creator or owner/admin only), `members`, `assign` (move the current session into the project), `leave`, `depart`, `delete` (permanently delete a project, creator/admin only; needs `--yes`). |
+| `/project` | Manage projects: `list`, `new`, `switch`, `invites`, `accept <id>`, `decline <id>`, `invite <email>`, `remove <email>` (remove a member from the active project; creator or owner/admin only), `members`, `assign <id-or-name>` (move the current **personal** session, with its history, into that project; run it from your personal workspace), `leave`, `depart`, `delete` (permanently delete a project, creator/admin only; needs `--yes`). |
 | `/say <message>` | Post a message to the active project's chatroom. |
 
 See the [Projects](#projects-1) chapter below for the full workflow.
@@ -286,8 +286,9 @@ chat tab; mobile: the 💬 toggle; TUI: split pane, post with `/say`).
 (`/new`) while the project is active, or move an existing personal session —
 and its whole history — into a project: on desktop, hover the session in the
 sidebar (in your personal workspace), open its **…** menu and pick the project
-under **Move to project…** (mobile: **Assign current session**; TUI:
-`/project assign`). A session belongs to at most one project. To switch
+under **Move to project…** (mobile: the 📁 button on a session in the sessions
+drawer of your personal workspace; TUI: `/project assign <project>` while in
+the personal session). A session belongs to at most one project. To switch
 between a project's sessions: on desktop, the sidebar lists the active
 project's sessions; on mobile, open the sessions drawer (☰); in the TUI, `/resume`
 opens the same project-aware picker (`/project sessions` prints the ids, and
