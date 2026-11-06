@@ -166,7 +166,9 @@ shows the same. Drag its left edge to resize it.
 
 **Settings** (account menu, or `Ctrl/⌘+,`) holds General (account, theme,
 mobile switch, and for owners/admins a broadcast alert), Users (owners only:
-add accounts, change roles, reset passwords, delete accounts), Hats, MCP
+add accounts, change roles, reset passwords, delete accounts; when the server
+can send e-mail, a checkbox e-mails a new or reset password straight to the
+user), Hats, MCP
 servers, Config and Usage. The server always keeps at least one owner, and you
 can't delete your own account there.
 

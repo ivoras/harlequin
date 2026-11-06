@@ -70,7 +70,8 @@ Everything an admin can, plus **account management** — the only role that can
 create and edit users:
 
 - create accounts with any role, change roles, reset passwords (which signs the
-  user out everywhere) and delete accounts with their personal data — from
+  user out everywhere) and delete accounts with their personal data — new and
+  reset passwords can be e-mailed to the user when SMTP is configured — from
   **Settings → Users** in the desktop web UI, or the `createuser`,
   `changepassword`, `deleteuser` and `listusers` server commands;
 - the server always keeps at least one owner: the last owner can't be demoted

@@ -19,6 +19,12 @@
   let nEmail = $state("");
   let nRole = $state("user");
   let nPassword = $state("");
+  let nSendEmail = $state(false);
+  let canEmail = $state(false); // server has SMTP configured
+  // Inline reset-password panel for one user.
+  let resetFor = $state<number | null>(null);
+  let rPassword = $state("");
+  let rSendEmail = $state(false);
   // A generated password stays on screen (not a fading toast) until dismissed,
   // so the owner can copy it and hand it over.
   let issued = $state<{ email: string; password: string } | null>(null);
@@ -30,7 +36,9 @@
 
   async function load() {
     try {
-      users = await api.listUsers();
+      const r = await api.listUsers();
+      users = r.users ?? [];
+      canEmail = r.can_email;
     } catch (e) {
       toast((e as Error).message, "error");
     } finally {
@@ -50,12 +58,15 @@
     const generated = !nPassword;
     const password = nPassword || genPassword();
     try {
-      await api.createUser({ email, password, role: nRole });
-      if (generated) issued = { email, password };
-      toast(`created ${email}`);
+      const r = await api.createUser({ email, password, role: nRole, send_email: nSendEmail });
+      // Show a generated password unless it reached the user by e-mail.
+      if (generated && !r.email_sent) issued = { email, password };
+      if (r.email_error) toast(`created ${email}, but ${r.email_error}`, "error");
+      else toast(r.email_sent ? `created ${email} and e-mailed the sign-in details` : `created ${email}`);
       showAdd = false;
       nEmail = nPassword = "";
       nRole = "user";
+      nSendEmail = false;
       await load();
     } catch (e) {
       toast((e as Error).message, "error");
@@ -77,14 +88,21 @@
     await load();
   }
 
+  function openReset(u: User) {
+    resetFor = resetFor === u.id ? null : u.id;
+    rPassword = "";
+    rSendEmail = false;
+  }
+
   async function resetPassword(u: User) {
-    const typed = prompt(`New password for ${u.email} (at least 8 characters).\nLeave empty to generate one.\nThis signs them out everywhere.`);
-    if (typed === null) return;
-    const password = typed || genPassword();
+    const generated = !rPassword;
+    const password = rPassword || genPassword();
     try {
-      await api.updateUser(u.id, { password });
-      if (!typed) issued = { email: u.email, password };
-      toast(`password reset for ${u.email}`);
+      const r = await api.updateUser(u.id, { password, send_email: rSendEmail });
+      if (generated && !r.email_sent) issued = { email: u.email, password };
+      if (r.email_error) toast(`password reset for ${u.email}, but ${r.email_error}`, "error");
+      else toast(r.email_sent ? `password reset and e-mailed to ${u.email}` : `password reset for ${u.email}`);
+      resetFor = null;
     } catch (e) {
       toast((e as Error).message, "error");
     }
@@ -136,6 +154,10 @@
           {#each roles as r}<option value={r}>{r} — {roleHelp[r]}</option>{/each}
         </select>
         <input placeholder="password (leave empty to generate one)" type="password" autocomplete="new-password" bind:value={nPassword} />
+        <label class="row small" style="gap:6px;" title={canEmail ? "" : "This server can't send e-mail (SMTP is not configured)"}>
+          <input type="checkbox" bind:checked={nSendEmail} disabled={!canEmail} />
+          E-mail the sign-in details (including the password) to the user{canEmail ? "" : " — unavailable: e-mail isn't configured on this server"}
+        </label>
         <button class="primary" onclick={add} disabled={!nEmail.trim() || (nPassword !== "" && nPassword.length < 8)}>Create</button>
         {#if nPassword !== "" && nPassword.length < 8}<div class="muted small">At least 8 characters.</div>{/if}
       </div>
@@ -155,8 +177,22 @@
             aria-label="Role of {u.email}">
             {#each roles as r}<option value={r}>{r}</option>{/each}
           </select>
-          <button class="small" onclick={() => resetPassword(u)}>Reset password</button>
+          <button class="small" onclick={() => openReset(u)} aria-expanded={resetFor === u.id}>Reset password</button>
           {#if u.id !== $user?.id}<button class="ghost danger small" onclick={() => del(u)}>Delete</button>{/if}
+          {#if resetFor === u.id}
+            <div class="col" style="flex-basis:100%; gap:6px;">
+              <input placeholder="new password (leave empty to generate one)" type="password" autocomplete="new-password" bind:value={rPassword} />
+              <label class="row small" style="gap:6px;" title={canEmail ? "" : "This server can't send e-mail (SMTP is not configured)"}>
+                <input type="checkbox" bind:checked={rSendEmail} disabled={!canEmail} />
+                E-mail the new password to {u.email}{canEmail ? "" : " — unavailable: e-mail isn't configured on this server"}
+              </label>
+              <div class="row small" style="gap:6px;">
+                <span class="muted" style="flex:1;">This signs them out everywhere.</span>
+                <button class="ghost small" onclick={() => (resetFor = null)}>Cancel</button>
+                <button class="primary small" onclick={() => resetPassword(u)} disabled={rPassword !== "" && rPassword.length < 8}>Reset</button>
+              </div>
+            </div>
+          {/if}
         </div>
       {/each}
       {#if !loading && shown.length === 0}<div class="muted small">No users{filter ? " match" : ""}.</div>{/if}

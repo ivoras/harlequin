@@ -49,6 +49,8 @@ type CreateUserRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 	Role     string `json:"role"`
+	// SendEmail e-mails the sign-in details (incl. the password) to the new user.
+	SendEmail bool `json:"send_email,omitempty"`
 }
 
 // UpdateUserRequest is the body of PATCH /users/{id} (owner only); empty
@@ -56,6 +58,8 @@ type CreateUserRequest struct {
 type UpdateUserRequest struct {
 	Role     string `json:"role,omitempty"`
 	Password string `json:"password,omitempty"`
+	// SendEmail e-mails the new password to the user (only with Password).
+	SendEmail bool `json:"send_email,omitempty"`
 }
 
 // RegisterRequest is the body of POST /auth/register: it starts self-registration

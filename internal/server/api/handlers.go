@@ -226,6 +226,10 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid role (owner|admin|user)")
 		return
 	}
+	if req.SendEmail && !s.Email.Configured() { // checked first: no account without its e-mail
+		writeErr(w, http.StatusBadRequest, errNoSMTP)
+		return
+	}
 	user, err := s.Auth.CreateUser(r.Context(), addr, req.Password, req.Role)
 	if err != nil {
 		if errors.Is(err, auth.ErrUserExists) {
@@ -236,7 +240,41 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.auditOwner(r, "user_create", addr+" ("+user.Role+")", nil)
-	writeJSON(w, http.StatusCreated, user)
+	out := userMailResult{User: user}
+	if req.SendEmail {
+		me, _ := auth.UserFromContext(r.Context())
+		out.mail(s.Email.Send(addr, "Your "+s.productName()+" account",
+			fmt.Sprintf("An account has been created for you on %s.\n\nSign in at: %s/\nEmail: %s\nPassword: %s\nRole: %s\n\nThis account was set up by %s. Keep this password private.\n",
+				s.productName(), requestBaseURL(r), addr, req.Password, user.Role, me.Email)))
+	}
+	writeJSON(w, http.StatusCreated, out)
+}
+
+const errNoSMTP = "this server can't send e-mail (SMTP is not configured), so the password can't be e-mailed; pass it on yourself"
+
+// userMailResult reports whether the sign-in e-mail went out; on failure the
+// client keeps showing the password so the owner can pass it on.
+type userMailResult struct {
+	*types.User
+	EmailSent  bool   `json:"email_sent"`
+	EmailError string `json:"email_error,omitempty"`
+}
+
+func (u *userMailResult) mail(err error) {
+	if err != nil {
+		log.Printf("users: e-mailing sign-in details failed: %v", err) // never log the message itself
+		u.EmailError = "the e-mail could not be sent: " + err.Error()
+		return
+	}
+	u.EmailSent = true
+}
+
+// productName is "Harlequin (<org>)" when an organisation name is configured.
+func (s *Server) productName() string {
+	if n := strings.TrimSpace(s.Cfg.Server.OrgName); n != "" && n != "Unnamed" {
+		return "Harlequin (" + n + ")"
+	}
+	return "Harlequin"
 }
 
 // auditOwner records a user-management action in the acting owner's audit log.
@@ -262,7 +300,11 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, users)
+	if users == nil {
+		users = []types.User{}
+	}
+	// can_email tells the UI whether "e-mail the password" is possible.
+	writeJSON(w, http.StatusOK, map[string]any{"users": users, "can_email": s.Email.Configured()})
 }
 
 // handleUpdateUser changes an account's role and/or password (owner only). A
@@ -289,6 +331,15 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "password must be at least 8 characters")
 		return
 	}
+	if req.SendEmail && (req.Password == "" || !s.Email.Configured()) {
+		msg := errNoSMTP
+		if req.Password == "" {
+			msg = "send_email needs a new password"
+		}
+		writeErr(w, http.StatusBadRequest, msg)
+		return
+	}
+	var out userMailResult
 	if req.Role != "" {
 		if err := s.Auth.SetRole(r.Context(), id, req.Role); err != nil {
 			writeUserErr(w, err)
@@ -302,8 +353,18 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.auditOwner(r, "user_password_reset", fmt.Sprintf("user %d", id), nil)
+		if req.SendEmail {
+			if addr, err := s.Auth.EmailByID(r.Context(), id); err != nil {
+				out.mail(err)
+			} else {
+				me, _ := auth.UserFromContext(r.Context())
+				out.mail(s.Email.Send(addr, "Your "+s.productName()+" password was reset",
+					fmt.Sprintf("Your password on %s was reset by %s, and you have been signed out everywhere.\n\nSign in at: %s/\nEmail: %s\nNew password: %s\n\nKeep this password private.\n",
+						s.productName(), me.Email, requestBaseURL(r), addr, req.Password)))
+			}
+		}
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(w, http.StatusOK, out)
 }
 
 // handleDeleteUser removes an account and its personal data directory (owner
