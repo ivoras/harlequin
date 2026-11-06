@@ -164,6 +164,13 @@ and compares two documents side by side. Each row's **…** menu has
 **Delete**, which permanently removes the file, its extracted Markdown text and
 its search-index entries (deleted data is also wiped from the database file).
 
+**Scheduled jobs.** In the browser, *+ Add* opens a form where you pick a
+common schedule (every 15 minutes … every month, with a time-of-day and
+weekday picker where relevant) and choose a skill from a list; the job type
+defaults to *skill* (an agent turn), with *js* (a script, no AI) as the
+alternative. Tick **Custom** to type a raw cron expression instead. Times are
+the server's clock.
+
 **Keyboard shortcuts** (`⌘` on macOS):
 
 | Shortcut | Action |
