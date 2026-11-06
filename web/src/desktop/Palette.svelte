@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick } from "svelte";
-  import { view, activeProject, type View } from "../lib/stores";
+  import { view, activeProject, user, type View } from "../lib/stores";
+  import { isOwner } from "../lib/types";
   import { sc } from "../lib/session.svelte";
   import { switchToProject, leaveActiveProject, cleanTitle } from "../lib/project";
   import { ensureSession } from "../lib/workspace";
@@ -61,6 +62,9 @@
       { group: "Go to", label: "Usage", icon: "chart", hint: "settings", run: () => ui.openSettings("usage") },
       { group: "Go to", label: "Context usage", icon: "gauge", hint: "side panel", run: () => ui.openInspector("session") },
     ];
+    if (isOwner($user?.role)) {
+      out.push({ group: "Go to", label: "Users", icon: "users", hint: "settings", run: () => ui.openSettings("users") });
+    }
     if ($activeProject) {
       out.push({ group: "Go to", label: "Team chat", icon: "users", hint: $activeProject.name, run: () => ui.openInspector("team") });
       out.push({ group: "Projects", label: "Personal workspace", icon: "user", hint: "leave project", run: leaveActiveProject });

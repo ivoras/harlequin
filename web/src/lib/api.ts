@@ -132,6 +132,11 @@ export const api = {
   org: () => req<{ name: string }>("GET", "/org"),
   // Directory of all accounts (id + email only), for invite autocomplete.
   userDirectory: () => reqList<{ id: number; email: string }>("GET", "/users/directory"),
+  // user management (owner only)
+  listUsers: () => reqList<User>("GET", "/users"),
+  createUser: (r: { email: string; password: string; role: string }) => req<User>("POST", "/users", r),
+  updateUser: (id: number, r: { role?: string; password?: string }) => req<void>("PATCH", `/users/${id}`, r),
+  deleteUser: (id: number) => req<void>("DELETE", `/users/${id}`),
 
   // sessions
   listSessions: (query = "") =>

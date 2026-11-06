@@ -155,8 +155,10 @@ covers every member's turns). The TUI's `/context`
 shows the same. Drag its left edge to resize it.
 
 **Settings** (account menu, or `Ctrl/⌘+,`) holds General (account, theme,
-mobile switch, and for owners/admins a broadcast alert), Hats, MCP servers,
-Config and Usage.
+mobile switch, and for owners/admins a broadcast alert), Users (owners only:
+add accounts, change roles, reset passwords, delete accounts), Hats, MCP
+servers, Config and Usage. The server always keeps at least one owner, and you
+can't delete your own account there.
 
 **MCP tools.** External MCP (Model Context Protocol) servers add tools the
 assistant uses on its own whenever a task needs them. The left sidebar's

@@ -2,24 +2,27 @@
   import { api, setToken } from "../lib/api";
   import { user, toast } from "../lib/stores";
   import { switchUI } from "../lib/uipref";
-  import { isElevated } from "../lib/types";
+  import { isElevated, isOwner } from "../lib/types";
   import Hats from "../views/Hats.svelte";
   import Mcp from "../views/Mcp.svelte";
   import Config from "../views/Config.svelte";
   import Usage from "../views/Usage.svelte";
+  import Users from "../views/Users.svelte";
   import Icon from "./Icon.svelte";
   import { ui, type SettingsTab } from "./state.svelte";
   import { theme, setTheme, type ThemePref } from "./theme.svelte";
 
   // Account- and admin-level settings in one modal; the management panes are
   // the same components the mobile UI uses.
-  const tabs: { id: SettingsTab; label: string; icon: string }[] = [
+  const tabs: { id: SettingsTab; label: string; icon: string }[] = $derived([
     { id: "general", label: "General", icon: "settings" },
+    // Only owners can manage accounts (the API enforces it too).
+    ...(isOwner($user?.role) ? [{ id: "users" as SettingsTab, label: "Users", icon: "users" }] : []),
     { id: "hats", label: "Hats", icon: "hat" },
     { id: "mcp", label: "MCP servers", icon: "plug" },
     { id: "config", label: "Config", icon: "key" },
     { id: "usage", label: "Usage", icon: "chart" },
-  ];
+  ]);
   const themes: { id: ThemePref; label: string; icon: string }[] = [
     { id: "system", label: "System", icon: "monitor" },
     { id: "light", label: "Light", icon: "sun" },
@@ -96,6 +99,8 @@
           {/if}
           <div style="margin-top: 12px;"><button class="danger" onclick={logout}><Icon name="logout" size={14} /> Log out</button></div>
         </div></section>
+      {:else if ui.settingsTab === "users" && isOwner($user?.role)}
+        <Users />
       {:else if ui.settingsTab === "hats"}
         <Hats />
       {:else if ui.settingsTab === "mcp"}

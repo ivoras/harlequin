@@ -202,7 +202,8 @@ There are three roles, highest privilege first:
 | `user` | Ordinary account: their own sessions and personal (user-scoped) memories only. |
 
 Create further users with `createuser` (`--owner`, `--admin`, or neither for a
-plain user), or — once a server is running — via the API as an owner. What each
+plain user), or — once a server is running — as an owner from **Settings → Users**
+in the desktop web UI (create, change role, reset password, delete). What each
 role may write per scope is in [SCOPES.md](SCOPES.md#roles).
 
 #### Scopes
