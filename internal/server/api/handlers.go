@@ -770,6 +770,7 @@ func (s *Server) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 		var err error
 		req, raw, err = s.documentFromUpload(w, r)
 		if err != nil {
+			pl.Fail(err.Error())
 			return // documentFromUpload already wrote the error
 		}
 	} else if err := decode(r, &req); err != nil {
@@ -789,6 +790,7 @@ func (s *Server) handleCreateDocument(w http.ResponseWriter, r *http.Request) {
 
 	d, status, msg := s.ingestToScope(ctx, u, req, raw, nil)
 	if msg != "" {
+		pl.Fail(msg)
 		writeErr(w, status, msg)
 		return
 	}
@@ -941,6 +943,7 @@ func (s *Server) handleCreateDocumentAsync(w http.ResponseWriter, r *http.Reques
 		job.set("extracting")
 		req, _, msg := s.extractDocument(ctx, in)
 		if msg != "" {
+			pl.Fail(msg)
 			job.fail(msg)
 			return
 		}
@@ -954,6 +957,7 @@ func (s *Server) handleCreateDocumentAsync(w http.ResponseWriter, r *http.Reques
 		job.set("chunking")
 		d, _, msg := s.ingestToScope(ctx, &uCopy, req, in.data, job.progress)
 		if msg != "" {
+			pl.Fail(msg)
 			job.fail(msg)
 			return
 		}

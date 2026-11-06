@@ -140,3 +140,18 @@ func fieldValue(line, key string) string {
 	}
 	return rest
 }
+
+func TestPhaseLogFailReplacesComplete(t *testing.T) {
+	buf := captureLog(t)
+	pl := NewPhaseLog("doc.xlsx")
+	pl.Phase("extract")
+	pl.Fail("embed document: boom")
+	pl.Done() // must stay silent after Fail
+	out := buf.String()
+	if !strings.Contains(out, `FAILED after phase=extract`) || !strings.Contains(out, "embed document: boom") {
+		t.Errorf("missing failure line: %s", out)
+	}
+	if strings.Contains(out, "complete") {
+		t.Errorf("a failed ingestion must not log complete: %s", out)
+	}
+}
