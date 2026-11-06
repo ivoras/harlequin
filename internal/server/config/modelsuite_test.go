@@ -151,3 +151,18 @@ func TestLoadRejectsLegacyProviders(t *testing.T) {
 		t.Fatalf("err = %v, want a pointer to model_suites", err)
 	}
 }
+
+func TestDocEmbedConcurrency(t *testing.T) {
+	c := &Config{}
+	if got := c.DocEmbedConcurrency(); got != 10 {
+		t.Errorf("hosted default = %d, want 10", got)
+	}
+	c.Embeddings.Local = true
+	if got := c.DocEmbedConcurrency(); got != 1 {
+		t.Errorf("local default = %d, want 1", got)
+	}
+	c.Documents.EmbedConcurrency = 3
+	if got := c.DocEmbedConcurrency(); got != 3 {
+		t.Errorf("explicit setting = %d, want 3", got)
+	}
+}

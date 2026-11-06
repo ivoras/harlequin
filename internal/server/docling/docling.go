@@ -106,6 +106,12 @@ func (c *Client) convert(ctx context.Context, filename string, data []byte, form
 	if err := mw.WriteField("to_formats", format); err != nil {
 		return nil, err
 	}
+	// Unpadded Markdown tables: docling's default pads every cell to its column
+	// width, which on wide spreadsheets makes most of the text whitespace
+	// (3x the chunks, embeddings and tokens for the same content).
+	if err := mw.WriteField("md_compact_tables", "true"); err != nil {
+		return nil, err
+	}
 	if c.fast {
 		// docling CLI equivalents: --no-ocr --pdf-backend=dlparse_v2.
 		if err := mw.WriteField("do_ocr", "false"); err != nil {

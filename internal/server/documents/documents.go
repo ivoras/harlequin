@@ -13,12 +13,14 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	"github.com/ivoras/harlequin/internal/server/documents/searchquery"
 	"github.com/ivoras/harlequin/internal/server/embed"
 	"github.com/ivoras/harlequin/internal/shared/types"
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -56,7 +58,11 @@ type Store struct {
 	chunk      ChunkConfig
 	ftsWeight  float64 // RRF weight of the FTS5 arm (dense arm = 1.0)
 	ftsGatePct int     // keep only FTS5 hits at/above this score percentile (0 = all)
+	embedPar   int     // concurrent embedding requests during ingestion (<=1: sequential)
 }
+
+// SetEmbedConcurrency sets how many embedding batches an ingestion keeps in flight.
+func (s *Store) SetEmbedConcurrency(n int) { s.embedPar = n }
 
 // NewStore constructs a documents Store with the default (overlap) chunker and
 // equal-weight, ungated FTS5+vector fusion.
@@ -332,18 +338,39 @@ func (s *Store) indexChunks(ctx context.Context, tx *sql.Tx, docID int64, conten
 		}
 		// Embed in sub-batches so a progress callback can report per-batch
 		// (one request for everything would be opaque for minutes on big docs).
+		// Batches run up to embedPar at a time and land in their own slots, so
+		// the result order is the chunk order whatever order they finish in.
 		const embedBatch = 32
-		vecs := make([][]float32, 0, len(texts))
-		for start := 0; start < len(texts); start += embedBatch {
+		nb := (len(texts) + embedBatch - 1) / embedBatch
+		results := make([][][]float32, nb)
+		var mu sync.Mutex
+		doneChunks := 0
+		g, gctx := errgroup.WithContext(ctx)
+		g.SetLimit(max(s.embedPar, 1))
+		for b := 0; b < nb; b++ {
+			start := b * embedBatch
 			end := min(start+embedBatch, len(texts))
-			bv, err := s.embedder.Embed(ctx, texts[start:end])
-			if err != nil {
-				return 0, fmt.Errorf("embed document: %w", err)
-			}
+			g.Go(func() error {
+				bv, err := s.embedder.Embed(gctx, texts[start:end])
+				if err != nil {
+					return fmt.Errorf("embed document: %w", err)
+				}
+				results[b] = bv
+				mu.Lock()
+				defer mu.Unlock()
+				doneChunks += end - start // under the lock, so progress never goes backwards
+				if progress != nil {
+					progress(doneChunks, len(texts))
+				}
+				return nil
+			})
+		}
+		if err := g.Wait(); err != nil {
+			return 0, err
+		}
+		vecs := make([][]float32, 0, len(texts))
+		for _, bv := range results {
 			vecs = append(vecs, bv...)
-			if progress != nil {
-				progress(end, len(texts))
-			}
 		}
 		pl.Phase("embed-chunks", fmt.Sprintf("%d chunks", len(texts)))
 		for i, c := range chunks {

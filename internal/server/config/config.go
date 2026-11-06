@@ -239,6 +239,8 @@ type EmbeddingsConfig struct {
 	// prefix. Leave both empty for symmetric models (raw text both sides).
 	QueryPrefix string `yaml:"query_prefix"`
 	DocPrefix   string `yaml:"doc_prefix"`
+	// Local: the embed model is served on this machine (from the model suite).
+	Local bool `yaml:"-"`
 
 	APIKey string `yaml:"-"`
 }
@@ -256,6 +258,10 @@ type DocumentsConfig struct {
 	MaxChunkRunes int `yaml:"max_chunk_runes"`
 	// MinSentences avoids singleton chunks under "semadj".
 	MinSentences int `yaml:"min_sentences"`
+	// EmbedConcurrency is how many embedding requests an ingestion keeps in
+	// flight. 0 = automatic: 10 for a hosted embed model, 1 for a `local: true`
+	// one (a single local server gains nothing from parallel requests).
+	EmbedConcurrency int `yaml:"embed_concurrency"`
 	// FTS5Weight is the RRF weight of the FTS5 lexical arm in document search
 	// (the dense arm is fixed at 1.0). >1 favours exact-token matches. Default 1.
 	FTS5Weight float64 `yaml:"fts5_weight"`
@@ -658,6 +664,7 @@ func (c *Config) resolveModelSuite() error {
 	}
 	c.Embeddings.QueryPrefix = suite.Embed.QueryPrefix
 	c.Embeddings.DocPrefix = suite.Embed.DocPrefix
+	c.Embeddings.Local = suite.Embed.Local
 
 	c.Agent.WebFetch.Model = webFetchModel
 	if chat.Temperature != nil {
@@ -804,4 +811,15 @@ func (c *Config) ChatVision() bool {
 		return *chat.Vision
 	}
 	return !chat.Local
+}
+
+// DocEmbedConcurrency resolves Documents.EmbedConcurrency (see its doc).
+func (c *Config) DocEmbedConcurrency() int {
+	switch {
+	case c.Documents.EmbedConcurrency > 0:
+		return c.Documents.EmbedConcurrency
+	case c.Embeddings.Local:
+		return 1
+	}
+	return 10
 }
