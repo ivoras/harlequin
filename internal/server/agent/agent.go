@@ -498,6 +498,10 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 						"prompt_tokens":     chunk.Usage.PromptTokens,
 						"completion_tokens": chunk.Usage.CompletionTokens,
 						"total_tokens":      chunk.Usage.TotalTokens,
+						"cached_tokens":     chunk.Usage.CachedPromptTokens(),
+						"cost_usd":          chunk.Usage.Cost,
+						"ttft_ms":           msSince(reqStart, firstTokenAt),
+						"duration_ms":       time.Since(reqStart).Milliseconds(),
 					})
 					if a.RecordUsage != nil {
 						cid := sessionID
@@ -891,4 +895,12 @@ func (a *Agent) recordTurnError(ctx context.Context, rc *runContext, turnErr err
 	if _, err := a.Sessions.AddMessage(context.WithoutCancel(ctx), rc.sessDB, rc.sessionID, llm.RoleError, turnErr.Error(), nil); err != nil {
 		log.Printf("agent: store turn error for session %d: %v", rc.sessionID, err)
 	}
+}
+
+// msSince is the milliseconds from start to t, or -1 if t is unset.
+func msSince(start, t time.Time) int64 {
+	if t.IsZero() {
+		return -1
+	}
+	return t.Sub(start).Milliseconds()
 }

@@ -118,6 +118,8 @@ type Usage struct {
 	PromptTokensDetails *struct {
 		CachedTokens int `json:"cached_tokens"`
 	} `json:"prompt_tokens_details,omitempty"`
+	// Cost is the provider-reported call cost in USD (Opper, OpenRouter), nil if absent.
+	Cost *float64 `json:"cost,omitempty"`
 }
 
 // CachedPromptTokens returns the number of prompt tokens served from cache, or 0.
@@ -395,10 +397,12 @@ func (p *OpenAICompatible) readStream(resp *http.Response, model string, out cha
 	var usage *Usage
 	var timings *Timings
 	var firstContentAt time.Time // first token, for the wall-clock PP fallback
+	var firstDeltaAt time.Time   // first delta of any kind (incl. tool calls), for the stats line
 	resolvedModel := model
 
 	flush := func(streamErr error) {
 		p.recordPP(usage, timings, start, firstContentAt)
+		logCallStats(p.name, resolvedModel, usage, start, firstDeltaAt, streamErr)
 		calls := make([]ToolCall, 0, len(order))
 		for _, idx := range order {
 			calls = append(calls, *toolAcc[idx])
@@ -441,6 +445,9 @@ func (p *OpenAICompatible) readStream(resp *http.Response, model string, out cha
 			// the caller throttle/render.
 			out <- Chunk{PromptProgress: c.PromptProgress, Provider: p.name, Model: model}
 		}
+		if len(c.Choices) > 0 && firstDeltaAt.IsZero() {
+			firstDeltaAt = time.Now()
+		}
 		for _, ch := range c.Choices {
 			if thinking := normalizeThinking(ch.Delta.extra); thinking != "" {
 				if firstContentAt.IsZero() {
@@ -479,4 +486,28 @@ func (p *OpenAICompatible) readStream(resp *http.Response, model string, out cha
 		return
 	}
 	flush(nil)
+}
+
+// logCallStats writes one key=value line per finished LLM call (parsed by the
+// munin plugin; keep the keys stable). ttft_ms is -1 when no delta arrived;
+// token fields and cost_usd are -1 when the provider didn't report them.
+func logCallStats(provider, model string, u *Usage, start, firstDelta time.Time, streamErr error) {
+	log.Print(formatCallStats(provider, model, u, time.Since(start), firstDelta.Sub(start), !firstDelta.IsZero(), streamErr))
+}
+
+func formatCallStats(provider, model string, u *Usage, total, ttft time.Duration, haveTTFT bool, streamErr error) string {
+	prompt, cached, completion := -1, -1, -1
+	cost := -1.0
+	if u != nil {
+		prompt, cached, completion = u.PromptTokens, u.CachedPromptTokens(), u.CompletionTokens
+		if u.Cost != nil {
+			cost = *u.Cost
+		}
+	}
+	ttftMS := int64(-1)
+	if haveTTFT {
+		ttftMS = ttft.Milliseconds()
+	}
+	return fmt.Sprintf("llm[%s]: done model=%s prompt=%d cached=%d completion=%d ttft_ms=%d total_ms=%d cost_usd=%.8g ok=%t",
+		provider, model, prompt, cached, completion, ttftMS, total.Milliseconds(), cost, streamErr == nil)
 }
