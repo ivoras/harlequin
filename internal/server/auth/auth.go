@@ -53,6 +53,9 @@ type Store struct {
 	db *sql.DB
 }
 
+// bcryptCost is the work factor for new hashes; Login upgrades older hashes.
+const bcryptCost = 12
+
 // NewStore constructs an auth Store.
 func NewStore(db *sql.DB) *Store {
 	return &Store{db: db}
@@ -66,7 +69,7 @@ func (s *Store) CreateUser(ctx context.Context, email, password, role string) (*
 	if role != types.RoleOwner && role != types.RoleAdmin && role != types.RoleUser {
 		return nil, fmt.Errorf("invalid role %q", role)
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +89,7 @@ func (s *Store) CreateUser(ctx context.Context, email, password, role string) (*
 // ChangePassword sets a new bcrypt hash for the account with this email and
 // revokes all its API tokens.
 func (s *Store) ChangePassword(ctx context.Context, email, password string) error {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
 	if err != nil {
 		return err
 	}
@@ -250,6 +253,13 @@ func (s *Store) Login(ctx context.Context, email, password string) (string, *typ
 		return "", nil, ErrInvalidCredentials
 	}
 
+	// Best-effort rehash when the stored cost is below the current one.
+	if c, err := bcrypt.Cost([]byte(hash)); err == nil && c < bcryptCost {
+		if nh, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost); err == nil {
+			_, _ = s.db.ExecContext(ctx, `UPDATE users SET password_hash = ? WHERE id = ?`, string(nh), id)
+		}
+	}
+
 	token, err := s.issueToken(ctx, id)
 	if err != nil {
 		return "", nil, err
@@ -311,7 +321,7 @@ func (s *Store) StartRegistration(ctx context.Context, email, password string) (
 		return "", err
 	}
 
-	pwHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	pwHash, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
 	if err != nil {
 		return "", err
 	}

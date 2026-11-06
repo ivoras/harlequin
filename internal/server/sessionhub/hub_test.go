@@ -276,3 +276,29 @@ func TestProjectTurnsRunAsSenderAndDropUser(t *testing.T) {
 		t.Fatal("no events for alice")
 	}
 }
+
+func TestBusyWhileTurnRuns(t *testing.T) {
+	w := &whoAgent{ran: make(chan int64, 2), release: make(chan struct{}, 2)}
+	hub := New(w, nil, time.Minute)
+	defer hub.Stop()
+	user, sess := testUserSess()
+	if hub.Busy(0, user.ID, sess.ID) {
+		t.Fatal("no live session should be idle")
+	}
+	a := hub.Attach(user, 0, sess)
+	defer a.Close()
+	a.Resume(0)
+	a.Submit("go")
+	<-w.ran
+	if !hub.Busy(0, user.ID, sess.ID) {
+		t.Fatal("running turn should be busy")
+	}
+	w.release <- struct{}{}
+	deadline := time.Now().Add(2 * time.Second)
+	for hub.Busy(0, user.ID, sess.ID) {
+		if time.Now().After(deadline) {
+			t.Fatal("still busy after the turn ended")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}

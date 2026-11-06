@@ -7,6 +7,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"strings"
 	"time"
 
 	"github.com/ivoras/harlequin/internal/shared/types"
@@ -204,6 +206,39 @@ func (s *Store) ClearMessages(ctx context.Context, db *sql.DB, sessionID int64) 
 	_, err := db.ExecContext(ctx, `DELETE FROM messages WHERE session_id = ?`, sessionID)
 	return err
 }
+
+// RewindToUserMessage deletes the session's n-th user message (1-based, in
+// order) and everything after it, returning the deleted user message's text.
+// expect must be a prefix of that message (after trimming) — a guard against
+// the client's view being out of date — else ErrRewindMismatch.
+func (s *Store) RewindToUserMessage(ctx context.Context, db *sql.DB, sessionID int64, n int, expect string) (string, error) {
+	if n < 1 {
+		return "", ErrRewindMismatch
+	}
+	var id int64
+	var content string
+	err := db.QueryRowContext(ctx,
+		`SELECT id, content FROM messages WHERE session_id = ? AND role = 'user' ORDER BY id LIMIT 1 OFFSET ?`,
+		sessionID, n-1).Scan(&id, &content)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrRewindMismatch
+	}
+	if err != nil {
+		return "", err
+	}
+	if e := strings.TrimSpace(expect); !strings.HasPrefix(strings.TrimSpace(content), e) {
+		return "", ErrRewindMismatch
+	}
+	if _, err := db.ExecContext(ctx, `DELETE FROM messages WHERE session_id = ? AND id >= ?`, sessionID, id); err != nil {
+		return "", err
+	}
+	_, _ = db.ExecContext(ctx, `UPDATE sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, sessionID)
+	return content, nil
+}
+
+// ErrRewindMismatch: the requested rewind point doesn't match the stored
+// session (it changed since the client loaded it).
+var ErrRewindMismatch = errors.New("the session has changed since it was loaded; reload it and try again")
 
 // AddMessage appends a message to a session and bumps updated_at.
 func (s *Store) AddMessage(ctx context.Context, db *sql.DB, sessionID int64, role, content string, toolCalls []types.ToolCall) (*types.Message, error) {

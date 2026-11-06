@@ -154,6 +154,10 @@ export const api = {
     req<void>("PATCH", `/sessions/${id}`, { title }),
   setSessionHat: (id: number, hat: string) =>
     req<void>("POST", `/sessions/${id}/hat`, { hat }),
+  // Truncate a session to before its n-th user message (1-based); expect is
+  // that message's text as shown (a guard against a stale view).
+  rewindSession: (id: number, projectID: number, beforeUser: number, expect: string) =>
+    req<{ removed_prompt: string }>("POST", `/sessions/${id}/rewind` + (projectID ? `?project=${projectID}` : ""), { before_user: beforeUser, expect }),
   clearSession: (id: number, projectID = 0) =>
     req<void>("POST", `/sessions/${id}/clear${projectID ? `?project=${projectID}` : ""}`),
   getContextBreakdown: (id: number, projectID = 0, model = "") => {
