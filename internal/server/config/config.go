@@ -519,7 +519,8 @@ type MCPConfig struct {
 	ToolsCacheTTL Duration `yaml:"tools_cache_ttl"`
 	// OAuthCallbackBaseURL is the externally reachable base URL of this server,
 	// used to build the OAuth redirect URI (e.g. "https://harlequin.example.com").
-	// Required for OAuth-authenticated MCP servers.
+	// Optional: when empty, the URL the user reached the server through
+	// (honouring X-Forwarded-Proto/Host) is used.
 	OAuthCallbackBaseURL string `yaml:"oauth_callback_base_url"`
 }
 

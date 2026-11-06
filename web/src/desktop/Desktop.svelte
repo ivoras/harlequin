@@ -4,7 +4,7 @@
   import { sc } from "../lib/session.svelte";
   import { pc } from "../lib/projectchat.svelte";
   import { docView } from "../lib/docview.svelte";
-  import { initSession, ensureSession, setURLParams } from "../lib/workspace";
+  import { initSession, ensureSession, setURLParams, consumeMCPOAuthResult } from "../lib/workspace";
   import Login from "../views/Login.svelte";
   import Memory from "../views/Memory.svelte";
   import Skills from "../views/Skills.svelte";
@@ -45,6 +45,7 @@
       started = true;
       initSession();
       ui.loadProjects();
+      if (consumeMCPOAuthResult()) ui.openSettings("mcp");
     } else if (!u && started) {
       started = false;
       sc.detach();

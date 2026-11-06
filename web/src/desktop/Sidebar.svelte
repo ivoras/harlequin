@@ -9,6 +9,7 @@
   import type { Document, Session } from "../lib/types";
   import Icon from "./Icon.svelte";
   import WorkspaceSwitcher from "./WorkspaceSwitcher.svelte";
+  import McpTools from "./McpTools.svelte";
   import { ui, openSession, relTime, MOD } from "./state.svelte";
   import { theme, setTheme } from "./theme.svelte";
 
@@ -135,6 +136,7 @@
         <Icon name={n.icon} /> <span class="grow">{n.label}</span>
         {#if n.id === "projects" && ui.invites.length}<span class="count">{ui.invites.length}</span>{/if}
       </button>
+      {#if n.id === "cron"}<McpTools />{/if}
     {/each}
   </nav>
 
