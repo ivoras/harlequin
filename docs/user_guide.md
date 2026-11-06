@@ -103,6 +103,16 @@ documents in a rendered side panel with buttons to view the raw file or
 download the original. Citations inside a rendered report are clickable too,
 so you can follow a report's sources without leaving it.
 
+#### Excel files
+
+Ask for a spreadsheet ("make an Excel file of these prices", "export this table
+to Excel") and the agent creates a downloadable `.xlsx` in the same place a
+report would go — one sheet per section, a bold header row, real numbers, and
+working formulas such as totals. It can also edit an uploaded spreadsheet: it
+reads the tables, applies your changes and saves a **new** workbook (the
+original stays as it was). Only the data comes across — not colours, merged
+cells, charts or column formats.
+
 ### The web app
 
 The browser app comes in two layouts over the same account and data:

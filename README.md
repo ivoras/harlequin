@@ -30,8 +30,10 @@ Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a fu
   quoted claims against sources, and save its own reports as searchable,
   citation-pinned documents rendered in the web UI. Clicking a citation opens the
   document scrolled to the cited passage. The agent can also edit its saved text
-  documents in place (replace / diff / append), and document lists in the web UI
-  update live when documents are added, edited or removed.
+  documents in place (replace / diff / append), produce downloadable Excel
+  workbooks from tables (or edit an uploaded spreadsheet and save a new one),
+  and document lists in the web UI update live when documents are added,
+  edited or removed.
 - **Projects** — shared workspaces (members, sessions, documents, memories, live
   chatroom). Search can span *all* projects a user belongs to, with
   project-qualified references (`p3.17`) that stay valid anywhere, or they can

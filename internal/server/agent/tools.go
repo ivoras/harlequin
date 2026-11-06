@@ -717,6 +717,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 		}
 
 		reg["edit_doc"] = a.editDocEntry()
+		reg["create_excel"] = a.createExcelEntry()
 
 		reg["delete_doc"] = toolEntry{
 			def: fnTool("delete_doc", `Permanently delete a document from the corpus, given its scoped id (u.N / s.N / p.N — resolve it with list_documents first). This removes the document and all its chunks; it cannot be undone, and search_docs/align_docs will no longer find it. Only delete when the user has clearly asked to; if you are unsure which document they mean, use list_documents and confirm with ask_user first. Personal (u.N) documents are always yours to delete; a project (p.N) document is deleted from the current project's corpus; a shared (s.N) document may be deleted by owners/admins only.`, map[string]any{
@@ -971,6 +972,12 @@ Example (watch a saved web-monitor check every 30 min): cron_create(name="fzoeu"
 // (e.g. splitting a citation across a paragraph break). Best-effort: a
 // failure here still leaves the document searchable via its chunks.
 func (a *Agent) storeSavedDocFile(ctx context.Context, db *sql.DB, scope string, rc *runContext, doc *types.Document, content string) {
+	a.storeDocFile(ctx, db, scope, rc, doc, []byte(content), ".md")
+}
+
+// storeDocFile persists a tool-made document's original bytes (the file the
+// user downloads) next to uploads, named <id>-<title><ext>.
+func (a *Agent) storeDocFile(ctx context.Context, db *sql.DB, scope string, rc *runContext, doc *types.Document, data []byte, ext string) {
 	if a.Storage == nil {
 		return
 	}
@@ -985,16 +992,20 @@ func (a *Agent) storeSavedDocFile(ctx context.Context, db *sql.DB, scope string,
 		dir, err = a.Storage.UserFilesDir(rc.userID)
 	}
 	if err != nil {
-		log.Printf("save_doc: persist file: %v", err)
+		log.Printf("store doc file: %v", err)
 		return
 	}
-	name := fmt.Sprintf("%d-%s.md", doc.ID, documents.AsciiName(doc.Title))
-	if werr := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); werr != nil {
-		log.Printf("save_doc: write file %q: %v", name, werr)
+	base := documents.AsciiName(doc.Title)
+	if strings.HasSuffix(strings.ToLower(base), ext) {
+		base = base[:len(base)-len(ext)]
+	}
+	name := fmt.Sprintf("%d-%s%s", doc.ID, base, ext)
+	if werr := os.WriteFile(filepath.Join(dir, name), data, 0o600); werr != nil {
+		log.Printf("store doc file %q: %v", name, werr)
 		return
 	}
 	if serr := a.Docs.SetStoredPath(ctx, db, doc.ID, name); serr != nil {
-		log.Printf("save_doc: set stored_path: %v", serr)
+		log.Printf("store doc file: set stored_path: %v", serr)
 	}
 }
 
