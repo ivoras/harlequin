@@ -66,6 +66,8 @@ func (a *Agent) RunCronSkill(ctx context.Context, userID int64, username, role s
 	if err != nil {
 		return "", err
 	}
+	a.Audit.Log(ctx, userDB, "session_create", fmt.Sprintf("session %d", sess.ID),
+		map[string]string{"interface": types.InterfaceCron, "cron_job": job.Name})
 	rc := &runContext{
 		sessionID:      sess.ID,
 		userID:         userID,
