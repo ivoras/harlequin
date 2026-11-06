@@ -338,6 +338,12 @@ func (r *Registry) LoadToken(ctx context.Context, userDB *sql.DB, scope, name st
 	return tok, nil
 }
 
+// DeleteToken removes the per-user OAuth token for (scope, name), if any.
+func (r *Registry) DeleteToken(ctx context.Context, userDB *sql.DB, scope, name string) error {
+	_, err := userDB.ExecContext(ctx, `DELETE FROM mcp_oauth_tokens WHERE scope=? AND server_name=?`, scope, name)
+	return err
+}
+
 // SaveToken upserts the per-user OAuth token for (scope, name).
 func (r *Registry) SaveToken(ctx context.Context, userDB *sql.DB, scope, name string, tok *oauth2.Token) error {
 	if userDB == nil {

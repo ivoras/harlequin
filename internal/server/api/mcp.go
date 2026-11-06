@@ -1,8 +1,10 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"errors"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -263,6 +265,19 @@ func (s *Server) handleRegisterMCP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.MCP.Invalidate(srv.Scope, srv.Name)
+	if srv.Scope == mcp.ScopeShared && srv.AuthType == mcp.AuthOAuth && srv.Enabled && s.Notify != nil {
+		// Everyone else must sign in with their own account; the creator is sent
+		// to sign-in by their client. Background: fans out over every user db.
+		go func(srv mcp.Server) {
+			ctx := context.WithoutCancel(r.Context())
+			_ = s.Storage.EachUser(ctx, func(id int64, udb *sql.DB) error {
+				if id != srv.CreatedBy {
+					_, _ = s.Notify.Create(ctx, udb, mcp.SignInNotice(srv, false))
+				}
+				return nil
+			})
+		}(srv)
+	}
 	writeJSON(w, http.StatusCreated, map[string]string{"status": "ok"})
 }
 
@@ -385,6 +400,7 @@ func (s *Server) handleMCPOAuthStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		log.Printf("mcp: oauth start for user %d %s/%s: %v", u.ID, scope, name, err)
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -410,8 +426,17 @@ func (s *Server) handleMCPOAuthCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	err := s.Storage.WithUser(r.Context(), p.UserID, func(udb *sql.DB) error {
-		return s.MCP.CompleteAuth(r.Context(), udb, state, code)
+		if err := s.MCP.CompleteAuth(r.Context(), udb, state, code); err != nil {
+			return err
+		}
+		if s.Notify != nil { // the reminder is now moot
+			_ = s.Notify.DismissKind(r.Context(), udb, types.NotifyKindMCPSignIn(p.Scope, p.Name))
+		}
+		return nil
 	})
+	if err != nil {
+		log.Printf("mcp: oauth callback for user %d %s/%s: %v", p.UserID, p.Scope, p.Name, err)
+	}
 	if p.ReturnTo != "" {
 		// Web UI flow: land back in the app, which reads mcp_oauth* and reports.
 		res, msg := "ok", "Authorized "+p.Name

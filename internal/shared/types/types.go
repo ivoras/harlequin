@@ -196,6 +196,16 @@ const NotifyKindSessionTitle = "session-title"
 // /alert command). Shown in the client alert box like any passive notification.
 const NotifyKindAlert = "alert"
 
+// NotifyKindMCPSignInPrefix prefixes a reminder to sign in to an OAuth MCP
+// server; the full kind is "mcp-signin:<scope>/<name>" so clients can offer a
+// Sign in action and the server can dismiss it once the user signs in.
+const NotifyKindMCPSignInPrefix = "mcp-signin:"
+
+// NotifyKindMCPSignIn builds the kind for one server.
+func NotifyKindMCPSignIn(scope, name string) string {
+	return NotifyKindMCPSignInPrefix + scope + "/" + name
+}
+
 // BroadcastAlertRequest is the body of POST /alerts (owner/admin only): a text
 // message delivered as an alert to all users.
 type BroadcastAlertRequest struct {

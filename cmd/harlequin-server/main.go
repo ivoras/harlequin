@@ -215,6 +215,7 @@ func main() {
 
 	// MCP client: external tool servers. Credentials are encrypted at rest with
 	// the configured master key; without it, only auth-less servers are usable.
+	notifyStore := notify.NewStore()
 	var mcpManager *mcp.Manager
 	if cfg.MCP.Enabled {
 		var cipher *secrets.Cipher
@@ -232,11 +233,16 @@ func main() {
 			CallbackBaseURL: cfg.MCP.OAuthCallbackBaseURL,
 			ClientName:      "harlequin",
 			ClientVersion:   "0.1.0",
+			WithUser:        store.WithUser,
+			OnAuthLost: func(ctx context.Context, userID int64, udb *sql.DB, srv mcp.Server) {
+				if _, err := notifyStore.Create(ctx, udb, mcp.SignInNotice(srv, true)); err != nil {
+					log.Printf("mcp: sign-in reminder for user %d: %v", userID, err)
+				}
+			},
 		}, nil)
 		defer mcpManager.Close()
 	}
 
-	notifyStore := notify.NewStore()
 	projectStore := project.NewStore(store.System)
 	cronStore := cron.NewStore()
 	presenceTracker := presence.New()
