@@ -135,6 +135,53 @@ class SessionController {
     }
   }
 
+  // rewindTarget returns, for the transcript item at index i, the user message
+  // a rewind would cut from: the item itself if it is a user message, else the
+  // next user message after it (an agent turn is kept whole). null = nothing
+  // to cut (e.g. the last agent turn).
+  rewindTarget(i: number): { n: number; text: string } | null {
+    let n = 0;
+    for (let k = 0; k < this.items.length; k++) {
+      const it = this.items[k];
+      if (it.kind !== "msg" || it.role !== "user") continue;
+      n++;
+      if (k >= i) return { n, text: it.content };
+    }
+    return null;
+  }
+
+  // rewind cuts the session back to before rewindTarget(i) and reloads the
+  // transcript. Resolves the removed user message's text (to edit and resend),
+  // or null if nothing happened.
+  async rewind(i: number): Promise<string | null> {
+    const t = this.rewindTarget(i);
+    if (!t || !this.currentId) return null;
+    if (this.loading) {
+      toast("a turn is in flight — stop it before rewinding", "error");
+      return null;
+    }
+    try {
+      const r = await api.rewindSession(this.currentId, this.projectID, t.n, t.text.slice(0, 200));
+      const id = this.currentId, pid = this.projectID;
+      this.currentId = 0; // force a fresh attach: reload the now-shorter history
+      await this.attach(id, pid);
+      toast("rewound");
+      return r.removed_prompt;
+    } catch (e) {
+      toast((e as Error).message, "error");
+      return null;
+    }
+  }
+
+  // rewindWithConfirm asks first (warning when the session is shared), then
+  // rewinds. isUser: the item is a user message (removed too, text returned).
+  async rewindWithConfirm(i: number, isUser: boolean): Promise<string | null> {
+    const shared = this.projectID ? " This is a shared project session: it changes for every member." : "";
+    const what = isUser ? "this message and everything after it" : "everything after this reply";
+    if (!confirm(`Rewind the session? This removes ${what}.${shared}`)) return null;
+    return this.rewind(i);
+  }
+
   // send is the composer entry point: queue while a turn is in flight, else start.
   send(text: string): void {
     const t = text.trim();

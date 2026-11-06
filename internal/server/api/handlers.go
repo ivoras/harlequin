@@ -27,6 +27,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/imgshrink"
 	"github.com/ivoras/harlequin/internal/server/mdconv"
 	"github.com/ivoras/harlequin/internal/server/memory"
+	"github.com/ivoras/harlequin/internal/server/session"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
@@ -606,6 +607,61 @@ func (s *Server) handleRenameSession(w http.ResponseWriter, r *http.Request) {
 // handleClearSession wipes a session's messages so the next turn starts with a
 // fresh context (the session, its title, and its hat survive). For a project
 // session pass ?project=<id>; any member may clear it.
+// handleRewindSession truncates a session back to before its n-th user message
+// (body {"before_user": n, "expect": "<that message's start>"}), so the
+// conversation continues from an earlier point. Refused while a turn runs.
+func (s *Server) handleRewindSession(w http.ResponseWriter, r *http.Request) {
+	u, _ := auth.UserFromContext(r.Context())
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	projectID, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64)
+	var req struct {
+		BeforeUser int    `json:"before_user"`
+		Expect     string `json:"expect"`
+	}
+	if err := decode(r, &req); err != nil || req.BeforeUser < 1 {
+		writeErr(w, http.StatusBadRequest, "before_user (a 1-based user message index) is required")
+		return
+	}
+	if s.Hub != nil && s.Hub.Busy(projectID, u.ID, id) {
+		writeErr(w, http.StatusConflict, "a turn is running in this session — stop it (or wait) before rewinding")
+		return
+	}
+	var removed string
+	rewind := func(db *sql.DB) error {
+		var e error
+		removed, e = s.Sessions.RewindToUserMessage(r.Context(), db, id, req.BeforeUser, req.Expect)
+		return e
+	}
+	var err error
+	if projectID > 0 {
+		if member, _ := s.Projects.IsMember(r.Context(), projectID, u.ID); !member {
+			writeErr(w, http.StatusForbidden, "not a member of this project")
+			return
+		}
+		err = s.Storage.WithProject(r.Context(), projectID, rewind)
+	} else {
+		err = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+			if _, e := s.Sessions.Get(r.Context(), udb, id, u.ID); e != nil {
+				return e
+			}
+			return rewind(udb)
+		})
+	}
+	switch {
+	case errors.Is(err, session.ErrRewindMismatch):
+		writeErr(w, http.StatusConflict, err.Error())
+		return
+	case err != nil:
+		writeErr(w, http.StatusNotFound, "not found")
+		return
+	}
+	s.Session.Log(r.Context(), sessionlog.Event{
+		SessionID: id, UserID: u.ID, Type: sessionlog.TypeSessionRewound,
+		Data: map[string]any{"rewound_by": u.Email, "project_id": projectID, "before_user": req.BeforeUser},
+	})
+	writeJSON(w, http.StatusOK, map[string]string{"removed_prompt": removed})
+}
+
 func (s *Server) handleClearSession(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)

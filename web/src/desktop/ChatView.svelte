@@ -77,6 +77,16 @@
     await sc.clear();
   }
 
+  // Rewind the session. On a user message the message itself is removed too and
+  // its text returns to the composer for editing; on a reply, the turn is kept.
+  async function rewindTo(i: number, isUser: boolean) {
+    const removed = await sc.rewindWithConfirm(i, isUser);
+    if (removed !== null && isUser) {
+      c.input = removed; // as sent, incl. any "Attached documents" references
+      c.focus();
+    }
+  }
+
   async function copyMsg(i: number, text: string) {
     try {
       await navigator.clipboard.writeText(text);
@@ -187,10 +197,24 @@
                 <button class="icon-btn" onclick={() => copyMsg(i, it.content)} title="Copy as Markdown" aria-label="Copy message">
                   <Icon name={copiedIdx === i ? "check" : "copy"} size={14} />
                 </button>
+                {#if sc.rewindTarget(i)}
+                  <button class="icon-btn" onclick={() => rewindTo(i, false)} disabled={sc.loading}
+                    title="Rewind to here: remove everything after this reply" aria-label="Rewind to here">
+                    <Icon name="rewind" size={14} />
+                  </button>
+                {/if}
               </div>
             </div>
           {:else}
-            <div class="msg user"><div class="bubble">{it.content}</div></div>
+            <div class="msg user">
+              <div class="bubble">{it.content}</div>
+              <div class="msg-actions">
+                <button class="icon-btn" onclick={() => rewindTo(i, true)} disabled={sc.loading}
+                  title="Rewind to here: remove this message and everything after it, and put it back in the composer to edit" aria-label="Rewind to before this message">
+                  <Icon name="rewind" size={14} />
+                </button>
+              </div>
+            </div>
           {/if}
         {:else if it.kind === "thinking"}
           <details class="fold">
@@ -332,12 +356,13 @@
   .hat-chip.worn { color: var(--accent-text); border-color: var(--accent-dim); background: var(--accent-soft); }
   .hat-pop { top: calc(100% + 4px); left: 0; width: 320px; }
 
-  .msg.user { display: flex; justify-content: flex-end; }
+  .msg.user { display: flex; flex-direction: column; align-items: flex-end; }
   .bubble { background: var(--surface-3); border-radius: 16px 16px 4px 16px; padding: 8px 14px; max-width: 80%;
     white-space: pre-wrap; word-break: break-word; }
   .msg.assistant { position: relative; }
   .msg-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.1s; margin-top: 2px; }
-  .msg.assistant:hover .msg-actions, .msg.assistant:focus-within .msg-actions { opacity: 1; }
+  .msg.assistant:hover .msg-actions, .msg.assistant:focus-within .msg-actions,
+  .msg.user:hover .msg-actions, .msg.user:focus-within .msg-actions { opacity: 1; }
   .fold { border: 1px solid var(--border-soft); border-radius: var(--radius-sm); background: var(--surface); font-size: 12.5px; }
   .fold summary { cursor: pointer; padding: 5px 10px; color: var(--muted); display: flex; align-items: center; gap: 7px;
     list-style: none; min-width: 0; }

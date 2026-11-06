@@ -150,6 +150,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/sessions/{id}/context", s.handleSessionContext)
 			r.Post("/sessions/{id}/hat", s.handleSetSessionHat)
 			r.Post("/sessions/{id}/clear", s.handleClearSession)
+			r.Post("/sessions/{id}/rewind", s.handleRewindSession)
 
 			r.Get("/hats", s.handleListHats)
 			r.Post("/hats", s.handleCreateHat)

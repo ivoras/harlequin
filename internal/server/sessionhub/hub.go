@@ -155,6 +155,20 @@ func (h *Hub) Attach(user *types.User, projectID int64, sess *types.Session) *Su
 	return &Subscription{ls: ls, user: *user, sub: &subscriber{ch: make(chan types.StreamEvent, subEventBuffer), userID: user.ID}}
 }
 
+// Busy reports whether the live session is running a turn or has prompts
+// queued (a session with no live goroutine is idle).
+func (h *Hub) Busy(projectID, userID, sessID int64) bool {
+	h.mu.Lock()
+	ls := h.sessions[sessionKey(projectID, userID, sessID)]
+	h.mu.Unlock()
+	if ls == nil {
+		return false
+	}
+	ls.mu.Lock()
+	defer ls.mu.Unlock()
+	return ls.running || len(ls.prompts) > 0
+}
+
 // DropUser cuts a member who was removed from a project off its live sessions:
 // their connections are closed (clients reconnect and fail the membership
 // check), their queued prompts are dropped, and a turn they are running is

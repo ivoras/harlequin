@@ -224,6 +224,14 @@ the server's clock.
 Slash commands work in the web composer too: type `/` for the menu
 (`/help`, `/project`, `/export`, `/clear`, and `/alert` for owners/admins).
 
+**Rewinding a session.** Hover a message in the chat (mobile: the small buttons
+under it) for **Rewind**. On a reply it removes everything after that reply;
+on one of your messages it removes that message and everything after it and
+puts the text back in the composer, so you can edit and resend it. It isn't
+available while a turn is running, and in a project session it changes the
+session for every member. Removed turns' effects outside the conversation
+(saved memories or documents, sent e-mail, usage cost) stay.
+
 ## Projects
 
 | Command | What it does |

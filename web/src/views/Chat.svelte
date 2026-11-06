@@ -25,6 +25,16 @@
     inp.click();
   }
 
+  // Rewind (see SessionController.rewind): a user message goes back into the
+  // composer to edit and resend.
+  async function rewindTo(i: number, isUser: boolean) {
+    const removed = await sc.rewindWithConfirm(i, isUser);
+    if (removed !== null && isUser) {
+      c.input = removed;
+      c.focus();
+    }
+  }
+
   // Whole-message copy: copies the raw markdown source, not the rendered HTML.
   let copiedIdx = $state(-1);
   async function copyMsg(i: number, text: string) {
@@ -82,8 +92,14 @@
               <div class="md">{@html renderMarkdown(it.content)}</div>
               <button class="msgcopy" title="Copy message" aria-label="Copy message"
                 onclick={() => copyMsg(i, it.content)}>{copiedIdx === i ? "✓" : "⧉ Copy"}</button>
+              {#if sc.rewindTarget(i)}
+                <button class="msgcopy" title="Rewind to here: remove everything after this reply" aria-label="Rewind to here"
+                  disabled={sc.loading} onclick={() => rewindTo(i, false)}>↶ Rewind</button>
+              {/if}
             {:else}
               <div class="bubble">{it.content}</div>
+              <button class="msgcopy" title="Rewind: remove this message and everything after it, and edit it again" aria-label="Rewind to before this message"
+                disabled={sc.loading} onclick={() => rewindTo(i, true)}>↶ Rewind</button>
             {/if}
           </div>
         {:else if it.kind === "thinking"}
@@ -188,7 +204,7 @@
   .turn-error { color: var(--danger, #e5484d); border: 1px solid color-mix(in srgb, currentColor 35%, transparent);
     border-radius: var(--radius-sm); padding: 6px 10px; background: color-mix(in srgb, currentColor 8%, transparent); }
   .messages { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px 0 12px; }
-  .msg.user { display: flex; justify-content: flex-end; }
+  .msg.user { display: flex; flex-direction: column; align-items: flex-end; }
   .bubble { background: linear-gradient(to bottom, var(--surface-3), var(--surface-2));
     border: 1px solid var(--border-soft); border-radius: 14px 14px 4px 14px;
     padding: 8px 12px; max-width: 85%; white-space: pre-wrap; word-break: break-word;

@@ -43,6 +43,7 @@ const (
 	// A "/clear": the session's messages were wiped, so the composed context
 	// visibly shrinks after this point in the trace.
 	TypeSessionCleared = "session_cleared"
+	TypeSessionRewound = "session_rewound"
 
 	// Live-session lifecycle (WebSocket sessions). TypeSessionResumed records a
 	// client (re)attaching to a live session (cold or warm). TypeSessionExpired
