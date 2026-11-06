@@ -149,7 +149,9 @@ reference, or a file — text and reports render there; PDFs and DOCX open in a
 new browser tab), and **Session** (session details and the context-usage
 breakdown, including the session's LLM cost so far — the provider's reported
 cost where available, otherwise estimated from configured prices, marked ≈;
-a project session's cost covers every member's turns). The TUI's `/context`
+it covers every LLM call made for the session, including web-page
+analysis, automatic memory extraction and titling; a project session's cost
+covers every member's turns). The TUI's `/context`
 shows the same. Drag its left edge to resize it.
 
 **Settings** (account menu, or `Ctrl/⌘+,`) holds General (account, theme,

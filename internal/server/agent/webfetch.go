@@ -224,7 +224,7 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, label webDelegat
 				})
 			}
 		}
-		text, toolCalls, err := a.completeOnceProgress(ctx, rc, llm.ChatRequest{
+		text, toolCalls, err := a.completeOnceProgress(ctx, llm.ChatRequest{
 			Model:           a.WebFetchModel,
 			Messages:        msgs,
 			Tools:           tools,
@@ -298,7 +298,7 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, label webDelegat
 		"delegate": label.delegate, "model": a.WebFetchModel, "depth": depth,
 		"delegate_step": webFetchMaxSteps + 1, "final": true,
 	})
-	text, _, err := a.completeOnceProgress(ctx, rc, llm.ChatRequest{
+	text, _, err := a.completeOnceProgress(ctx, llm.ChatRequest{
 		Model:           a.WebFetchModel,
 		Messages:        append(msgs, llm.Message{Role: llm.RoleUser, Content: "Answer the original question now from the information already gathered above. Do not call any more tools."}),
 		Temperature:     llm.Ptr(a.WebFetchTemperature),
@@ -367,14 +367,13 @@ func fmtDur(d time.Duration) string {
 // completeOnce runs a single non-streaming-from-the-caller's-view completion,
 // draining the provider stream and returning the assistant text and tool calls.
 func (a *Agent) completeOnce(ctx context.Context, req llm.ChatRequest) (string, []llm.ToolCall, error) {
-	return a.completeOnceProgress(ctx, nil, req, nil)
+	return a.completeOnceProgress(ctx, req, nil)
 }
 
 // completeOnceProgress is completeOnce with an optional callback for the
 // provider's live prompt-processing chunks (llama.cpp return_progress), letting
-// a delegated call (e.g. WebFetch analysis) surface its prefill progress. A
-// non-nil rc attributes the call's usage/cost to that turn's session.
-func (a *Agent) completeOnceProgress(ctx context.Context, rc *runContext, req llm.ChatRequest, onProgress func(*llm.PromptProgress)) (string, []llm.ToolCall, error) {
+// a delegated call (e.g. WebFetch analysis) surface its prefill progress.
+func (a *Agent) completeOnceProgress(ctx context.Context, req llm.ChatRequest, onProgress func(*llm.PromptProgress)) (string, []llm.ToolCall, error) {
 	stream, err := a.Provider.Chat(ctx, req)
 	if err != nil {
 		return "", nil, err
@@ -394,9 +393,6 @@ func (a *Agent) completeOnceProgress(ctx context.Context, rc *runContext, req ll
 		text += chunk.TextDelta
 		if chunk.Done {
 			toolCalls = chunk.ToolCalls
-			if chunk.Usage != nil {
-				a.recordUsage(ctx, rc, chunk.Provider, chunk.Model, *chunk.Usage)
-			}
 		}
 	}
 	return text, toolCalls, nil
