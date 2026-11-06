@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"sort"
@@ -345,17 +346,28 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 
 	loopRetries := 0
 	streamRetries := 0 // consecutive transient mid-stream failures of the current step
+	answered := false  // the loop ended with a reply (or an ask_user), not by running out of steps
 	for step := 1; step <= a.MaxSteps; step++ {
 		rc.step = step
 		if ctx.Err() != nil {
 			return "", ctx.Err()
 		}
 
-		estimatedTokens := llm.EstimateMessagesTokens(msgs, toolDefs)
+		// The last allowed step gets no tools and a nudge to answer: a model
+		// stuck re-running tools must still reply rather than the turn silently
+		// ending on a tool result. The nudge is not stored in the session.
+		reqMsgs, reqTools := msgs, toolDefs
+		if step == a.MaxSteps && a.MaxSteps > 1 {
+			reqTools = nil
+			reqMsgs = append(append([]llm.Message(nil), msgs...), llm.Message{Role: llm.RoleUser, Content: stepLimitNudge})
+		}
+
+		estimatedTokens := llm.EstimateMessagesTokens(reqMsgs, reqTools)
 
 		a.logEvent(ctx, rc, sessionlog.TypeLLMRequest, map[string]any{
-			"messages": len(msgs), "tools": len(toolDefs), "tool_names": toolNames,
+			"messages": len(reqMsgs), "tools": len(reqTools), "tool_names": toolNames,
 			"temperature": a.Temperature, "estimated_prompt_tokens": estimatedTokens,
+			"final_step": len(reqTools) == 0 && len(toolDefs) > 0,
 		})
 
 		reqStart := time.Now()
@@ -363,8 +375,8 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 		callCtx, cancelCall := context.WithCancel(ctx)
 		defer cancelCall()
 		stream, err := a.Provider.Chat(callCtx, llm.ChatRequest{
-			Messages:    msgs,
-			Tools:       toolDefs,
+			Messages:    reqMsgs,
+			Tools:       reqTools,
 			Temperature: llm.Ptr(a.Temperature),
 			UseFallback: streamRetries > maxStreamRetries,
 		})
@@ -562,6 +574,8 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 
 		if len(toolCalls) == 0 {
 			finalText = assistantText
+			// An empty reply to the last-step nudge still counts as no answer.
+			answered = step < a.MaxSteps || strings.TrimSpace(assistantText) != ""
 			if _, err := a.Sessions.AddMessage(ctx, rc.sessDB, sessionID, llm.RoleAssistant, assistantText, nil); err != nil {
 				return "", err
 			}
@@ -592,8 +606,16 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 		// rather than letting the model answer its own question.
 		if askedUser {
 			finalText = assistantText
+			answered = true
 			break
 		}
+	}
+
+	if !answered && ctx.Err() == nil {
+		msg := fmt.Sprintf("The assistant used all %d steps of this turn without writing an answer (it kept calling tools). Ask again more specifically, or ask it to answer from what it has found so far.", a.MaxSteps)
+		emit(types.StreamEvent{Type: types.SSEError, Error: msg})
+		a.logEvent(ctx, rc, sessionlog.TypeError, map[string]any{"error": msg, "reason": "max_steps"})
+		return "", errors.New(msg)
 	}
 
 	var timing *types.TurnTiming
@@ -893,3 +915,6 @@ func (a *Agent) recordTurnError(ctx context.Context, rc *runContext, turnErr err
 		log.Printf("agent: store turn error for session %d: %v", rc.sessionID, err)
 	}
 }
+
+// stepLimitNudge is sent (unsaved) with the last allowed step of a turn.
+const stepLimitNudge = "You have reached the step limit for this turn, so tools are no longer available. Answer my question now, in my language, using only what you have already found above. If that is not enough for a complete answer, give what you have and say clearly what is missing."

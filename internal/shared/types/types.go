@@ -1,7 +1,10 @@
 // Package types holds the REST DTOs shared by the Harlequin client and server.
 package types
 
-import "time"
+import (
+	"strconv"
+	"time"
+)
 
 // Role names, ordered from highest privilege to lowest. "owner" is the only
 // role that may create or edit users; "owner" and "admin" may create and delete
@@ -202,6 +205,16 @@ const NotifyKindSessionTitle = "session-title"
 // NotifyKindAlert is an admin/owner broadcast alert sent to every user (the
 // /alert command). Shown in the client alert box like any passive notification.
 const NotifyKindAlert = "alert"
+
+// NotifyKindProjectInvitePrefix prefixes a project invitation alert; the full
+// kind "project-invite:<inviteID>" lets clients offer Accept/Decline on the
+// alert, and the server dismisses it once the invite is answered anywhere.
+const NotifyKindProjectInvitePrefix = "project-invite:"
+
+// NotifyKindProjectInvite builds the kind for one invite.
+func NotifyKindProjectInvite(inviteID int64) string {
+	return NotifyKindProjectInvitePrefix + strconv.FormatInt(inviteID, 10)
+}
 
 // NotifyKindMCPSignInPrefix prefixes a reminder to sign in to an OAuth MCP
 // server; the full kind is "mcp-signin:<scope>/<name>" so clients can offer a

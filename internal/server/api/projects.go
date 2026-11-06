@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -270,7 +271,8 @@ func (s *Server) handleInviteProject(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if err := s.Projects.Invite(r.Context(), id, invitee, u.ID); err != nil {
+	inviteID, err := s.Projects.Invite(r.Context(), id, invitee, u.ID)
+	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -278,9 +280,12 @@ func (s *Server) handleInviteProject(w http.ResponseWriter, r *http.Request) {
 	if s.Notify != nil {
 		if p, err := s.Projects.Get(r.Context(), id); err == nil {
 			_ = s.Storage.WithUser(r.Context(), invitee, func(udb *sql.DB) error {
+				// A re-invite replaces any earlier alert for the same invite.
+				_ = s.Notify.DismissKind(r.Context(), udb, types.NotifyKindProjectInvite(inviteID))
 				_, _ = s.Notify.Create(r.Context(), udb, types.Notification{
+					Kind:        types.NotifyKindProjectInvite(inviteID),
 					Title:       "Project invite: " + p.Name,
-					Description: "Invited by " + u.Email + " — accept with /project invites",
+					Description: fmt.Sprintf("Invited by %s. Accept or decline here, in the workspace switcher or on the Projects page (TUI: /project accept %d or /project decline %d).", u.Email, inviteID, inviteID),
 				})
 				return nil
 			})
@@ -322,6 +327,7 @@ func (s *Server) handleAcceptInvite(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.dismissInviteAlert(r, u.ID, inviteID)
 	writeJSON(w, http.StatusOK, map[string]int64{"project_id": projectID})
 }
 
@@ -416,5 +422,17 @@ func (s *Server) handleDeclineInvite(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.dismissInviteAlert(r, u.ID, inviteID)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "declined"})
+}
+
+// dismissInviteAlert clears the invite's alert once it's answered from any
+// client, so it doesn't linger on the others (or come back on reload).
+func (s *Server) dismissInviteAlert(r *http.Request, userID, inviteID int64) {
+	if s.Notify == nil {
+		return
+	}
+	_ = s.Storage.WithUser(r.Context(), userID, func(udb *sql.DB) error {
+		return s.Notify.DismissKind(r.Context(), udb, types.NotifyKindProjectInvite(inviteID))
+	})
 }

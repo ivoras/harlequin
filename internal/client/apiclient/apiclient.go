@@ -381,6 +381,11 @@ func (c *Client) ListProjectInvites(ctx context.Context) ([]types.ProjectInvite,
 }
 
 // AcceptInvite accepts an invitation, returning the joined project id.
+// DeclineInvite declines a pending project invitation.
+func (c *Client) DeclineInvite(ctx context.Context, inviteID int64) error {
+	return c.do(ctx, http.MethodPost, fmt.Sprintf("/projects/invites/%d/decline", inviteID), nil, nil)
+}
+
 func (c *Client) AcceptInvite(ctx context.Context, inviteID int64) (int64, error) {
 	var out struct {
 		ProjectID int64 `json:"project_id"`

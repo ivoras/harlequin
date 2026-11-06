@@ -2,7 +2,8 @@
 // sheet, the Projects tab, …). Switching opens one of the project's sessions
 // (or assigns a fresh one) and returns to the chat view.
 import { api } from "./api";
-import { activeProject, session, wornHat, view, toast, user } from "./stores";
+import { activeProject, session, wornHat, view, toast, user, bumpInvites } from "./stores";
+import { sc } from "./session.svelte";
 import { get } from "svelte/store";
 import { isElevated, type Project, type ProjectMember } from "./types";
 
@@ -65,6 +66,36 @@ export async function leaveActiveProject(): Promise<void> {
     view.set("chat");
   } catch (e) {
     toast((e as Error).message, "error");
+  }
+}
+
+// inviteIDFromKind extracts the invite id from a "project-invite:<id>"
+// notification kind (0 for any other notification).
+export function inviteIDFromKind(kind?: string): number {
+  const pre = "project-invite:";
+  if (!kind?.startsWith(pre)) return 0;
+  const id = parseInt(kind.slice(pre.length), 10);
+  return Number.isFinite(id) && id > 0 ? id : 0;
+}
+
+// respondToInvite accepts or declines an invitation from any of its places
+// (alert, workspace switcher, Projects page, mobile sheet) and clears its alert
+// here too (the server dismisses it for other clients). Resolves the joined
+// project's id on accept, 0 on decline, null on failure.
+export async function respondToInvite(inviteID: number, accept: boolean, projectName = ""): Promise<number | null> {
+  try {
+    let pid = 0;
+    if (accept) pid = (await api.acceptInvite(inviteID)).project_id;
+    else await api.declineInvite(inviteID);
+    const kind = "project-invite:" + inviteID;
+    sc.alerts = sc.alerts.filter((a) => a.kind !== kind);
+    bumpInvites();
+    const what = projectName ? `"${projectName}"` : "the project";
+    toast(accept ? `joined ${what}` : `declined the invitation to ${what}`);
+    return pid;
+  } catch (e) {
+    toast((e as Error).message, "error");
+    return null;
   }
 }
 

@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api";
   import { activeProject, session, toast } from "../lib/stores";
-  import { switchToProject, leaveActiveProject, projectBylines, canDeleteProject, deleteProjectFlow, canRemoveMember, removeMemberFlow } from "../lib/project";
+  import { switchToProject, leaveActiveProject, projectBylines, canDeleteProject, deleteProjectFlow, canRemoveMember, removeMemberFlow, respondToInvite } from "../lib/project";
   import type { Document, Project, ProjectInvite, ProjectMember } from "../lib/types";
   import Icon from "./Icon.svelte";
   import TopBar from "./TopBar.svelte";
@@ -63,13 +63,9 @@
     }
   }
   async function accept(inv: ProjectInvite) {
-    try {
-      await api.acceptInvite(inv.id);
-      await ui.loadProjects();
-      selected = inv.project_id;
-    } catch (e) {
-      toast((e as Error).message, "error");
-    }
+    if ((await respondToInvite(inv.id, true, inv.project_name)) === null) return;
+    await ui.loadProjects();
+    selected = inv.project_id;
   }
   async function invite() {
     const email = inviteEmail.trim();
@@ -146,6 +142,7 @@
             <span class="faint small ellipsize">from {inv.invited_by}</span>
           </div>
           <button class="primary small" onclick={() => accept(inv)}>Accept</button>
+          <button class="small" onclick={() => respondToInvite(inv.id, false, inv.project_name)}>Decline</button>
         </div>
       {/each}
     {/if}
