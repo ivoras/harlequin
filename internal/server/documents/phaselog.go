@@ -141,3 +141,24 @@ func (p *PhaseLog) Done() {
 		total.Round(time.Millisecond),
 		breakdown)
 }
+
+// Fail ends the timeline with the error that aborted the ingestion, naming the
+// last phase that completed (the failing step is the one after it). Without
+// this a failed ingestion would end with a misleading "complete" line, or none.
+func (p *PhaseLog) Fail(reason string) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.done {
+		return
+	}
+	p.done = true
+	after := "start"
+	if n := len(p.phases); n > 0 {
+		after = p.phases[n-1].name
+	}
+	log.Printf("documents: ingest %q FAILED after phase=%s elapsed=%s: %s",
+		p.label, after, time.Since(p.begin).Round(time.Millisecond), reason)
+}

@@ -5,9 +5,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -117,9 +120,57 @@ func (e *OpenAIEmbedder) embed(ctx context.Context, prefix string, inputs []stri
 	if err != nil {
 		return nil, err
 	}
+	// Transient failures (rate limits, 5xx, dropped connections) are retried
+	// with backoff: a large document makes dozens of sequential calls, and one
+	// blip must not discard the whole ingestion.
+	for attempt := 0; ; attempt++ {
+		out, retryAfter, err := e.post(ctx, body)
+		if err == nil {
+			return out, nil
+		}
+		if attempt >= embedRetries || ctx.Err() != nil || !transient(err) {
+			return nil, err
+		}
+		delay := max(embedBackoff<<attempt, retryAfter)
+		log.Printf("embed: transient error (attempt %d/%d), retrying in %s: %v", attempt+1, embedRetries+1, delay, err)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(delay):
+		}
+	}
+}
+
+// Retry policy for transient embedding failures; embedBackoff doubles per attempt.
+const embedRetries = 3
+
+var embedBackoff = time.Second
+
+// statusError is a non-200 embeddings response.
+type statusError struct {
+	code       int
+	msg        string
+	retryAfter time.Duration // from Retry-After (seconds), capped
+}
+
+func (e *statusError) Error() string { return fmt.Sprintf("embeddings: status %d: %s", e.code, e.msg) }
+
+// transient reports whether err is worth retrying: a network-level failure or
+// a 408/425/429/5xx response. Client errors (400, 401, 413, …) are not.
+func transient(err error) bool {
+	var se *statusError
+	if errors.As(err, &se) {
+		return se.code == 408 || se.code == 425 || se.code == 429 || se.code >= 500
+	}
+	return true // transport error (timeout, reset, EOF): the request never completed
+}
+
+// post sends one embeddings request. On a non-200 response it returns a
+// *statusError (with any Retry-After hint).
+func (e *OpenAIEmbedder) post(ctx context.Context, body []byte) ([][]float32, time.Duration, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.baseURL+"/embeddings", bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if e.apiKey != "" {
@@ -127,16 +178,20 @@ func (e *OpenAIEmbedder) embed(ctx context.Context, prefix string, inputs []stri
 	}
 	resp, err := e.client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("embeddings: status %d: %s", resp.StatusCode, strings.TrimSpace(string(msg)))
+		se := &statusError{code: resp.StatusCode, msg: strings.TrimSpace(string(msg))}
+		if secs, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && secs > 0 {
+			se.retryAfter = min(time.Duration(secs)*time.Second, 30*time.Second)
+		}
+		return nil, se.retryAfter, se
 	}
 	var er embedResponse
 	if err := json.NewDecoder(resp.Body).Decode(&er); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	out := make([][]float32, len(er.Data))
 	for _, d := range er.Data {
@@ -144,5 +199,5 @@ func (e *OpenAIEmbedder) embed(ctx context.Context, prefix string, inputs []stri
 			out[d.Index] = d.Embedding
 		}
 	}
-	return out, nil
+	return out, 0, nil
 }
