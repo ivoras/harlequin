@@ -169,7 +169,10 @@ mobile switch, and for owners/admins a broadcast alert), Users (owners only:
 add accounts, change roles, reset passwords, delete accounts; when the server
 can send e-mail, a checkbox e-mails a new or reset password straight to the
 user), Hats, MCP
-servers, Config and Usage. The server always keeps at least one owner, and you
+servers, Config and Usage (your LLM cost as three bar charts — per day for
+the last 90 days, per week for the last year, and per month since your first
+recorded use; each scrolls sideways and starts at the most recent bar; hover a
+bar for its cost, calls and tokens). The server always keeps at least one owner, and you
 can't delete your own account there.
 
 **MCP tools.** External MCP (Model Context Protocol) servers add tools the
@@ -281,8 +284,10 @@ chat tab; mobile: the 💬 toggle; TUI: split pane, post with `/say`).
 
 **Sessions.** A new project starts with one AI session; create more as usual
 (`/new`) while the project is active, or move an existing personal session —
-and its whole history — into the project with **Assign current session**
-(TUI: `/project assign`). A session belongs to at most one project. To switch
+and its whole history — into a project: on desktop, hover the session in the
+sidebar (in your personal workspace), open its **…** menu and pick the project
+under **Move to project…** (mobile: **Assign current session**; TUI:
+`/project assign`). A session belongs to at most one project. To switch
 between a project's sessions: on desktop, the sidebar lists the active
 project's sessions; on mobile, open the sessions drawer (☰); in the TUI, `/resume`
 opens the same project-aware picker (`/project sessions` prints the ids, and
