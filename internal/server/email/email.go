@@ -5,12 +5,17 @@
 package email
 
 import (
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/hex"
 	"fmt"
 	"log"
+	"mime"
 	"net"
+	"net/mail"
 	"net/smtp"
 	"strings"
+	"time"
 )
 
 // Config holds SMTP connection settings. A zero Host disables real sending (the
@@ -39,7 +44,8 @@ func New(cfg Config) *Sender { return &Sender{cfg: cfg} }
 // Configured reports whether real SMTP delivery is set up.
 func (s *Sender) Configured() bool { return s != nil && strings.TrimSpace(s.cfg.Host) != "" }
 
-// fromAddr returns the envelope/From address, defaulting to a sensible value.
+// fromAddr returns the configured sender as written: "Name <addr>" or a bare
+// address, defaulting to the SMTP username, then a placeholder.
 func (s *Sender) fromAddr() string {
 	if s.cfg.From != "" {
 		return s.cfg.From
@@ -50,6 +56,24 @@ func (s *Sender) fromAddr() string {
 	return "harlequin@localhost"
 }
 
+// fromHeader is the From: header value — a display name is RFC 2047-encoded
+// when it needs to be.
+func (s *Sender) fromHeader() string {
+	if a, err := mail.ParseAddress(s.fromAddr()); err == nil {
+		return a.String()
+	}
+	return s.fromAddr()
+}
+
+// envelopeFrom is the bare address for the SMTP MAIL FROM command (which must
+// not carry a display name).
+func (s *Sender) envelopeFrom() string {
+	if a, err := mail.ParseAddress(s.fromAddr()); err == nil {
+		return a.Address
+	}
+	return s.fromAddr()
+}
+
 // Send delivers a plain-text message to one recipient. When SMTP is not
 // configured it logs the message (subject + body) to the console and returns nil,
 // so callers can rely on it succeeding in development.
@@ -58,8 +82,12 @@ func (s *Sender) Send(to, subject, body string) error {
 		log.Printf("email: SMTP not configured — would send to %s: %q\n%s", to, subject, body)
 		return nil
 	}
-	from := s.fromAddr()
-	msg := buildMessage(from, to, subject, body)
+	return s.deliver(to, buildMessage(s.fromHeader(), to, subject, body))
+}
+
+// deliver hands a complete RFC 5322 message to the configured SMTP server.
+func (s *Sender) deliver(to string, msg []byte) error {
+	from := s.envelopeFrom()
 	addr := fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port)
 
 	var auth smtp.Auth
@@ -158,13 +186,35 @@ func transact(c *smtp.Client, from, to string, msg []byte) error {
 	return c.Quit()
 }
 
+// writeHeaders writes the headers every outgoing message carries: From, To,
+// optional Reply-To, an RFC 2047-encoded Subject (CR/LF stripped from every
+// value, so no argument can inject a header), Date, Message-ID and
+// MIME-Version. The caller adds Content-Type and the body.
+func writeHeaders(b *strings.Builder, from, to, replyTo, subject string) {
+	hdr := func(v string) string { return strings.NewReplacer("\r", " ", "\n", " ").Replace(v) }
+	var id [12]byte
+	_, _ = rand.Read(id[:])
+	domain := "localhost"
+	if a, err := mail.ParseAddress(from); err == nil {
+		if at := strings.LastIndex(a.Address, "@"); at >= 0 {
+			domain = a.Address[at+1:]
+		}
+	}
+	fmt.Fprintf(b, "From: %s\r\n", hdr(from))
+	fmt.Fprintf(b, "To: %s\r\n", hdr(to))
+	if replyTo != "" {
+		fmt.Fprintf(b, "Reply-To: %s\r\n", hdr(replyTo))
+	}
+	fmt.Fprintf(b, "Subject: %s\r\n", mime.QEncoding.Encode("utf-8", hdr(subject)))
+	fmt.Fprintf(b, "Date: %s\r\n", time.Now().Format(time.RFC1123Z))
+	fmt.Fprintf(b, "Message-ID: <%s@%s>\r\n", hex.EncodeToString(id[:]), domain)
+	b.WriteString("MIME-Version: 1.0\r\n")
+}
+
 // buildMessage assembles an RFC 5322 plain-text message.
 func buildMessage(from, to, subject, body string) []byte {
 	var b strings.Builder
-	fmt.Fprintf(&b, "From: %s\r\n", from)
-	fmt.Fprintf(&b, "To: %s\r\n", to)
-	fmt.Fprintf(&b, "Subject: %s\r\n", subject)
-	b.WriteString("MIME-Version: 1.0\r\n")
+	writeHeaders(&b, from, to, "", subject)
 	b.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
 	b.WriteString("\r\n")
 	b.WriteString(strings.ReplaceAll(body, "\n", "\r\n"))

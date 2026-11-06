@@ -43,8 +43,9 @@ Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a fu
 - **LLM Tools** — WebFetch/WebFetchDOM/WebFetchGrep (page analysis, structural
   extraction, raw-HTML grep), MarkdownFetch (full, unsummarised URL or document → Markdown via
   Docling), file editing (`edit_file`, `edit_doc`), WebSearch (Brave Search API), sandboxed
-  JavaScript (`run_js`), calculator, cron scheduling, and any MCP server the
-  user registers.
+  JavaScript (`run_js`), calculator, cron scheduling, `send_email` (Markdown or a
+  saved document, mailed as plain text + rendered HTML; needs `email.smtp_host`),
+  and any MCP server the user registers.
 - **Automation** — per-user cron jobs (JS or agent-turn), background memory
   extraction, notifications delivered in-app, by email, or via Telegram.
 - **Two clients** — a terminal UI, and a web app with a desktop workspace layout
@@ -273,8 +274,13 @@ email:
   smtp_port: 587                # 465 = implicit TLS; otherwise STARTTLS
   smtp_username: ""
   smtp_password_env: SMTP_PASSWORD  # env var holding the password (set it in .env / the environment)
-  from: ""                      # defaults to smtp_username
+  from: ""                      # "Name <addr>" or a bare address; defaults to smtp_username
 ```
+
+The same settings power the agent's `send_email` tool, which is available only
+when `smtp_host` is set. It sends one message per call as `multipart/alternative`
+(the Markdown as the plain-text part, a rendered HTML part), with replies going
+to the requesting user, limited to 20 messages per user per hour.
 
 ### Running the client
 
