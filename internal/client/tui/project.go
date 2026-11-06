@@ -57,7 +57,7 @@ func (m *Model) runProject(args []string) tea.Cmd {
 				return errMsg{err}
 			}
 			var sb strings.Builder
-			sb.WriteString("Invitations (use /project accept <id>):\n")
+			sb.WriteString("Invitations (use /project accept <id> or /project decline <id>):\n")
 			for _, i := range inv {
 				fmt.Fprintf(&sb, "  #%d %s — from %s\n", i.ID, i.ProjectName, i.InvitedBy)
 			}
@@ -81,6 +81,17 @@ func (m *Model) runProject(args []string) tea.Cmd {
 				return errMsg{err}
 			}
 			return m.enterProject(p.ID, p.Name)
+		}
+	case "decline":
+		id, err := strconv.ParseInt(rest, 10, 64)
+		if err != nil {
+			return infoCmd("usage: /project decline <invite-id>")
+		}
+		return func() tea.Msg {
+			if err := m.client.DeclineInvite(context.Background(), id); err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{fmt.Sprintf("declined invitation #%d", id)}
 		}
 	case "switch", "open":
 		if rest == "" {
@@ -276,7 +287,7 @@ func (m *Model) runProject(args []string) tea.Cmd {
 			return infoMsg{strings.TrimRight(sb.String(), "\n")}
 		}
 	default:
-		return infoCmd("usage: /project [list|new <name>|invites|accept <id>|switch <id>|invite <email>|remove <email>|members|assign|sessions|leave]")
+		return infoCmd("usage: /project [list|new <name>|invites|accept <id>|decline <id>|switch <id>|invite <email>|remove <email>|members|assign|sessions|leave]")
 	}
 }
 

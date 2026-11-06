@@ -179,14 +179,16 @@ func (s *Store) UserIDByEmail(ctx context.Context, email string) (int64, error) 
 
 // Invite records a pending invitation (idempotent on (project, invitee)). Returns
 // the invited user id so the caller can notify them.
-func (s *Store) Invite(ctx context.Context, projectID, invitedUserID, invitedBy int64) error {
-	_, err := s.system.ExecContext(ctx,
+func (s *Store) Invite(ctx context.Context, projectID, invitedUserID, invitedBy int64) (int64, error) {
+	var id int64
+	err := s.system.QueryRowContext(ctx,
 		`INSERT INTO project_invites(project_id, invited_user_id, invited_by, status)
 		 VALUES (?, ?, ?, 'pending')
 		 ON CONFLICT(project_id, invited_user_id) DO UPDATE SET
-		   invited_by = excluded.invited_by, status = 'pending', created_at = CURRENT_TIMESTAMP`,
-		projectID, invitedUserID, invitedBy)
-	return err
+		   invited_by = excluded.invited_by, status = 'pending', created_at = CURRENT_TIMESTAMP
+		 RETURNING id`,
+		projectID, invitedUserID, invitedBy).Scan(&id)
+	return id, err
 }
 
 // ListInvites returns the user's pending invitations (project name + inviter email).

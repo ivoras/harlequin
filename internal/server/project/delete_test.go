@@ -31,8 +31,13 @@ func TestDeleteRemovesProjectMembersAndInvites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Invite(ctx, gone.ID, 2, 1); err != nil {
-		t.Fatal(err)
+	invID, err := s.Invite(ctx, gone.ID, 2, 1)
+	if err != nil || invID == 0 {
+		t.Fatalf("invite id %d: %v", invID, err)
+	}
+	// A re-invite updates the same row and returns its id (alerts key on it).
+	if again, err := s.Invite(ctx, gone.ID, 2, 1); err != nil || again != invID {
+		t.Fatalf("re-invite id %d, want %d (%v)", again, invID, err)
 	}
 
 	if err := s.Delete(ctx, gone.ID); err != nil {

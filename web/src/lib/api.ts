@@ -300,6 +300,7 @@ export const api = {
     req<void>("DELETE", `/projects/${id}?confirm=${encodeURIComponent(confirmName)}`),
   listProjectInvites: () => reqList<ProjectInvite>("GET", "/projects/invites"),
   acceptInvite: (inviteID: number) => req<{ project_id: number }>("POST", `/projects/invites/${inviteID}/accept`),
+  declineInvite: (inviteID: number) => req<void>("POST", `/projects/invites/${inviteID}/decline`),
   listProjectSessions: (id: number) => reqList<Session>("GET", `/projects/${id}/sessions`),
   assignSession: (projectID: number, sessionID: number) =>
     req<{ session_id: number }>("POST", `/projects/${projectID}/sessions/${sessionID}`),

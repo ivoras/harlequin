@@ -1,8 +1,8 @@
 <script lang="ts">
   import { api, getToken, setToken } from "./lib/api";
-  import { user, view, session, wornHat, toasts, toast, activeProject, projectSheet, orgName, loadOrgName, type View } from "./lib/stores";
+  import { user, view, session, wornHat, toasts, toast, activeProject, projectSheet, orgName, loadOrgName, invitesVersion, type View } from "./lib/stores";
   import { sc } from "./lib/session.svelte";
-  import { switchToProject as libSwitchToProject, leaveActiveProject, cleanTitle, projectBylines, canDeleteProject, deleteProjectFlow } from "./lib/project";
+  import { switchToProject as libSwitchToProject, leaveActiveProject, cleanTitle, projectBylines, canDeleteProject, deleteProjectFlow, inviteIDFromKind, respondToInvite } from "./lib/project";
   import { initSession, ensureSession, setURLParams, consumeMCPOAuthResult, authorizeMCP, mcpSignInTarget } from "./lib/workspace";
   import { switchUI } from "./lib/uipref";
   import DocViewer from "./lib/DocViewer.svelte";
@@ -109,6 +109,15 @@
     else pc.close();
   });
 
+  // A project invitation arrived (or was answered): refresh the invitation list.
+  let seenInvitesVersion = $invitesVersion;
+  $effect(() => {
+    const v = $invitesVersion;
+    if (v === seenInvitesVersion) return;
+    seenInvitesVersion = v;
+    if ($user) loadProjects();
+  });
+
   // Load projects + invites whenever the management sheet opens.
   $effect(() => {
     if ($projectSheet) {
@@ -171,14 +180,10 @@
     }
   }
   async function acceptInvite(inv: ProjectInvite) {
-    try {
-      await api.acceptInvite(inv.id);
-      await loadProjects();
-      const p = projects.find((x) => x.id === inv.project_id);
-      if (p) switchToProject(p);
-    } catch (e) {
-      toast((e as Error).message, "error");
-    }
+    if ((await respondToInvite(inv.id, true, inv.project_name)) === null) return;
+    await loadProjects();
+    const p = projects.find((x) => x.id === inv.project_id);
+    if (p) switchToProject(p);
   }
   async function switchToProject(p: Project) {
     projectSheet.set(false);
@@ -364,6 +369,12 @@
             {@const t = mcpSignInTarget(a.kind)!}
             <button class="small" onclick={() => authorizeMCP(t.scope, t.name)}>Sign in</button>
           {/if}
+          {#if inviteIDFromKind(a.kind)}
+            {@const inv = inviteIDFromKind(a.kind)}
+            {@const name = a.title.replace(/^Project invite: /, "")}
+            <button class="small" onclick={() => respondToInvite(inv, true, name)}>Accept</button>
+            <button class="ghost small" onclick={() => respondToInvite(inv, false, name)}>Decline</button>
+          {/if}
           <button class="ghost small" onclick={() => sc.dismissAlert(a)} aria-label="Dismiss">✕</button>
         </div>
       {/each}
@@ -481,6 +492,7 @@
                 <div class="muted small">from {inv.invited_by}</div>
               </div>
               <button class="primary small" onclick={() => acceptInvite(inv)}>Accept</button>
+              <button class="ghost small" onclick={() => respondToInvite(inv.id, false, inv.project_name)}>Decline</button>
             </div>
           {/each}
         {/if}

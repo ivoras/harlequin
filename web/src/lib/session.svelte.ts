@@ -5,7 +5,7 @@ import { api } from "./api";
 import { SessionSocket } from "./ws";
 import { SSE, NOTIFY_SESSION_TITLE } from "./types";
 import type { Message, StreamEvent, Notification } from "./types";
-import { session, toast, lastModel, bumpDocs, bumpSessions } from "./stores";
+import { session, toast, lastModel, bumpDocs, bumpSessions, bumpInvites } from "./stores";
 
 export type Item =
   | { kind: "msg"; role: "user" | "assistant"; content: string }
@@ -277,6 +277,7 @@ class SessionController {
         } else if (!n.auto_run) {
           // Passive notification: persistent alert box (deduped), kept until dismissed.
           if (!this.alerts.some((a) => a.id === n.id)) this.alerts.push(n);
+          if (n.kind?.startsWith("project-invite:")) bumpInvites();
         }
         // auto_run notifications are left for a client that runs them.
         break;

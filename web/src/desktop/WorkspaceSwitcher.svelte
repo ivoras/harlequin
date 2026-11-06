@@ -1,7 +1,7 @@
 <script lang="ts">
   import { api } from "../lib/api";
   import { activeProject, view, toast } from "../lib/stores";
-  import { switchToProject, leaveActiveProject, projectBylines } from "../lib/project";
+  import { switchToProject, leaveActiveProject, projectBylines, respondToInvite } from "../lib/project";
   import type { Project, ProjectInvite } from "../lib/types";
   import Icon from "./Icon.svelte";
   import { ui } from "./state.svelte";
@@ -37,14 +37,10 @@
     }
   }
   async function accept(inv: ProjectInvite) {
-    try {
-      await api.acceptInvite(inv.id);
-      await ui.loadProjects();
-      const p = ui.projects.find((x) => x.id === inv.project_id);
-      if (p) await pick(p);
-    } catch (e) {
-      toast((e as Error).message, "error");
-    }
+    if ((await respondToInvite(inv.id, true, inv.project_name)) === null) return;
+    await ui.loadProjects();
+    const p = ui.projects.find((x) => x.id === inv.project_id);
+    if (p) await pick(p);
   }
 </script>
 
@@ -83,6 +79,7 @@
           <div class="menu-item inv">
             <span class="grow">{inv.project_name}<span class="faint small"> · from {inv.invited_by}</span></span>
             <button class="primary small" onclick={() => accept(inv)}>Accept</button>
+            <button class="small" onclick={() => respondToInvite(inv.id, false, inv.project_name)}>Decline</button>
           </div>
         {/each}
       {/if}

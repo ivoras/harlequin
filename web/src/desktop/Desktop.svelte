@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, getToken, setToken } from "../lib/api";
-  import { user, view, session, wornHat, toasts, activeProject, projectSheet, docsVersion, sessionsVersion } from "../lib/stores";
+  import { user, view, session, wornHat, toasts, activeProject, projectSheet, docsVersion, sessionsVersion, invitesVersion } from "../lib/stores";
+  import { inviteIDFromKind, respondToInvite } from "../lib/project";
   import { sc } from "../lib/session.svelte";
   import { pc } from "../lib/projectchat.svelte";
   import { docView } from "../lib/docview.svelte";
@@ -92,6 +93,14 @@
     if (v === seenDocsVersion) return;
     seenDocsVersion = v;
     if ($user) ui.docsChanged();
+  });
+  // A project invitation arrived (or was answered): refresh the invitation lists.
+  let seenInvitesVersion = $invitesVersion;
+  $effect(() => {
+    const v = $invitesVersion;
+    if (v === seenInvitesVersion) return;
+    seenInvitesVersion = v;
+    if ($user) ui.loadProjects();
   });
   // The auto-titler also pushes a re-list signal (covers project sessions, which
   // get no session-title notification).
@@ -236,6 +245,12 @@
               {#if mcpSignInTarget(a.kind)}
                 {@const t = mcpSignInTarget(a.kind)!}
                 <button class="small primary" onclick={() => authorizeMCP(t.scope, t.name)}><Icon name="plug" size={12} /> Sign in</button>
+              {/if}
+              {#if inviteIDFromKind(a.kind)}
+                {@const inv = inviteIDFromKind(a.kind)}
+                {@const name = a.title.replace(/^Project invite: /, "")}
+                <button class="small primary" onclick={() => respondToInvite(inv, true, name)}>Accept</button>
+                <button class="small" onclick={() => respondToInvite(inv, false, name)}>Decline</button>
               {/if}
               <button class="icon-btn" onclick={() => sc.dismissAlert(a)} aria-label="Dismiss"><Icon name="x" size={14} /></button>
             </div>

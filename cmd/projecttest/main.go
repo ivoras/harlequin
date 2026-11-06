@@ -64,7 +64,7 @@ func main() {
 	}
 
 	// Alice invites Bob; Bob sees the invite and accepts.
-	if err := ps.Invite(ctx, p.ID, bob.ID, alice.ID); err != nil {
+	if _, err := ps.Invite(ctx, p.ID, bob.ID, alice.ID); err != nil {
 		fail("invite: %v", err)
 	}
 	invites, err := ps.ListInvites(ctx, bob.ID)

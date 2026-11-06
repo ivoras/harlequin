@@ -223,7 +223,7 @@ Slash commands work in the web composer too: type `/` for the menu
 
 | Command | What it does |
 |---------|--------------|
-| `/project` | Manage projects: `list`, `new`, `switch`, `invite <email>`, `remove <email>` (remove a member from the active project; creator or owner/admin only), `members`, `assign` (move the current session into the project), `leave`, `depart`, `delete` (permanently delete a project, creator/admin only; needs `--yes`). |
+| `/project` | Manage projects: `list`, `new`, `switch`, `invites`, `accept <id>`, `decline <id>`, `invite <email>`, `remove <email>` (remove a member from the active project; creator or owner/admin only), `members`, `assign` (move the current session into the project), `leave`, `depart`, `delete` (permanently delete a project, creator/admin only; needs `--yes`). |
 | `/say <message>` | Post a message to the active project's chatroom. |
 
 See the [Projects](#projects-1) chapter below for the full workflow.
@@ -299,10 +299,12 @@ Projects page (mobile: Projects tab) shows the picked project's members and an
 project); as you type, the
 field suggests account emails from the server's user directory — current
 members are left out of the suggestions. In the TUI, use `/project invite
-<email>`. The invitee gets an in-app notification and an entry in their
-Invitations list (desktop: the workspace switcher or the Projects page;
-mobile: the Manage… sheet; TUI: `/project invites`) where they
-accept or decline; nothing is shared with them until they accept. Invites are
+<email>`. The invitee gets an alert with **Accept** and **Decline** buttons,
+and the invitation also appears in their Invitations list (desktop: the
+workspace switcher or the Projects page; mobile: the Manage… sheet; TUI:
+`/project invites`, then `/project accept <id>` or `/project decline <id>`).
+Answering in any of those places clears it everywhere; nothing is shared with
+them until they accept. Invites are
 by exact account email — the person must already have an account on the
 server. If email suggestions don't appear, the server may have the user
 directory disabled (`auth.user_directory: false`); typed emails still work.
