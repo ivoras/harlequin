@@ -874,6 +874,7 @@ func (s *Server) ingestToScope(ctx context.Context, u *types.User, req types.Cre
 		return nil, http.StatusInternalServerError, err.Error()
 	}
 	if d != nil {
+		d.Scope = scope // clients build "u.N"/"s.N"/"p<id>.N" references from it
 		s.DocEvents.Publish(docevents.Event{Op: docevents.Created, Scope: scope, ProjectID: req.ProjectID, UserID: u.ID, DocID: d.ID})
 	}
 	return d, 0, ""
