@@ -113,12 +113,13 @@
     selected = ui.projects[0]?.id ?? 0;
   }
   async function delDoc(d: Document) {
-    if (!sel || !confirm(`Delete "${d.title}" from ${sel.name}?`)) return;
+    if (!sel || !confirm(`Delete "${d.title}" from ${sel.name}? This permanently removes the file, its extracted Markdown text and its search entries for every member. It cannot be undone.`)) return;
     try {
       await api.deleteDocument(d.id, "project", sel.id);
-      ui.docsChanged();
     } catch (e) {
       toast((e as Error).message, "error");
+    } finally {
+      ui.docsChanged();
     }
   }
   function pick() {

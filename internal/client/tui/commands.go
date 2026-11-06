@@ -66,6 +66,8 @@ const helpText = `Commands:
   /docs del <ref>          delete a document (e.g. /docs del p.19)
   /docs add [scope] <path> upload a .txt/.md/.html/.pdf for RAG (same as /upload)
   /upload [scope] <path>   upload a doc into personal|shared|project (default personal)
+  /attach <path>           upload a doc/image and attach it to your next message
+  /attach | /attach clear  show / drop the pending attachments
   /resume [query]       pick a session to resume (optionally filter by title)
   /resume <id>          resume a specific session by id
   /dismiss [n ...|all]  dismiss alert(s) by number, or all (default)
@@ -182,6 +184,8 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 		return m.handleMemorySub(args)
 	case "/upload":
 		return m.handleUpload(args)
+	case "/attach":
+		return m.handleAttach(args)
 	case "/docs":
 		// Subcommands (no implicit search):
 		//   search|q <query>     search documents
@@ -1002,7 +1006,65 @@ func (m *Model) handleDocsView(args []string) tea.Cmd {
 // corpus for RAG. With no explicit scope it defaults to the active project (when
 // you've switched to one), otherwise personal. The server enforces permissions;
 // the client pre-checks for a clearer message.
-func (m *Model) handleUpload(args []string) tea.Cmd {
+func (m *Model) handleUpload(args []string) tea.Cmd { return m.upload(args, false) }
+
+// handleAttach implements "/attach <path>": like /upload (to the active
+// project, else your personal files) but the document is also listed at the end
+// of your next message as @"<ref>/<name>", which the agent reads with read_doc.
+// "/attach" alone shows what is pending; "/attach clear" drops it.
+func (m *Model) handleAttach(args []string) tea.Cmd {
+	if len(args) == 0 {
+		return func() tea.Msg { return infoMsg{m.attachSummary()} }
+	}
+	if len(args) == 1 && strings.EqualFold(args[0], "clear") {
+		m.attachments = nil
+		return func() tea.Msg { return infoMsg{"attachments cleared"} }
+	}
+	return m.upload(args, true)
+}
+
+// attachSummary describes the attachments waiting for the next message.
+func (m *Model) attachSummary() string {
+	if len(m.attachments) == 0 && m.attachPending == 0 {
+		return "no attachments — /attach <path> adds a document (or image) to your next message"
+	}
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "attached to your next message (%d uploading):", m.attachPending)
+	for _, a := range m.attachments {
+		fmt.Fprintf(&sb, "\n  @%q", a.ref+"/"+a.name)
+	}
+	return sb.String()
+}
+
+// withAttachments appends the pending attachment list to text and clears it.
+func (m *Model) withAttachments(text string) string {
+	if len(m.attachments) == 0 {
+		return text
+	}
+	var sb strings.Builder
+	sb.WriteString(text + "\n\nAttached documents:")
+	for _, a := range m.attachments {
+		fmt.Fprintf(&sb, "\n@\"%s/%s\"", a.ref, strings.ReplaceAll(a.name, `"`, ""))
+	}
+	m.attachments = nil
+	return sb.String()
+}
+
+// attachment is a document uploaded for the next message.
+type attachment struct{ ref, name string }
+
+// attachRef builds the scoped reference ("u.N", "s.N", "p<project>.N").
+func attachRef(scope string, projectID, docID int64) string {
+	switch scope {
+	case "project":
+		return fmt.Sprintf("p%d.%d", projectID, docID)
+	case "shared":
+		return fmt.Sprintf("s.%d", docID)
+	}
+	return fmt.Sprintf("u.%d", docID)
+}
+
+func (m *Model) upload(args []string, attach bool) tea.Cmd {
 	usage := "usage: /upload [personal|shared|project] <path>  (defaults to the active project, else personal; formats: .txt .md .html .pdf .docx .pptx .xlsx .odt .rtf .epub .png .jpg .gif .webp)"
 	if len(args) == 0 {
 		return func() tea.Msg { return infoMsg{usage} }
@@ -1014,10 +1076,12 @@ func (m *Model) handleUpload(args []string) tea.Cmd {
 		scope = "project"
 	}
 	rest := args
-	switch strings.ToLower(args[0]) {
-	case "personal", "shared", "project":
-		scope = strings.ToLower(args[0])
-		rest = args[1:]
+	if !attach { // attachments always go to the default corpus
+		switch strings.ToLower(args[0]) {
+		case "personal", "shared", "project":
+			scope = strings.ToLower(args[0])
+			rest = args[1:]
+		}
 	}
 	if len(rest) == 0 {
 		return func() tea.Msg { return infoMsg{usage} }
@@ -1052,12 +1116,20 @@ func (m *Model) handleUpload(args []string) tea.Cmd {
 	// place by ingestStatusMsg polls (stage, percent, elapsed).
 	m.appendBlock("status", fmt.Sprintf("uploading %q into the %s…", filepath.Base(path), dest))
 	name := filepath.Base(path)
+	if attach {
+		m.attachPending++
+	}
 	return func() tea.Msg {
+		started := ingestStartedMsg{name: name, dest: dest, start: time.Now(), attach: attach, scope: scope, projectID: projectID}
 		jobID, err := m.client.UploadDocumentAsync(context.Background(), path, "", scope, projectID)
 		if err != nil {
+			if attach { // route through the status handler so the pending count drops
+				return ingestStatusMsg{ingestStartedMsg: started, err: err}
+			}
 			return errMsg{err}
 		}
-		return ingestStartedMsg{jobID: jobID, name: name, dest: dest, start: time.Now()}
+		started.jobID = jobID
+		return started
 	}
 }
 
@@ -1069,6 +1141,11 @@ type ingestStartedMsg struct {
 	name  string
 	dest  string
 	start time.Time
+	// attach: this upload is a /attach for the next message (scope/projectID
+	// build its reference when it finishes).
+	attach    bool
+	scope     string
+	projectID int64
 }
 
 type ingestStatusMsg struct {

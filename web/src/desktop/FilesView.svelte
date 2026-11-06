@@ -72,12 +72,13 @@
     return elevated;
   }
   async function del(d: Document) {
-    if (!confirm(`Delete "${d.title}"? This removes it from search for everyone who can see it.`)) return;
+    if (!confirm(`Delete "${d.title}"? This permanently removes the file, its extracted Markdown text and its search entries, for everyone who can see it. It cannot be undone.`)) return;
     try {
       await api.deleteDocument(d.id, d.scope ?? "", d.scope === "project" ? projectID : 0);
-      ui.docsChanged();
     } catch (e) {
       toast((e as Error).message, "error");
+    } finally {
+      ui.docsChanged(); // re-list even on error: the server may have removed the rows before failing
     }
   }
   async function search() {

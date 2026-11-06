@@ -523,8 +523,25 @@ func (s *Store) ListScoped(ctx context.Context, scopes []ScopeDB) ([]types.Docum
 // DeleteFrom removes a document, its chunks/index rows and (after the commit)
 // its stored file from a specific corpus. filesDir is that corpus' files
 // directory; "" skips the file.
+//
+// The extracted Markdown/text exists only as doc_chunks.content (plus its FTS
+// and vector index rows), so deleting those is deleting the Markdown. Deletion
+// runs with secure_delete on, so the freed database pages are zeroed instead of
+// keeping the text recoverable in the file. A stored-file removal failure is
+// returned (the rows are already gone by then) rather than swallowed.
 func (s *Store) DeleteFrom(ctx context.Context, db *sql.DB, filesDir string, id int64) error {
-	tx, err := db.BeginTx(ctx, nil)
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	// secure_delete is per-connection: pin one, and switch it back off before
+	// the connection returns to the pool.
+	if _, err := conn.ExecContext(ctx, `PRAGMA secure_delete = ON`); err != nil {
+		return err
+	}
+	defer conn.ExecContext(context.WithoutCancel(ctx), `PRAGMA secure_delete = OFF`)
+	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -556,6 +573,11 @@ func (s *Store) DeleteFrom(ctx context.Context, db *sql.DB, filesDir string, id 
 			return fmt.Errorf("delete vec row: %w", err)
 		}
 	}
+	// Explicit, not left to ON DELETE CASCADE: the text must go even if a
+	// connection ever runs without foreign keys.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM doc_chunks WHERE document_id = ?`, id); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM documents WHERE id = ?`, id); err != nil {
 		return err
 	}
@@ -566,6 +588,7 @@ func (s *Store) DeleteFrom(ctx context.Context, db *sql.DB, filesDir string, id 
 		// Base(): stored_path is a bare filename; never let it escape filesDir.
 		if err := os.Remove(filepath.Join(filesDir, filepath.Base(stored))); err != nil && !os.IsNotExist(err) {
 			log.Printf("documents: delete %d: remove stored file %q: %v", id, stored, err)
+			return fmt.Errorf("document %d removed from the index, but deleting its stored file %q failed: %w", id, stored, err)
 		}
 	}
 	return nil

@@ -121,6 +121,11 @@ type Model struct {
 	// above the transcript (not part of the session); dismissed via /dismiss.
 	alerts []types.Notification
 
+	// Documents attached (via /attach) to the next message, and how many are
+	// still uploading.
+	attachments   []attachment
+	attachPending int
+
 	// Active project context. When activeProjectID != 0 the current session is a
 	// shared project session and the chatroom side-pane is shown.
 	activeProjectID   int64

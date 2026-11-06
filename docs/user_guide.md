@@ -78,6 +78,7 @@ They resolve across scopes: project (when one is active), then shared
 | `/docs add [scope] <path>` | Upload a `.txt`/`.md`/`.html`/`.pdf`/`.docx`/`.pptx`/`.xlsx`/`.odt`/`.rtf`/`.epub`/images (`.png`/`.jpg`/`.gif`/`.webp`) for retrieval (same as `/upload`). |
 | `/docs del <ref>` | Delete a document by its reference (e.g. `/docs del p3.19`; the long form `<scope> <id>` still works). |
 | `/upload [scope] <path>` | Upload a document (`.txt`/`.md`/`.html`/`.pdf`/`.docx`/`.pptx`/`.xlsx`/`.odt`/`.rtf`/`.epub`/images (`.png`/`.jpg`/`.gif`/`.webp`)) into `personal`, `shared`, or `project` scope (defaults to the active project, else personal). Ingestion runs server-side with a live status line (stage, percent, elapsed) — in the browser too. |
+| `/attach <path>` | Upload a document or image (same formats as `/upload`, to the active project else your personal files) and attach it to your **next message**: once ingested it is listed at the end of that message as `@"u.18/report.pdf"`, and the agent reads it (images are shown to vision models directly). Repeat for several files; `/attach` alone lists what is pending, `/attach clear` drops it. Sending waits for uploads to finish. |
 
 In the browser, the Memory view lets you edit a memory's content and (for
 `user`/`shared` scope) its slots inline, alongside delete; project memories
@@ -159,7 +160,9 @@ the shared org corpus) and drops there go to it; on the Projects page, drops
 go to the project you have selected. Progress shows in the bottom-left
 corner; failed uploads stay there until you dismiss them. The Files page also
 filters by scope, searches inside documents, adds pasted text as a document,
-and compares two documents side by side.
+and compares two documents side by side. Each row's **…** menu has
+**Delete**, which permanently removes the file, its extracted Markdown text and
+its search-index entries (deleted data is also wiped from the database file).
 
 **Keyboard shortcuts** (`⌘` on macOS):
 

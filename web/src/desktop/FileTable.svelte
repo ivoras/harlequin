@@ -22,6 +22,10 @@
     onDelete: (d: Document) => void;
   } = $props();
 
+  // The row whose "…" menu is open (scope:id), if any.
+  let menuFor = $state<string | null>(null);
+  const keyOf = (d: Document) => `${d.scope}:${d.id}`;
+
 </script>
 
 <div class="ftwrap">
@@ -53,9 +57,18 @@
         <td class="faint nowrap c-added">{new Date(d.created_at).toLocaleDateString()}</td>
         <td class="acts">
           <button class="icon-btn" title="View" aria-label="View" onclick={() => viewDocument(d, d.scope === "project" ? projectID : 0)}><Icon name="external" size={14} /></button>
-          {#if canDelete(d)}
-            <button class="icon-btn del" title="Delete" aria-label="Delete" onclick={() => onDelete(d)}><Icon name="trash" size={14} /></button>
-          {/if}
+          <span class="menu-wrap">
+            <button class="icon-btn" title="More" aria-label="More actions for {d.title}" aria-haspopup="menu"
+              aria-expanded={menuFor === keyOf(d)} onclick={() => (menuFor = menuFor === keyOf(d) ? null : keyOf(d))}><Icon name="more" size={14} /></button>
+            {#if menuFor === keyOf(d)}
+              <div class="menu-click-away" role="presentation" onclick={() => (menuFor = null)}></div>
+              <div class="popover row-pop" role="menu">
+                <button class="menu-item del" role="menuitem" disabled={!canDelete(d)}
+                  title={canDelete(d) ? "Permanently delete this file, its Markdown text and its search index entries" : "Only owners and admins can delete shared files"}
+                  onclick={() => { menuFor = null; onDelete(d); }}><Icon name="trash" size={14} /><span class="grow">Delete…</span></button>
+              </div>
+            {/if}
+          </span>
         </td>
       </tr>
     {/each}
@@ -85,5 +98,7 @@
   .acts { white-space: nowrap; text-align: right; }
   .acts .icon-btn { opacity: 0.5; }
   tr:hover .acts .icon-btn { opacity: 1; }
-  .del:hover { color: var(--danger); }
+  .menu-wrap { position: relative; display: inline-block; }
+  .row-pop { top: calc(100% + 2px); right: 0; min-width: 150px; text-align: left; }
+  .menu-item.del:not(:disabled) { color: var(--danger); }
 </style>
