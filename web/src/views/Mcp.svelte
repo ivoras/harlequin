@@ -139,7 +139,7 @@
         {#each servers as s (s.scope + "/" + s.name)}
           <div class="card col">
             <div class="row">
-              <strong>{s.name}</strong><span class="pill">{s.scope}</span>
+              <strong>{s.name}</strong><span class="pill" title={s.scope === "user" ? "Personal: only you can see and use this server" : "Shared: available to everyone in the organisation"}>{s.scope === "user" ? "personal" : "organisation"}</span>
               {#if !s.enabled}<span class="pill">disabled</span>
               {:else if s.needs_auth}<span class="warn small">needs sign-in</span>
               {:else if s.error}<span class="small" style="color:var(--danger);">unreachable</span>
