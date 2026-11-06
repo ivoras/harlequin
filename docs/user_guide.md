@@ -115,6 +115,10 @@ Phones are sent to the mobile layout automatically. To switch by hand, use
 browser. The address bar keeps the session and project (`?s=…&p=…`), so a
 copied link opens the same session in either layout.
 
+**Empty sessions.** Starting a new session (any client) reuses your most recent
+empty, unnamed "New session" instead of adding another blank one, and empty
+unnamed sessions untouched for 7 days are deleted automatically (checked hourly).
+
 **Desktop layout.** The left sidebar holds, top to bottom: **New session**,
 **Search** (the command palette), the **workspace switcher** (Personal or one
 of your projects; it also lists invitations and creates projects), the pages
