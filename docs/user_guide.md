@@ -254,8 +254,8 @@ See the [Projects](#projects-1) chapter below for the full workflow.
 | `/cron on\|off <id>` | Enable / disable a job. |
 | `/cron run <id>` | Run a job immediately. |
 | `/cron del <id>` | Delete a job. |
-| `/mcp` | List MCP servers (shared + your own) with status. |
-| `/mcp show <s/name>` | Show one server (`s` is the scope: `shared` or `user`). |
+| `/mcp` | List MCP servers (organisation + your personal ones) with status. |
+| `/mcp show <s/name>` | Show one server (`s` is the scope: `organisation` or `personal`; the older `shared`/`user` still work). |
 | `/mcp add <s/name> <url> [header Name:"Value" … \| oauth]` | Register an MCP server. |
 | `/mcp test <s/name>` | Connect and list the server's tools. |
 | `/mcp auth <s/name>` | Authorize an OAuth MCP server (prints a URL to open). |
