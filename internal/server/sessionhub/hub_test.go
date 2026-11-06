@@ -302,3 +302,36 @@ func TestBusyWhileTurnRuns(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 }
+
+func TestStatsCountsConnectedSessions(t *testing.T) {
+	w := &whoAgent{ran: make(chan int64, 2), release: make(chan struct{}, 2)}
+	hub := New(w, nil, time.Minute)
+	defer hub.Stop()
+	sess := &types.Session{ID: 7, API: types.APIREST, Interface: types.InterfaceWeb}
+	alice := &types.User{ID: 1, Email: "a@x", Role: types.RoleUser}
+	bob := &types.User{ID: 2, Email: "b@x", Role: types.RoleUser}
+	a1 := hub.Attach(alice, 5, sess) // shared project session: alice twice, bob once
+	a1.Resume(0)
+	a2 := hub.Attach(alice, 5, sess)
+	a2.Resume(0)
+	b := hub.Attach(bob, 5, sess)
+	b.Resume(0)
+	p := hub.Attach(alice, 0, &types.Session{ID: 9}) // alice's personal session
+	p.Resume(0)
+	a1.Submit("go")
+	<-w.ran
+	if st := hub.Stats(0); st != (LiveStats{Sessions: 2, Connections: 4, Running: 1}) {
+		t.Fatalf("server-wide %+v", st)
+	}
+	if st := hub.Stats(bob.ID); st != (LiveStats{Sessions: 1, Connections: 1, Running: 1}) {
+		t.Fatalf("bob %+v", st)
+	}
+	p.Close()
+	if st := hub.Stats(alice.ID); st.Sessions != 1 || st.Connections != 2 {
+		t.Fatalf("alice after closing her personal tab %+v", st)
+	}
+	w.release <- struct{}{}
+	a1.Close()
+	a2.Close()
+	b.Close()
+}

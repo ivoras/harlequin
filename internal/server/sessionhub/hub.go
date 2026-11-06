@@ -155,6 +155,43 @@ func (h *Hub) Attach(user *types.User, projectID int64, sess *types.Session) *Su
 	return &Subscription{ls: ls, user: *user, sub: &subscriber{ch: make(chan types.StreamEvent, subEventBuffer), userID: user.ID}}
 }
 
+// LiveStats counts live sessions that have at least one connected client.
+type LiveStats struct {
+	Sessions    int `json:"sessions"`      // sessions with ≥1 connection
+	Connections int `json:"connections"`   // open client connections to them
+	Running     int `json:"running_turns"` // of those sessions, how many are running a turn
+}
+
+// Stats returns live connection counts; userID 0 = every user, otherwise only
+// that user's own connections (and the sessions they're connected to).
+func (h *Hub) Stats(userID int64) LiveStats {
+	h.mu.Lock()
+	all := make([]*liveSession, 0, len(h.sessions))
+	for _, ls := range h.sessions {
+		all = append(all, ls)
+	}
+	h.mu.Unlock()
+	var st LiveStats
+	for _, ls := range all {
+		ls.mu.Lock()
+		n := 0
+		for sub := range ls.subs {
+			if userID == 0 || sub.userID == userID {
+				n++
+			}
+		}
+		if n > 0 {
+			st.Sessions++
+			st.Connections += n
+			if ls.running {
+				st.Running++
+			}
+		}
+		ls.mu.Unlock()
+	}
+	return st
+}
+
 // Busy reports whether the live session is running a turn or has prompts
 // queued (a session with no live goroutine is idle).
 func (h *Hub) Busy(projectID, userID, sessID int64) bool {
