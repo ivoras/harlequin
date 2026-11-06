@@ -159,6 +159,12 @@ input:focus, textarea:focus, select:focus {
 }
 select { width: auto; cursor: pointer; }
 input[type="file"] { padding: 4px; }
+/* Checkboxes and radios keep their natural size (the text-field rules above
+   would stretch them to full width with padding). */
+input[type="checkbox"], input[type="radio"] {
+  width: auto; padding: 0; margin: 0; flex: none; border: none; box-shadow: none;
+  accent-color: var(--accent);
+}
 a { color: var(--accent-text); }
 code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: 0.88em;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
