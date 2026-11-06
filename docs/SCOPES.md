@@ -80,7 +80,8 @@ each user signs in with their own account.
 
 ## Roles
 
-What you may write per scope depends on your role:
+What you may write per scope depends on your role (everything each role can
+do is in [USERS.md](USERS.md)):
 
 | Role | Can additionally |
 |------|------------------|
