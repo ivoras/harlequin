@@ -23,7 +23,7 @@ Beyond these built-ins, two families of tools appear dynamically:
 answering, so the agent stays consistent across sessions.
 Searches personal + shared memory, plus the project's in a project session;
 `all_projects: true` also covers every project the user belongs to (hits there
-are labelled `p<project>.N` and are read-only). See [SCOPES.md](SCOPES.md).
+are labelled `p<project>.N` and are read-only). See [docs/SCOPES.md](docs/SCOPES.md).
 **Example:** `memory_search({"query": "preferred currency"})`
 → ranked hits, each with a composite id (`u.N`/`s.N`/`p.N`) and `slot_key` to use
 with `memory_change`/`memory_delete`.
@@ -195,7 +195,7 @@ path) for follow-up searching with `Grep`.
 
 Searches and listings cover personal + shared documents, plus the project's in a
 project session; ids are `u.N` / `s.N` / `p.N`, and `p<project>.N` (e.g. `p3.17`)
-for another project's document. See [SCOPES.md](SCOPES.md).
+for another project's document. See [docs/SCOPES.md](docs/SCOPES.md).
 
 ### `list_documents`
 **Why:** enumerate the corpus (scoped id, title, LLM-generated catalogue

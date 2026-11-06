@@ -19,7 +19,7 @@ Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a fu
   disconnect mid-answer, reconnect from any client, and messages typed while the
   agent is busy queue up. Sessions are auto-titled, exportable, and clearable. Users
   see the same real-time LLM stream/chat when connected with multiple clients.
-- **Layered memory** — personal / shared (org) / project [scopes](SCOPES.md) with structured
+- **Layered memory** — personal / shared (org) / project [scopes](docs/SCOPES.md) with structured
   attribute *slots*, automatic conflict detection, and write-time rules that keep
   an attribute from living in two scopes at once. Harlequin data isn't just a big
   bunch of MD files fed into RAG, there's an overlay of key-value pair with structured
@@ -35,7 +35,7 @@ Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a fu
 - **Projects** — shared workspaces (members, sessions, documents, memories, live
   chatroom). Search can span *all* projects a user belongs to, with
   project-qualified references (`p3.17`) that stay valid anywhere, or they can
-  be limited to per-project only.
+  be limited to per-project only. See [docs/PROJECTS.md](docs/PROJECTS.md).
 - **Skills & hats** — reusable instruction/script bundles resolved across
   scopes, and org-defined skill overlays ("hats") with optional custom system
   prompts. The idea is that someone wearing a "hat" of certain skills can
@@ -193,24 +193,22 @@ user — make it an **owner**, the highest role:
 
 #### Roles
 
-There are three roles, highest privilege first:
-
-| Role | Can do |
-|------|--------|
-| `owner` | Everything; the **only** role that can create/edit users. |
-| `admin` | All org-wide actions: create/delete **shared** memories, delete documents, read the audit log, publish skills, view other users' usage. |
-| `user` | Ordinary account: their own sessions and personal (user-scoped) memories only. |
+There are three roles, highest privilege first: **owner** (everything, and the
+only role that manages user accounts), **admin** (organisation-wide content:
+shared memories, documents and skills, hats, audit log, other users' usage) and
+**user** (their own data and the projects they belong to). The full breakdown is
+in [docs/USERS.md](docs/USERS.md).
 
 Create further users with `createuser` (`--owner`, `--admin`, or neither for a
 plain user), or — once a server is running — as an owner from **Settings → Users**
 in the desktop web UI (create, change role, reset password, delete). What each
-role may write per scope is in [SCOPES.md](SCOPES.md#roles).
+role may write per scope is in [docs/SCOPES.md](docs/SCOPES.md#roles).
 
 #### Scopes
 
 Memories, documents and skills live in a **personal**, **shared**
 (organisation) or **project** scope. How they're stored, searched, written and
-overlaid by hats is described in [SCOPES.md](SCOPES.md).
+overlaid by hats is described in [docs/SCOPES.md](docs/SCOPES.md).
 
 Change a user's password (revokes their existing API tokens):
 
