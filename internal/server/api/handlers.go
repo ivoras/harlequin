@@ -246,6 +246,12 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	var c *types.Session
 	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
 		var e error
+		// A plain "new session" reuses the last empty one instead of adding a blank.
+		if req.Title == "" || req.Title == "New session" || req.Title == "Session" {
+			if c, e = s.Sessions.ReuseEmpty(r.Context(), udb, u.ID, req.Hat, types.APIREST, reqInterface(r)); e != nil || c != nil {
+				return e
+			}
+		}
 		c, e = s.Sessions.Create(r.Context(), udb, u.ID, req.Title, req.Hat, types.APIREST, reqInterface(r))
 		return e
 	})

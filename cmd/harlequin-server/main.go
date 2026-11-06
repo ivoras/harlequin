@@ -412,6 +412,10 @@ func (a webFetchAdapter) FetchRaw(ctx context.Context, url string) (jsrun.FetchR
 	return jsrun.FetchResult{Status: r.Status, Body: r.Body, FinalURL: r.FinalURL, ContentType: r.ContentType}, nil
 }
 
+// emptySessionMaxAge: empty "New session" placeholders idle this long are
+// deleted by the hourly sweep (a rolling 7 days, so restarts don't reset the clock).
+const emptySessionMaxAge = 7 * 24 * time.Hour
+
 func maintenance(authStore *auth.Store, store *storage.Manager, mem *memory.Store, sessionLog *sessionlog.Logger, ag *agent.Agent, dataRetentionDays int) {
 	const sweepInterval = time.Hour
 	ticker := time.NewTicker(sweepInterval)
@@ -421,6 +425,7 @@ func maintenance(authStore *auth.Store, store *storage.Manager, mem *memory.Stor
 		_, _ = mem.SweepExpiredDB(ctx, store.Shared)
 		_ = store.EachUser(ctx, func(_ int64, udb *sql.DB) error {
 			_, _ = mem.SweepExpiredDB(ctx, udb)
+			_, _ = ag.Sessions.DeleteEmptyPlaceholders(ctx, udb, emptySessionMaxAge)
 			return nil
 		})
 		sessionLog.SweepRetention(dataRetentionDays)

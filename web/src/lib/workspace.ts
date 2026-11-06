@@ -28,7 +28,7 @@ export async function ensureSession(): Promise<void> {
   if (creating) return;
   creating = true;
   try {
-    const c = await api.createSession("Session", "");
+    const c = await api.createSession("New session", "");
     // In a project the session must live in the project db (assigning moves it
     // and returns the new id); otherwise the project route 404s on the personal id.
     const proj = get(activeProject);

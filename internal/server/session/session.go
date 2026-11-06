@@ -49,6 +49,51 @@ func (s *Store) Create(ctx context.Context, db *sql.DB, userID int64, title, hat
 	return c, nil
 }
 
+// placeholderCond selects empty sessions still carrying the placeholder title:
+// the server default and the web client's legacy "Session" (both displayed as
+// "New session"). Used by ReuseEmpty and DeleteEmptyPlaceholders.
+const placeholderCond = `title IN ('New session', 'Session')
+	  AND NOT EXISTS (SELECT 1 FROM messages m WHERE m.session_id = sessions.id)`
+
+// ReuseEmpty returns the user's most recent empty placeholder session for the
+// given transport (so "New session" doesn't pile up blanks), re-pointed at hat
+// and bumped to the top of the recents list. nil, nil when there is none.
+func (s *Store) ReuseEmpty(ctx context.Context, db *sql.DB, userID int64, hat, api, iface string) (*types.Session, error) {
+	if api == "" {
+		api = types.APIREST
+	}
+	if iface == "" {
+		iface = types.InterfaceTUI
+	}
+	var id int64
+	err := db.QueryRowContext(ctx,
+		`SELECT id FROM sessions WHERE `+placeholderCond+` AND api = ? AND interface = ?
+		 ORDER BY id DESC LIMIT 1`, api, iface).Scan(&id)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if _, err := db.ExecContext(ctx,
+		`UPDATE sessions SET hat = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, nullableStr(hat), id); err != nil {
+		return nil, err
+	}
+	return s.Get(ctx, db, id, userID)
+}
+
+// DeleteEmptyPlaceholders removes empty placeholder sessions untouched for
+// longer than olderThan and returns how many went.
+func (s *Store) DeleteEmptyPlaceholders(ctx context.Context, db *sql.DB, olderThan time.Duration) (int64, error) {
+	res, err := db.ExecContext(ctx,
+		`DELETE FROM sessions WHERE `+placeholderCond+` AND updated_at < ?`,
+		time.Now().Add(-olderThan).UTC().Format("2006-01-02 15:04:05"))
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 // SetHat sets (or clears, when hat is empty) the session's worn hat.
 func (s *Store) SetHat(ctx context.Context, db *sql.DB, id int64, hat string) error {
 	_, err := db.ExecContext(ctx, `UPDATE sessions SET hat = ? WHERE id = ?`, nullableStr(hat), id)
