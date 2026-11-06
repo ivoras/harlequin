@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ivoras/harlequin/internal/server/audit"
 	"github.com/ivoras/harlequin/internal/server/docevents"
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/email"
@@ -51,6 +52,7 @@ type Agent struct {
 	Skills     *skills.Manager
 	Runner     *jsrun.Runner
 	Sessions   *session.Store
+	Audit      *audit.Store // optional; nil-safe (stateless)
 	Session    *sessionlog.Logger
 	WebFetcher *webfetch.Client
 	// MarkdownConverter (docling/xberg) backs the MarkdownFetch tool; nil disables it.

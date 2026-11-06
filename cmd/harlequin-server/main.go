@@ -274,6 +274,7 @@ func main() {
 		Skills:              skillMgr,
 		Runner:              runner,
 		Sessions:            sessStore,
+		Audit:               auditStore,
 		Session:             sessionLog,
 		WebFetcher:          webFetcher,
 		MarkdownConverter:   docConv, // MarkdownFetch tool; nil when no converter is configured
