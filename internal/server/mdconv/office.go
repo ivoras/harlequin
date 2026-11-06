@@ -103,38 +103,97 @@ func xlsxMD(data []byte) (string, error) {
 	}
 	if xml.Unmarshal(rels, &rd) == nil {
 		for _, r := range rd.R {
-			targets[r.ID] = strings.TrimPrefix(path.Join("xl", r.Target), "xl/../")
+			// Targets are relative to xl/, or absolute from the package root.
+			if t, abs := strings.CutPrefix(r.Target, "/"); abs {
+				targets[r.ID] = t
+			} else {
+				targets[r.ID] = path.Join("xl", r.Target)
+			}
 		}
 	}
 	var wd struct {
 		Sheets []struct {
-			Name string `xml:"name,attr"`
-			RID  string `xml:"id,attr"` // r:id; the namespace prefix is dropped by Local match
+			Name  string `xml:"name,attr"`
+			State string `xml:"state,attr"`
+			RID   string `xml:"id,attr"` // r:id; the namespace prefix is dropped by Local match
 		} `xml:"sheets>sheet"`
 	}
 	if err := xml.Unmarshal(wb, &wd); err != nil {
 		return "", err
 	}
-	var sb strings.Builder
+	n := len(wd.Sheets)
+	var body strings.Builder
+	var index []string
+	anyData := false
 	for i, sh := range wd.Sheets {
+		name := strings.TrimSpace(sh.Name)
+		if name == "" {
+			name = fmt.Sprintf("Sheet%d", i+1)
+		}
 		p := targets[sh.RID]
 		if p == "" {
 			p = fmt.Sprintf("xl/worksheets/sheet%d.xml", i+1)
 		}
-		b, err := readPart(z, p)
-		if err != nil {
+		var rows [][]string
+		note := ""
+		if b, err := readPart(z, p); err != nil {
+			note = "unreadable"
+		} else if rows, err = sheetRows(b, shared); err != nil {
+			rows, note = nil, "unreadable"
+		} else if len(rows) == 0 {
+			note = "empty"
+		}
+		if sh.State == "hidden" || sh.State == "veryHidden" {
+			note = strings.TrimPrefix(note+", hidden", ", ")
+		}
+		// Keep every sheet visible in the output, even empty ones, so the
+		// workbook's structure survives conversion.
+		if n > 1 {
+			fmt.Fprintf(&body, "## Sheet %d of %d: %s\n\n", i+1, n, name)
+		} else {
+			fmt.Fprintf(&body, "## %s\n\n", name)
+		}
+		if len(rows) == 0 {
+			fmt.Fprintf(&body, "_(%s)_\n\n", note)
+			index = append(index, fmt.Sprintf("%d. %s (%s)", i+1, name, note))
 			continue
 		}
-		rows, err := sheetRows(b, shared)
-		if err != nil {
-			return "", err
+		anyData = true
+		cols := 0
+		for _, r := range rows {
+			cols = max(cols, len(r))
 		}
-		if len(rows) > 0 {
-			fmt.Fprintf(&sb, "## %s\n\n%s\n", sh.Name, mdTable(rows))
+		desc := fmt.Sprintf("%d rows × %d columns", len(rows)-1, cols)
+		if note != "" {
+			desc += ", " + note
+		}
+		index = append(index, fmt.Sprintf("%d. %s (%s)", i+1, name, desc))
+		fmt.Fprintf(&body, "_%s; first row is the header._\n\n", desc)
+		// Long sheets are cut into blocks that each restate the sheet name and
+		// header row: chunking has no heading context, so a chunk from the
+		// middle of a table would otherwise not say which sheet or columns it is.
+		hdr, rest := rows[0], rows[1:]
+		for off := 0; off < len(rest) || off == 0; off += sheetBlockRows {
+			if off > 0 {
+				fmt.Fprintf(&body, "### %s (continued, rows %d–%d)\n\n", name, off+1, min(off+sheetBlockRows, len(rest)))
+			}
+			blk := append([][]string{hdr}, rest[off:min(off+sheetBlockRows, len(rest))]...)
+			body.WriteString(mdTable(blk) + "\n")
 		}
 	}
+	if !anyData {
+		return "", nil // all sheets empty: Convert reports "no extractable text"
+	}
+	var sb strings.Builder
+	if n > 1 {
+		fmt.Fprintf(&sb, "Workbook with %d sheets:\n\n%s\n\n", n, strings.Join(index, "\n"))
+	}
+	sb.WriteString(body.String())
 	return strings.TrimSpace(sb.String()), nil
 }
+
+// sheetBlockRows is how many data rows go under one repeated header.
+const sheetBlockRows = 40
 
 // sheetRows reads worksheet cells into rows, placing each by its A1 reference
 // so blank cells keep their column. Dates arrive as raw serial numbers

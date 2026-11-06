@@ -3,6 +3,7 @@ package mdconv
 import (
 	"archive/zip"
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -62,6 +63,37 @@ func TestConvert(t *testing.T) {
 				t.Errorf("%s: missing %q in:\n%s", c.name, w, got)
 			}
 		}
+	}
+	// Multi-sheet: index, empty + hidden sheets kept, absolute rel target, long sheet blocked.
+	var long strings.Builder
+	long.WriteString(`<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c></row>`)
+	for r := 2; r <= 90; r++ {
+		fmt.Fprintf(&long, `<row r="%d"><c r="A%d"><v>%d</v></c></row>`, r, r, r)
+	}
+	long.WriteString(`</sheetData></worksheet>`)
+	multi := mkZip(t, map[string]string{
+		"xl/workbook.xml":            `<workbook xmlns:r="r"><sheets><sheet name="Big" sheetId="1" r:id="rId1"/><sheet name="Blank" sheetId="2" r:id="rId2"/><sheet name="Old" state="hidden" sheetId="3" r:id="rId3"/></sheets></workbook>`,
+		"xl/_rels/workbook.xml.rels": `<Relationships><Relationship Id="rId1" Target="/xl/worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Target="worksheets/sheet3.xml"/></Relationships>`,
+		"xl/sharedStrings.xml":       `<sst><si><t>Num</t></si></sst>`,
+		"xl/worksheets/sheet1.xml":   long.String(),
+		"xl/worksheets/sheet2.xml":   `<worksheet><sheetData/></worksheet>`,
+		"xl/worksheets/sheet3.xml":   `<worksheet><sheetData><row r="1"><c r="A1"><v>x</v></c></row></sheetData></worksheet>`,
+	})
+	got, err := Convert("m.xlsx", multi)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range []string{
+		"Workbook with 3 sheets:", "1. Big (89 rows × 1 columns)", "2. Blank (empty)", "3. Old (0 rows × 1 columns, hidden)",
+		"## Sheet 1 of 3: Big", "## Sheet 2 of 3: Blank\n\n_(empty)_", "## Sheet 3 of 3: Old",
+		"### Big (continued, rows 41–80)", "### Big (continued, rows 81–89)",
+	} {
+		if !strings.Contains(got, w) {
+			t.Errorf("multi-sheet: missing %q in:\n%s", w, got)
+		}
+	}
+	if c := strings.Count(got, "| Num |"); c != 3 {
+		t.Errorf("header row should repeat per block, got %d", c)
 	}
 	if _, err := Convert("a.odt", []byte("junk")); err == nil {
 		t.Error("junk ODT should fail")
