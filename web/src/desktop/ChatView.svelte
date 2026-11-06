@@ -169,7 +169,7 @@
   {/snippet}
   {#snippet actions()}
     <button class="icon-btn" onclick={() => sc.exportTranscript()} title="Export transcript (Markdown)" aria-label="Export"><Icon name="download" /></button>
-    <button class="icon-btn" onclick={clearContext} title="Clear context" aria-label="Clear context"><Icon name="eraser" /></button>
+    <button class="icon-btn" onclick={clearContext} title="Clear session" aria-label="Clear session"><Icon name="eraser" /></button>
   {/snippet}
 </TopBar>
 
