@@ -160,6 +160,7 @@ func main() {
 		MinSentences:  cfg.Documents.MinSentences,
 	})
 	docStore.SetFusion(cfg.Documents.FTS5Weight, cfg.Documents.FTS5ScoreGatePct)
+	docStore.SetEmbedConcurrency(cfg.DocEmbedConcurrency())
 	sessStore := session.NewStore()
 	auditStore := audit.NewStore()
 	sessionLog := sessionlog.New(cfg.SessionsDir(), cfg.Sessions.EnabledValue(), cfg.Sessions.LogTokens, cfg.Sessions.Redact)
