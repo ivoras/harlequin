@@ -272,6 +272,20 @@ owner/admin only. Chunk ids change on edit, so `[d.x.N]` citations *into* the
 document may stop matching (document ids stay valid).
 **Example:** `edit_doc({"doc": "p.7", "append": "## Addendum\nNew section…"})`
 
+### `create_excel`
+**Why:** produce a downloadable Excel workbook (`.xlsx`) — the reverse of how an
+uploaded spreadsheet is read. The input is Markdown: `# Sheet name` headings
+start sheets, each pipe table's first row is a bold header, tables on a sheet
+are stacked with an empty row between them, plain numbers become numeric cells
+(keeping their decimals on display), `=…` becomes a formula (computed when
+Excel opens the file), anything else is text. Docling's Markdown for an uploaded
+`.xlsx` converts back cell for cell, so a spreadsheet can be edited via `read_doc`
+→ change → `create_excel`. Pass `content` inline or `source` (a sandbox file).
+Saved like `save_doc` (project in a project session, else personal; shared for
+owners/admins), with the Markdown as its searchable text. The `create-excel`
+skill teaches the model the format. Converter: `internal/server/mdxlsx`.
+**Example:** `create_excel({"title": "Sales 2026", "source": "tmp://sales.md"})`
+
 ### `delete_doc`
 **Why:** permanently delete a document and all its chunks when the user has
 clearly asked to; the model is told to resolve the id with `list_documents` and

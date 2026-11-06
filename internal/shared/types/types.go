@@ -687,8 +687,8 @@ type CreateDocumentRequest struct {
 	URI     string `json:"uri"`
 	Mime    string `json:"mime"`
 	Content string `json:"content"`
-	// Scope selects the corpus to ingest into: "shared" (default, org-wide),
-	// "personal" (the user's own docs), or "project" (requires ProjectID).
+	// Scope selects the corpus to ingest into: "personal" (default, the user's
+	// own docs), "shared" (org-wide, owner/admin), or "project" (requires ProjectID).
 	Scope     string `json:"scope,omitempty"`
 	ProjectID int64  `json:"project_id,omitempty"`
 	// OriginalName is set server-side from an uploaded file's name (the stored
