@@ -19,6 +19,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/ivoras/harlequin/internal/server/audit"
 	"github.com/ivoras/harlequin/internal/server/auth"
 	"github.com/ivoras/harlequin/internal/server/docevents"
 	"github.com/ivoras/harlequin/internal/server/documents"
@@ -1836,10 +1837,19 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 	if _, ok := requireElevated(w, r); !ok {
 		return
 	}
+	f := auditFilter(r)
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	if limit <= 0 || limit > 2000 {
+		limit = 200
+	}
 	// Audit entries live in each user's database; aggregate across users.
-	var entries []types.AuditEntry
+	entries := []types.AuditEntry{}
+	only := s.auditUserID(r)
 	err := s.Storage.EachUser(r.Context(), func(userID int64, udb *sql.DB) error {
-		es, e := s.Audit.List(r.Context(), udb, userID, 200)
+		if only != 0 && userID != only {
+			return nil
+		}
+		es, e := s.Audit.Search(r.Context(), udb, userID, f, limit)
 		entries = append(entries, es...)
 		return e
 	})
@@ -1850,10 +1860,89 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 	sort.SliceStable(entries, func(i, j int) bool {
 		return entries[i].CreatedAt.After(entries[j].CreatedAt)
 	})
-	if len(entries) > 200 {
-		entries = entries[:200]
+	if len(entries) > limit {
+		entries = entries[:limit]
 	}
 	writeJSON(w, http.StatusOK, entries)
+}
+
+// auditFilter reads q, action (repeatable), from/to (RFC3339) and tz (minutes).
+func auditFilter(r *http.Request) audit.Filter {
+	v := r.URL.Query()
+	f := audit.Filter{Q: v.Get("q"), Actions: v["action"]}
+	f.From, _ = time.Parse(time.RFC3339, v.Get("from"))
+	f.To, _ = time.Parse(time.RFC3339, v.Get("to"))
+	f.TZ, _ = strconv.Atoi(v.Get("tz"))
+	return f
+}
+
+// auditUserID resolves the optional ?user=<email> filter (0 = everyone; an
+// unknown email yields -1 so nothing matches).
+func (s *Server) auditUserID(r *http.Request) int64 {
+	email := strings.TrimSpace(r.URL.Query().Get("user"))
+	if email == "" {
+		return 0
+	}
+	us, _ := s.Auth.ListUsers(r.Context())
+	for _, u := range us {
+		if strings.EqualFold(u.Email, email) {
+			return u.ID
+		}
+	}
+	return -1
+}
+
+// handleAuditStats counts the entries matching the same filters as /audit, by
+// action, user and day.
+func (s *Server) handleAuditStats(w http.ResponseWriter, r *http.Request) {
+	if _, ok := requireElevated(w, r); !ok {
+		return
+	}
+	f := auditFilter(r)
+	emails := map[int64]string{}
+	if us, err := s.Auth.ListUsers(r.Context()); err == nil {
+		for _, u := range us {
+			emails[u.ID] = u.Email
+		}
+	}
+	actions, days, users := map[string]int{}, map[string]int{}, map[string]int{}
+	total := 0
+	only := s.auditUserID(r)
+	err := s.Storage.EachUser(r.Context(), func(userID int64, udb *sql.DB) error {
+		if only != 0 && userID != only {
+			return nil
+		}
+		a, d, e := s.Audit.Stats(r.Context(), udb, f)
+		for k, n := range a {
+			actions[k] += n
+			total += n
+			users[emails[userID]] += n
+		}
+		for k, n := range d {
+			days[k] += n
+		}
+		return e
+	})
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	out := types.AuditStats{Total: total, Actions: auditCounts(actions, true), Users: auditCounts(users, true), Days: auditCounts(days, false)}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func auditCounts(m map[string]int, byCount bool) []types.AuditCount {
+	out := make([]types.AuditCount, 0, len(m))
+	for k, n := range m {
+		out = append(out, types.AuditCount{Key: k, Count: n})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if byCount && out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Key < out[j].Key
+	})
+	return out
 }
 
 // imageMime maps an image filename to its MIME type ("" if not a supported image).

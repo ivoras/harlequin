@@ -60,7 +60,7 @@ Everything a user can, plus management of organisation-wide content:
 - **MCP**: register servers for everyone (each user still signs in to OAuth
   servers with their own account).
 - **Projects**: delete any project and remove its members, member or not.
-- **Oversight**: read the audit log, any session's trace log and the
+- **Oversight**: read the audit log (desktop web: Settings → Audit, owner-only, with search, filters and counts by action/user/day), any session's trace log and the
   system-prompt template, and view other users' token usage and cost.
 - **Broadcast**: send an alert to every user (Settings → General → Broadcast).
 

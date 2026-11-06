@@ -432,3 +432,14 @@ export interface UsageDay {
   cached_tokens: number;
   completion_tokens: number;
 }
+
+export interface AuditEntry {
+  id: number;
+  user_id?: number;
+  action: string;
+  target: string;
+  detail?: string;
+  created_at: string;
+}
+export interface AuditCount { key: string; count: number }
+export interface AuditStats { total: number; actions: AuditCount[]; users: AuditCount[]; days: AuditCount[] }

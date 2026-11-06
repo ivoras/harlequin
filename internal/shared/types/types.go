@@ -810,6 +810,20 @@ type AuditEntry struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// AuditStats is GET /audit/stats: counts over the entries matching the filter.
+type AuditStats struct {
+	Total   int          `json:"total"`
+	Actions []AuditCount `json:"actions"` // by count desc
+	Users   []AuditCount `json:"users"`   // by count desc; Key is the email
+	Days    []AuditCount `json:"days"`    // by day asc; Key is YYYY-MM-DD in the viewer's time
+}
+
+// AuditCount is one bucket of an AuditStats breakdown.
+type AuditCount struct {
+	Key   string `json:"key"`
+	Count int    `json:"count"`
+}
+
 // PublishSkillRequest is the body of POST /skills/{name}/publish.
 type PublishSkillRequest struct {
 	FromUserID *int64 `json:"from_user_id,omitempty"`
