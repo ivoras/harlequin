@@ -183,7 +183,7 @@ mcp:
   allow_user_servers: true          # let ordinary users register user-scope servers (shared is always admin-only)
   session_idle: "5m"                # close an idle pooled MCP session after this long
   tools_cache_ttl: "5m"             # cache each server's tool list for this long
-  oauth_callback_base_url: ""       # externally reachable base URL (e.g. https://harlequin.example.com); required for OAuth servers
+  oauth_callback_base_url: ""       # externally reachable base URL (e.g. https://harlequin.example.com); empty = the URL the browser used
 
 # Authentication policy. The login identity is the user's email address.
 auth:

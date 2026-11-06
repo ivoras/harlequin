@@ -153,6 +153,20 @@ breakdown). Drag its left edge to resize it.
 mobile switch, and for owners/admins a broadcast alert), Hats, MCP servers,
 Config and Usage.
 
+**MCP tools.** External MCP (Model Context Protocol) servers add tools the
+assistant uses on its own whenever a task needs them. The left sidebar's
+**MCP tools** entry (below Scheduled jobs) lists each connected server and its
+tools; its gear button opens Settings → MCP servers, where you register a
+server by name and URL, with no authentication, an API key / request header,
+or OAuth. For an OAuth
+server you're sent to the provider to sign in right after registering, and
+then returned to Harlequin (use **Sign in** / **Re-authorize** later if access
+expires). Owners/admins can register a server for everyone in the
+organisation; each user still signs in to it with their own account. On the
+mobile UI the same page is under the menu's **MCP servers**. MCP must be
+enabled on the server (`mcp.enabled: true`), and OAuth and API-key servers also need
+`HARLEQUIN_SECRET_KEY` set so credentials can be encrypted at rest.
+
 **Files and uploads.** Drop files anywhere in the window to add them: by
 default they go to the active project, otherwise to your personal files. On
 the Files page you can pick the destination (owners/admins can also add to

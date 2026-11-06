@@ -64,6 +64,8 @@ type OAuthMeta struct {
 	// Resource is the canonical MCP server resource URI (RFC 8707), sent as the
 	// `resource` parameter in authorization and token requests when present.
 	Resource string `json:"resource,omitempty"`
+	// RedirectURI the client was dynamically registered with.
+	RedirectURI string `json:"redirect_uri,omitempty"`
 
 	// ClientSecret is set in memory after decryption; it is NOT serialized to
 	// oauth_meta (it lives in the encrypted auth_secret column).

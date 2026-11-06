@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -63,7 +64,16 @@ type pendingAuth struct {
 	userID      int64
 	scope, name string
 	verifier    string
+	redirectURL string // must match between authorize and token exchange
+	returnTo    string
 	expires     time.Time
+}
+
+// PendingAuth identifies an in-flight authorization for the callback handler.
+type PendingAuth struct {
+	UserID   int64
+	Name     string
+	ReturnTo string // relative web-UI path to send the browser back to ("" = none)
 }
 
 // NewManager constructs a Manager. base may be nil, in which case a transport
@@ -114,7 +124,9 @@ func (m *Manager) authSatisfied(ctx context.Context, userDB *sql.DB, srv Server)
 		return len(srv.Headers) > 0
 	case AuthOAuth:
 		tok, err := m.reg.LoadToken(ctx, userDB, srv.Scope, srv.Name)
-		return err == nil && tok != nil && tok.RefreshToken != ""
+		// Some providers issue long-lived access tokens with no refresh token.
+		return err == nil && tok != nil && (tok.RefreshToken != "" ||
+			(tok.AccessToken != "" && (tok.Expiry.IsZero() || time.Now().Before(tok.Expiry))))
 	}
 	return false
 }
@@ -305,17 +317,26 @@ func (m *Manager) Close() {
 
 // --- OAuth orchestration ---
 
-func (m *Manager) redirectURL() string {
-	return m.cfg.CallbackBaseURL + oauthCallbackPath
+// redirectURL builds the OAuth redirect URI. The configured base URL wins;
+// otherwise the caller-derived one (the URL the user reached us through) is used.
+func (m *Manager) redirectURL(fallbackBase string) string {
+	base := m.cfg.CallbackBaseURL
+	if base == "" {
+		base = fallbackBase
+	}
+	return strings.TrimRight(base, "/") + oauthCallbackPath
 }
 
 // StartAuth begins the OAuth flow for an oauth server: it discovers endpoints
 // (and registers a client) if needed, persists any newly-learned metadata, and
 // returns an authorization URL for the user to open. The user's database is
-// needed because shared-server tokens are also stored per-user.
-func (m *Manager) StartAuth(ctx context.Context, userID int64, userDB *sql.DB, scope, name string) (string, error) {
-	if m.cfg.CallbackBaseURL == "" {
-		return "", errors.New("mcp: oauth_callback_base_url is not configured")
+// needed because shared-server tokens are also stored per-user. fallbackBase is
+// used when no callback base URL is configured; returnTo (a relative path, may
+// be empty) is where the callback sends the browser afterwards.
+func (m *Manager) StartAuth(ctx context.Context, userID int64, userDB *sql.DB, scope, name, fallbackBase, returnTo string) (string, error) {
+	redirect := m.redirectURL(fallbackBase)
+	if !strings.HasPrefix(redirect, "http://") && !strings.HasPrefix(redirect, "https://") {
+		return "", errors.New("mcp: cannot determine the OAuth callback URL; set mcp.oauth_callback_base_url")
 	}
 	srv, err := m.reg.Get(ctx, scope, name, userDB)
 	if err != nil {
@@ -330,11 +351,16 @@ func (m *Manager) StartAuth(ctx context.Context, userID int64, userDB *sql.DB, s
 	if err != nil {
 		return "", err
 	}
-	cid, csecret, err := registerClient(ctx, hc, meta, m.cfg.ClientName, m.redirectURL())
+	// A dynamically registered client is bound to its redirect URI; if we're now
+	// reached through a different URL, register a fresh client.
+	if meta.RegistrationEndpoint != "" && meta.RedirectURI != "" && meta.RedirectURI != redirect {
+		meta.ClientID, meta.ClientSecret = "", ""
+	}
+	cid, csecret, err := registerClient(ctx, hc, meta, m.cfg.ClientName, redirect)
 	if err != nil {
 		return "", err
 	}
-	meta.ClientID, meta.ClientSecret = cid, csecret
+	meta.ClientID, meta.ClientSecret, meta.RedirectURI = cid, csecret, redirect
 	if meta.ClientID == "" {
 		return "", errors.New("mcp: no OAuth client_id (provider requires manual client registration)")
 	}
@@ -346,23 +372,30 @@ func (m *Manager) StartAuth(ctx context.Context, userID int64, userDB *sql.DB, s
 
 	verifier := oauth2.GenerateVerifier()
 	state := randToken()
+	now := time.Now()
 	m.mu.Lock()
-	m.pending[state] = &pendingAuth{userID: userID, scope: scope, name: name, verifier: verifier, expires: time.Now().Add(10 * time.Minute)}
+	for k, p := range m.pending { // abandoned flows would otherwise accumulate
+		if now.After(p.expires) {
+			delete(m.pending, k)
+		}
+	}
+	m.pending[state] = &pendingAuth{userID: userID, scope: scope, name: name, verifier: verifier,
+		redirectURL: redirect, returnTo: returnTo, expires: now.Add(10 * time.Minute)}
 	m.mu.Unlock()
 
-	return authCodeURL(meta, m.redirectURL(), state, verifier), nil
+	return authCodeURL(meta, redirect, state, verifier), nil
 }
 
-// PendingUser returns the user a pending authorization belongs to, so the
-// callback handler can open the right user database.
-func (m *Manager) PendingUser(state string) (int64, bool) {
+// Pending returns the pending authorization for state, so the callback handler
+// can open the right user database and send the browser back.
+func (m *Manager) Pending(state string) (PendingAuth, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	p, ok := m.pending[state]
 	if !ok || time.Now().After(p.expires) {
-		return 0, false
+		return PendingAuth{}, false
 	}
-	return p.userID, true
+	return PendingAuth{UserID: p.userID, Name: p.name, ReturnTo: p.returnTo}, true
 }
 
 // CompleteAuth exchanges the authorization code and stores the resulting tokens
@@ -382,7 +415,7 @@ func (m *Manager) CompleteAuth(ctx context.Context, userDB *sql.DB, state, code 
 		return err
 	}
 	hc := &http.Client{Transport: m.base, Timeout: 30 * time.Second}
-	tok, err := exchangeCode(ctx, hc, srv.OAuth, m.redirectURL(), code, p.verifier)
+	tok, err := exchangeCode(ctx, hc, srv.OAuth, p.redirectURL, code, p.verifier)
 	if err != nil {
 		return err
 	}

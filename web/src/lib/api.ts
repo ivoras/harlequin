@@ -261,8 +261,9 @@ export const api = {
   deleteMCP: (scope: string, name: string) => req<void>("DELETE", "/mcp/server" + mcpRef(scope, name)),
   testMCP: (scope: string, name: string) =>
     req<MCPTestResult>("POST", "/mcp/server/test" + mcpRef(scope, name)),
-  startMCPOAuth: (scope: string, name: string) =>
-    req<MCPAuthStartResult>("POST", "/mcp/server/oauth/start" + mcpRef(scope, name)),
+  // returnTo: same-origin path the OAuth callback redirects the browser back to.
+  startMCPOAuth: (scope: string, name: string, returnTo = "") =>
+    req<MCPAuthStartResult>("POST", "/mcp/server/oauth/start" + mcpRef(scope, name) + (returnTo ? "&return_to=" + q(returnTo) : "")),
 
   // cron
   listCron: () => reqList<CronJob>("GET", "/cron"),

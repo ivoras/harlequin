@@ -38,7 +38,14 @@ func discoverOAuth(ctx context.Context, hc *http.Client, serverURL string, meta 
 		AuthorizationServers []string `json:"authorization_servers"`
 		Resource             string   `json:"resource"`
 	}
-	if err := getJSON(ctx, hc, origin+"/.well-known/oauth-protected-resource", &prm); err == nil {
+	foundPRM := false
+	for _, u := range wellKnown(serverURL, "oauth-protected-resource") {
+		if err := getJSON(ctx, hc, u, &prm); err == nil {
+			foundPRM = true
+			break
+		}
+	}
+	if foundPRM {
 		if prm.Resource != "" {
 			meta.Resource = prm.Resource
 		}
@@ -54,8 +61,14 @@ func discoverOAuth(ctx context.Context, hc *http.Client, serverURL string, meta 
 		RegistrationEndpoint  string `json:"registration_endpoint"`
 	}
 	ok := false
-	for _, wk := range []string{"/.well-known/oauth-authorization-server", "/.well-known/openid-configuration"} {
-		if err := getJSON(ctx, hc, authServer+wk, &asm); err == nil && asm.AuthorizationEndpoint != "" {
+	var candidates []string
+	for _, wk := range []string{"oauth-authorization-server", "openid-configuration"} {
+		candidates = append(candidates, wellKnown(authServer, wk)...)
+	}
+	// OIDC also allows the well-known suffix after the issuer path.
+	candidates = append(candidates, authServer+"/.well-known/openid-configuration")
+	for _, u := range candidates {
+		if err := getJSON(ctx, hc, u, &asm); err == nil && asm.AuthorizationEndpoint != "" {
 			ok = true
 			break
 		}
@@ -69,6 +82,18 @@ func discoverOAuth(ctx context.Context, hc *http.Client, serverURL string, meta 
 		}
 		if meta.RegistrationEndpoint == "" {
 			meta.RegistrationEndpoint = asm.RegistrationEndpoint
+		}
+	}
+	if !ok && !foundPRM {
+		// No metadata at all: MCP 2025-03-26 default endpoints on the server origin.
+		if meta.AuthorizationEndpoint == "" {
+			meta.AuthorizationEndpoint = origin + "/authorize"
+		}
+		if meta.TokenEndpoint == "" {
+			meta.TokenEndpoint = origin + "/token"
+		}
+		if meta.RegistrationEndpoint == "" {
+			meta.RegistrationEndpoint = origin + "/register"
 		}
 	}
 	if meta.AuthorizationEndpoint == "" || meta.TokenEndpoint == "" {
@@ -192,6 +217,21 @@ func tokenSource(ctx context.Context, hc *http.Client, reg *Registry, userDB *sq
 		name:   srv.Name,
 		last:   tok,
 	}
+}
+
+// wellKnown returns the RFC 8414/9728 metadata URLs for raw: the well-known
+// segment inserted before the URL path first, then at the bare origin.
+func wellKnown(raw, suffix string) []string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return nil
+	}
+	origin := u.Scheme + "://" + u.Host
+	root := origin + "/.well-known/" + suffix
+	if p := strings.TrimRight(u.Path, "/"); p != "" {
+		return []string{root + p, root}
+	}
+	return []string{root}
 }
 
 // originOf returns scheme://host[:port] for a URL.

@@ -3,7 +3,7 @@
   import { user, view, session, wornHat, toasts, toast, activeProject, projectSheet, orgName, loadOrgName, type View } from "./lib/stores";
   import { sc } from "./lib/session.svelte";
   import { switchToProject as libSwitchToProject, leaveActiveProject, cleanTitle, projectBylines, canDeleteProject, deleteProjectFlow } from "./lib/project";
-  import { initSession, ensureSession, setURLParams } from "./lib/workspace";
+  import { initSession, ensureSession, setURLParams, consumeMCPOAuthResult } from "./lib/workspace";
   import { switchUI } from "./lib/uipref";
   import DocViewer from "./lib/DocViewer.svelte";
   import { pc } from "./lib/projectchat.svelte";
@@ -77,6 +77,7 @@
       started = true;
       initSession();
       loadProjects();
+      if (consumeMCPOAuthResult()) view.set("mcp");
     } else if (!u && started) {
       started = false;
       sc.detach();

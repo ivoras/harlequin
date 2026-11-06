@@ -90,3 +90,30 @@ export async function initSession(): Promise<void> {
   }
   await ensureSession();
 }
+
+// authorizeMCP sends the browser (same tab: popups opened after an await are
+// blocked, especially on mobile) to an OAuth MCP server's consent page; the
+// server's callback redirects back here, see consumeMCPOAuthResult.
+// shortcut: return path is relative to the API origin, so a web UI served from a
+// different origin than the API (custom base URL) lands on the API host instead.
+export async function authorizeMCP(scope: string, name: string): Promise<void> {
+  try {
+    const r = await api.startMCPOAuth(scope, name, location.pathname + location.search);
+    location.href = r.authorize_url;
+  } catch (e) {
+    toast((e as Error).message, "error");
+  }
+}
+
+// consumeMCPOAuthResult reports (and strips from the URL) the outcome the MCP
+// OAuth callback appended when redirecting back. True if there was one.
+export function consumeMCPOAuthResult(): boolean {
+  const url = new URL(location.href);
+  const res = url.searchParams.get("mcp_oauth");
+  if (!res) return false;
+  toast(url.searchParams.get("mcp_msg") || (res === "ok" ? "Authorized" : "Authorization failed"), res === "ok" ? "info" : "error");
+  url.searchParams.delete("mcp_oauth");
+  url.searchParams.delete("mcp_msg");
+  history.replaceState(null, "", url);
+  return true;
+}

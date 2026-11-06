@@ -85,6 +85,40 @@ func toAPIMCPServer(srv mcp.Server, st mcp.Status) types.MCPServer {
 	}
 }
 
+func toAPIMCPTools(tools []mcp.Tool) []types.MCPTool {
+	out := make([]types.MCPTool, 0, len(tools))
+	for _, t := range tools {
+		out = append(out, types.MCPTool{Name: t.Name, Description: t.Description})
+	}
+	return out
+}
+
+// requestBaseURL is the scheme://host the client reached us through (honouring
+// a reverse proxy's X-Forwarded-* headers), used as the OAuth callback base when
+// mcp.oauth_callback_base_url is not configured.
+func requestBaseURL(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if p := r.Header.Get("X-Forwarded-Proto"); p != "" {
+		scheme = strings.TrimSpace(strings.Split(p, ",")[0])
+	}
+	host := r.Host
+	if h := r.Header.Get("X-Forwarded-Host"); h != "" {
+		host = strings.TrimSpace(strings.Split(h, ",")[0])
+	}
+	return scheme + "://" + host
+}
+
+// safeReturnTo accepts only a same-origin absolute path (no open redirect).
+func safeReturnTo(p string) string {
+	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.ContainsAny(p, "\\\r\n") {
+		return ""
+	}
+	return p
+}
+
 // handleListMCP lists shared + the caller's user MCP servers with status.
 func (s *Server) handleListMCP(w http.ResponseWriter, r *http.Request) {
 	u, ok := auth.UserFromContext(r.Context())
@@ -108,6 +142,11 @@ func (s *Server) handleListMCP(w http.ResponseWriter, r *http.Request) {
 				defer wg.Done()
 				st := s.MCP.Status(r.Context(), u.ID, udb, srv)
 				out[i] = toAPIMCPServer(srv, st)
+				if st.ToolCount > 0 { // cached by the probe above
+					if tools, err := s.MCP.Tools(r.Context(), u.ID, udb, srv); err == nil {
+						out[i].Tools = toAPIMCPTools(tools)
+					}
+				}
 			}(i, srv)
 		}
 		wg.Wait()
@@ -138,9 +177,7 @@ func (s *Server) handleGetMCP(w http.ResponseWriter, r *http.Request) {
 		// Include the tool list (cached by the status probe above) on the detail view.
 		if out.AuthSatisfied && srv.Enabled {
 			if tools, terr := s.MCP.Tools(r.Context(), u.ID, udb, srv); terr == nil {
-				for _, t := range tools {
-					out.Tools = append(out.Tools, types.MCPTool{Name: t.Name, Description: t.Description})
-				}
+				out.Tools = toAPIMCPTools(tools)
 			}
 		}
 		return nil
@@ -336,10 +373,11 @@ func (s *Server) handleMCPOAuthStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	scope, name := mcpScopeName(r)
+	returnTo := safeReturnTo(r.URL.Query().Get("return_to"))
 	var authURL string
 	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
 		var e error
-		authURL, e = s.MCP.StartAuth(r.Context(), u.ID, udb, scope, name)
+		authURL, e = s.MCP.StartAuth(r.Context(), u.ID, udb, scope, name, requestBaseURL(r), returnTo)
 		return e
 	})
 	if errors.Is(err, mcp.ErrNotFound) {
@@ -366,14 +404,28 @@ func (s *Server) handleMCPOAuthCallback(w http.ResponseWriter, r *http.Request) 
 		writeMCPCallbackPage(w, false, "Missing code or state.")
 		return
 	}
-	userID, ok := s.MCP.PendingUser(state)
+	p, ok := s.MCP.Pending(state)
 	if !ok {
 		writeMCPCallbackPage(w, false, "Unknown or expired authorization request.")
 		return
 	}
-	err := s.Storage.WithUser(r.Context(), userID, func(udb *sql.DB) error {
+	err := s.Storage.WithUser(r.Context(), p.UserID, func(udb *sql.DB) error {
 		return s.MCP.CompleteAuth(r.Context(), udb, state, code)
 	})
+	if p.ReturnTo != "" {
+		// Web UI flow: land back in the app, which reads mcp_oauth* and reports.
+		res, msg := "ok", "Authorized "+p.Name
+		if err != nil {
+			res, msg = "error", "Could not authorize "+p.Name+": "+err.Error()
+		}
+		u, _ := url.Parse(p.ReturnTo)
+		qv := u.Query()
+		qv.Set("mcp_oauth", res)
+		qv.Set("mcp_msg", msg)
+		u.RawQuery = qv.Encode()
+		http.Redirect(w, r, u.String(), http.StatusFound)
+		return
+	}
 	if err != nil {
 		writeMCPCallbackPage(w, false, "Could not complete authorization: "+err.Error())
 		return
