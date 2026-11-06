@@ -294,6 +294,7 @@ export const api = {
   createProject: (name: string) => req<Project>("POST", "/projects", { name }),
   getProject: (id: number) => req<Project>("GET", `/projects/${id}`),
   inviteToProject: (id: number, email: string) => req<void>("POST", `/projects/${id}/invite`, { email }),
+  removeProjectMember: (id: number, userID: number) => req<void>("DELETE", `/projects/${id}/members/${userID}`),
   departProject: (id: number) => req<void>("POST", `/projects/${id}/depart`),
   deleteProject: (id: number, confirmName: string) =>
     req<void>("DELETE", `/projects/${id}?confirm=${encodeURIComponent(confirmName)}`),

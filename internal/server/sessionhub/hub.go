@@ -134,11 +134,9 @@ func (h *Hub) Attach(user *types.User, projectID int64, sess *types.Session) *Su
 			projectID: projectID,
 			userID:    user.ID,
 			sessID:    sess.ID,
-			username:  user.Email,
-			role:      user.Role,
 			api:       sess.API,
 			iface:     sess.Interface,
-			prompts:   make(chan string, promptQueueDepth),
+			prompts:   make(chan prompt, promptQueueDepth),
 			activity:  make(chan struct{}, 1),
 			subs:      map[*subscriber]struct{}{},
 			done:      make(chan struct{}),
@@ -149,16 +147,54 @@ func (h *Hub) Attach(user *types.User, projectID int64, sess *types.Session) *Su
 	}
 	ls.mu.Lock()
 	ls.attached++
+	delete(ls.revoked, user.ID) // callers attach only after a membership check
 	ls.mu.Unlock()
 	h.mu.Unlock()
 
 	ls.signalActivity()
-	return &Subscription{ls: ls, sub: &subscriber{ch: make(chan types.StreamEvent, subEventBuffer)}}
+	return &Subscription{ls: ls, user: *user, sub: &subscriber{ch: make(chan types.StreamEvent, subEventBuffer), userID: user.ID}}
+}
+
+// DropUser cuts a member who was removed from a project off its live sessions:
+// their connections are closed (clients reconnect and fail the membership
+// check), their queued prompts are dropped, and a turn they are running is
+// interrupted. Other members are unaffected.
+func (h *Hub) DropUser(projectID, userID int64) {
+	h.mu.Lock()
+	var hit []*liveSession
+	for _, ls := range h.sessions {
+		if ls.projectID == projectID {
+			hit = append(hit, ls)
+		}
+	}
+	h.mu.Unlock()
+	for _, ls := range hit {
+		ls.mu.Lock()
+		if ls.revoked == nil {
+			ls.revoked = map[int64]bool{}
+		}
+		ls.revoked[userID] = true
+		for sub := range ls.subs {
+			if sub.userID == userID {
+				close(sub.ch)
+				delete(ls.subs, sub)
+			}
+		}
+		var cancel context.CancelFunc
+		if ls.running && ls.turnUser == userID {
+			cancel = ls.turnCancel
+		}
+		ls.mu.Unlock()
+		if cancel != nil {
+			cancel()
+		}
+	}
 }
 
 // subscriber is one connected client's live event queue.
 type subscriber struct {
-	ch chan types.StreamEvent
+	ch     chan types.StreamEvent
+	userID int64
 }
 
 // liveSession is one session's long-lived goroutine and shared state.
@@ -166,14 +202,12 @@ type liveSession struct {
 	hub       *Hub
 	key       string
 	projectID int64
-	userID    int64
+	userID    int64 // whose db holds a personal session's history (the first attacher)
 	sessID    int64
-	username  string
-	role      string
 	api       string
 	iface     string
 
-	prompts  chan string
+	prompts  chan prompt
 	activity chan struct{}
 	done     chan struct{} // closed by CloseProject: the loop must exit
 	exited   chan struct{} // closed when loop returns
@@ -188,7 +222,19 @@ type liveSession struct {
 	// turn began: the cut between history (load from DB) and the live buffer.
 	committedThrough int64
 	turnCancel       context.CancelFunc
-	turnSawErr       bool // an SSEError was emitted this turn (so the hub need not add one)
+	turnSawErr       bool  // an SSEError was emitted this turn (so the hub need not add one)
+	turnUser         int64 // who is running the in-flight turn
+	// revoked holds members removed from the project (DropUser): their queued
+	// prompts are dropped. Cleared when they attach again (after re-joining).
+	revoked map[int64]bool
+}
+
+// prompt is one queued message and the member who sent it. In a shared project
+// session the turn runs as the sender — their role, personal data, skills and
+// MCP credentials — never as whoever happened to open the session first.
+type prompt struct {
+	content string
+	user    types.User
 }
 
 // loop runs the session: it serializes prompts (one turn at a time) and reaps the
@@ -202,14 +248,20 @@ func (ls *liveSession) loop() {
 		case <-ls.done:
 			return
 
-		case content := <-ls.prompts:
+		case p := <-ls.prompts:
 			select {
 			case <-ls.done: // closed while this prompt was queued: drop it
 				return
 			default:
 			}
+			ls.mu.Lock()
+			revoked := ls.revoked[p.user.ID]
+			ls.mu.Unlock()
+			if revoked { // sender was removed from the project while queued
+				continue
+			}
 			stopTimer(idle)
-			ls.runTurn(content)
+			ls.runTurn(p)
 			idle.Reset(ls.hub.idle)
 
 		case <-ls.activity:
@@ -253,7 +305,7 @@ func stopTimer(t *time.Timer) {
 // runTurn runs one agent turn under a session-scoped (interruptible) context. A
 // client disconnect does not cancel it; only an explicit interrupt or hub stop
 // does.
-func (ls *liveSession) runTurn(content string) {
+func (ls *liveSession) runTurn(p prompt) {
 	// Capture the durable-history watermark before the turn writes its first
 	// (user) message.
 	startID, _ := ls.hub.agent.LastMessageID(ls.hub.baseCtx, ls.projectID, ls.userID, ls.sessID)
@@ -265,9 +317,10 @@ func (ls *liveSession) runTurn(content string) {
 	ls.running = true
 	ls.committedThrough = startID
 	ls.turnCancel = cancel
+	ls.turnUser = p.user.ID
 	ls.mu.Unlock()
 
-	err := ls.hub.agent.Run(turnCtx, ls.projectID, ls.sessID, ls.userID, ls.username, ls.role, ls.api, ls.iface, content, ls.emit)
+	err := ls.hub.agent.Run(turnCtx, ls.projectID, ls.sessID, p.user.ID, p.user.Email, p.user.Role, ls.api, ls.iface, p.content, ls.emit)
 
 	ls.mu.Lock()
 	ls.running = false
@@ -319,9 +372,9 @@ func (ls *liveSession) signalActivity() {
 }
 
 // submit queues a prompt for the session loop (runs after any in-flight turn).
-func (ls *liveSession) submit(content string) {
+func (ls *liveSession) submit(p prompt) {
 	select {
-	case ls.prompts <- content:
+	case ls.prompts <- p:
 	default:
 		// Queue full: report rather than block the connection's reader.
 		ls.emit(types.StreamEvent{Type: types.SSEError, Error: "session prompt queue full"})
@@ -397,8 +450,9 @@ func (ls *liveSession) log(typ string, data map[string]any) {
 
 // Subscription is the WebSocket handler's handle to a live session.
 type Subscription struct {
-	ls  *liveSession
-	sub *subscriber
+	ls   *liveSession
+	sub  *subscriber
+	user types.User // the connection's user: prompts it submits run as them
 }
 
 // Events is the channel of live events for this connection, valid after Resume.
@@ -414,7 +468,7 @@ func (s *Subscription) Resume(haveSeq int) (types.StreamEvent, []types.StreamEve
 }
 
 // Submit queues a prompt for the session.
-func (s *Subscription) Submit(content string) { s.ls.submit(content) }
+func (s *Subscription) Submit(content string) { s.ls.submit(prompt{content: content, user: s.user}) }
 
 // Interrupt cancels the in-flight turn without ending the session.
 func (s *Subscription) Interrupt() { s.ls.interrupt() }

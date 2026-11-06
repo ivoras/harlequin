@@ -213,7 +213,7 @@ Slash commands work in the web composer too: type `/` for the menu
 
 | Command | What it does |
 |---------|--------------|
-| `/project` | Manage projects: `list`, `new`, `switch`, `invite`, `assign` (move the current session into the project), `leave`, `depart`, `delete` (permanently delete a project, creator/admin only; needs `--yes`). |
+| `/project` | Manage projects: `list`, `new`, `switch`, `invite <email>`, `remove <email>` (remove a member from the active project; creator or owner/admin only), `members`, `assign` (move the current session into the project), `leave`, `depart`, `delete` (permanently delete a project, creator/admin only; needs `--yes`). |
 | `/say <message>` | Post a message to the active project's chatroom. |
 
 See the [Projects](#projects-1) chapter below for the full workflow.
@@ -319,6 +319,13 @@ just returns you to your
 personal workspace — you stay a member. `/project depart` (web: "Depart
 project") removes your membership; the project and its content remain for the
 other members.
+
+**Removing members.** The project's creator and owners/admins can remove other
+members: the ✕ on a member in the Projects page (mobile: the Projects tab), or
+`/project remove <email>` in the TUI. The removed member is disconnected from
+the project's sessions and team chat right away, a turn they were running is
+stopped, and they get a notification; they can be invited again later. The
+creator can't be removed (delete the project instead).
 
 **Deleting.** `/project delete <id-or-name> --yes` (web: "Delete project…",
 which asks you to type the project name) permanently deletes a project for

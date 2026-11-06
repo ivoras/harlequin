@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api";
   import { activeProject, projectSheet, toast } from "../lib/stores";
-  import { switchToProject, leaveActiveProject, projectBylines, canDeleteProject, deleteProjectFlow } from "../lib/project";
+  import { switchToProject, leaveActiveProject, projectBylines, canDeleteProject, deleteProjectFlow, canRemoveMember, removeMemberFlow } from "../lib/project";
   import { uploadWithProgress, ingestLabel } from "../lib/ingest";
   import { viewDocument } from "../lib/docview.svelte";
   import type { Project, ProjectMember, Document } from "../lib/types";
@@ -177,7 +177,10 @@
       <h3 class="muted small">Members</h3>
       <div class="row" style="flex-wrap:wrap; gap:6px; align-items:center;">
         {#each members as m (m.user_id)}
-          <span class="pill ellipsize" style="max-width:100%;">{m.email}</span>
+          {@const sel = projects.find((p) => p.id === selected)}
+          <span class="pill ellipsize" style="max-width:100%;">{m.email}{#if sel && canRemoveMember(sel, m.user_id)}
+              <button class="ghost small" style="padding:0 0 0 6px; min-height:0;" aria-label="Remove {m.email}"
+                onclick={async () => { if (await removeMemberFlow(sel, m)) members = members.filter((x) => x.user_id !== m.user_id); }}>✕</button>{/if}</span>
         {/each}
         {#if members.length === 0}<span class="muted small">Loading…</span>{/if}
       </div>

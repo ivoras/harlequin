@@ -19,13 +19,13 @@ the server, not just hidden in the clients.
 | Own skills, MCP servers, scheduled jobs, config | ✓ | ✓ | ✓ |
 | Create projects; invite to, work in and leave projects they belong to | ✓ | ✓ | ✓ |
 | Wear any hat | ✓ | ✓ | ✓ |
-| Delete a project they created | ✓ | ✓ | ✓ |
+| Delete a project they created, or remove its other members | ✓ | ✓ | ✓ |
 | Write, change and delete **shared** (org-wide) memories | | ✓ | ✓ |
 | Add and delete **shared** documents | | ✓ | ✓ |
 | Create, edit and publish **shared** skills | | ✓ | ✓ |
 | Create, edit and delete **hats** | | ✓ | ✓ |
 | Register shared MCP servers | | ✓ | ✓ |
-| Delete **any** project (without being a member) | | ✓ | ✓ |
+| Delete **any** project, or remove members from it (without being a member) | | ✓ | ✓ |
 | Broadcast an alert to all users | | ✓ | ✓ |
 | Read the audit log and the system-prompt template | | ✓ | ✓ |
 | Read any session's trace log; view other users' usage | | ✓ | ✓ |
@@ -43,7 +43,7 @@ The default role for new accounts (including self-registration). A user:
   shared memory for an ordinary user, it is stored as a personal one instead;
 - can create projects and, as a member, use and write the project's sessions,
   documents, memories and skills, invite others, and depart. They can delete a
-  project only if they created it;
+  project, or remove its other members, only if they created it;
 - can wear any hat, but not edit hats.
 
 ## admin
@@ -59,7 +59,7 @@ Everything a user can, plus management of organisation-wide content:
   prompts.
 - **MCP**: register servers for everyone (each user still signs in to OAuth
   servers with their own account).
-- **Projects**: delete any project, member or not.
+- **Projects**: delete any project and remove its members, member or not.
 - **Oversight**: read the audit log, any session's trace log and the
   system-prompt template, and view other users' token usage and cost.
 - **Broadcast**: send an alert to every user (Settings → General → Broadcast).

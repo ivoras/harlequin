@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api";
   import { activeProject, session, toast } from "../lib/stores";
-  import { switchToProject, leaveActiveProject, projectBylines, canDeleteProject, deleteProjectFlow } from "../lib/project";
+  import { switchToProject, leaveActiveProject, projectBylines, canDeleteProject, deleteProjectFlow, canRemoveMember, removeMemberFlow } from "../lib/project";
   import type { Document, Project, ProjectInvite, ProjectMember } from "../lib/types";
   import Icon from "./Icon.svelte";
   import TopBar from "./TopBar.svelte";
@@ -196,7 +196,14 @@
           <div class="members">
             {#each members as m (m.user_id)}
               <div class="member"><span class="avatar">{m.email.slice(0, 1).toUpperCase()}</span><span class="ellipsize">{m.email}</span>
-                <span class="faint small">joined {new Date(m.joined_at).toLocaleDateString()}</span></div>
+                <span class="faint small">joined {new Date(m.joined_at).toLocaleDateString()}</span>
+                {#if sel && m.user_id === sel.created_by}<span class="pill" title="Created the project">creator</span>{/if}
+                {#if sel && canRemoveMember(sel, m.user_id)}
+                  <button class="icon-btn" title="Remove {m.email} from the project" aria-label="Remove {m.email}"
+                    onclick={async () => { if (await removeMemberFlow(sel!, m)) members = members.filter((x) => x.user_id !== m.user_id); }}>
+                    <Icon name="x" size={14} />
+                  </button>
+                {/if}</div>
             {/each}
           </div>
           <div class="row" style="max-width: 480px; margin-top: 8px;">

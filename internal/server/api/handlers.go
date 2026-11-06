@@ -318,9 +318,16 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "you can't delete your own account")
 		return
 	}
+	var projects []types.Project // before the memberships go, to cut live streams
+	if s.Projects != nil {
+		projects, _ = s.Projects.List(r.Context(), id)
+	}
 	if err := s.Auth.DeleteUserByID(r.Context(), id); err != nil {
 		writeUserErr(w, err)
 		return
+	}
+	for _, p := range projects {
+		s.dropProjectUser(p.ID, id)
 	}
 	s.auditOwner(r, "user_delete", fmt.Sprintf("user %d", id), nil)
 	if err := os.RemoveAll(s.Storage.UserDir(id)); err != nil {

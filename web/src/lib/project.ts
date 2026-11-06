@@ -4,7 +4,7 @@
 import { api } from "./api";
 import { activeProject, session, wornHat, view, toast, user } from "./stores";
 import { get } from "svelte/store";
-import { isElevated, type Project } from "./types";
+import { isElevated, type Project, type ProjectMember } from "./types";
 
 // projectBylines maps project id -> "by <creator email>" for projects whose
 // name is not unique in the given list (empty string when the name is unique
@@ -72,6 +72,27 @@ export async function leaveActiveProject(): Promise<void> {
 export function canDeleteProject(p: Project): boolean {
   const u = get(user);
   return !!u && (p.created_by === u.id || isElevated(u.role));
+}
+
+// canRemoveMember: the project's creator and owners/admins may remove other
+// members — except the creator (delete the project instead) and themselves
+// (that's "Depart"). Mirrors the server's check.
+export function canRemoveMember(p: Project, memberID: number): boolean {
+  const u = get(user);
+  return canDeleteProject(p) && memberID !== p.created_by && memberID !== u?.id;
+}
+
+// removeMemberFlow confirms and removes a member; resolves true when removed.
+export async function removeMemberFlow(p: Project, m: ProjectMember): Promise<boolean> {
+  if (!confirm(`Remove ${m.email} from "${p.name}"?\n\nThey lose access to its sessions, documents, memories and team chat right away. You can invite them again later.`)) return false;
+  try {
+    await api.removeProjectMember(p.id, m.user_id);
+    toast(`removed ${m.email} from ${p.name}`);
+    return true;
+  } catch (e) {
+    toast((e as Error).message, "error");
+    return false;
+  }
 }
 
 // deleteProjectFlow asks the user to type the project name, then permanently

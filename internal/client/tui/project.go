@@ -205,6 +205,30 @@ func (m *Model) runProject(args []string) tea.Cmd {
 			}
 			return infoMsg{"invited " + rest}
 		}
+	case "remove":
+		if m.activeProjectID == 0 {
+			return infoCmd("switch to a project first: /project switch <id>")
+		}
+		if rest == "" {
+			return infoCmd("usage: /project remove <email>  (creator or owner/admin)")
+		}
+		pid := m.activeProjectID
+		return func() tea.Msg {
+			ctx := context.Background()
+			p, err := m.client.GetProject(ctx, pid)
+			if err != nil {
+				return errMsg{err}
+			}
+			for _, mem := range p.Members {
+				if strings.EqualFold(mem.Email, rest) {
+					if err := m.client.RemoveProjectMember(ctx, pid, mem.UserID); err != nil {
+						return errMsg{err}
+					}
+					return infoMsg{"removed " + mem.Email + " from " + p.Name}
+				}
+			}
+			return errMsg{fmt.Errorf("%s is not a member of %s (see /project members)", rest, p.Name)}
+		}
 	case "members":
 		if m.activeProjectID == 0 {
 			return infoCmd("not in a project")
@@ -252,7 +276,7 @@ func (m *Model) runProject(args []string) tea.Cmd {
 			return infoMsg{strings.TrimRight(sb.String(), "\n")}
 		}
 	default:
-		return infoCmd("usage: /project [list|new <name>|invites|accept <id>|switch <id>|invite <email>|members|assign|sessions|leave]")
+		return infoCmd("usage: /project [list|new <name>|invites|accept <id>|switch <id>|invite <email>|remove <email>|members|assign|sessions|leave]")
 	}
 }
 

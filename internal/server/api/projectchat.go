@@ -43,7 +43,7 @@ func (s *Server) handleProjectChatWS(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	sub := s.ChatHub.Join(projectID)
+	sub := s.ChatHub.Join(projectID, user.ID)
 	defer s.ChatHub.Leave(projectID, sub)
 
 	// Send recent history first.

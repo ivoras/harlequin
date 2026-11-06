@@ -99,7 +99,87 @@ func (s *Server) handleDepartProject(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.dropProjectUser(id, u.ID)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleRemoveMember removes another member from a project. Allowed for the
+// project's creator and for owners/admins (the same people who may delete it).
+// The creator can't be removed (delete the project instead), and you remove
+// yourself with depart.
+func (s *Server) handleRemoveMember(w http.ResponseWriter, r *http.Request) {
+	u, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	uid, _ := strconv.ParseInt(chi.URLParam(r, "uid"), 10, 64)
+	p, err := s.Projects.Get(r.Context(), id)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeErr(w, http.StatusNotFound, "project not found")
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	target, status, msg := checkRemoveMember(p, u, uid)
+	if msg != "" {
+		writeErr(w, status, msg)
+		return
+	}
+	if err := s.Projects.RemoveMember(r.Context(), id, uid); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.dropProjectUser(id, uid)
+	ctx := r.Context()
+	_ = s.Storage.WithUser(ctx, u.ID, func(udb *sql.DB) error {
+		s.Audit.Log(ctx, udb, "project_remove_member", p.Name+": "+target.Email, nil)
+		return nil
+	})
+	if s.Notify != nil {
+		_ = s.Storage.WithUser(ctx, uid, func(udb *sql.DB) error {
+			_, _ = s.Notify.Create(ctx, udb, types.Notification{
+				Title:       "Removed from project " + p.Name,
+				Description: "Removed by " + u.Email + ". Its sessions, documents and memories are no longer available to you.",
+			})
+			return nil
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// checkRemoveMember decides whether actor may remove member uid from p,
+// returning the member, or an HTTP status and message when refused.
+func checkRemoveMember(p *types.Project, actor *types.User, uid int64) (*types.ProjectMember, int, string) {
+	if p.CreatedBy != actor.ID && !types.IsElevated(actor.Role) {
+		return nil, http.StatusForbidden, "only the project's creator or an owner/admin can remove members"
+	}
+	if uid == actor.ID {
+		return nil, http.StatusBadRequest, "use depart to leave a project yourself"
+	}
+	if uid == p.CreatedBy {
+		return nil, http.StatusBadRequest, "the project's creator can't be removed; delete the project instead"
+	}
+	for i := range p.Members {
+		if p.Members[i].UserID == uid {
+			return &p.Members[i], 0, ""
+		}
+	}
+	return nil, http.StatusNotFound, "not a member of this project"
+}
+
+// dropProjectUser cuts a former member off the project's live session streams
+// and team chat right away, instead of at their next reconnect.
+func (s *Server) dropProjectUser(projectID, userID int64) {
+	if s.Hub != nil {
+		s.Hub.DropUser(projectID, userID)
+	}
+	if s.ChatHub != nil {
+		s.ChatHub.DropUser(projectID, userID)
+	}
 }
 
 // handleDeleteProject permanently deletes a project and all its data: registry

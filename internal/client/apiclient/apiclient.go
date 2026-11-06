@@ -357,6 +357,12 @@ func (c *Client) InviteToProject(ctx context.Context, id int64, email string) er
 	return c.do(ctx, http.MethodPost, fmt.Sprintf("/projects/%d/invite", id), types.InviteRequest{Email: email}, nil)
 }
 
+// RemoveProjectMember removes another member from a project (creator or
+// owner/admin only).
+func (c *Client) RemoveProjectMember(ctx context.Context, id, userID int64) error {
+	return c.do(ctx, http.MethodDelete, fmt.Sprintf("/projects/%d/members/%d", id, userID), nil, nil)
+}
+
 // DepartProject removes the caller's membership of a project.
 func (c *Client) DepartProject(ctx context.Context, id int64) error {
 	return c.do(ctx, http.MethodPost, fmt.Sprintf("/projects/%d/depart", id), nil, nil)
