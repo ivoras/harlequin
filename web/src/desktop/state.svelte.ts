@@ -160,6 +160,20 @@ class DesktopUI {
     }
   }
 
+  // deleteDoc confirms, then permanently deletes a document (file, extracted
+  // Markdown text and search entries). projectID is the active project, used
+  // for project-scope documents. Always re-lists afterwards, even on error.
+  async deleteDoc(d: Document, projectID = 0): Promise<void> {
+    if (!confirm(`Delete "${d.title}"? This permanently removes the file, its extracted Markdown text and its search entries, for everyone who can see it. It cannot be undone.`)) return;
+    try {
+      await api.deleteDocument(d.id, d.scope ?? "", d.scope === "project" ? projectID : 0);
+    } catch (e) {
+      toast((e as Error).message, "error");
+    } finally {
+      this.docsChanged();
+    }
+  }
+
   dismissUpload(id: number): void {
     this.uploads = this.uploads.filter((u) => u.id !== id);
   }
