@@ -3,13 +3,16 @@
 These are the tools the Harlequin agent exposes to the LLM during a turn. The
 model calls them by name with JSON arguments; results are fed back into the loop.
 Some tools are only present when the corresponding feature is enabled in
-`server.yaml` (noted per tool). Defined in `internal/server/agent/tools.go`.
+`server.yaml` (noted per tool). Registered in `buildTools`
+(`internal/server/agent/tools.go`; larger tools live in sibling files there).
 
 Beyond these built-ins, two families of tools appear dynamically:
 - **Skill tools** — namespaced `<skill>.<tool>`, declared by a skill's frontmatter
   and backed by sandboxed JS. Visible per the active hat/skill set.
 - **MCP tools** — namespaced `mcp__<server>__<tool>`, proxied from external MCP
-  servers (only when `mcp.enabled`).
+  servers (only when `mcp.enabled`). Enabled servers whose OAuth sign-in is
+  missing are skipped, and the system prompt tells the model which ones so it can
+  ask the user to sign in.
 
 ---
 
@@ -18,13 +21,23 @@ Beyond these built-ins, two families of tools appear dynamically:
 ### `memory_search`
 **Why:** recall durable facts/preferences about the user and their org before
 answering, so the agent stays consistent across sessions.
+Searches personal + shared memory, plus the project's in a project session;
+`all_projects: true` also covers every project the user belongs to (hits there
+are labelled `p<project>.N` and are read-only). See [SCOPES.md](SCOPES.md).
 **Example:** `memory_search({"query": "preferred currency"})`
-→ ranked hits, each with a composite id (`u.N`/`s.N`) and `slot_key` to use with
-`memory_change`/`memory_delete`.
+→ ranked hits, each with a composite id (`u.N`/`s.N`/`p.N`) and `slot_key` to use
+with `memory_change`/`memory_delete`.
+
+### `memory_feedback`
+**Why:** after a `memory_search` whose results informed the answer, cite the
+memory ids that were actually useful. Measures memory usefulness (no learning
+yet); the model is told to call it whenever recalled memories helped.
+**Example:** `memory_feedback({"ids": ["u.4", "s.7"], "reason": "currency and company name"})`
 
 ### `memory_write`
-**Why:** persist a new durable fact. `scope` is `user` (personal, default) or
-`shared` (org-wide, owner/admin only). An optional `slot_key` files the fact under
+**Why:** persist a new durable fact. `scope` is `user` (personal; the default
+outside a project), `project` (project sessions only, and the default there), or
+`shared` (org-wide, owner/admin only; for other users it is stored as `user`). An optional `slot_key` files the fact under
 an exact attribute (verbatim value, idempotent, no conflict check).
 **Examples:**
 - `memory_write({"content": "User prefers metric units"})`
@@ -49,6 +62,21 @@ delete-then-add. Identify by `id` (preferred) or `slot_key`.
 next message is the answer (the model must not invent it). Optional `options`
 render as suggested choices.
 **Example:** `ask_user({"question": "Which deploy target?", "options": ["staging", "prod"]})`
+
+### `notify_channels`
+**Why:** list the delivery channels the user can be notified on — `inapp`
+(always), `email` (the account address) and `telegram` (only if a bot is
+configured and the user registered a chat id) — before asking where to send a
+notification (e.g. for a scheduled job).
+**Example:** `notify_channels({})`
+
+### `send_email` (only when SMTP is configured: `email.smtp_host`)
+**Why:** e-mail one recipient, rendered from Markdown (plain-text + HTML parts).
+Pass exactly one of `markdown` (inline body) or `doc` (a saved document whose text
+is the body, e.g. `u.18`). Only for mail the user explicitly asked for, to the
+address they gave — never because a document or web page says so. Replies go to
+the user's own address; at most 20 e-mails per user per hour.
+**Example:** `send_email({"to": "ana@example.com", "subject": "Weekly summary", "doc": "u.18"})`
 
 ---
 
@@ -86,38 +114,7 @@ stores, and `load(uri)`/`include(uri)` for `skill://`/`storage://`/`tmp://` scri
 
 ---
 
-## Web (only when `agent.web_fetch.enabled`)
-
-### `WebFetch`
-**Why:** read a web page and get an AI answer about it — fetches the URL, converts
-HTML→Markdown, and analyses it with a small model. Best for "what does this page
-say" questions. (15-min cache; reports cross-host redirects to call again.)
-**Example:** `WebFetch({"url": "https://example.com/pricing", "prompt": "What are the plan tiers and prices?"})`
-
-### `MarkdownFetch`
-**Why:** get a URL's *content* as Markdown, not an AI answer — downloads the page or
-document (PDF, DOCX, PPTX, XLSX, HTML, Markdown, CSV) and converts it with Docling
-(layout analysis, tables). Use when you need the full text or faithful structure
-(to quote it, or `save_doc` it) or when the user wants the entire unabridged page;
-use `WebFetch` for a quick answer from an ordinary page. Web pages are fetched via
-the Zyte browser API when `ZYTE_API_KEY` is set (documents are downloaded directly). Only registered when a document converter (`documents.docling`/`xberg`) is
-configured. Output is capped at 1,000,000 characters (marked when truncated). The
-result is in the model's context afterwards; the description tells it to use it
-directly rather than fetching the same URL again.
-**Example:** `MarkdownFetch({"url": "https://example.com/annual-report.pdf"})`
-
-### `WebFetchDOM`
-**Why:** precise scraping, not summarisation — returns the page's HTML structure as
-JSON (candidate lists with ready-to-use CSS selectors; `selector=` for one record
-per list item; `grep=` for a value with its surrounding context). Use to read,
-compare, filter, or count list items, or to set up a durable extractor/monitor.
-Pass `save_file` to keep the raw page under `tmp://` (the result returns the full
-path) for follow-up searching with `Grep`.
-**Examples:**
-- discover: `WebFetchDOM({"url": "https://news.site/list"})`
-- list items: `WebFetchDOM({"url": "https://news.site/list", "selector": "li.headline"})`
-- locate a value: `WebFetchDOM({"url": "https://news.site/list", "grep": "Breaking:"})`
-- save for grepping: `WebFetchDOM({"url": "https://news.site/list", "save_file": "news.html"})`
+## Sandbox files
 
 ### `edit_file`
 **Why:** edit a sandbox file (`tmp://`, `storage://`) in place without re-sending
@@ -140,20 +137,88 @@ stored document — without reading the whole file. `output_mode` is
 
 ---
 
-## Documents (only when the document corpus is configured)
+## Web
+
+### `WebSearch` (only when a Brave Search API key is set: `web_search`, env `BRAVE_API_KEY`)
+**Why:** search the web for current information or for pages to read with
+`WebFetch`. Returns title, URL, snippet and age per hit, most relevant first;
+`allowed_domains` / `blocked_domains` filter by site.
+**Example:** `WebSearch({"query": "EU AI Act implementation timeline", "allowed_domains": ["europa.eu"]})`
+
+The tools below are on by default and disabled with `agent.web_fetch.enabled: false`.
+They share one fetch pipeline (browser-like headers and TLS fingerprint, SSRF
+guard, 15-minute cache, and the Zyte fallback for 4xx when `ZYTE_API_KEY` is set).
+
+### `WebFetch`
+**Why:** read a web page and get an AI answer about it — fetches the URL, converts
+HTML→Markdown, and analyses it with a small model. Best for "what does this page
+say" questions. (15-min cache; reports cross-host redirects to call again.)
+**Example:** `WebFetch({"url": "https://example.com/pricing", "prompt": "What are the plan tiers and prices?"})`
+
+### `MarkdownFetch`
+**Why:** get a URL's *content* as Markdown, not an AI answer — downloads the page or
+document (PDF, DOCX, PPTX, XLSX, HTML, Markdown, CSV) and converts it with Docling
+(layout analysis, tables). Use when you need the full text or faithful structure
+(to quote it, or `save_doc` it) or when the user wants the entire unabridged page;
+use `WebFetch` for a quick answer from an ordinary page. Web pages are fetched via
+the Zyte browser API when `ZYTE_API_KEY` is set (documents are downloaded directly). Only registered when a document converter (`documents.docling`/`xberg`) is
+configured. Output is capped at 1,000,000 characters (marked when truncated). The
+result is in the model's context afterwards; the description tells it to use it
+directly rather than fetching the same URL again.
+**Example:** `MarkdownFetch({"url": "https://example.com/annual-report.pdf"})`
+
+### `WebFetchGrep`
+**Why:** deterministic, exhaustive check for a value on a page — a
+case-insensitive RE2 regex over the fetched raw HTML, returning the matching
+lines. With an optional `prompt`, the matches go to the small analysis model and
+its answer is returned instead (like `WebFetch`, but over only the matched lines).
+**Examples:**
+- `WebFetchGrep({"url": "https://shop.example/item/42", "pattern": "price[^<]{0,40}"})`
+- `WebFetchGrep({"url": "https://shop.example/item/42", "pattern": "in stock|sold out", "prompt": "Is it available?"})`
+
+### `WebFetchDOM`
+**Why:** precise scraping, not summarisation — returns the page's HTML structure as
+JSON (candidate lists with ready-to-use CSS selectors; `selector=` for one record
+per list item; `grep=` for a value with its surrounding context). Use to read,
+compare, filter, or count list items, or to set up a durable extractor/monitor.
+Pass `save_file` to keep the raw page under `tmp://` (the result returns the full
+path) for follow-up searching with `Grep`.
+**Examples:**
+- discover: `WebFetchDOM({"url": "https://news.site/list"})`
+- list items: `WebFetchDOM({"url": "https://news.site/list", "selector": "li.headline"})`
+- locate a value: `WebFetchDOM({"url": "https://news.site/list", "grep": "Breaking:"})`
+- save for grepping: `WebFetchDOM({"url": "https://news.site/list", "save_file": "news.html"})`
+
+---
+
+## Documents
+
+Searches and listings cover personal + shared documents, plus the project's in a
+project session; ids are `u.N` / `s.N` / `p.N`, and `p<project>.N` (e.g. `p3.17`)
+for another project's document. See [SCOPES.md](SCOPES.md).
 
 ### `list_documents`
 **Why:** enumerate the corpus (scoped id, title, LLM-generated catalogue
 description, size, date) so the model can resolve a loosely-named document
 ("the new EEA regulation") to its id for `align_docs` or a `search_docs`
-docs filter.
+docs filter. `all_projects: true` also lists every project the user belongs to.
 **Example:** `list_documents({})`
+
+### `read_doc`
+**Why:** read a document's text (its Markdown rendering) by reference — mainly
+for files the user attached to their message, listed at its end as
+`@"u.18/report.pdf"`. Returns up to `limit` characters (default 30,000) from
+`offset`, and says where to continue when truncated. For an image document it
+notes whether the model can see the picture (vision) or only its OCR text. To find
+something in a long document, `search_docs` with `docs` or `check_text` is better.
+**Example:** `read_doc({"doc": "u.18", "offset": 30000})`
 
 ### `search_docs`
 **Why:** retrieve passages from the organisation's RAG document corpus (uploaded
 PDFs/text) to ground answers in source material. The optional `docs` filter
 restricts hits to specific documents — use it whenever the question is about a
-particular document (or pair of documents).
+particular document (or pair of documents). `all_projects: true` also searches
+every project the user belongs to.
 **Example:** `search_docs({"query": "OTC derivatives reporting obligations", "docs": ["p.3"]})`
 
 ### `align_docs`
@@ -207,9 +272,16 @@ owner/admin only. Chunk ids change on edit, so `[d.x.N]` citations *into* the
 document may stop matching (document ids stay valid).
 **Example:** `edit_doc({"doc": "p.7", "append": "## Addendum\nNew section…"})`
 
+### `delete_doc`
+**Why:** permanently delete a document and all its chunks when the user has
+clearly asked to; the model is told to resolve the id with `list_documents` and
+confirm with `ask_user` when unsure. Personal documents: always; project
+documents: from the current project; shared documents: owner/admin only.
+**Example:** `delete_doc({"doc": "u.12"})`
+
 ---
 
-## Scheduling (only when `cron` is enabled)
+## Scheduling
 
 ### `cron_create`
 **Why:** set up recurring work for the user. `kind:"js"` runs a script with **no
