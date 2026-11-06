@@ -30,6 +30,9 @@ var (
 	ErrCodeExpired           = errors.New("verification code expired")
 	ErrTooManyAttempts       = errors.New("too many verification attempts")
 	ErrCodeTooSoon           = errors.New("a verification code was just sent")
+	// ErrLastOwner refuses a change that would leave the server with no owner,
+	// i.e. nobody able to manage users.
+	ErrLastOwner = errors.New("the last owner can't be removed or demoted")
 )
 
 // Registration tuning.
@@ -120,8 +123,7 @@ func (s *Store) ListUsers(ctx context.Context) ([]types.User, error) {
 	return out, rows.Err()
 }
 
-// DeleteUser removes an account (cascading its API tokens) and returns its id so
-// the caller can clean up the user's per-user database and files.
+// DeleteUser removes an account by email; see DeleteUserByID.
 func (s *Store) DeleteUser(ctx context.Context, email string) (int64, error) {
 	var id int64
 	err := s.db.QueryRowContext(ctx, `SELECT id FROM users WHERE email = ?`, email).Scan(&id)
@@ -131,10 +133,89 @@ func (s *Store) DeleteUser(ctx context.Context, email string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	if _, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, id); err != nil {
-		return 0, err
+	return id, s.DeleteUserByID(ctx, id)
+}
+
+// DeleteUserByID removes an account, its API tokens, and its project
+// memberships and invites (no FK cascade there; a stale membership would list a
+// ghost member). The caller removes the user's per-user database and files.
+func (s *Store) DeleteUserByID(ctx context.Context, id int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
 	}
-	return id, nil
+	defer tx.Rollback()
+	if err := guardLastOwner(ctx, tx, id, ""); err != nil {
+		return err
+	}
+	for _, q := range []string{
+		`DELETE FROM project_members WHERE user_id = ?`,
+		`DELETE FROM project_invites WHERE invited_user_id = ?`,
+		`DELETE FROM api_tokens WHERE user_id = ?`,
+		`DELETE FROM users WHERE id = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, q, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// SetRole changes an account's role. Takes effect on the user's next request
+// (the role is read from the users table per request).
+func (s *Store) SetRole(ctx context.Context, id int64, role string) error {
+	if role != types.RoleOwner && role != types.RoleAdmin && role != types.RoleUser {
+		return fmt.Errorf("invalid role %q", role)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := guardLastOwner(ctx, tx, id, role); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE users SET role = ? WHERE id = ?`, role, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// SetPassword sets an account's password by id and revokes its API tokens.
+func (s *Store) SetPassword(ctx context.Context, id int64, password string) error {
+	var email string
+	err := s.db.QueryRowContext(ctx, `SELECT email FROM users WHERE id = ?`, id).Scan(&email)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrUserNotFound
+	}
+	if err != nil {
+		return err
+	}
+	return s.ChangePassword(ctx, email, password)
+}
+
+// guardLastOwner fails with ErrUserNotFound if id doesn't exist, or ErrLastOwner
+// if id is the only owner and newRole ("" = deleting) isn't owner.
+func guardLastOwner(ctx context.Context, tx *sql.Tx, id int64, newRole string) error {
+	var role string
+	err := tx.QueryRowContext(ctx, `SELECT role FROM users WHERE id = ?`, id).Scan(&role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrUserNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if role != types.RoleOwner || newRole == types.RoleOwner {
+		return nil
+	}
+	var owners int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE role = ?`, types.RoleOwner).Scan(&owners); err != nil {
+		return err
+	}
+	if owners <= 1 {
+		return ErrLastOwner
+	}
+	return nil
 }
 
 // Login verifies credentials (by email) and issues a new API token (returning the

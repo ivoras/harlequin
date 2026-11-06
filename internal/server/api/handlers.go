@@ -212,16 +212,132 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	user, err := s.Auth.CreateUser(r.Context(), req.Email, req.Password, req.Role)
+	// Same rules as self-registration, so both paths yield loginable accounts.
+	addr := strings.ToLower(strings.TrimSpace(req.Email))
+	if !email.ValidAddress(addr) {
+		writeErr(w, http.StatusBadRequest, "invalid email address")
+		return
+	}
+	if len(req.Password) < 8 {
+		writeErr(w, http.StatusBadRequest, "password must be at least 8 characters")
+		return
+	}
+	if req.Role != "" && !validRole(req.Role) {
+		writeErr(w, http.StatusBadRequest, "invalid role (owner|admin|user)")
+		return
+	}
+	user, err := s.Auth.CreateUser(r.Context(), addr, req.Password, req.Role)
 	if err != nil {
 		if errors.Is(err, auth.ErrUserExists) {
-			writeErr(w, http.StatusConflict, "user exists")
+			writeErr(w, http.StatusConflict, "an account with that email already exists")
 			return
 		}
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.auditOwner(r, "user_create", addr+" ("+user.Role+")", nil)
 	writeJSON(w, http.StatusCreated, user)
+}
+
+// auditOwner records a user-management action in the acting owner's audit log.
+func (s *Server) auditOwner(r *http.Request, action, target string, detail any) {
+	me, _ := auth.UserFromContext(r.Context())
+	_ = s.Storage.WithUser(r.Context(), me.ID, func(udb *sql.DB) error {
+		s.Audit.Log(r.Context(), udb, action, target, detail)
+		return nil
+	})
+}
+
+func validRole(r string) bool {
+	return r == types.RoleOwner || r == types.RoleAdmin || r == types.RoleUser
+}
+
+// handleListUsers lists every account (owner only).
+func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
+	if _, ok := requireOwner(w, r); !ok {
+		return
+	}
+	users, err := s.Auth.ListUsers(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, users)
+}
+
+// handleUpdateUser changes an account's role and/or password (owner only). A
+// password change revokes the account's API tokens (signs it out everywhere).
+func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
+	if _, ok := requireOwner(w, r); !ok {
+		return
+	}
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	var req types.UpdateUserRequest
+	if err := decode(r, &req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if req.Role == "" && req.Password == "" {
+		writeErr(w, http.StatusBadRequest, "nothing to change (role or password)")
+		return
+	}
+	if req.Role != "" && !validRole(req.Role) {
+		writeErr(w, http.StatusBadRequest, "invalid role (owner|admin|user)")
+		return
+	}
+	if req.Password != "" && len(req.Password) < 8 {
+		writeErr(w, http.StatusBadRequest, "password must be at least 8 characters")
+		return
+	}
+	if req.Role != "" {
+		if err := s.Auth.SetRole(r.Context(), id, req.Role); err != nil {
+			writeUserErr(w, err)
+			return
+		}
+		s.auditOwner(r, "user_role", fmt.Sprintf("user %d -> %s", id, req.Role), nil)
+	}
+	if req.Password != "" {
+		if err := s.Auth.SetPassword(r.Context(), id, req.Password); err != nil {
+			writeUserErr(w, err)
+			return
+		}
+		s.auditOwner(r, "user_password_reset", fmt.Sprintf("user %d", id), nil)
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleDeleteUser removes an account and its personal data directory (owner
+// only). Owners can't delete themselves here, so a slip can't lock them out.
+func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
+	me, ok := requireOwner(w, r)
+	if !ok {
+		return
+	}
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if id == me.ID {
+		writeErr(w, http.StatusBadRequest, "you can't delete your own account")
+		return
+	}
+	if err := s.Auth.DeleteUserByID(r.Context(), id); err != nil {
+		writeUserErr(w, err)
+		return
+	}
+	s.auditOwner(r, "user_delete", fmt.Sprintf("user %d", id), nil)
+	if err := os.RemoveAll(s.Storage.UserDir(id)); err != nil {
+		log.Printf("users: deleted user %d but not its data directory: %v", id, err)
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func writeUserErr(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, auth.ErrUserNotFound):
+		writeErr(w, http.StatusNotFound, "user not found")
+	case errors.Is(err, auth.ErrLastOwner):
+		writeErr(w, http.StatusConflict, "there must be at least one owner: make someone else an owner first")
+	default:
+		writeErr(w, http.StatusInternalServerError, err.Error())
+	}
 }
 
 func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {

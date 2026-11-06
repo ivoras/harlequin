@@ -48,6 +48,13 @@ type CreateUserRequest struct {
 	Role     string `json:"role"`
 }
 
+// UpdateUserRequest is the body of PATCH /users/{id} (owner only); empty
+// fields are left unchanged.
+type UpdateUserRequest struct {
+	Role     string `json:"role,omitempty"`
+	Password string `json:"password,omitempty"`
+}
+
 // RegisterRequest is the body of POST /auth/register: it starts self-registration
 // by emailing a verification magic code.
 type RegisterRequest struct {

@@ -77,3 +77,37 @@ func TestTokensExpireAndArePruned(t *testing.T) {
 		t.Fatalf("%d tokens left after prune", n)
 	}
 }
+
+func TestLastOwnerGuardAndDeleteCleanup(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+	o, _ := s.CreateUser(ctx, "o@x.io", "password1", "owner")
+	u, _ := s.CreateUser(ctx, "u@x.io", "password1", "user")
+	if err := s.SetRole(ctx, o.ID, "admin"); !errors.Is(err, ErrLastOwner) {
+		t.Fatalf("demote only owner = %v, want ErrLastOwner", err)
+	}
+	if err := s.DeleteUserByID(ctx, o.ID); !errors.Is(err, ErrLastOwner) {
+		t.Fatalf("delete only owner = %v, want ErrLastOwner", err)
+	}
+	if err := s.SetRole(ctx, u.ID, "owner"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetRole(ctx, o.ID, "admin"); err != nil { // another owner exists now
+		t.Fatal(err)
+	}
+	if err := s.SetRole(ctx, 999, "user"); !errors.Is(err, ErrUserNotFound) {
+		t.Fatalf("missing user = %v", err)
+	}
+	if _, err := s.db.Exec(`INSERT INTO projects(name, created_by) VALUES ('p', ?)`, u.ID); err != nil {
+		t.Fatal(err)
+	}
+	s.db.Exec(`INSERT INTO project_members(project_id, user_id) VALUES (1, ?)`, o.ID)
+	if err := s.DeleteUserByID(ctx, o.ID); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	s.db.QueryRow(`SELECT COUNT(*) FROM project_members WHERE user_id = ?`, o.ID).Scan(&n)
+	if n != 0 {
+		t.Fatalf("%d stale memberships after delete", n)
+	}
+}

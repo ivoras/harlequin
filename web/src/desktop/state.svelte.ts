@@ -26,7 +26,7 @@ export function persist(key: string, v: unknown): void {
 }
 
 export type InspectorTab = "team" | "document" | "session";
-export type SettingsTab = "general" | "hats" | "mcp" | "config" | "usage";
+export type SettingsTab = "general" | "users" | "hats" | "mcp" | "config" | "usage";
 
 // Where an upload lands. scope mirrors CreateDocumentRequest.scope.
 export interface UploadTarget {
