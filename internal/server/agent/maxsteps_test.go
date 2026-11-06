@@ -73,3 +73,24 @@ func TestMaxStepsForcesAnswerOrFailsLoudly(t *testing.T) {
 		})
 	}
 }
+
+func TestStepBudgetNote(t *testing.T) {
+	var at []int
+	for step := 1; step <= 50; step++ {
+		if n := stepBudgetNote(step, 50); n != "" {
+			at = append(at, step)
+			if step == 30 && !strings.Contains(n, "20 of 50 steps left") {
+				t.Errorf("step 30 note: %q", n)
+			}
+			if step == 43 && !strings.Contains(n, "only 7 of 50") {
+				t.Errorf("step 43 note: %q", n)
+			}
+		}
+	}
+	if len(at) != 2 || at[0] != 30 || at[1] != 43 {
+		t.Fatalf("notes at steps %v, want [30 43]", at)
+	}
+	if stepBudgetNote(3, 4) != "" {
+		t.Fatal("no notes for short limits")
+	}
+}

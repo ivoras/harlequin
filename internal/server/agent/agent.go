@@ -602,6 +602,13 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 			}
 		}
 
+		// Tell the model its remaining budget at 60% and 85% of the step limit,
+		// on this step's last tool result (this turn's context only; the stored
+		// message is unchanged), so it wraps up instead of exploring until cut off.
+		if note := stepBudgetNote(step, a.MaxSteps); note != "" && len(toolCalls) > 0 {
+			msgs[len(msgs)-1].Content += note
+		}
+
 		// ask_user yields control to the user: end the turn so they can reply
 		// rather than letting the model answer its own question.
 		if askedUser {
@@ -918,3 +925,19 @@ func (a *Agent) recordTurnError(ctx context.Context, rc *runContext, turnErr err
 
 // stepLimitNudge is sent (unsaved) with the last allowed step of a turn.
 const stepLimitNudge = "You have reached the step limit for this turn, so tools are no longer available. Answer my question now, in my language, using only what you have already found above. If that is not enough for a complete answer, give what you have and say clearly what is missing."
+
+// stepBudgetNote returns the reminder appended after the step that crosses
+// 60% / 85% of maxSteps ("" otherwise, and for short limits where it's noise).
+func stepBudgetNote(step, maxSteps int) string {
+	if maxSteps < 10 {
+		return ""
+	}
+	left := maxSteps - step
+	switch step {
+	case (maxSteps*60 + 99) / 100:
+		return fmt.Sprintf("\n\n[Step budget: %d of %d steps left in this turn. If you already have enough to answer, answer now instead of calling more tools.]", left, maxSteps)
+	case (maxSteps*85 + 99) / 100:
+		return fmt.Sprintf("\n\n[Step budget: only %d of %d steps left in this turn. Stop gathering and answer with what you have; say what is missing if it isn't complete.]", left, maxSteps)
+	}
+	return ""
+}
