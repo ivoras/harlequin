@@ -422,3 +422,13 @@ export interface ContextBreakdown {
   categories: ContextCategory[];
   cost?: SessionCost; // session's LLM spend so far
 }
+
+// UsageDay is one local calendar day's summed LLM usage (GET /usage/daily).
+export interface UsageDay {
+  day: string; // YYYY-MM-DD
+  cost_usd: number;
+  calls: number;
+  prompt_tokens: number;
+  cached_tokens: number;
+  completion_tokens: number;
+}

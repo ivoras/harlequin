@@ -1668,14 +1668,42 @@ func (s *Server) handleSearchDocuments(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
-func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request) {
+// usageTarget is whose usage a request reads: your own, or (owners/admins)
+// another user's via ?user_id=.
+func usageTarget(r *http.Request) int64 {
 	u, _ := auth.UserFromContext(r.Context())
-	target := u.ID
 	if q := r.URL.Query().Get("user_id"); q != "" && types.IsElevated(u.Role) {
 		if id, err := strconv.ParseInt(q, 10, 64); err == nil {
-			target = id
+			return id
 		}
 	}
+	return u.ID
+}
+
+// handleUsageDaily returns per-day usage totals over all records; ?tz= is the
+// viewer's UTC offset in minutes (e.g. 60) so days break at local midnight.
+func (s *Server) handleUsageDaily(w http.ResponseWriter, r *http.Request) {
+	target := usageTarget(r)
+	tz, _ := strconv.Atoi(r.URL.Query().Get("tz"))
+	if tz < -14*60 || tz > 14*60 {
+		writeErr(w, http.StatusBadRequest, "tz must be a UTC offset in minutes (-840..840)")
+		return
+	}
+	var days []types.UsageDay
+	err := s.Storage.WithUser(r.Context(), target, func(udb *sql.DB) error {
+		var e error
+		days, e = s.Usage.Daily(r.Context(), udb, tz)
+		return e
+	})
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, days)
+}
+
+func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request) {
+	target := usageTarget(r)
 	var from, to time.Time
 	if v := r.URL.Query().Get("from"); v != "" {
 		from, _ = time.Parse(time.RFC3339, v)
