@@ -75,9 +75,9 @@ They resolve across scopes: project (when one is active), then shared
 | `/memory resolve <id>` | Mark a conflict flag as resolved. |
 | `/docs search <query>` | Search documents (personal + shared, + project if active). |
 | `/docs list` | List documents across scopes, each shown under its reference id (`u.2`, `s.5`, `p3.19`) — the same form `/docs view`, `/docs del`, and chat references accept. Project ids are qualified (`p<projectID>.<id>`) so a document stays unambiguous outside the context of "the active project". |
-| `/docs add [scope] <path>` | Upload a `.txt`/`.md`/`.html`/`.pdf`/`.docx` for retrieval (same as `/upload`). |
+| `/docs add [scope] <path>` | Upload a `.txt`/`.md`/`.html`/`.pdf`/`.docx`/`.pptx`/`.xlsx`/`.odt`/`.rtf`/`.epub`/images (`.png`/`.jpg`/`.gif`/`.webp`) for retrieval (same as `/upload`). |
 | `/docs del <ref>` | Delete a document by its reference (e.g. `/docs del p3.19`; the long form `<scope> <id>` still works). |
-| `/upload [scope] <path>` | Upload a document (`.txt`/`.md`/`.html`/`.pdf`/`.docx`) into `personal`, `shared`, or `project` scope (defaults to the active project, else personal). Ingestion runs server-side with a live status line (stage, percent, elapsed) — in the browser too. |
+| `/upload [scope] <path>` | Upload a document (`.txt`/`.md`/`.html`/`.pdf`/`.docx`/`.pptx`/`.xlsx`/`.odt`/`.rtf`/`.epub`/images (`.png`/`.jpg`/`.gif`/`.webp`)) into `personal`, `shared`, or `project` scope (defaults to the active project, else personal). Ingestion runs server-side with a live status line (stage, percent, elapsed) — in the browser too. |
 
 In the browser, the Memory view lets you edit a memory's content and (for
 `user`/`shared` scope) its slots inline, alongside delete; project memories
@@ -127,8 +127,14 @@ switch, and Log out.
 
 The chat header shows the workspace, the session title (click to rename a
 personal session), and the **hat** worn by the session — click it to wear a
-different hat or take it off. The composer has an attach button, and after
-each turn a context meter (tokens used / context window, model); click it for
+different hat or take it off. The composer's attach button adds documents to the message you are writing:
+each is uploaded and indexed (to the active project, else your personal
+files), shown as a chip, and listed at the end of the sent message as
+`@"u.18/report.pdf"`; the agent reads them with `read_doc`. Send waits for
+uploads to finish. Dropping files on the chat attaches them the same way.
+**Images** are shown to the model directly when the chat model supports vision
+(`vision:` on the model in `model_suites`; default on for hosted models, off
+for `local: true` ones). After each turn a context meter (tokens used / context window, model); click it for
 the full context breakdown.
 
 The **side panel** on the right (toggle with the header's panel button) has

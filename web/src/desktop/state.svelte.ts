@@ -6,6 +6,7 @@ import { api } from "../lib/api";
 import { activeProject, session, wornHat, view, toast } from "../lib/stores";
 import { cleanTitle } from "../lib/project";
 import { uploadWithProgress, ingestLabel } from "../lib/ingest";
+import type { Composer } from "../lib/composer.svelte";
 import type { Document, Project, ProjectInvite, Session } from "../lib/types";
 
 function load<T>(key: string, dflt: T): T {
@@ -67,6 +68,9 @@ class DesktopUI {
   // A view may claim drops for its own target (e.g. Files with a chosen
   // destination, Projects with a selected project); null = the workspace default.
   dropTarget = $state<UploadTarget | null>(null);
+  // The chat view's composer while it is mounted: drops on the chat attach to
+  // the message being written instead of just adding files.
+  chatComposer: Composer | null = null;
 
   private uploadChain: Promise<void> = Promise.resolve();
 

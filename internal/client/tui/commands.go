@@ -1003,7 +1003,7 @@ func (m *Model) handleDocsView(args []string) tea.Cmd {
 // you've switched to one), otherwise personal. The server enforces permissions;
 // the client pre-checks for a clearer message.
 func (m *Model) handleUpload(args []string) tea.Cmd {
-	usage := "usage: /upload [personal|shared|project] <path>  (defaults to the active project, else personal; formats: .txt .md .html .pdf .docx)"
+	usage := "usage: /upload [personal|shared|project] <path>  (defaults to the active project, else personal; formats: .txt .md .html .pdf .docx .pptx .xlsx .odt .rtf .epub .png .jpg .gif .webp)"
 	if len(args) == 0 {
 		return func() tea.Msg { return infoMsg{usage} }
 	}
@@ -1024,10 +1024,10 @@ func (m *Model) handleUpload(args []string) tea.Cmd {
 	}
 	path := strings.TrimSpace(strings.Join(rest, " "))
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".txt", ".md", ".markdown", ".html", ".htm", ".pdf", ".docx":
+	case ".txt", ".md", ".markdown", ".html", ".htm", ".pdf", ".docx", ".pptx", ".xlsx", ".odt", ".rtf", ".epub", ".png", ".jpg", ".jpeg", ".gif", ".webp":
 	default:
 		return func() tea.Msg {
-			return errMsg{fmt.Errorf("unsupported format %q (use .txt, .md, .html, .pdf, or .docx)", filepath.Ext(path))}
+			return errMsg{fmt.Errorf("unsupported format %q (use .txt, .md, .html, .pdf, .docx, .pptx, .xlsx, .odt, .rtf, .epub, or an image)", filepath.Ext(path))}
 		}
 	}
 	var projectID int64

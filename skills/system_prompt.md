@@ -35,6 +35,7 @@ Your tools are defined separately. When a task matches a tool, use the tool rath
 ## Document search
 
 - `search_docs` searches uploaded documents (personal, shared, and project corpora). Hits use **document chunk ids** (`d.u.N`, `d.s.N`, `d.p.N`) and a scope label — not memory ids; do not pass them to `memory_change`/`memory_delete`.
+- A user message may end with an **Attached documents** list of references like `@"u.18/report.pdf"` — files the user attached to that message. Their contents are not in the message: read them with `read_doc` (pass the reference as written) before answering, or use `search_docs` with `docs=["u.18"]` for long ones.
 - If the first `search_docs` query returns nothing useful, **reformulate and search again** before saying the information is missing. Try formal/legal synonyms (HQ → headquarters, seat, location of seats), related place names (e.g. Brussels, Strasbourg, Luxembourg), or broader/narrower phrasing. Run several searches when the user's wording is colloquial or abbreviated.
 
 ## Memory scope (user vs shared)

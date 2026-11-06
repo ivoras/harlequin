@@ -36,8 +36,11 @@ import (
 
 // Agent runs the tool-calling loop.
 type Agent struct {
-	Provider   llm.Provider
-	Storage    *storage.Manager
+	Provider llm.Provider
+	Storage  *storage.Manager
+	// Vision: the chat model accepts images, so attached image documents are
+	// sent inline (see attachImages).
+	Vision     bool
 	Memory     *memory.Store
 	Docs       *documents.Store
 	Skills     *skills.Manager
@@ -312,6 +315,8 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 			ToolCallID: m.ToolCallID, Name: m.Name,
 		})
 	}
+
+	a.attachImages(ctx, rc, msgs)
 
 	var finalText string
 	var turnModel string

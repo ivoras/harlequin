@@ -278,6 +278,7 @@ func main() {
 		WebFetchTools:       cfg.Agent.WebFetch.ToolsEnabledValue(),
 		ReportTiming:        cfg.Agent.ReportTiming,
 		MaxSteps:            cfg.Agent.MaxSteps,
+		Vision:              cfg.ChatVision(),
 		Temperature:         cfg.Agent.TemperatureValue(),
 		AutoExtract:         cfg.Memory.AutoExtract,
 		MemDefaultTTL:       cfg.Memory.DefaultTTL.D(),

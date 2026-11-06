@@ -24,6 +24,8 @@ import (
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/docxextract"
 	"github.com/ivoras/harlequin/internal/server/email"
+	"github.com/ivoras/harlequin/internal/server/imgshrink"
+	"github.com/ivoras/harlequin/internal/server/mdconv"
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/shared/types"
@@ -1037,6 +1039,14 @@ func readUploadInput(w http.ResponseWriter, r *http.Request) (uploadInput, error
 	if in.title == "" {
 		in.title = header.Filename
 	}
+	// Oversized images are re-encoded (same pixels, smaller file) so what is
+	// stored and sent to vision models stays within maxImageUploadBytes.
+	if imageMime(in.filename) != "" {
+		if in.data, in.filename, err = imgshrink.Shrink(in.data, in.filename, maxImageUploadBytes); err != nil {
+			return in, fmt.Errorf("image %q: %w", header.Filename, err)
+		}
+		in.contentType = imageMime(in.filename)
+	}
 	in.scope = r.FormValue("scope")
 	in.projectID, _ = strconv.ParseInt(r.FormValue("project_id"), 10, 64)
 	return in, nil
@@ -1138,6 +1148,39 @@ func (s *Server) extractDocument(ctx context.Context, in uploadInput) (req types
 		}
 		log.Printf("documents: extracted %d chars from %q for user", len(text), header.Filename)
 		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: mime, Content: text}
+	case imageMime(header.Filename) != "":
+		// Images are kept as files and shown to vision models inline (see
+		// agent.attachImages). Their searchable text is OCR output when a
+		// converter is configured, else just the filename.
+		text := ""
+		if s.Converter != nil {
+			if md, err := s.Converter.Convert(ctx, header.Filename, data); err == nil {
+				text = strings.TrimSpace(md)
+			}
+		}
+		if text == "" {
+			text = "Image: " + header.Filename
+		}
+		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: imageMime(header.Filename), Content: text}
+	case mdconv.Mime(header.Filename) != "":
+		// HTML/PPTX/XLSX/ODT/EPUB/RTF -> Markdown via the configured converter
+		// (docling/xberg: better layout and tables); the pure-Go mdconv takes
+		// over when none is configured or it fails/rejects the format.
+		var md string
+		if s.Converter != nil {
+			var err error
+			if md, err = s.Converter.Convert(ctx, header.Filename, data); err != nil {
+				log.Printf("documents: %s convert %q failed, using built-in converter: %v", s.Converter.Name(), header.Filename, err)
+				md = ""
+			}
+		}
+		if strings.TrimSpace(md) == "" {
+			var err error
+			if md, err = mdconv.Convert(header.Filename, data); err != nil {
+				return req, http.StatusUnprocessableEntity, "conversion failed: " + err.Error()
+			}
+		}
+		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: mdconv.Mime(header.Filename), Content: md}
 	case utf8.Valid(data):
 		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: "text/plain", Content: string(data)}
 	default:
@@ -1449,4 +1492,22 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 		entries = entries[:200]
 	}
 	writeJSON(w, http.StatusOK, entries)
+}
+
+// imageMime maps an image filename to its MIME type ("" if not a supported image).
+// maxImageUploadBytes is the stored-size ceiling for uploaded images.
+const maxImageUploadBytes = 4 << 20
+
+func imageMime(name string) string {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	}
+	return ""
 }

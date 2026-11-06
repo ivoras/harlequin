@@ -169,6 +169,9 @@ type ModelSpec struct {
 	// Local marks a model served on this machine (llama.cpp): background LLM work
 	// then waits for live turns instead of running alongside them.
 	Local bool `yaml:"local"`
+	// Vision (chat role): the model accepts image input. Default: true for
+	// hosted models, false for Local ones (text-only llama.cpp setups).
+	Vision *bool `yaml:"vision"`
 	// Price is the model's cost, for usage accounting (a top-level `prices:` entry
 	// for the same model overrides it).
 	Price *Price `yaml:"price"`
@@ -792,4 +795,13 @@ func (c *Config) ProviderByName(name string) *ProviderConfig {
 		}
 	}
 	return nil
+}
+
+// ChatVision reports whether the active chat model accepts images.
+func (c *Config) ChatVision() bool {
+	chat := c.ModelSuites[c.ModelSuite].Chat
+	if chat.Vision != nil {
+		return *chat.Vision
+	}
+	return !chat.Local
 }

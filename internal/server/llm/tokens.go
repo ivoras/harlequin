@@ -26,6 +26,7 @@ func EstimateMessageTokens(m Message) int {
 	n += estimateTextTokens(m.Role)
 	n += estimateTextTokens(m.Content)
 	n += estimateTextTokens(m.Name)
+	n += 1000 * len(m.Images) // shortcut: flat per-image estimate; real cost depends on the model and image size
 	n += estimateTextTokens(m.ToolCallID)
 	for _, tc := range m.ToolCalls {
 		n += 4
