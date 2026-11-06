@@ -104,7 +104,7 @@
     return d.scope === "project" ? ($activeProject?.id ?? 0) : 0;
   }
   async function viewDoc(d: Document) {
-    if (FILE_MIME.has(d.mime)) {
+    if (FILE_MIME.has(d.mime) || d.mime.startsWith("image/")) {
       try {
         const { blob } = await api.fetchDocumentFile(d.id, d.scope ?? "", docProjectID(d));
         const url = URL.createObjectURL(blob);
@@ -284,7 +284,7 @@
         </div>
       {/if}
       <div class="row" style="align-items:center; gap:8px;">
-        <input type="file" accept=".pdf,.docx,.txt,.md,application/pdf,text/plain" bind:this={fileEl} onchange={upload} disabled={uploading} />
+        <input type="file" accept=".pdf,.docx,.pptx,.xlsx,.odt,.rtf,.epub,.html,.htm,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,application/pdf,text/plain" bind:this={fileEl} onchange={upload} disabled={uploading} />
         {#if uploading}<span class="muted small"><span class="spin">⟳</span> {uploadLabel}</span>{/if}
       </div>
       <div class="muted small">Upload a PDF, DOCX or text file (the server extracts the text).</div>

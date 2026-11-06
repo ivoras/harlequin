@@ -745,7 +745,7 @@ func (a *Agent) scopeForToken(ctx context.Context, rc *runContext, token string)
 // (p<id> reaches other projects the user is a member of) and loads the
 // document. A non-empty second return value is a tool-facing error.
 func (a *Agent) loadDocRef(ctx context.Context, rc *runContext, ref string) (*docalign.Doc, string) {
-	ref = strings.TrimSpace(ref)
+	ref = attachedRef(ref)
 	if ref == "" {
 		return nil, "error: doc_a and doc_b are required (scoped document ids like u.12, s.3 or p.7)"
 	}
@@ -922,4 +922,15 @@ func parseDocRefs(refs []string) (map[string][]int64, string) {
 		out[scope] = append(out[scope], id)
 	}
 	return out, ""
+}
+
+// attachedRef normalises a document reference as it appears in a prompt's
+// attachment list — @"u.18/report.pdf" — down to the scoped id "u.18"; plain
+// ids pass through. The part after the id is only there for the reader.
+func attachedRef(ref string) string {
+	ref = strings.Trim(strings.TrimSpace(ref), `@"`)
+	if i := strings.IndexAny(ref, "/ "); i >= 0 {
+		ref = ref[:i]
+	}
+	return ref
 }

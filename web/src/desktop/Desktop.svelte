@@ -180,8 +180,13 @@
     e.preventDefault();
     dragDepth = 0;
     const files = [...(e.dataTransfer?.files ?? [])];
-    if (files.length) ui.upload(files);
+    if (!files.length) return;
+    // On the chat (and no view claiming the drop) files attach to the message.
+    if ($view === "chat" && ui.chatComposer && !ui.dropTarget) {
+      ui.chatComposer.attach(files, ui.defaultTarget(), () => ui.docsChanged());
+    } else ui.upload(files);
   }
+  const attaching = $derived(dragDepth > 0 && $view === "chat" && !!ui.chatComposer && !ui.dropTarget);
   const dropLabel = $derived(dragDepth > 0 ? (ui.dropTarget ?? ui.defaultTarget()).label : "");
 
   // --- inspector resize ---
@@ -263,8 +268,8 @@
     <div class="dropover">
       <div class="dropcard">
         <Icon name="upload" size={32} />
-        <div><b>Drop to add</b></div>
-        <div class="muted small">to {dropLabel}</div>
+        <div><b>{attaching ? "Drop to attach" : "Drop to add"}</b></div>
+        <div class="muted small">{attaching ? "to attach to your message (saved to " + dropLabel + ")" : "to " + dropLabel}</div>
       </div>
     </div>
   {/if}

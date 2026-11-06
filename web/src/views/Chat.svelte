@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { session, user, toast } from "../lib/stores";
+  import { get } from "svelte/store";
+  import { session, user, toast, activeProject } from "../lib/stores";
   import { sc } from "../lib/session.svelte";
   import { renderMarkdown } from "../lib/markdown";
   import { availableCommands } from "../lib/slash";
   import { Composer } from "../lib/composer.svelte";
+  import AttachChips from "../lib/AttachChips.svelte";
   import { onCiteHover, onCiteClick, onDocrefClick, onCodeCopy } from "../lib/docview.svelte";
 
   // Chat is a thin view over the app-scoped session controller (sc), which owns
@@ -12,6 +14,16 @@
   let scrollEl: HTMLDivElement | undefined;
   const admin = $derived(!!$user && ($user.role === "owner" || $user.role === "admin"));
   const c = new Composer(() => admin);
+  function attach() {
+    const inp = document.createElement("input");
+    inp.type = "file";
+    inp.multiple = true;
+    inp.onchange = () => {
+      const p = get(activeProject);
+      if (inp.files) c.attach([...inp.files], p ? { scope: "project", projectID: p.id } : { scope: "personal", projectID: 0 });
+    };
+    inp.click();
+  }
 
   // Whole-message copy: copies the raw markdown source, not the rendered HTML.
   let copiedIdx = $state(-1);
@@ -155,12 +167,14 @@
         {/each}
       </div>
     {/if}
+    <div class="container"><AttachChips {c} /></div>
     <div class="container row" style="align-items:flex-end; gap:8px;">
+      <button onclick={attach} title="Attach documents" aria-label="Attach documents">📎</button>
       <textarea rows="1" placeholder={sc.loading ? "Message (will queue)…" : "Message or /command…"} bind:value={c.input} bind:this={c.el} onkeydown={c.onKey} oninput={c.onInput}></textarea>
       {#if sc.loading}
         <button class="danger" onclick={() => sc.stop()} title="Stop">■</button>
       {:else}
-        <button class="primary" onclick={() => c.submit()} disabled={!c.input.trim() || (!$session.id && !c.input.trim().startsWith("/"))}>Send</button>
+        <button class="primary" onclick={() => c.submit()} disabled={c.uploading || !c.input.trim() || (!$session.id && !c.input.trim().startsWith("/"))}>Send</button>
       {/if}
     </div>
     {#if sc.reconnecting}

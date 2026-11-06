@@ -6,10 +6,37 @@ import { get } from "svelte/store";
 import { session } from "./stores";
 import { sc } from "./session.svelte";
 import { matchSlash, runSlash } from "./slash";
+import { ingestLabel, uploadWithProgress } from "./ingest";
+import type { Document } from "./types";
+
+// A document attached to the prompt being written: uploaded (and ingested)
+// first, then listed at the end of the sent message as @"<ref>/<name>" — the
+// agent opens it with read_doc.
+export interface Attachment {
+  id: number;
+  name: string;
+  ref?: string; // u.N / s.N / p<project>.N once ingested
+  state: "uploading" | "done" | "error";
+  label: string;
+}
+export interface AttachTarget {
+  scope: string;
+  projectID: number;
+}
+
+let attachSeq = 0;
+
+function scopedRef(d: Document, projectID: number): string {
+  if (d.scope === "personal") return `u.${d.id}`;
+  if (d.scope === "project") return `p${projectID}.${d.id}`;
+  return `s.${d.id}`;
+}
 
 export class Composer {
   input = $state("");
   slashSel = $state(0);
+  attachments = $state<Attachment[]>([]);
+  private attachChain: Promise<void> = Promise.resolve();
   showHelp = $state(false);
   // The textarea (bind:this); not reactive.
   el: HTMLTextAreaElement | undefined;
@@ -28,6 +55,42 @@ export class Composer {
 
   focus(): void {
     this.el?.focus();
+  }
+
+  get uploading(): boolean {
+    return this.attachments.some((a) => a.state === "uploading");
+  }
+
+  // attach uploads files (one at a time — each ingest extracts and embeds
+  // server-side) and holds them as chips until the message is sent. onDone
+  // fires per ingested file so the caller can refresh its document list.
+  attach(files: File[], target: AttachTarget, onDone?: () => void): void {
+    for (const file of files) {
+      const id = ++attachSeq;
+      this.attachments.push({ id, name: file.name, state: "uploading", label: "queued" });
+      this.attachChain = this.attachChain.then(async () => {
+        const set = (patch: Partial<Attachment>) => {
+          const a = this.attachments.find((x) => x.id === id);
+          if (a) Object.assign(a, patch);
+        };
+        if (!this.attachments.some((x) => x.id === id)) return; // removed while queued
+        try {
+          const d = await uploadWithProgress(
+            file,
+            { scope: target.scope, projectID: target.projectID || undefined },
+            (p) => set({ label: ingestLabel(p) }),
+          );
+          set({ state: "done", ref: scopedRef(d, target.projectID), label: "" });
+          onDone?.();
+        } catch (e) {
+          set({ state: "error", label: (e as Error).message });
+        }
+      });
+    }
+  }
+
+  removeAttachment(id: number): void {
+    this.attachments = this.attachments.filter((a) => a.id !== id);
   }
 
   // resize auto-grows the textarea with its content (CSS max-height caps it).
@@ -88,10 +151,13 @@ export class Composer {
       if ((await runSlash(text, this.admin())) === "help") this.showHelp = true;
       return;
     }
-    if (!get(session).id) return;
+    if (!get(session).id || this.uploading) return;
+    const docs = this.attachments.filter((a) => a.ref);
     this.input = "";
+    this.attachments = [];
     this.resize();
-    sc.send(text);
+    const list = docs.map((a) => `@"${a.ref}/${a.name.replaceAll('"', "")}"`).join("\n");
+    sc.send(docs.length ? `${text}\n\nAttached documents:\n${list}` : text);
   }
 
   answer(opt: string): void {

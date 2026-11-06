@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -32,6 +33,34 @@ type Message struct {
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string     `json:"tool_call_id,omitempty"`
 	Name       string     `json:"name,omitempty"`
+	// Images are sent with the message as vision input (user messages only).
+	// Never persisted or logged: the agent re-derives them each turn from the
+	// message's attachment references.
+	Images []Image `json:"-"`
+}
+
+// Image is one inline image for a vision-capable model.
+type Image struct {
+	Mime string
+	Data []byte
+}
+
+// MarshalJSON emits OpenAI content parts (text + image_url data URIs) when the
+// message carries images, and the plain string form otherwise.
+func (m Message) MarshalJSON() ([]byte, error) {
+	type plain Message
+	if len(m.Images) == 0 {
+		return json.Marshal(plain(m))
+	}
+	parts := []map[string]any{{"type": "text", "text": m.Content}}
+	for _, im := range m.Images {
+		parts = append(parts, map[string]any{"type": "image_url", "image_url": map[string]string{
+			"url": "data:" + im.Mime + ";base64," + base64.StdEncoding.EncodeToString(im.Data)}})
+	}
+	return json.Marshal(struct {
+		plain
+		Content []map[string]any `json:"content"`
+	}{plain(m), parts})
 }
 
 // ToolCall is an OpenAI-style tool call.

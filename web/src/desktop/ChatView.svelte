@@ -5,6 +5,7 @@
   import { renderMarkdown } from "../lib/markdown";
   import { availableCommands } from "../lib/slash";
   import { Composer } from "../lib/composer.svelte";
+  import AttachChips from "../lib/AttachChips.svelte";
   import { onCiteHover, onCiteClick, onDocrefClick, onCodeCopy } from "../lib/docview.svelte";
   import { isElevated, type Hat } from "../lib/types";
   import Icon from "./Icon.svelte";
@@ -106,11 +107,20 @@
     if (last && last.kind === "ask" && last.options.length === 0) c.focus();
   });
 
+  $effect(() => {
+    ui.chatComposer = c;
+    return () => (ui.chatComposer = null);
+  });
+
   function attach() {
     const inp = document.createElement("input");
     inp.type = "file";
     inp.multiple = true;
-    inp.onchange = () => inp.files && ui.upload([...inp.files], ui.defaultTarget());
+    inp.onchange = () => {
+      if (!inp.files) return;
+      const t = ui.defaultTarget();
+      c.attach([...inp.files], t, () => ui.docsChanged());
+    };
     inp.click();
   }
 
@@ -229,7 +239,7 @@
           <div class="hints">
             <span><kbd>/</kbd> commands</span>
             <span><kbd>{MOD} K</kbd> search everything</span>
-            <span><Icon name="upload" size={13} /> drop files to add them to {ui.defaultTarget().label}</span>
+            <span><Icon name="upload" size={13} /> drop files to attach them to your message</span>
           </div>
         </div>
       {/if}
@@ -259,10 +269,11 @@
             {/each}
           </div>
         {/if}
+        <AttachChips {c} />
         <textarea rows="1" placeholder={sc.loading ? "Message (will queue)…" : "Message Harlequin, or / for commands"}
           bind:value={c.input} bind:this={c.el} onkeydown={c.onKey} oninput={c.onInput}></textarea>
         <div class="composer-bar">
-          <button class="icon-btn" onclick={attach} title="Add files to {ui.defaultTarget().label}" aria-label="Attach files"><Icon name="paperclip" /></button>
+          <button class="icon-btn" onclick={attach} title="Attach documents to this message (saved to {ui.defaultTarget().label})" aria-label="Attach files"><Icon name="paperclip" /></button>
           {#if sc.reconnecting}<span class="warn small">Reconnecting…</span>{/if}
           <span class="spacer"></span>
           {#if sc.ctx}
@@ -283,7 +294,7 @@
             <button class="send stop" onclick={() => sc.stop()} title="Stop" aria-label="Stop"><Icon name="stop" /></button>
           {:else}
             <button class="send" onclick={() => c.submit()} aria-label="Send"
-              disabled={!c.input.trim() || (!$session.id && !c.input.trim().startsWith("/"))}><Icon name="arrowUp" /></button>
+              disabled={c.uploading || !c.input.trim() || (!$session.id && !c.input.trim().startsWith("/"))}><Icon name="arrowUp" /></button>
           {/if}
         </div>
       </div>

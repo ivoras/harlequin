@@ -494,6 +494,52 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 				return sb.String(), nil
 			},
 		}
+		reg["read_doc"] = toolEntry{
+			def: fnTool("read_doc", `Read a document's text (its Markdown rendering) by reference. Use this for documents the user attached to their message — listed at its end as @"u.18/report.pdf" — pass the reference as written (or just the id, u.18). Returns up to limit characters from offset; when truncated, the result says where to continue. To find something in a long document prefer search_docs with docs=[id] or check_text.`, map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"doc":    map[string]any{"type": "string", "description": `Document reference: u.N / s.N / p.N, optionally as written in the prompt, e.g. @"u.18/report.pdf"`},
+					"offset": map[string]any{"type": "integer", "description": "Character offset to start from (default 0)"},
+					"limit":  map[string]any{"type": "integer", "description": "Maximum characters to return (default 30000)"},
+				},
+				"required": []string{"doc"},
+			}),
+			handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+				doc, errMsg := a.loadDocRef(ctx, rc, argString(args, "doc"))
+				if errMsg != "" {
+					return errMsg, nil
+				}
+				db, dbErrMsg := a.docDBForScope(ctx, rc, doc.Scope)
+				if dbErrMsg != "" {
+					return dbErrMsg, nil
+				}
+				text, err := a.Docs.FullText(ctx, db, doc.ID)
+				if err != nil {
+					return "", err
+				}
+				r := []rune(text)
+				off := min(max(argInt(args, "offset", 0), 0), len(r))
+				lim := argInt(args, "limit", 30000)
+				if lim <= 0 {
+					lim = 30000
+				}
+				end := min(off+lim, len(r))
+				note := ""
+				if _, mime, _, _ := a.Docs.StoredFile(ctx, db, doc.ID); strings.HasPrefix(mime, "image/") {
+					note = "[This document is an image. "
+					if a.Vision {
+						note += "It is shown to you inline with the user's message that listed it; the text below is only its filename or OCR text.]\n\n"
+					} else {
+						note += "The current model cannot view images; the text below is only its filename or OCR text. Tell the user if they need the picture itself understood.]\n\n"
+					}
+				}
+				out := note + fmt.Sprintf("%s (%s) — characters %d–%d of %d:\n\n%s", doc.Title, docRef(doc), off, end, len(r), string(r[off:end]))
+				if end < len(r) {
+					out += fmt.Sprintf("\n\n[truncated — call read_doc again with offset=%d to continue]", end)
+				}
+				return out, nil
+			},
+		}
 		reg["check_text"] = toolEntry{
 			def: fnTool("check_text", `Authoritatively check whether an exact phrase or keyword appears anywhere in ONE document — a literal, exhaustive scan, unlike search_docs (which ranks by relevance and can miss an exact phrase). Use this BEFORE asserting a section is "new", "removed", or "only in" one document/version: a heading-only sighting in an align_docs summary is not proof of absence elsewhere. Returns every matching chunk with a citation and surrounding snippet, or "not found".`, map[string]any{
 				"type": "object",
