@@ -19,7 +19,24 @@
   const cached = $derived(sum("cached_tokens"));
   const completion = $derived(sum("completion_tokens"));
 
-  onMount(async () => {
+  // Live connections, refreshed while the tab is open.
+  let live = $state<Awaited<ReturnType<typeof api.usageLive>> | null>(null);
+  async function loadLive() {
+    try {
+      live = await api.usageLive();
+    } catch {
+      /* transient: keep the last figures */
+    }
+  }
+
+  onMount(() => {
+    loadLive();
+    const t = setInterval(loadLive, 15000);
+    loadDays();
+    return () => clearInterval(t);
+  });
+
+  async function loadDays() {
     try {
       days = await api.usageDaily(-new Date().getTimezoneOffset());
     } catch (e) {
@@ -27,12 +44,24 @@
     } finally {
       loading = false;
     }
-  });
+  }
 </script>
 
 <section class="panel">
   <div class="container col">
     <h3>Usage</h3>
+    {#if live}
+      <div class="card">
+        <div class="row">
+          <b class="muted">{live.scope === "server" ? "Active sessions now (all users)" : "Your active sessions now"}</b>
+          <span class="spacer"></span>{live.live.sessions}
+        </div>
+        <div class="muted small">
+          {live.live.connections} open connection{live.live.connections === 1 ? "" : "s"}{live.live.running_turns ? ` · ${live.live.running_turns} running a turn` : ""}
+          · sessions with at least one connected client; refreshes every 15 s
+        </div>
+      </div>
+    {/if}
     <div class="card">
       <div class="row"><b class="muted">LLM calls</b><span class="spacer"></span>{calls.toLocaleString()}</div>
       <div class="row"><b class="muted">Prompt tokens</b><span class="spacer"></span>{prompt.toLocaleString()}{prompt ? ` (${Math.round((cached * 100) / prompt)}% cached)` : ""}</div>

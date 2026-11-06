@@ -28,6 +28,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/mdconv"
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/session"
+	"github.com/ivoras/harlequin/internal/server/sessionhub"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
@@ -1791,6 +1792,22 @@ func (s *Server) handleUsageDaily(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, days)
+}
+
+// handleUsageLive reports how many sessions currently have connected clients:
+// server-wide for owners/admins (scope "server"), else the caller's own.
+func (s *Server) handleUsageLive(w http.ResponseWriter, r *http.Request) {
+	u, _ := auth.UserFromContext(r.Context())
+	var st sessionhub.LiveStats
+	scope := "user"
+	if s.Hub != nil {
+		if types.IsElevated(u.Role) {
+			st, scope = s.Hub.Stats(0), "server"
+		} else {
+			st = s.Hub.Stats(u.ID)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"scope": scope, "live": st})
 }
 
 func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request) {

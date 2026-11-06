@@ -323,4 +323,7 @@ export const api = {
   usage: () => reqList<UsageRecord>("GET", "/usage"),
   // Per-day totals; tz is the viewer's UTC offset in minutes so days break at local midnight.
   usageDaily: (tz: number) => reqList<UsageDay>("GET", `/usage/daily?tz=${tz}`),
+  // Live connection counts: server-wide for owners/admins (scope "server"), else your own.
+  usageLive: () =>
+    req<{ scope: "server" | "user"; live: { sessions: number; connections: number; running_turns: number } }>("GET", "/usage/live"),
 };

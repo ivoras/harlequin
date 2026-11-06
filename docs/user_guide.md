@@ -172,7 +172,9 @@ user), Hats, MCP
 servers, Config and Usage (your LLM cost as three bar charts — per day for
 the last 90 days, per week for the last year, and per month since your first
 recorded use; each scrolls sideways and starts at the most recent bar; hover a
-bar for its cost, calls and tokens). The server always keeps at least one owner, and you
+bar for its cost, calls and tokens; above them, how many sessions have a
+client connected right now — across all users for owners/admins, your own
+otherwise). The server always keeps at least one owner, and you
 can't delete your own account there.
 
 **MCP tools.** External MCP (Model Context Protocol) servers add tools the
@@ -308,9 +310,10 @@ upload from the Files or Projects page (mobile: the Projects tab; TUI:
 project session the agent reads the project corpus alongside shared and
 personal scopes, and reports it saves (`save_doc`) land in the project corpus
 by default, citations pinned, so every member can find and open them. To move or
-copy a project file into another of your projects, open its **…** menu in the
-sidebar (while in the project) and pick **Move to project…** or **Copy to
-project…**, then the target project. Its text, search index and original file
+copy a project file into another of your projects, open its **…** menu — in
+the sidebar or on the Files page (while in the project), or on the Projects
+page — and pick **Move to project…** or **Copy to project…**, then the target
+project. Its text, search index and original file
 go along; after a move, old citations and `p<project>.<id>` references to it
 no longer resolve.
 
