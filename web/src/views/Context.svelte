@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { api } from "../lib/api";
   import { toast, session, activeProject, lastModel } from "../lib/stores";
   import type { ContextBreakdown } from "../lib/types";
@@ -18,14 +17,20 @@
     return Math.min(100, (tokens * 100) / max);
   }
 
-  onMount(async () => {
-    try {
-      breakdown = await api.getContextBreakdown($session.id, $activeProject?.id ?? 0, $lastModel);
-    } catch (e) {
-      toast((e as Error).message, "error");
-    } finally {
-      loading = false;
-    }
+  // Re-fetch whenever the session changes. On a page refresh this view mounts
+  // before the boot code has restored the session, so id 0 means "not yet":
+  // wait rather than request /sessions/0/context (404 -> error toast).
+  $effect(() => {
+    const id = $session.id;
+    const pid = $activeProject?.id ?? 0;
+    const model = $lastModel;
+    if (!id) return;
+    loading = true;
+    api
+      .getContextBreakdown(id, pid, model)
+      .then((b) => (breakdown = b))
+      .catch((e) => toast((e as Error).message, "error"))
+      .finally(() => (loading = false));
   });
 </script>
 
