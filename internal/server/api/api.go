@@ -245,6 +245,7 @@ func (s *Server) Router() http.Handler {
 			}
 
 			r.Get("/usage", s.handleUsage)
+			r.Get("/usage/daily", s.handleUsageDaily)
 			r.Get("/audit", s.handleAudit)
 		})
 	})

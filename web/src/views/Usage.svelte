@@ -2,18 +2,30 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api";
   import { toast } from "../lib/stores";
-  import type { UsageRecord } from "../lib/types";
+  import type { UsageDay } from "../lib/types";
+  import { daily, weekly, monthly, localToday } from "../lib/usagebuckets";
+  import UsageBars from "./UsageBars.svelte";
 
-  let rows = $state<UsageRecord[]>([]);
-  let total = $derived(rows.reduce((s, r) => s + r.est_cost_usd, 0));
-  let pt = $derived(rows.reduce((s, r) => s + r.prompt_tokens, 0));
-  let ct = $derived(rows.reduce((s, r) => s + r.completion_tokens, 0));
+  let days = $state<UsageDay[]>([]);
+  let loading = $state(true);
+  const today = localToday();
+  const byDay = $derived(daily(days, today, 90));
+  const byWeek = $derived(weekly(days, today, 52));
+  const byMonth = $derived(monthly(days, today));
+  const sum = (k: keyof Omit<UsageDay, "day">) => days.reduce((s, d) => s + d[k], 0);
+  const cost = $derived(sum("cost_usd"));
+  const calls = $derived(sum("calls"));
+  const prompt = $derived(sum("prompt_tokens"));
+  const cached = $derived(sum("cached_tokens"));
+  const completion = $derived(sum("completion_tokens"));
 
   onMount(async () => {
     try {
-      rows = await api.usage();
+      days = await api.usageDaily(-new Date().getTimezoneOffset());
     } catch (e) {
       toast((e as Error).message, "error");
+    } finally {
+      loading = false;
     }
   });
 </script>
@@ -22,19 +34,20 @@
   <div class="container col">
     <h3>Usage</h3>
     <div class="card">
-      <div class="row"><b class="muted">Records</b><span class="spacer"></span>{rows.length}</div>
-      <div class="row"><b class="muted">Prompt tokens</b><span class="spacer"></span>{pt.toLocaleString()}</div>
-      <div class="row"><b class="muted">Completion tokens</b><span class="spacer"></span>{ct.toLocaleString()}</div>
-      <div class="row"><b class="muted">Est. cost</b><span class="spacer"></span>${total.toFixed(4)}</div>
+      <div class="row"><b class="muted">LLM calls</b><span class="spacer"></span>{calls.toLocaleString()}</div>
+      <div class="row"><b class="muted">Prompt tokens</b><span class="spacer"></span>{prompt.toLocaleString()}{prompt ? ` (${Math.round((cached * 100) / prompt)}% cached)` : ""}</div>
+      <div class="row"><b class="muted">Generated tokens</b><span class="spacer"></span>{completion.toLocaleString()}</div>
+      <div class="row"><b class="muted">Cost (all time)</b><span class="spacer"></span>${cost.toFixed(cost < 1 ? 4 : 2)}</div>
     </div>
-    <div class="list">
-      {#each rows.slice(0, 100) as r}
-        <div class="card small">
-          <div class="row"><strong>{r.model}</strong><span class="spacer"></span><span class="muted">{new Date(r.created_at).toLocaleString()}</span></div>
-          <div class="muted">{r.provider} · {r.prompt_tokens}+{r.completion_tokens} tok · ${r.est_cost_usd.toFixed(4)}</div>
-        </div>
-      {/each}
-      {#if rows.length === 0}<div class="muted small">No usage recorded.</div>{/if}
-    </div>
+    {#if loading}
+      <div class="muted small">Loading…</div>
+    {:else if days.length === 0}
+      <div class="muted small">No usage recorded yet.</div>
+    {:else}
+      <UsageBars title="Daily cost — last 90 days" buckets={byDay} barWidth={12} />
+      <UsageBars title="Weekly cost — last 52 weeks" buckets={byWeek} barWidth={16} />
+      <UsageBars title="Monthly cost — all time" buckets={byMonth} barWidth={36} />
+      <div class="muted small">Costs are the provider-reported figure where available, otherwise estimated from configured model prices. Days follow your local time.</div>
+    {/if}
   </div>
 </section>

@@ -5,6 +5,7 @@ package usage
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/ivoras/harlequin/internal/server/config"
@@ -51,6 +52,30 @@ func (s *Store) Record(ctx context.Context, db *sql.DB, projectID int64, session
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		cid, pid, provider, model, promptTokens, cachedTokens, completionTokens, cost, reported)
 	return err
+}
+
+// Daily sums the user's usage per calendar day, oldest first, over all
+// records. tzMinutes shifts the stored UTC timestamps into the viewer's local
+// time (e.g. 60 for UTC+1) so days break at their midnight.
+func (s *Store) Daily(ctx context.Context, db *sql.DB, tzMinutes int) ([]types.UsageDay, error) {
+	mod := fmt.Sprintf("%+d minutes", tzMinutes)
+	rows, err := db.QueryContext(ctx,
+		`SELECT date(created_at, ?) AS d, COALESCE(SUM(est_cost_usd),0), COUNT(*),
+		        COALESCE(SUM(prompt_tokens),0), COALESCE(SUM(cached_tokens),0), COALESCE(SUM(completion_tokens),0)
+		 FROM usage GROUP BY d ORDER BY d`, mod)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []types.UsageDay{}
+	for rows.Next() {
+		var d types.UsageDay
+		if err := rows.Scan(&d.Day, &d.CostUSD, &d.Calls, &d.PromptTokens, &d.CachedTokens, &d.CompletionTokens); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
 }
 
 // AddSessionCost adds one user db's usage for a session to acc. A project

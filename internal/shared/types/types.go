@@ -790,6 +790,16 @@ type UsageRecord struct {
 	CreatedAt        time.Time `json:"created_at"`
 }
 
+// UsageDay is one calendar day's summed LLM usage (GET /usage/daily).
+type UsageDay struct {
+	Day              string  `json:"day"` // YYYY-MM-DD in the requested timezone
+	CostUSD          float64 `json:"cost_usd"`
+	Calls            int     `json:"calls"`
+	PromptTokens     int     `json:"prompt_tokens"`
+	CachedTokens     int     `json:"cached_tokens"`
+	CompletionTokens int     `json:"completion_tokens"`
+}
+
 // AuditEntry is a coarse security/audit event.
 type AuditEntry struct {
 	ID        int64     `json:"id"`
