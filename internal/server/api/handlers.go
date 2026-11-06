@@ -475,6 +475,10 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		c, e = s.Sessions.Create(r.Context(), udb, u.ID, req.Title, req.Hat, types.APIREST, reqInterface(r))
+		if e == nil { // reused empty sessions are not logged: nothing new was created
+			s.Audit.Log(r.Context(), udb, "session_create", fmt.Sprintf("session %d", c.ID),
+				map[string]string{"interface": reqInterface(r), "hat": req.Hat})
+		}
 		return e
 	})
 	if err != nil {
