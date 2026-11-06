@@ -192,7 +192,7 @@
 
   {#if transfer}
     <TransferDocDialog doc={transfer.d} from={transfer.from} projects={ui.projects} mode={transfer.mode}
-      onclose={() => { transfer = null; ui.loadDocs(); }} />
+      onclose={() => { transfer = null; ui.docsChanged(); }} />
   {/if}
 
   {#if sessMenu}

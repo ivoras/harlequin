@@ -1,11 +1,12 @@
 <script lang="ts">
   import { api } from "../lib/api";
   import { user, activeProject, toast } from "../lib/stores";
-  import { isElevated, type Document, type SearchResult } from "../lib/types";
+  import { isElevated, type Document, type Project, type SearchResult } from "../lib/types";
   import Icon from "./Icon.svelte";
   import TopBar from "./TopBar.svelte";
   import FileTable from "./FileTable.svelte";
   import CompareDialog from "./CompareDialog.svelte";
+  import TransferDocDialog from "./TransferDocDialog.svelte";
   import { ui, type UploadTarget } from "./state.svelte";
 
   // Every corpus visible in this workspace, filterable by scope, with upload
@@ -113,6 +114,8 @@
       toast((e as Error).message, "error");
     }
   }
+  // Move/copy-to-project dialog for a project file.
+  let transfer = $state<{ d: Document; from: Project; mode: "move" | "copy" } | null>(null);
 </script>
 
 <TopBar label="Files" />
@@ -169,7 +172,8 @@
     {/if}
 
     {#if shown.length}
-      <FileTable docs={shown} {projectID} projectName={$activeProject?.name ?? ""} {canDelete} onDelete={del} />
+      <FileTable docs={shown} {projectID} projectName={$activeProject?.name ?? ""} {canDelete} onDelete={del}
+        onTransfer={$activeProject ? (d, mode) => (transfer = { d, from: $activeProject!, mode }) : undefined} />
     {:else}
       <div class="dropzone" role="button" tabindex="0" onclick={pick} onkeydown={(e) => e.key === "Enter" && pick()}>
         <Icon name="upload" size={28} />
@@ -205,6 +209,11 @@
 
 {#if showCompare}
   <CompareDialog docs={ui.docs} {projectID} onClose={() => (showCompare = false)} />
+{/if}
+
+{#if transfer}
+  <TransferDocDialog doc={transfer.d} from={transfer.from} projects={ui.projects} mode={transfer.mode}
+    onclose={() => { transfer = null; ui.docsChanged(); }} />
 {/if}
 
 <style>

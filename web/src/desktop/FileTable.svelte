@@ -13,6 +13,7 @@
     showScope = true,
     canDelete,
     onDelete,
+    onTransfer,
   }: {
     docs: Document[];
     projectID: number;
@@ -20,6 +21,8 @@
     showScope?: boolean;
     canDelete: (d: Document) => boolean;
     onDelete: (d: Document) => void;
+    // Offered for project files when set: move/copy into another project.
+    onTransfer?: (d: Document, mode: "move" | "copy") => void;
   } = $props();
 
   // The row whose "…" menu is open (scope:id), if any.
@@ -63,6 +66,13 @@
             {#if menuFor === keyOf(d)}
               <div class="menu-click-away" role="presentation" onclick={() => (menuFor = null)}></div>
               <div class="popover row-pop" role="menu">
+                {#if onTransfer && d.scope === "project"}
+                  <button class="menu-item" role="menuitem" title="Move this file into another of your projects"
+                    onclick={() => { menuFor = null; onTransfer(d, "move"); }}><Icon name="folder" size={14} /><span class="grow">Move to project…</span></button>
+                  <button class="menu-item" role="menuitem" title="Copy this file into another of your projects (the original stays)"
+                    onclick={() => { menuFor = null; onTransfer(d, "copy"); }}><Icon name="copy" size={14} /><span class="grow">Copy to project…</span></button>
+                  <div class="menu-sep"></div>
+                {/if}
                 <button class="menu-item del" role="menuitem" disabled={!canDelete(d)}
                   title={canDelete(d) ? "Permanently delete this file, its Markdown text and its search index entries" : "Only owners and admins can delete shared files"}
                   onclick={() => { menuFor = null; onDelete(d); }}><Icon name="trash" size={14} /><span class="grow">Delete…</span></button>
