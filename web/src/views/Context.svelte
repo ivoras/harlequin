@@ -12,6 +12,12 @@
     return String(n);
   }
 
+  // Small per-session costs need more than cents to be readable.
+  function fmtUSD(v: number): string {
+    if (v === 0) return "$0";
+    return "$" + v.toFixed(v < 0.01 ? 4 : v < 1 ? 3 : 2);
+  }
+
   function pct(tokens: number, max: number): number {
     if (max <= 0) return 0;
     return Math.min(100, (tokens * 100) / max);
@@ -50,6 +56,16 @@
           <b class="muted">Total</b><span class="spacer"></span>
           {fmtk(breakdown.total)}{breakdown.context_max ? ` / ${fmtk(breakdown.context_max)}` : ""} tokens
         </div>
+        {#if breakdown.cost?.calls}
+          {@const c = breakdown.cost}
+          <div class="row" title="{c.calls} LLM calls · {fmtk(c.prompt_tokens)} prompt tokens ({c.prompt_tokens ? Math.round((c.cached_tokens * 100) / c.prompt_tokens) : 0}% cached) · {fmtk(c.completion_tokens)} generated">
+            <b class="muted">Session cost</b><span class="spacer"></span>
+            {c.reported_calls < c.calls ? "≈ " : ""}{fmtUSD(c.usd)}
+          </div>
+          <div class="muted small">
+            {c.calls} LLM call{c.calls === 1 ? "" : "s"} · {c.prompt_tokens ? Math.round((c.cached_tokens * 100) / c.prompt_tokens) : 0}% of prompt cached{c.reported_calls < c.calls ? ` · ${c.calls - c.reported_calls} estimated from configured prices` : ""}
+          </div>
+        {/if}
       </div>
       <div class="list">
         {#each breakdown.categories as c}

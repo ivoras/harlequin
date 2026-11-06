@@ -296,8 +296,10 @@ func main() {
 		Notify:              notifyStore,
 		NotifyDispatch:      dispatch,
 		Presence:            presenceTracker,
-		RecordUsage: func(ctx context.Context, userDB *sql.DB, userID int64, sessionID *int64, provider, model string, u llm.Usage) {
-			_ = usageStore.Record(ctx, userDB, sessionID, provider, model, u.PromptTokens, u.CompletionTokens)
+		RecordUsage: func(ctx context.Context, userDB *sql.DB, userID, projectID int64, sessionID *int64, provider, model string, u llm.Usage) {
+			if err := usageStore.Record(ctx, userDB, projectID, sessionID, provider, model, u.PromptTokens, u.CachedPromptTokens(), u.CompletionTokens, u.Cost); err != nil {
+				log.Printf("usage: record for user %d: %v", userID, err)
+			}
 		},
 		ContextMax: router.ContextMax,
 	}

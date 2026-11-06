@@ -31,18 +31,47 @@ func (s *Store) EstimateCost(model string, promptTokens, completionTokens int) f
 	return float64(promptTokens)/1000*p.PromptPer1K + float64(completionTokens)/1000*p.CompletionPer1K
 }
 
-// Record stores a usage row in the user's database.
-func (s *Store) Record(ctx context.Context, db *sql.DB, sessionID *int64, provider, model string, promptTokens, completionTokens int) error {
-	cost := s.EstimateCost(model, promptTokens, completionTokens)
-	var cid any
+// Record stores a usage row in the user's database. reportedCost is the
+// provider's own figure (nil if it sent none) and wins over the price-table
+// estimate. projectID is 0 for personal sessions.
+func (s *Store) Record(ctx context.Context, db *sql.DB, projectID int64, sessionID *int64, provider, model string, promptTokens, cachedTokens, completionTokens int, reportedCost *float64) error {
+	cost, reported := s.EstimateCost(model, promptTokens, completionTokens), 0
+	if reportedCost != nil {
+		cost, reported = *reportedCost, 1
+	}
+	var cid, pid any
 	if sessionID != nil {
 		cid = *sessionID
 	}
+	if projectID > 0 {
+		pid = projectID
+	}
 	_, err := db.ExecContext(ctx,
-		`INSERT INTO usage(session_id, provider, model, prompt_tokens, completion_tokens, est_cost_usd)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		cid, provider, model, promptTokens, completionTokens, cost)
+		`INSERT INTO usage(session_id, project_id, provider, model, prompt_tokens, cached_tokens, completion_tokens, est_cost_usd, cost_reported)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		cid, pid, provider, model, promptTokens, cachedTokens, completionTokens, cost, reported)
 	return err
+}
+
+// AddSessionCost adds one user db's usage for a session to acc. A project
+// session's usage is spread across its members' dbs, so callers sum over them.
+func (s *Store) AddSessionCost(ctx context.Context, db *sql.DB, projectID, sessionID int64, acc *types.SessionCost) error {
+	var c types.SessionCost
+	err := db.QueryRowContext(ctx,
+		`SELECT COUNT(*), COALESCE(SUM(cost_reported),0), COALESCE(SUM(est_cost_usd),0),
+		        COALESCE(SUM(prompt_tokens),0), COALESCE(SUM(cached_tokens),0), COALESCE(SUM(completion_tokens),0)
+		 FROM usage WHERE session_id = ? AND COALESCE(project_id, 0) = ?`, sessionID, projectID).
+		Scan(&c.Calls, &c.ReportedCalls, &c.USD, &c.PromptTokens, &c.CachedTokens, &c.CompletionTokens)
+	if err != nil {
+		return err
+	}
+	acc.Calls += c.Calls
+	acc.ReportedCalls += c.ReportedCalls
+	acc.USD += c.USD
+	acc.PromptTokens += c.PromptTokens
+	acc.CachedTokens += c.CachedTokens
+	acc.CompletionTokens += c.CompletionTokens
+	return nil
 }
 
 // Query returns usage rows for the user (the owner of db) within a time window

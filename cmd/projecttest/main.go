@@ -16,6 +16,8 @@ import (
 	"github.com/ivoras/harlequin/internal/server/project"
 	"github.com/ivoras/harlequin/internal/server/session"
 	"github.com/ivoras/harlequin/internal/server/storage"
+	"github.com/ivoras/harlequin/internal/server/usage"
+	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
 func fail(format string, a ...any) {
@@ -121,6 +123,7 @@ func main() {
 	// Assign a personal session (with messages) to the project: it should move into
 	// the project DB and vanish from the user DB.
 	sessStore := session.NewStore()
+	usageStore := usage.NewStore(nil)
 	var userSessID int64
 	if err := store.WithUser(ctx, alice.ID, func(udb *sql.DB) error {
 		c, e := sessStore.Create(ctx, udb, alice.ID, "planning", "", "REST", "TUI")
@@ -130,6 +133,10 @@ func main() {
 		userSessID = c.ID
 		_, _ = sessStore.AddMessage(ctx, udb, c.ID, "user", "kick off", nil)
 		_, _ = sessStore.AddMessage(ctx, udb, c.ID, "assistant", "on it", nil)
+		cost := 0.5
+		if e := usageStore.Record(ctx, udb, 0, &c.ID, "chat", "m", 100, 40, 5, &cost); e != nil {
+			return e
+		}
 		return nil
 	}); err != nil {
 		fail("create personal session: %v", err)
@@ -138,12 +145,29 @@ func main() {
 	var projSessID int64
 	if err := store.WithUser(ctx, alice.ID, func(udb *sql.DB) error {
 		return store.WithProject(ctx, p.ID, func(pdb *sql.DB) error {
-			n, e := ps.MoveSessionToProject(ctx, udb, pdb, userSessID, alice.ID)
+			n, e := ps.MoveSessionToProject(ctx, udb, pdb, p.ID, userSessID, alice.ID)
 			projSessID = n
 			return e
 		})
 	}); err != nil {
 		fail("assign session: %v", err)
+	}
+
+	// The session's recorded cost follows it into the project.
+	if err := store.WithUser(ctx, alice.ID, func(udb *sql.DB) error {
+		var proj, personal types.SessionCost
+		if e := usageStore.AddSessionCost(ctx, udb, p.ID, projSessID, &proj); e != nil {
+			return e
+		}
+		if e := usageStore.AddSessionCost(ctx, udb, 0, userSessID, &personal); e != nil {
+			return e
+		}
+		if proj.USD != 0.5 || proj.Calls != 1 || proj.ReportedCalls != 1 || proj.CachedTokens != 40 || personal.Calls != 0 {
+			return fmt.Errorf("cost tally after move: project %+v personal %+v", proj, personal)
+		}
+		return nil
+	}); err != nil {
+		fail("usage after move: %v", err)
 	}
 
 	// Gone from the user DB.

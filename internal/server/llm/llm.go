@@ -178,6 +178,9 @@ type Chunk struct {
 	Model    string
 	// Done marks the terminal chunk.
 	Done bool
+	// TTFTMS (terminal chunk) is ms from request to the first delta of any kind,
+	// tool calls included; -1 if none arrived.
+	TTFTMS int64
 	// Err carries a streaming error.
 	Err error
 }
@@ -407,7 +410,11 @@ func (p *OpenAICompatible) readStream(resp *http.Response, model string, out cha
 		for _, idx := range order {
 			calls = append(calls, *toolAcc[idx])
 		}
-		out <- Chunk{ToolCalls: calls, Usage: usage, Timings: timings, Provider: p.name, Model: resolvedModel, Done: true, Err: streamErr}
+		ttft := int64(-1)
+		if !firstDeltaAt.IsZero() {
+			ttft = firstDeltaAt.Sub(start).Milliseconds()
+		}
+		out <- Chunk{ToolCalls: calls, Usage: usage, Timings: timings, Provider: p.name, Model: resolvedModel, Done: true, Err: streamErr, TTFTMS: ttft}
 	}
 
 	for scanner.Scan() {

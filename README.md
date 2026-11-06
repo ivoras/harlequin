@@ -249,6 +249,12 @@ The unit assumes a deployment under `/opt/harlequin` (binary, `server.yaml`,
 If your models are served locally by llama.cpp, add `After=`/`Wants=` entries
 for those units (noted in the file).
 
+Each finished LLM call logs one `llm[<provider>]: done model=… prompt=… cached=…
+completion=… ttft_ms=… total_ms=… cost_usd=… ok=…` line (`-1` = not reported).
+`scripts/munin/harlequin_llm` is a munin plugin that graphs these (calls,
+tokens, latency, prompt-cache hit rate, provider-reported cost); install
+instructions are at the top of the script.
+
 #### Self-registration
 
 Users can also create their own (role `user`) accounts from the TUI or web UI.

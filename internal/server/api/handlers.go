@@ -293,7 +293,38 @@ func (s *Server) handleSessionContext(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	breakdown.Cost = s.sessionCost(r, projectID, id, u.ID)
 	writeJSON(w, http.StatusOK, breakdown)
+}
+
+// sessionCost tallies a session's recorded LLM spend. Usage is recorded in the
+// acting user's db, so a project session sums over every member's db. Best
+// effort: nil (no cost shown) if anything fails.
+func (s *Server) sessionCost(r *http.Request, projectID, sessionID, userID int64) *types.SessionCost {
+	if s.Usage == nil {
+		return nil
+	}
+	users := []int64{userID}
+	if projectID > 0 {
+		members, err := s.Projects.Members(r.Context(), projectID)
+		if err != nil {
+			return nil
+		}
+		users = users[:0]
+		for _, m := range members {
+			users = append(users, m.UserID)
+		}
+	}
+	var acc types.SessionCost
+	for _, uid := range users {
+		if err := s.Storage.WithUser(r.Context(), uid, func(udb *sql.DB) error {
+			return s.Usage.AddSessionCost(r.Context(), udb, projectID, sessionID, &acc)
+		}); err != nil {
+			log.Printf("usage: session cost (user %d, project %d, session %d): %v", uid, projectID, sessionID, err)
+			return nil
+		}
+	}
+	return &acc
 }
 
 func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
