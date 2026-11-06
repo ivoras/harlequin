@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/ivoras/harlequin/internal/server/mcp"
@@ -21,8 +22,8 @@ const mcpToolPrefix = "mcp__"
 const mcpToolListTimeout = 6 * time.Second
 
 // registerMCPTools adds the tools advertised by every enabled, visible (shared +
-// user) MCP server whose auth is satisfied. Servers needing OAuth that the user
-// hasn't authorized are skipped silently (their status is shown via /mcp).
+// user) MCP server whose auth is satisfied. OAuth servers the user hasn't
+// signed in to are skipped and recorded in rc.mcpNeedAuth for a prompt note.
 // Failures never break the turn.
 func (a *Agent) registerMCPTools(ctx context.Context, rc *runContext, reg map[string]toolEntry) {
 	servers, err := a.MCP.Registry().ListVisible(ctx, rc.userDB)
@@ -30,6 +31,7 @@ func (a *Agent) registerMCPTools(ctx context.Context, rc *runContext, reg map[st
 		log.Printf("mcp: list servers: %v", err)
 		return
 	}
+	rc.mcpNeedAuth = nil
 	for _, srv := range servers {
 		if !srv.Enabled {
 			continue
@@ -40,7 +42,9 @@ func (a *Agent) registerMCPTools(ctx context.Context, rc *runContext, reg map[st
 		tools, err := a.MCP.Tools(listCtx, rc.userID, rc.userDB, srv)
 		cancel()
 		if err != nil {
-			if !errors.Is(err, mcp.ErrNeedAuth) {
+			if errors.Is(err, mcp.ErrNeedAuth) {
+				rc.mcpNeedAuth = append(rc.mcpNeedAuth, srv.Scope+"/"+srv.Name)
+			} else {
 				log.Printf("mcp: list tools for %s/%s: %v", srv.Scope, srv.Name, err)
 			}
 			continue
@@ -85,6 +89,16 @@ func (a *Agent) callMCPTool(ctx context.Context, rc *runContext, srv mcp.Server,
 	})
 	log.Printf("mcp: call %s/%s.%s (%dms, %d bytes, args: %s)", srv.Scope, srv.Name, tool, ms, len(out), argStr)
 	return out, nil
+}
+
+// mcpNeedAuthNote tells the model about MCP servers whose tools are missing only
+// because the user hasn't signed in, so it can point them at the fix instead of
+// claiming the capability doesn't exist.
+func mcpNeedAuthNote(servers []string) string {
+	return "These MCP servers are registered but the user has not signed in to them yet, so their tools are unavailable: " +
+		strings.Join(servers, ", ") + ". If a request would need one of them, tell the user to sign in: " +
+		"web UI Settings → MCP servers (desktop; the sidebar's MCP tools gear) or the MCP servers page (mobile), then Sign in; " +
+		"TUI `/mcp auth <scope/name>`. Don't mention them otherwise."
 }
 
 func marshalArgs(args map[string]any) string {

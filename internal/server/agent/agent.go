@@ -149,6 +149,9 @@ type runContext struct {
 	// turn (after loadHat) and reused by the system prompt, the catalogue log,
 	// and skill-tool registration.
 	skillInfos []types.SkillInfo
+	// mcpNeedAuth lists "scope/name" of enabled OAuth MCP servers skipped this
+	// turn because the user hasn't signed in (set by registerMCPTools).
+	mcpNeedAuth []string
 	api        string // transport this session arrived over (e.g. "REST")
 	iface      string // interface/medium this session uses (e.g. "TUI")
 	turn       int
@@ -765,6 +768,9 @@ func (a *Agent) composeSystemPrompt(ctx context.Context, rc *runContext) string 
 		for _, i := range rc.skillInfos {
 			prompt += fmt.Sprintf("- %s: %s\n", i.Name, i.Description)
 		}
+	}
+	if len(rc.mcpNeedAuth) > 0 {
+		prompt += "\n\n" + mcpNeedAuthNote(rc.mcpNeedAuth)
 	}
 	return prompt
 }
