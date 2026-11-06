@@ -2,13 +2,43 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api";
   import { toast } from "../lib/stores";
-  import type { CronJob, CreateCronJobRequest } from "../lib/types";
+  import type { CronJob, CreateCronJobRequest, SkillInfo } from "../lib/types";
+  import { PRESETS, WEEKDAYS, buildSpec, parseSpec, defaultSched, describe, type Sched } from "../lib/cronspec";
 
   let jobs = $state<CronJob[]>([]);
   let showAdd = $state(false);
   let editingID = $state<number | null>(null); // non-null: the form saves an existing job
-  const blank = (): CreateCronJobRequest => ({ name: "", spec: "@every 12h", kind: "js", target: "", prompt: "", input: "", notify_channel: "inapp" });
+  const blank = (): CreateCronJobRequest => ({ name: "", spec: buildSpec(defaultSched()), kind: "skill", target: "", prompt: "", input: "", notify_channel: "inapp" });
   let f = $state<CreateCronJobRequest>(blank());
+
+  // Schedule: pick a common period, or tick "Custom" to type a raw cron spec.
+  let sched = $state<Sched>(defaultSched());
+  let custom = $state(false);
+  const cur = $derived(PRESETS.find((p) => p.id === sched.preset)!);
+  $effect(() => {
+    if (!custom) f.spec = buildSpec(sched);
+  });
+  function toggleCustom() {
+    custom = !custom;
+    if (!custom) {
+      // Back to presets: keep the typed spec if it is one, else the last preset.
+      const p = parseSpec(f.spec);
+      if (p) sched = p;
+    }
+  }
+
+  // Skills for the picker (skill jobs); the job's current target stays selectable
+  // even if the skill is gone, so editing never silently changes it.
+  let skills = $state<SkillInfo[]>([]);
+  const skillOptions = $derived(
+    f.target && !skills.some((k) => k.name === f.target) ? [{ name: f.target, description: "(not found)" } as SkillInfo, ...skills] : skills,
+  );
+  const short = (t: string) => (t.length > 70 ? t.slice(0, 69) + "…" : t);
+  function resetForm() {
+    f = blank();
+    sched = defaultSched();
+    custom = false;
+  }
 
   async function load() {
     try {
@@ -17,7 +47,10 @@
       toast((e as Error).message, "error");
     }
   }
-  onMount(load);
+  onMount(() => {
+    load();
+    api.listSkills().then((l) => (skills = l)).catch(() => {});
+  });
   async function add() {
     const wasEdit = editingID !== null;
     try {
@@ -28,7 +61,7 @@
       }
       showAdd = false;
       editingID = null;
-      f = blank();
+      resetForm();
       await load();
       toast(wasEdit ? "saved" : "scheduled");
     } catch (e) {
@@ -38,6 +71,9 @@
   function edit(j: CronJob) {
     editingID = j.id;
     f = { name: j.name, spec: j.spec, kind: j.kind, target: j.target, prompt: j.prompt ?? "", input: j.input ?? "", notify_channel: j.notify_channel || "inapp" };
+    const p = parseSpec(j.spec);
+    custom = !p;
+    sched = p ?? defaultSched();
     showAdd = true;
   }
   async function toggle(j: CronJob) {
@@ -73,19 +109,40 @@
 
 <section class="panel">
   <div class="container col">
-    <div class="row"><h3>Cron</h3><span class="spacer"></span><button class="primary small" onclick={() => { showAdd = editingID !== null ? true : !showAdd; editingID = null; f = blank(); }}>+ Add</button></div>
+    <div class="row"><h3>Cron</h3><span class="spacer"></span><button class="primary small" onclick={() => { showAdd = editingID !== null ? true : !showAdd; editingID = null; resetForm(); }}>+ Add</button></div>
     {#if showAdd}
       <div class="card col">
         <input placeholder="name" bind:value={f.name} />
-        <input placeholder="spec — e.g. @every 12h  or  0 0,12 * * *" bind:value={f.spec} />
-        <select bind:value={f.kind}>
-          <option value="js">js — run a script, no AI</option>
+        <div class="col" style="gap:6px;">
+          {#if custom}
+            <input placeholder="cron spec — e.g. @every 12h  or  0 0,12 * * *" bind:value={f.spec} />
+          {:else}
+            <div class="row" style="gap:6px; flex-wrap:wrap;">
+              <select bind:value={sched.preset} aria-label="Schedule">
+                {#each PRESETS as p (p.id)}<option value={p.id}>{p.label}</option>{/each}
+              </select>
+              {#if cur.dow}
+                <select bind:value={sched.dow} aria-label="Day of week">
+                  {#each WEEKDAYS as d, i}<option value={i}>{d}</option>{/each}
+                </select>
+              {/if}
+              {#if cur.time}<input type="time" bind:value={sched.time} aria-label="Time of day" />{/if}
+            </div>
+          {/if}
+          <label class="muted small row" style="gap:6px;"><input type="checkbox" checked={custom} onchange={toggleCustom} /> Custom (cron expression)</label>
+          <div class="muted small">Times are server time · spec <code>{f.spec}</code></div>
+        </div>
+        <select bind:value={f.kind} onchange={() => (f.target = "")}>
           <option value="skill">skill — run an agent turn</option>
+          <option value="js">js — run a script, no AI</option>
         </select>
         {#if f.kind === "js"}
           <textarea class="mono" rows="6" placeholder="target: skill://… / storage://… or inline JS" bind:value={f.target}></textarea>
         {:else}
-          <input placeholder="target: skill name (optional)" bind:value={f.target} />
+          <select bind:value={f.target} aria-label="Skill">
+            <option value="" disabled>Choose a skill…</option>
+            {#each skillOptions as k (k.name)}<option value={k.name}>{k.name}{k.description ? " — " + short(k.description) : ""}</option>{/each}
+          </select>
         {/if}
         {#if f.kind === "skill"}<input placeholder="prompt for the agent" bind:value={f.prompt} />{/if}
         <input placeholder={'input JSON — e.g. {"name":"fzoeu"}'} bind:value={f.input} />
@@ -103,7 +160,7 @@
       {#each jobs as j}
         <div class="card col">
           <div class="row">
-            <strong>{j.name}</strong><span class="pill">{j.kind}</span><span class="pill">{j.spec}</span>
+            <strong>{j.name}</strong><span class="pill">{j.kind}</span><span class="pill" title={j.spec}>{describe(j.spec)}</span>
             {#if j.notify_channel && j.notify_channel !== "inapp"}<span class="pill">→ {j.notify_channel}</span>{/if}
             <span class="spacer"></span>{#if !j.enabled}<span class="muted small">disabled</span>{/if}
           </div>
