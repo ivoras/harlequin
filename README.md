@@ -19,7 +19,7 @@ Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a fu
   disconnect mid-answer, reconnect from any client, and messages typed while the
   agent is busy queue up. Sessions are auto-titled, exportable, and clearable. Users
   see the same real-time LLM stream/chat when connected with multiple clients.
-- **Layered memory** — personal / shared (org) / project scopes with structured
+- **Layered memory** — personal / shared (org) / project [scopes](SCOPES.md) with structured
   attribute *slots*, automatic conflict detection, and write-time rules that keep
   an attribute from living in two scopes at once. Harlequin data isn't just a big
   bunch of MD files fed into RAG, there's an overlay of key-value pair with structured
@@ -202,26 +202,14 @@ There are three roles, highest privilege first:
 | `user` | Ordinary account: their own sessions and personal (user-scoped) memories only. |
 
 Create further users with `createuser` (`--owner`, `--admin`, or neither for a
-plain user), or — once a server is running — via the API as an owner. Only owners
-and admins may create or delete shared memories; for ordinary users the
-`memory_write` tool refuses `shared` scope and stores the fact as a personal
-memory instead.
+plain user), or — once a server is running — via the API as an owner. What each
+role may write per scope is in [SCOPES.md](SCOPES.md#roles).
 
-#### Scopes (memory & documents)
+#### Scopes
 
-Both memories and the document (RAG) corpus are organised into three scopes:
-
-- **personal** — the user's own data, in `data/users/<id>/user.db`.
-- **shared** — organisation-wide data, in `data/shared.db`.
-- **project** — a project's data, in `data/projects/<id>/project.db`.
-
-By default a user works outside any project, so memory and document search fuse
-**personal + shared**. When the user switches to a project, search fuses
-**project + shared + personal**. Every search result reports which scope it came
-from (a `scope` field of `personal`, `shared`, or `project`), and writes go to
-the scope you choose (personal by default for a user; the project when one is
-active; shared for owners/admins). Projects are isolated workspaces — each has
-its own document namespace and memories.
+Memories, documents and skills live in a **personal**, **shared**
+(organisation) or **project** scope. How they're stored, searched, written and
+overlaid by hats is described in [SCOPES.md](SCOPES.md).
 
 Change a user's password (revokes their existing API tokens):
 
