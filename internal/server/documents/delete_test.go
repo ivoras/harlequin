@@ -1,6 +1,7 @@
 package documents
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -88,5 +89,23 @@ func TestDeleteFromRemovesRowsIndexesAndFile(t *testing.T) {
 	os.Remove(filepath.Join(files, "2-kept.pdf"))
 	if err := s.DeleteFrom(ctx, pdb, files, 9999); err != nil {
 		t.Fatalf("deleting a missing doc: %v", err)
+	}
+
+	// The deleted text must not linger in the database file (freed pages are
+	// zeroed by secure_delete), including the FTS index.
+	const secret = "ZQXJ-recoverable-marker-text"
+	secretDoc := add(secret, "3-secret.pdf")
+	if err := s.DeleteFrom(ctx, pdb, files, secretDoc); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pdb.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "project.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte(secret)) {
+		t.Error("deleted document text is still present in the database file")
 	}
 }

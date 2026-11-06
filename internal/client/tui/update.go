@@ -163,17 +163,29 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ingestStatusMsg:
 		if msg.err != nil {
+			if msg.attach {
+				m.attachPending--
+			}
 			m.setStatusBlock("")
 			m.appendBlock("error", "upload failed: "+msg.err.Error())
 			return m, nil
 		}
 		if msg.st.Finished {
+			if msg.attach {
+				m.attachPending--
+			}
 			if msg.st.Error != "" {
 				m.setStatusBlock(fmt.Sprintf("upload of %q failed", msg.name))
 				m.appendBlock("error", msg.st.Error)
 				return m, nil
 			}
 			d := msg.st.Document
+			if msg.attach {
+				ref := attachRef(msg.scope, msg.projectID, d.ID)
+				m.attachments = append(m.attachments, attachment{ref: ref, name: msg.name})
+				m.setStatusBlock(fmt.Sprintf("attached %q as @%q — it will be listed at the end of your next message", msg.name, ref+"/"+msg.name))
+				return m, nil
+			}
 			m.setStatusBlock(fmt.Sprintf("ingested %q into the %s for RAG: %d chunks (document id=%d)", d.Title, msg.dest, d.Chunks, d.ID))
 			return m, nil
 		}
@@ -616,11 +628,18 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if text == "" {
 				return m, nil
 			}
+			isSlash := strings.HasPrefix(text, "/")
+			if !isSlash && m.attachPending > 0 {
+				// Keep the typed text; the attachments are not ready to list yet.
+				m.appendBlock("info", fmt.Sprintf("waiting for %d attachment upload(s) to finish — press enter again", m.attachPending))
+				return m, nil
+			}
 			m.pushInputHistory(text)
 			m.input.Reset()
-			if strings.HasPrefix(text, "/") {
+			if isSlash {
 				return m, m.handleSlash(text)
 			}
+			text = m.withAttachments(text)
 			// A turn is already running: queue the message instead of starting a
 			// second concurrent stream. It's sent when the current turn finishes.
 			if m.loading {
