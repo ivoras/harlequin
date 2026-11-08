@@ -56,6 +56,10 @@ type Manager struct {
 	sessions map[string]*pooledSession
 	tools    map[string]*toolsCacheEntry
 	pending  map[string]*pendingAuth
+	// One refreshing token source per (user, server): separate sources would
+	// each refresh the same stored token, and a rotating provider rejects the
+	// second use of a spent refresh token (invalid_grant).
+	tokenSrcs map[string]oauth2.TokenSource
 }
 
 type pooledSession struct {
@@ -108,12 +112,13 @@ func NewManager(reg *Registry, cfg ManagerConfig, base http.RoundTripper) *Manag
 		cfg.ClientName = "harlequin"
 	}
 	return &Manager{
-		reg:      reg,
-		cfg:      cfg,
-		base:     base,
-		sessions: map[string]*pooledSession{},
-		tools:    map[string]*toolsCacheEntry{},
-		pending:  map[string]*pendingAuth{},
+		reg:       reg,
+		cfg:       cfg,
+		base:      base,
+		sessions:  map[string]*pooledSession{},
+		tools:     map[string]*toolsCacheEntry{},
+		pending:   map[string]*pendingAuth{},
+		tokenSrcs: map[string]oauth2.TokenSource{},
 	}
 }
 
@@ -159,11 +164,13 @@ func (m *Manager) httpClientFor(ctx context.Context, userID int64, userDB *sql.D
 			return nil, ErrNeedAuth
 		}
 		if tok.RefreshToken == "" && !tok.Expiry.IsZero() && time.Now().After(tok.Expiry) {
-			m.authLost(userID, userDB, srv)
+			m.authLost(userID, userDB, srv, "access token expired and no refresh token was issued")
 			return nil, ErrNeedAuth
 		}
 		hc := &http.Client{Transport: m.base}
-		ts := tokenSource(ctx, hc, m, userID, srv, tok)
+		ts := m.sharedTokenSource(key(userID, srv.Scope, srv.Name), func() oauth2.TokenSource {
+			return tokenSource(ctx, hc, m, userID, srv, tok)
+		})
 		return &http.Client{Transport: &oauth2.Transport{Source: ts, Base: m.base}, Timeout: 60 * time.Second}, nil
 	}
 	return nil, fmt.Errorf("mcp: unknown auth type %q", srv.AuthType)
@@ -286,8 +293,21 @@ func (m *Manager) Status(ctx context.Context, userID int64, userDB *sql.DB, srv 
 	return st
 }
 
+// sharedTokenSource returns the cached source for k, building it on first use.
+func (m *Manager) sharedTokenSource(k string, build func() oauth2.TokenSource) oauth2.TokenSource {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if ts, ok := m.tokenSrcs[k]; ok {
+		return ts
+	}
+	ts := build()
+	m.tokenSrcs[k] = ts
+	return ts
+}
+
 func (m *Manager) drop(k string) {
 	m.mu.Lock()
+	delete(m.tokenSrcs, k)
 	if ps, ok := m.sessions[k]; ok {
 		delete(m.sessions, k)
 		go ps.session.Close()
@@ -312,14 +332,19 @@ func (m *Manager) invalidate(scope, name string) {
 			delete(m.tools, k)
 		}
 	}
+	for k := range m.tokenSrcs { // re-seeded from the stored token on next use
+		if hasSuffix(k, suffix) {
+			delete(m.tokenSrcs, k)
+		}
+	}
 	m.mu.Unlock()
 }
 
 // authLost deletes a user's dead OAuth token, drops their pooled session and
 // reports it. userDB may be nil (refresh inside a pooled session): it is then
 // opened via cfg.WithUser.
-func (m *Manager) authLost(userID int64, userDB *sql.DB, srv Server) {
-	log.Printf("mcp: user %d sign-in to %s/%s lost (refresh impossible); token removed", userID, srv.Scope, srv.Name)
+func (m *Manager) authLost(userID int64, userDB *sql.DB, srv Server, reason string) {
+	log.Printf("mcp: user %d sign-in to %s/%s lost (%s); token removed", userID, srv.Scope, srv.Name, reason)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	m.drop(key(userID, srv.Scope, srv.Name))

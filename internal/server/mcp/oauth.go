@@ -214,7 +214,9 @@ func (p *persistingTokenSource) Token() (*oauth2.Token, error) {
 	tok, err := p.base.Token()
 	if err != nil {
 		if grantLost(err) {
-			p.m.authLost(p.userID, nil, p.srv)
+			p.m.authLost(p.userID, nil, p.srv, "refresh rejected: "+describeTokenErr(err))
+		} else {
+			log.Printf("mcp: token refresh for user %d %s/%s failed: %s", p.userID, p.srv.Scope, p.srv.Name, describeTokenErr(err))
 		}
 		return nil, err
 	}
@@ -232,6 +234,25 @@ func (p *persistingTokenSource) Token() (*oauth2.Token, error) {
 		}
 	}
 	return tok, nil
+}
+
+// describeTokenErr renders a token-endpoint failure for the log: HTTP status,
+// OAuth error code/description, and a short body excerpt (error bodies carry
+// no credentials). Without this a dead sign-in is undiagnosable.
+func describeTokenErr(err error) string {
+	var re *oauth2.RetrieveError
+	if !errors.As(err, &re) {
+		return err.Error()
+	}
+	status := 0
+	if re.Response != nil {
+		status = re.Response.StatusCode
+	}
+	body := strings.Join(strings.Fields(string(re.Body)), " ")
+	if len(body) > 200 {
+		body = body[:200] + "…"
+	}
+	return fmt.Sprintf("HTTP %d, error=%q, description=%q, body=%s", status, re.ErrorCode, re.ErrorDescription, body)
 }
 
 // grantLost reports whether a token-refresh failure means the sign-in is dead
