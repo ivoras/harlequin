@@ -40,18 +40,20 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if s.limited(w, r, "login", req.Email, 10) {
+	if s.loginBlocked(w, r, req.Email) {
 		return
 	}
 	token, user, err := s.Auth.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
+			s.loginFailed(r, req.Email)
 			writeErr(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.loginSucceeded(r, req.Email)
 	_ = s.Storage.WithUser(r.Context(), user.ID, func(udb *sql.DB) error {
 		s.Audit.Log(r.Context(), udb, "login", user.Email, nil)
 		s.ensureOnboarding(r.Context(), udb, user.ID)
@@ -182,7 +184,7 @@ func (s *Server) handleChangeOwnPassword(w http.ResponseWriter, r *http.Request)
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if s.limited(w, r, "login", u.Email, 10) {
+	if s.loginBlocked(w, r, u.Email) {
 		return
 	}
 	if len(req.New) < 8 {
@@ -191,6 +193,7 @@ func (s *Server) handleChangeOwnPassword(w http.ResponseWriter, r *http.Request)
 	}
 	if _, _, err := s.Auth.Login(r.Context(), u.Email, req.Current); err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
+			s.loginFailed(r, u.Email)
 			writeErr(w, http.StatusForbidden, "current password is incorrect")
 			return
 		}
@@ -377,20 +380,21 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, msg)
 		return
 	}
+	who := s.userLabel(r.Context(), id)
 	var out userMailResult
 	if req.Role != "" {
 		if err := s.Auth.SetRole(r.Context(), id, req.Role); err != nil {
 			writeUserErr(w, err)
 			return
 		}
-		s.auditOwner(r, "user_role", fmt.Sprintf("user %d -> %s", id, req.Role), nil)
+		s.auditOwner(r, "user_role", who+" -> "+req.Role, nil)
 	}
 	if req.Password != "" {
 		if err := s.Auth.SetPassword(r.Context(), id, req.Password); err != nil {
 			writeUserErr(w, err)
 			return
 		}
-		s.auditOwner(r, "user_password_reset", fmt.Sprintf("user %d", id), nil)
+		s.auditOwner(r, "user_password_reset", who, nil)
 		if req.SendEmail {
 			if addr, err := s.Auth.EmailByID(r.Context(), id); err != nil {
 				out.mail(err)
@@ -405,6 +409,15 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// userLabel names an account for the audit log: "email (user N)", so the entry
+// stays readable after the account (and its id) is deleted.
+func (s *Server) userLabel(ctx context.Context, id int64) string {
+	if email, err := s.Auth.EmailByID(ctx, id); err == nil {
+		return fmt.Sprintf("%s (user %d)", email, id)
+	}
+	return fmt.Sprintf("user %d", id)
+}
+
 // handleDeleteUser removes an account and its personal data directory (owner
 // only). Owners can't delete themselves here, so a slip can't lock them out.
 func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
@@ -417,7 +430,8 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "you can't delete your own account")
 		return
 	}
-	var projects []types.Project // before the memberships go, to cut live streams
+	who := s.userLabel(r.Context(), id) // before the account is gone
+	var projects []types.Project        // before the memberships go, to cut live streams
 	if s.Projects != nil {
 		projects, _ = s.Projects.List(r.Context(), id)
 	}
@@ -428,7 +442,7 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	for _, p := range projects {
 		s.dropProjectUser(p.ID, id)
 	}
-	s.auditOwner(r, "user_delete", fmt.Sprintf("user %d", id), nil)
+	s.auditOwner(r, "user_delete", who, nil)
 	if err := os.RemoveAll(s.Storage.UserDir(id)); err != nil {
 		log.Printf("users: deleted user %d but not its data directory: %v", id, err)
 	}

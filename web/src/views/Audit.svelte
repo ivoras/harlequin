@@ -73,6 +73,9 @@
 
   const maxOf = (a: { count: number }[]) => a.reduce((m, x) => Math.max(m, x.count), 1);
   const who = (e: AuditEntry) => (e.user_id != null ? (emails[e.user_id] ?? `user ${e.user_id}`) : "");
+  // Entries logged before emails were recorded say "user N": resolve it, or flag it as deleted.
+  const target = (t: string) =>
+    t.replace(/(^|\s)user (\d+)(?!\d)(?! \()/g, (_, sp, id) => `${sp}${emails[+id] ? `${emails[+id]} (user ${id})` : `user ${id} (deleted account)`}`);
   const when = (s: string) => new Date(s).toLocaleString();
   // Fill gaps so the day chart is a continuous timeline.
   const days = $derived.by(() => {
@@ -89,7 +92,7 @@
 
   function exportCsv() {
     const esc = (v: string) => `"${v.replace(/"/g, '""')}"`;
-    const rows = entries.map((e) => [e.created_at, who(e), e.action, e.target, e.detail ?? ""].map(esc).join(","));
+    const rows = entries.map((e) => [e.created_at, who(e), e.action, target(e.target), e.detail ?? ""].map(esc).join(","));
     const blob = new Blob([["time,user,action,target,detail", ...rows].join("\n")], { type: "text/csv" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -165,7 +168,7 @@
           <div class="ev">
             <span class="muted small">{when(e.created_at)}</span>
             <span class="chip">{e.action}</span>
-            <span class="tgt" title={e.target + (e.detail ? "\n" + e.detail : "")}>{e.target}</span>
+            <span class="tgt" title={target(e.target) + (e.detail ? "\n" + e.detail : "")}>{target(e.target)}</span>
             <span class="muted small">{who(e)}</span>
           </div>
         {/each}
