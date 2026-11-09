@@ -125,6 +125,8 @@ type EmitFunc func(types.StreamEvent)
 // project.Store); the search tools use it for the all_projects option.
 type ProjectLister interface {
 	List(ctx context.Context, userID int64) ([]types.Project, error)
+	// Create makes a project with createdBy as its first member (create_project).
+	Create(ctx context.Context, name string, createdBy int64) (*types.Project, error)
 }
 
 type runContext struct {

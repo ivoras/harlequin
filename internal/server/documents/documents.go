@@ -296,6 +296,14 @@ func (s *Store) IngestIntoProgress(ctx context.Context, db *sql.DB, req types.Cr
 	if mime == "" {
 		mime = "text/plain"
 	}
+	pl := PhaseLogFrom(ctx)
+	// Chunk + embed first, with no transaction open: embedding is slow network
+	// work, and holding SQLite's single write lock across it starves every other
+	// writer on this database (usage records, memories, parallel uploads).
+	chunks, err := s.prepareChunks(ctx, req.Content, req.PageStarts, progress)
+	if err != nil {
+		return nil, err
+	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -309,13 +317,10 @@ func (s *Store) IngestIntoProgress(ctx context.Context, db *sql.DB, req types.Cr
 		return nil, err
 	}
 	docID, _ := res.LastInsertId()
-
-	pl := PhaseLogFrom(ctx)
-
-	n, err := s.indexChunks(ctx, tx, docID, req.Content, req.PageStarts, progress)
-	if err != nil {
+	if err := writeChunks(ctx, tx, docID, chunks); err != nil {
 		return nil, err
 	}
+	n := len(chunks)
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
@@ -323,79 +328,116 @@ func (s *Store) IngestIntoProgress(ctx context.Context, db *sql.DB, req types.Cr
 	return &types.Document{ID: docID, Title: req.Title, URI: req.URI, Mime: mime, CreatedBy: userID, Chunks: n, OriginalName: req.OriginalName}, nil
 }
 
-// indexChunks chunks content, embeds the chunks and writes them (rows, FTS and
-// vector index) under docID within tx. It returns the number of chunks written.
-func (s *Store) indexChunks(ctx context.Context, tx *sql.Tx, docID int64, content string, pageStarts []int, progress func(done, total int)) (int, error) {
+// preparedChunk is one chunk ready to insert: text, page and serialized vector.
+type preparedChunk struct {
+	text string
+	page int
+	vec  []byte // nil when no embedding was produced
+}
+
+// prepareChunks chunks content and embeds the chunks, entirely in memory (no
+// database access), so the caller can then insert the result in one short
+// transaction via writeChunks.
+func (s *Store) prepareChunks(ctx context.Context, content string, pageStarts []int, progress func(done, total int)) ([]preparedChunk, error) {
 	pl := PhaseLogFrom(ctx)
 	chunks, err := s.chunkContent(ctx, content)
 	if err != nil {
-		return 0, fmt.Errorf("chunk document: %w", err)
+		return nil, fmt.Errorf("chunk document: %w", err)
 	}
-	if len(chunks) > 0 {
-		texts := make([]string, len(chunks))
-		for i, c := range chunks {
-			texts[i] = c.text
-		}
-		// Embed in sub-batches so a progress callback can report per-batch
-		// (one request for everything would be opaque for minutes on big docs).
-		// Batches run up to embedPar at a time and land in their own slots, so
-		// the result order is the chunk order whatever order they finish in.
-		const embedBatch = 32
-		nb := (len(texts) + embedBatch - 1) / embedBatch
-		results := make([][][]float32, nb)
-		var mu sync.Mutex
-		doneChunks := 0
-		g, gctx := errgroup.WithContext(ctx)
-		g.SetLimit(max(s.embedPar, 1))
-		for b := 0; b < nb; b++ {
-			start := b * embedBatch
-			end := min(start+embedBatch, len(texts))
-			g.Go(func() error {
-				bv, err := s.embedder.Embed(gctx, texts[start:end])
-				if err != nil {
-					return fmt.Errorf("embed document: %w", err)
-				}
-				results[b] = bv
-				mu.Lock()
-				defer mu.Unlock()
-				doneChunks += end - start // under the lock, so progress never goes backwards
-				if progress != nil {
-					progress(doneChunks, len(texts))
-				}
-				return nil
-			})
-		}
-		if err := g.Wait(); err != nil {
-			return 0, err
-		}
-		vecs := make([][]float32, 0, len(texts))
-		for _, bv := range results {
-			vecs = append(vecs, bv...)
-		}
-		pl.Phase("embed-chunks", fmt.Sprintf("%d chunks", len(texts)))
-		for i, c := range chunks {
-			page := pageFor(c.start, pageStarts) // 0 when the source has no pages
-			r, err := tx.ExecContext(ctx,
-				`INSERT INTO doc_chunks(document_id, ord, content, page) VALUES (?, ?, ?, ?)`, docID, i, c.text, page)
+	if len(chunks) == 0 {
+		return nil, nil
+	}
+	texts := make([]string, len(chunks))
+	for i, c := range chunks {
+		texts[i] = c.text
+	}
+	// Embed in sub-batches so a progress callback can report per-batch
+	// (one request for everything would be opaque for minutes on big docs).
+	// Batches run up to embedPar at a time and land in their own slots, so
+	// the result order is the chunk order whatever order they finish in.
+	const embedBatch = 32
+	nb := (len(texts) + embedBatch - 1) / embedBatch
+	results := make([][][]float32, nb)
+	var mu sync.Mutex
+	doneChunks := 0
+	g, gctx := errgroup.WithContext(ctx)
+	g.SetLimit(max(s.embedPar, 1))
+	for b := 0; b < nb; b++ {
+		start := b * embedBatch
+		end := min(start+embedBatch, len(texts))
+		g.Go(func() error {
+			bv, err := s.embedder.Embed(gctx, texts[start:end])
 			if err != nil {
-				return 0, err
+				return fmt.Errorf("embed document: %w", err)
 			}
-			chunkID, _ := r.LastInsertId()
-			if _, err := tx.ExecContext(ctx, `INSERT INTO doc_chunks_fts(rowid, content) VALUES (?, ?)`, chunkID, c.text); err != nil {
-				return 0, err
+			results[b] = bv
+			mu.Lock()
+			defer mu.Unlock()
+			doneChunks += end - start // under the lock, so progress never goes backwards
+			if progress != nil {
+				progress(doneChunks, len(texts))
 			}
-			if i < len(vecs) {
-				blob, err := sqlite_vec.SerializeFloat32(vecs[i])
-				if err != nil {
-					return 0, err
-				}
-				if _, err := tx.ExecContext(ctx, `INSERT INTO doc_chunks_vec(rowid, embedding) VALUES (?, ?)`, chunkID, blob); err != nil {
-					return 0, err
-				}
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	vecs := make([][]float32, 0, len(texts))
+	for _, bv := range results {
+		vecs = append(vecs, bv...)
+	}
+	pl.Phase("embed-chunks", fmt.Sprintf("%d chunks", len(texts)))
+	out := make([]preparedChunk, len(chunks))
+	for i, c := range chunks {
+		out[i] = preparedChunk{text: c.text, page: pageFor(c.start, pageStarts)} // page 0 when the source has none
+		if i < len(vecs) {
+			if out[i].vec, err = sqlite_vec.SerializeFloat32(vecs[i]); err != nil {
+				return nil, err
 			}
 		}
 	}
-	return len(chunks), nil
+	return out, nil
+}
+
+// writeChunks inserts prepared chunks (rows, FTS and vector index) under docID
+// within tx. Pure SQL, no network or model calls: this is the only part of an
+// ingest that runs while the write lock is held.
+func writeChunks(ctx context.Context, tx *sql.Tx, docID int64, chunks []preparedChunk) error {
+	if len(chunks) == 0 {
+		return nil
+	}
+	ins, err := tx.PrepareContext(ctx, `INSERT INTO doc_chunks(document_id, ord, content, page) VALUES (?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer ins.Close()
+	fts, err := tx.PrepareContext(ctx, `INSERT INTO doc_chunks_fts(rowid, content) VALUES (?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer fts.Close()
+	vec, err := tx.PrepareContext(ctx, `INSERT INTO doc_chunks_vec(rowid, embedding) VALUES (?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer vec.Close()
+	for i, c := range chunks {
+		r, err := ins.ExecContext(ctx, docID, i, c.text, c.page)
+		if err != nil {
+			return err
+		}
+		chunkID, _ := r.LastInsertId()
+		if _, err := fts.ExecContext(ctx, chunkID, c.text); err != nil {
+			return err
+		}
+		if c.vec != nil {
+			if _, err := vec.ExecContext(ctx, chunkID, c.vec); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // ReplaceContent re-chunks and re-indexes an existing document with new text,
@@ -404,12 +446,22 @@ func (s *Store) indexChunks(ctx context.Context, tx *sql.Tx, docID int64, conten
 // source has — change.
 func (s *Store) ReplaceContent(ctx context.Context, db *sql.DB, docID int64, content string) (int, error) {
 	content = StripSoftHyphens(content)
+	// Embed before taking the write lock (see IngestIntoProgress); the existence
+	// check up front avoids embedding for a missing document, and is repeated in
+	// the transaction in case it was deleted meanwhile.
+	var exists int
+	if err := db.QueryRowContext(ctx, `SELECT 1 FROM documents WHERE id = ?`, docID).Scan(&exists); err != nil {
+		return 0, fmt.Errorf("document %d: %w", docID, err)
+	}
+	chunks, err := s.prepareChunks(ctx, content, nil, nil)
+	if err != nil {
+		return 0, err
+	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
-	var exists int
 	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM documents WHERE id = ?`, docID).Scan(&exists); err != nil {
 		return 0, fmt.Errorf("document %d: %w", docID, err)
 	}
@@ -438,14 +490,13 @@ func (s *Store) ReplaceContent(ctx context.Context, db *sql.DB, docID int64, con
 	if _, err := tx.ExecContext(ctx, `DELETE FROM doc_chunks WHERE document_id = ?`, docID); err != nil {
 		return 0, err
 	}
-	n, err := s.indexChunks(ctx, tx, docID, content, nil, nil)
-	if err != nil {
+	if err := writeChunks(ctx, tx, docID, chunks); err != nil {
 		return 0, err
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, err
 	}
-	return n, nil
+	return len(chunks), nil
 }
 
 // ReindexChunkVectors re-embeds every chunk's content and rewrites its

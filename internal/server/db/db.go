@@ -66,6 +66,10 @@ func openConn(path string) (*sql.DB, error) {
 	var err2 error
 	for attempt := range 20 {
 		if err2 = sqlDB.Ping(); err2 == nil {
+			if err := requireWAL(sqlDB, path); err != nil {
+				sqlDB.Close()
+				return nil, err
+			}
 			return sqlDB, nil
 		}
 		if !strings.Contains(err2.Error(), "locked") && !strings.Contains(err2.Error(), "busy") {
@@ -75,6 +79,24 @@ func openConn(path string) (*sql.DB, error) {
 	}
 	sqlDB.Close()
 	return nil, fmt.Errorf("ping sqlite: %w", err2)
+}
+
+// requireWAL fails when the database did not enter WAL mode. SQLite silently
+// keeps the old journal mode if the switch is refused (e.g. a filesystem without
+// shared memory), and the server relies on WAL for concurrent readers alongside
+// a writer. In-memory databases cannot use WAL and are exempt.
+func requireWAL(sqlDB *sql.DB, path string) error {
+	if path == ":memory:" || strings.HasPrefix(path, "file::memory:") {
+		return nil
+	}
+	var mode string
+	if err := sqlDB.QueryRow("PRAGMA journal_mode").Scan(&mode); err != nil {
+		return fmt.Errorf("check journal mode: %w", err)
+	}
+	if !strings.EqualFold(mode, "wal") {
+		return fmt.Errorf("sqlite %s: journal_mode is %q, want wal", path, mode)
+	}
+	return nil
 }
 
 // Open opens (and initializes) the database at path for the given role, with

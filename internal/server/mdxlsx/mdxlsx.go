@@ -148,11 +148,26 @@ func isSeparator(cells []string) bool {
 	return len(cells) > 0
 }
 
-// Convert parses md and builds the workbook. It fails if there is no table.
+// Convert parses md and builds the workbook. It fails if there is no table, or
+// if a table has a header row but no data rows.
 func Convert(md string) ([]byte, Stats, error) {
 	sheets, st := Parse(md)
 	if st.Tables == 0 {
 		return nil, st, errors.New("no Markdown table found (rows must start with |)")
+	}
+	// A table is a header row plus data. A header with nothing under it is almost
+	// always a truncated or half-built call; refuse it rather than save a workbook
+	// that looks done but is empty.
+	for i, sh := range sheets {
+		for j, tb := range sh.Tables {
+			if len(tb) < 2 {
+				name := sh.Name
+				if name == "" {
+					name = fmt.Sprintf("Sheet%d", i+1)
+				}
+				return nil, st, fmt.Errorf("table %d on sheet %q has a header row but no data rows (is the content cut off?); add the data rows below the header", j+1, name)
+			}
+		}
 	}
 	data, err := Write(sheets)
 	return data, st, err

@@ -39,7 +39,7 @@ Rules — follow them exactly:
    heading: other text (paragraphs, bullet lists) is left out of the workbook.
 2. **Tables.** Every row is one line starting and ending with `|`, with the same
    number of cells in every row. The **first row is the header** (it is made
-   bold). The `|---|---|` line after it is optional. Separate tables with a blank
+   bold). The `|---|---|` line after it is optional. Every table needs at least one data row under the header; a header-only table is rejected. Separate tables with a blank
    line; tables on the same sheet are placed one under another with an empty row
    between them.
 3. **Numbers.** Write a number plainly so it becomes a real numeric cell:

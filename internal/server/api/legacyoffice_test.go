@@ -24,7 +24,7 @@ func (f *fakeConv) Convert(_ context.Context, name string, _ []byte) (string, er
 }
 
 func TestLegacyOfficeUploads(t *testing.T) {
-	t.Setenv("PATH", "") // no LibreOffice: exercise the direct-to-converter path
+	t.Setenv("PATH", "")                                          // no LibreOffice: exercise the direct-to-converter path
 	ole := []byte{0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1} // binary, not valid UTF-8 text
 	for _, name := range []string{"a.doc", "b.XLS", "c.ppt", "d.ods"} {
 		in := uploadInput{data: ole, filename: name, title: name, scope: "personal"}

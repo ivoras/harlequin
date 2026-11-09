@@ -57,10 +57,16 @@ func TestCreateExcelTool(t *testing.T) {
 		t.Fatalf("searchable text: %q", text)
 	}
 
+	// A header with no data rows (e.g. a call cut off mid-table) is refused, not saved.
+	for _, md := range []string{"| a | b", "| a | b |\n", "| a | b |\n| --- | --- |\n", "# S\n| a |\n| 1 |\n\n# T\n| x |\n"} {
+		if out, _ := create(ctx, rc, map[string]any{"title": "x", "content": md}); !strings.Contains(out, "no data rows") {
+			t.Errorf("content %q should be rejected for having no data rows, got %q", md, out)
+		}
+	}
 	if out, _ := create(ctx, rc, map[string]any{"title": "x", "content": "no tables here"}); !strings.HasPrefix(out, "error:") {
 		t.Fatalf("expected an error without tables, got %q", out)
 	}
-	if out, _ := create(ctx, rc, map[string]any{"title": "x", "content": "| a |\n", "scope": "shared"}); !strings.Contains(out, "owner or admin") {
+	if out, _ := create(ctx, rc, map[string]any{"title": "x", "content": "| a |\n| 1 |\n", "scope": "shared"}); !strings.Contains(out, "owner or admin") {
 		t.Fatalf("shared scope should be refused for a plain user, got %q", out)
 	}
 }

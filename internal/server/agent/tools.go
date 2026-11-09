@@ -718,6 +718,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 
 		reg["edit_doc"] = a.editDocEntry()
 		reg["create_excel"] = a.createExcelEntry()
+		a.registerProjectTools(reg, rc)
 
 		reg["delete_doc"] = toolEntry{
 			def: fnTool("delete_doc", `Permanently delete a document from the corpus, given its scoped id (u.N / s.N / p.N — resolve it with list_documents first). This removes the document and all its chunks; it cannot be undone, and search_docs/align_docs will no longer find it. Only delete when the user has clearly asked to; if you are unsure which document they mean, use list_documents and confirm with ask_user first. Personal (u.N) documents are always yours to delete; a project (p.N) document is deleted from the current project's corpus; a shared (s.N) document may be deleted by owners/admins only.`, map[string]any{

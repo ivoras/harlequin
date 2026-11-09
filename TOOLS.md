@@ -280,11 +280,31 @@ are stacked with an empty row between them, plain numbers become numeric cells
 (keeping their decimals on display), `=…` becomes a formula (computed when
 Excel opens the file), anything else is text. Docling's Markdown for an uploaded
 `.xlsx` converts back cell for cell, so a spreadsheet can be edited via `read_doc`
-→ change → `create_excel`. Pass `content` inline or `source` (a sandbox file).
+→ change → `create_excel`. Pass `content` inline or `source` (a sandbox file). A table must have data rows under its header: a header-only table (typically a call cut off mid-table) is rejected instead of saved as an empty workbook.
 Saved like `save_doc` (project in a project session, else personal; shared for
 owners/admins), with the Markdown as its searchable text. The `create-excel`
 skill teaches the model the format. Converter: `internal/server/mdxlsx`.
 **Example:** `create_excel({"title": "Sales 2026", "source": "tmp://sales.md"})`
+
+### `create_project` (owner/admin only)
+**Why:** let an owner or admin have the assistant set up a workspace ("make a project
+called Acme leasing"). Creates a project with the user as its first member, refuses an
+empty or duplicate name (matched case-insensitively among the user's projects), and writes a
+`project_create` audit entry. The session does not switch into the new project; the user
+selects it in the project picker, and invitations stay in the Projects screen. Ordinary
+users do not get the tool (they create projects in the web/TUI UI).
+**Example:** `create_project({"name": "Acme leasing"})`
+
+### `move_doc` (owner/admin only)
+**Why:** file documents into the right project from chat. Takes a document the user can
+reach — personal (`u.N`), this session's project (`p.N`) or another project of theirs
+(`p<id>.N`); shared (`s.N`) documents are refused — and a target project (`3`, `p3` or its
+exact name). Same engine as the Files menu's Move/Copy to project: text, chunks, search
+index and the original file are copied (no re-embedding) under a new id; `mode: "move"`
+(default) then deletes the original, copying first so a failure leaves a duplicate, never a
+loss. Old references to a moved document stop working. One document per call. Both sides
+get change events, and a `document_move`/`document_copy` audit entry is written.
+**Example:** `move_doc({"doc": "u.9", "to_project": "Acme leasing"})`
 
 ### `delete_doc`
 **Why:** permanently delete a document and all its chunks when the user has
