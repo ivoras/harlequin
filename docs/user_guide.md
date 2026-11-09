@@ -75,9 +75,9 @@ They resolve across scopes: project (when one is active), then shared
 | `/memory resolve <id>` | Mark a conflict flag as resolved. |
 | `/docs search <query>` | Search documents (personal + shared, + project if active). |
 | `/docs list` | List documents across scopes, each shown under its reference id (`u.2`, `s.5`, `p3.19`) — the same form `/docs view`, `/docs del`, and chat references accept. Project ids are qualified (`p<projectID>.<id>`) so a document stays unambiguous outside the context of "the active project". |
-| `/docs add [scope] <path>` | Upload a `.txt`/`.md`/`.html`/`.pdf`/`.docx`/`.pptx`/`.xlsx`/`.odt`/`.rtf`/`.epub`/images (`.png`/`.jpg`/`.gif`/`.webp`) for retrieval (same as `/upload`). |
+| `/docs add [scope] <path>` | Upload a `.txt`/`.md`/`.html`/`.pdf`/`.docx`/`.doc`/`.pptx`/`.ppt`/`.xlsx`/`.xls`/`.ods`/`.odt`/`.rtf`/`.epub`/images (`.png`/`.jpg`/`.gif`/`.webp`) for retrieval (same as `/upload`). |
 | `/docs del <ref>` | Delete a document by its reference (e.g. `/docs del p3.19`; the long form `<scope> <id>` still works). |
-| `/upload [scope] <path>` | Upload a document (`.txt`/`.md`/`.html`/`.pdf`/`.docx`/`.pptx`/`.xlsx`/`.odt`/`.rtf`/`.epub`/images (`.png`/`.jpg`/`.gif`/`.webp`)) into `personal`, `shared`, or `project` scope (defaults to the active project, else personal). Ingestion runs server-side with a live status line (stage, percent, elapsed) — in the browser too. |
+| `/upload [scope] <path>` | Upload a document (`.txt`/`.md`/`.html`/`.pdf`/`.docx`/`.doc`/`.pptx`/`.ppt`/`.xlsx`/`.xls`/`.ods`/`.odt`/`.rtf`/`.epub`/images (`.png`/`.jpg`/`.gif`/`.webp`)) into `personal`, `shared`, or `project` scope (defaults to the active project, else personal). Ingestion runs server-side with a live status line (stage, percent, elapsed) — in the browser too. |
 | `/attach <path>` | Upload a document or image (same formats as `/upload`, to the active project else your personal files) and attach it to your **next message**: once ingested it is listed at the end of that message as `@"u.18/report.pdf"`, and the agent reads it (images are shown to vision models directly). Repeat for several files; `/attach` alone lists what is pending, `/attach clear` drops it. Sending waits for uploads to finish. |
 
 In the browser, the Memory view lets you edit a memory's content and (for

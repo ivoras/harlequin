@@ -1077,7 +1077,7 @@ func attachRef(scope string, projectID, docID int64) string {
 }
 
 func (m *Model) upload(args []string, attach bool) tea.Cmd {
-	usage := "usage: /upload [personal|shared|project] <path>  (defaults to the active project, else personal; formats: .txt .md .html .pdf .docx .pptx .xlsx .odt .rtf .epub .png .jpg .gif .webp)"
+	usage := "usage: /upload [personal|shared|project] <path>  (defaults to the active project, else personal; formats: .txt .md .html .pdf .docx .doc .pptx .ppt .xlsx .xls .ods .odt .rtf .epub .png .jpg .gif .webp)"
 	if len(args) == 0 {
 		return func() tea.Msg { return infoMsg{usage} }
 	}
@@ -1100,10 +1100,10 @@ func (m *Model) upload(args []string, attach bool) tea.Cmd {
 	}
 	path := strings.TrimSpace(strings.Join(rest, " "))
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".txt", ".md", ".markdown", ".html", ".htm", ".pdf", ".docx", ".pptx", ".xlsx", ".odt", ".rtf", ".epub", ".png", ".jpg", ".jpeg", ".gif", ".webp":
+	case ".txt", ".md", ".markdown", ".html", ".htm", ".pdf", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls", ".ods", ".odt", ".rtf", ".epub", ".png", ".jpg", ".jpeg", ".gif", ".webp":
 	default:
 		return func() tea.Msg {
-			return errMsg{fmt.Errorf("unsupported format %q (use .txt, .md, .html, .pdf, .docx, .pptx, .xlsx, .odt, .rtf, .epub, or an image)", filepath.Ext(path))}
+			return errMsg{fmt.Errorf("unsupported format %q (use .txt, .md, .html, .pdf, .docx, .doc, .pptx, .ppt, .xlsx, .xls, .ods, .odt, .rtf, .epub, or an image)", filepath.Ext(path))}
 		}
 	}
 	var projectID int64

@@ -1407,6 +1407,14 @@ func (s *Server) documentFromUpload(w http.ResponseWriter, r *http.Request) (typ
 // extractDocument converts an upload's bytes to an ingest request (Docling /
 // PDFium-wasm / docxextract / raw text). A non-empty msg is a client-facing
 // error with its HTTP status.
+// legacyOfficeMime lists the upload types only the external converter can read.
+var legacyOfficeMime = map[string]string{
+	".doc": "application/msword",
+	".xls": "application/vnd.ms-excel",
+	".ppt": "application/vnd.ms-powerpoint",
+	".ods": "application/vnd.oasis.opendocument.spreadsheet",
+}
+
 func (s *Server) extractDocument(ctx context.Context, in uploadInput) (req types.CreateDocumentRequest, status int, msg string) {
 	data, title, scope, projectID := in.data, in.title, in.scope, in.projectID
 	header := struct{ Filename string }{in.filename}
@@ -1499,6 +1507,21 @@ func (s *Server) extractDocument(ctx context.Context, in uploadInput) (req types
 			text = "Image: " + header.Filename
 		}
 		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: imageMime(header.Filename), Content: text}
+	case legacyOfficeMime[strings.ToLower(filepath.Ext(header.Filename))] != "":
+		// Legacy binary / OpenDocument spreadsheet formats have no pure-Go reader:
+		// they need the configured converter (docling/xberg).
+		if s.Converter == nil {
+			return req, http.StatusUnsupportedMediaType, "." + strings.TrimPrefix(strings.ToLower(filepath.Ext(header.Filename)), ".") +
+				" files need the document converter (docling), which is not configured on this server; save the file as .docx, .xlsx or .pptx and upload that"
+		}
+		md, err := s.Converter.Convert(ctx, header.Filename, data)
+		if err != nil {
+			return req, http.StatusUnprocessableEntity, "conversion failed: " + err.Error()
+		}
+		if strings.TrimSpace(md) == "" {
+			return req, http.StatusUnprocessableEntity, "no extractable text in the file"
+		}
+		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: legacyOfficeMime[strings.ToLower(filepath.Ext(header.Filename))], Content: md}
 	case mdconv.Mime(header.Filename) != "":
 		// HTML/PPTX/XLSX/ODT/EPUB/RTF -> Markdown via the configured converter
 		// (docling/xberg: better layout and tables); the pure-Go mdconv takes
@@ -1521,7 +1544,7 @@ func (s *Server) extractDocument(ctx context.Context, in uploadInput) (req types
 	case utf8.Valid(data):
 		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: "text/plain", Content: string(data)}
 	default:
-		return req, http.StatusUnsupportedMediaType, "unsupported file type (only PDF, DOCX and text are supported)"
+		return req, http.StatusUnsupportedMediaType, "unsupported file type (supported: PDF, Word, Excel, PowerPoint, OpenDocument, RTF, EPUB, HTML, images and text)"
 	}
 	req.Scope = scope
 	req.ProjectID = projectID

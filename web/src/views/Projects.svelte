@@ -220,7 +220,7 @@
 
       <div class="card col">
         <div class="row" style="align-items:center; gap:8px;">
-          <input type="file" accept=".pdf,.docx,.pptx,.xlsx,.odt,.rtf,.epub,.html,.htm,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" bind:this={fileEl} onchange={upload} disabled={uploading} />
+          <input type="file" accept=".pdf,.docx,.doc,.pptx,.ppt,.xlsx,.xls,.ods,.odt,.rtf,.epub,.html,.htm,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" bind:this={fileEl} onchange={upload} disabled={uploading} />
           {#if uploading}<span class="muted small"><span class="spin">⟳</span> {uploadLabel}</span>{/if}
         </div>
         <div class="muted small">Upload a PDF or text file into this project's corpus.</div>
