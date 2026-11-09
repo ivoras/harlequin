@@ -28,6 +28,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/imgshrink"
 	"github.com/ivoras/harlequin/internal/server/mdconv"
 	"github.com/ivoras/harlequin/internal/server/memory"
+	"github.com/ivoras/harlequin/internal/server/officeconv"
 	"github.com/ivoras/harlequin/internal/server/session"
 	"github.com/ivoras/harlequin/internal/server/sessionhub"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
@@ -1418,6 +1419,26 @@ var legacyOfficeMime = map[string]string{
 func (s *Server) extractDocument(ctx context.Context, in uploadInput) (req types.CreateDocumentRequest, status int, msg string) {
 	data, title, scope, projectID := in.data, in.title, in.scope, in.projectID
 	header := struct{ Filename string }{in.filename}
+
+	// Legacy Office/ODS files: upgrade to OOXML with host LibreOffice, then take
+	// the normal DOCX/XLSX/PPTX path. Without soffice they go to the converter
+	// directly (below), which itself needs LibreOffice for most of them.
+	if mime := legacyOfficeMime[strings.ToLower(filepath.Ext(in.filename))]; mime != "" {
+		nd, nn, err := officeconv.ToModern(ctx, in.filename, in.data)
+		switch {
+		case err == nil:
+			up := in
+			up.data, up.filename = nd, nn
+			req, status, msg = s.extractDocument(ctx, up)
+			if status == 0 {
+				req.URI, req.OriginalName, req.Mime = "upload://"+in.filename, in.filename, mime
+			}
+			return req, status, msg
+		case !errors.Is(err, officeconv.ErrUnavailable):
+			log.Printf("documents: LibreOffice conversion of %q failed: %v", in.filename, err)
+			return req, http.StatusUnprocessableEntity, "conversion failed: " + err.Error()
+		}
+	}
 
 	const docxMime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 	lowName := strings.ToLower(header.Filename)

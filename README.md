@@ -496,6 +496,22 @@ Large or scanned PDFs can take a while to convert on CPU — Harlequin uses docl
 async conversion endpoint and polls for completion, so slow conversions don't block the
 request beyond the configured `timeout`.
 
+### Legacy Office files (.doc, .xls, .ppt, .ods)
+
+docling-serve needs LibreOffice to read these, and its container does not include it, so
+Harlequin converts them itself: if `soffice` is on the server's `PATH`, an uploaded
+`.doc`/`.xls`/`.ppt`/`.ods` is upgraded to `.docx`/`.xlsx`/`.pptx` by headless LibreOffice
+and then ingested like any modern Office file (the original is kept as the downloadable
+file). On Debian/Ubuntu:
+
+```sh
+sudo apt-get install --no-install-recommends libreoffice-core libreoffice-writer libreoffice-calc libreoffice-impress
+```
+
+Without LibreOffice these uploads are sent to the converter as-is, which fails unless it has
+LibreOffice itself. Spreadsheets (`.xlsx`, `.xls`, `.ods`) are converted the same way: one
+`## Sheet i of n: name` heading per sheet followed by its tables.
+
 ## xberg, an alternative document converter
 
 [xberg](https://github.com/xberg-io/xberg) fills the same role as Docling — layout analysis,

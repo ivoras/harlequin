@@ -28,7 +28,7 @@ func TestConvertRequestsCompactTables(t *testing.T) {
 			}
 		}))
 		c := New(srv.URL, 5*time.Second, fast)
-		if _, err := c.Convert(context.Background(), "x.xlsx", []byte("data")); err != nil {
+		if _, err := c.Convert(context.Background(), "x.docx", []byte("data")); err != nil {
 			t.Fatalf("fast=%v: %v", fast, err)
 		}
 		srv.Close()

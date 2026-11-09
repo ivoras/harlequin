@@ -73,3 +73,35 @@ func TestFlattenCycleGuard(t *testing.T) {
 		t.Fatalf("cycle should not duplicate or hang: %q", text)
 	}
 }
+
+func TestRenderWorkbookKeepsSheetNames(t *testing.T) {
+	const wb = `{"body": {"children": [{"$ref": "#/groups/0"}, {"$ref": "#/groups/1"}, {"$ref": "#/groups/2"}]},
+	  "groups": [
+	    {"name": "Sales", "label": "sheet", "children": [{"$ref": "#/tables/0"}, {"$ref": "#/tables/1"}]},
+	    {"name": "Notes", "label": "sheet", "children": [{"$ref": "#/tables/2"}]},
+	    {"name": "Blank", "label": "sheet", "children": []}
+	  ],
+	  "tables": [
+	    {"data": {"grid": [[{"text":"Region"},{"text":"Q1"}],[{"text":"North"},{"text":"10"}]]}},
+	    {"data": {"grid": [[{"text":"Total"},{"text":"10"}]]}},
+	    {"data": {"grid": [[{"text":"a|b"},{"text":"x\ny"}]]}}
+	  ]}`
+	got, err := renderWorkbook([]byte(wb))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"## Sheet 1 of 3: Sales\n\n| Region | Q1 |\n| --- | --- |\n| North | 10 |\n\n| Total | 10 |",
+		"## Sheet 2 of 3: Notes\n\n| a\\|b | x y |",
+		"## Sheet 3 of 3: Blank\n\n_(empty)_",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+	// A single-sheet workbook gets a plain heading.
+	one, _ := renderWorkbook([]byte(`{"body":{"children":[{"$ref":"#/groups/0"}]},"groups":[{"name":"Only","label":"sheet","children":[{"$ref":"#/tables/0"}]}],"tables":[{"data":{"grid":[[{"text":"h"}]]}}]}`))
+	if !strings.HasPrefix(one, "## Only\n\n| h |") {
+		t.Errorf("single sheet: %q", one)
+	}
+}

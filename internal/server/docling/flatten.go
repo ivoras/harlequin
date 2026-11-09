@@ -28,6 +28,8 @@ type doclingRef struct {
 
 type doclingNode struct {
 	Children []doclingRef `json:"children"`
+	Name     string       `json:"name"`  // groups: the sheet name for spreadsheets
+	Label    string       `json:"label"` // groups: "sheet" for a spreadsheet tab
 }
 
 type doclingProv struct {

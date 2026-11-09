@@ -76,6 +76,30 @@ type convertResponse struct {
 	Errors []any  `json:"errors"`
 }
 
+// describeErrors renders docling-serve's error list ({component_type,
+// module_name, error_message} objects) as a single line for logs and API errors.
+func describeErrors(errs []any) string {
+	var parts []string
+	for _, e := range errs {
+		if m, ok := e.(map[string]any); ok {
+			if msg, _ := m["error_message"].(string); strings.TrimSpace(msg) != "" {
+				parts = append(parts, strings.Join(strings.Fields(msg), " "))
+				continue
+			}
+		}
+		b, _ := json.Marshal(e)
+		parts = append(parts, string(b))
+	}
+	if len(parts) == 0 {
+		return "no error details"
+	}
+	out := strings.Join(parts, "; ")
+	if len(out) > 400 {
+		out = out[:400] + "…"
+	}
+	return out
+}
+
 // taskStatus is docling-serve's async task envelope.
 type taskStatus struct {
 	TaskID     string `json:"task_id"`
@@ -149,7 +173,7 @@ func (c *Client) convert(ctx context.Context, filename string, data []byte, form
 		return nil, err
 	}
 	if cr.Status != "success" {
-		return nil, fmt.Errorf("docling: conversion status %q (%d errors)", cr.Status, len(cr.Errors))
+		return nil, fmt.Errorf("docling: conversion status %q: %s", cr.Status, describeErrors(cr.Errors))
 	}
 	return &cr, nil
 }
@@ -178,6 +202,9 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body io.Reader
 // Convert sends one file and returns its Markdown rendering (no page mapping —
 // use ConvertPaged for paged sources like PDF).
 func (c *Client) Convert(ctx context.Context, filename string, data []byte) (string, error) {
+	if isSpreadsheet(filename) {
+		return c.convertSpreadsheet(ctx, filename, data)
+	}
 	cr, err := c.convert(ctx, filename, data, "md")
 	if err != nil {
 		return "", err
