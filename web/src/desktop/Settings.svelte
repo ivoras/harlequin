@@ -7,6 +7,7 @@
   import Mcp from "../views/Mcp.svelte";
   import Config from "../views/Config.svelte";
   import Usage from "../views/Usage.svelte";
+  import AllProjects from "../views/AllProjects.svelte";
   import Audit from "../views/Audit.svelte";
   import Users from "../views/Users.svelte";
   import Icon from "./Icon.svelte";
@@ -24,6 +25,7 @@
     { id: "mcp", label: "MCP servers", icon: "plug" },
     { id: "config", label: "Config", icon: "key" },
     { id: "usage", label: "Usage", icon: "chart" },
+    ...(isOwner($user?.role) ? [{ id: "allprojects" as SettingsTab, label: "All projects", icon: "folder" }] : []),
     ...(isOwner($user?.role) ? [{ id: "audit" as SettingsTab, label: "Audit", icon: "shield" }] : []),
   ]);
   const themes: { id: ThemePref; label: string; icon: string }[] = [
@@ -141,6 +143,8 @@
         <Config />
       {:else if ui.settingsTab === "usage"}
         <Usage />
+      {:else if ui.settingsTab === "allprojects" && isOwner($user?.role)}
+        <AllProjects />
       {:else if ui.settingsTab === "audit" && isOwner($user?.role)}
         <Audit />
       {/if}

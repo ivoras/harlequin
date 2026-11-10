@@ -302,6 +302,10 @@ export const api = {
   listProjects: () => reqList<Project>("GET", "/projects"),
   createProject: (name: string) => req<Project>("POST", "/projects", { name }),
   getProject: (id: number) => req<Project>("GET", `/projects/${id}`),
+  // owner only: every project (member or not), join one, add a user by email
+  adminProjects: () => reqList<Project>("GET", "/admin/projects"),
+  adminJoinProject: (id: number) => req<void>("POST", `/admin/projects/${id}/join`),
+  adminAddProjectMember: (id: number, email: string) => req<void>("POST", `/admin/projects/${id}/members`, { email }),
   inviteToProject: (id: number, email: string) => req<void>("POST", `/projects/${id}/invite`, { email }),
   removeProjectMember: (id: number, userID: number) => req<void>("DELETE", `/projects/${id}/members/${userID}`),
   // Move or copy a project document into another project the caller belongs to.

@@ -102,6 +102,33 @@ func (s *Store) List(ctx context.Context, userID int64) ([]types.Project, error)
 	return out, rows.Err()
 }
 
+// ListAll returns every project with its members (owner overview).
+func (s *Store) ListAll(ctx context.Context) ([]types.Project, error) {
+	rows, err := s.system.QueryContext(ctx, `SELECT id FROM projects ORDER BY LOWER(name), id`)
+	if err != nil {
+		return nil, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	var out []types.Project
+	for _, id := range ids {
+		p, err := s.Get(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *p)
+	}
+	return out, nil
+}
+
 // IsMember reports whether the user belongs to the project.
 func (s *Store) IsMember(ctx context.Context, projectID, userID int64) (bool, error) {
 	var n int
