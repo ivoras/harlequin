@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -59,9 +60,11 @@ func discoverOAuth(ctx context.Context, hc *http.Client, serverURL string, meta 
 
 	// 2. Authorization-server metadata (RFC 8414, with OIDC fallback).
 	var asm struct {
-		AuthorizationEndpoint string `json:"authorization_endpoint"`
-		TokenEndpoint         string `json:"token_endpoint"`
-		RegistrationEndpoint  string `json:"registration_endpoint"`
+		AuthorizationEndpoint string   `json:"authorization_endpoint"`
+		TokenEndpoint         string   `json:"token_endpoint"`
+		RegistrationEndpoint  string   `json:"registration_endpoint"`
+		ScopesSupported       []string `json:"scopes_supported"`
+		GrantTypesSupported   []string `json:"grant_types_supported"`
 	}
 	ok := false
 	var candidates []string
@@ -86,6 +89,9 @@ func discoverOAuth(ctx context.Context, hc *http.Client, serverURL string, meta 
 		if meta.RegistrationEndpoint == "" {
 			meta.RegistrationEndpoint = asm.RegistrationEndpoint
 		}
+		if len(meta.Scopes) == 0 && wantsOfflineAccess(asm.ScopesSupported, asm.GrantTypesSupported) {
+			meta.Scopes = []string{"offline_access"}
+		}
 	}
 	if !ok && !foundPRM {
 		// No metadata at all: MCP 2025-03-26 default endpoints on the server origin.
@@ -103,6 +109,16 @@ func discoverOAuth(ctx context.Context, hc *http.Client, serverURL string, meta 
 		return meta, fmt.Errorf("mcp: could not discover OAuth endpoints for %s", serverURL)
 	}
 	return meta, nil
+}
+
+// wantsOfflineAccess: many providers only issue a refresh token when
+// offline_access is requested. Ask for it when advertised, or when the server
+// lists no scopes at all yet supports the refresh_token grant.
+func wantsOfflineAccess(scopes, grants []string) bool {
+	if slices.Contains(scopes, "offline_access") {
+		return true
+	}
+	return len(scopes) == 0 && slices.Contains(grants, "refresh_token")
 }
 
 // registerClient performs OAuth 2.0 Dynamic Client Registration (RFC 7591) if a
@@ -194,7 +210,12 @@ func exchangeCode(ctx context.Context, hc *http.Client, meta *OAuthMeta, redirec
 	if meta.Resource != "" {
 		opts = append(opts, oauth2.SetAuthURLParam("resource", meta.Resource))
 	}
-	return cfg.Exchange(ctx, code, opts...)
+	tok, err := cfg.Exchange(ctx, code, opts...)
+	if err == nil {
+		// Diagnoses providers that never issue refresh tokens.
+		log.Printf("mcp: token exchange for %s: refresh_token=%t expires_in=%s scopes=%v", meta.Resource, tok.RefreshToken != "", time.Until(tok.Expiry).Round(time.Second), meta.Scopes)
+	}
+	return tok, err
 }
 
 // persistingTokenSource wraps an oauth2.TokenSource and writes any refreshed

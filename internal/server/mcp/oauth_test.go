@@ -78,3 +78,20 @@ func TestSharedTokenSource(t *testing.T) {
 		t.Fatalf("source should be rebuilt after invalidate and drop, built %d", built)
 	}
 }
+
+func TestWantsOfflineAccess(t *testing.T) {
+	rt := []string{"authorization_code", "refresh_token"}
+	for _, c := range []struct {
+		scopes, grants []string
+		want           bool
+	}{
+		{nil, rt, true},
+		{[]string{"offline_access", "x"}, nil, true},
+		{[]string{"read"}, rt, false},
+		{nil, []string{"authorization_code"}, false},
+	} {
+		if got := wantsOfflineAccess(c.scopes, c.grants); got != c.want {
+			t.Errorf("%v %v: got %v", c.scopes, c.grants, got)
+		}
+	}
+}
