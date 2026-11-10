@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
@@ -330,9 +331,11 @@ func (s *Store) IngestIntoProgress(ctx context.Context, db *sql.DB, req types.Cr
 
 // preparedChunk is one chunk ready to insert: text, page and serialized vector.
 type preparedChunk struct {
-	text string
-	page int
-	vec  []byte // nil when no embedding was produced
+	ord      int
+	text     string
+	page     int
+	metadata sql.NullString
+	vec      []byte // nil when no embedding was produced
 }
 
 // prepareChunks chunks content and embeds the chunks, entirely in memory (no
@@ -390,7 +393,7 @@ func (s *Store) prepareChunks(ctx context.Context, content string, pageStarts []
 	pl.Phase("embed-chunks", fmt.Sprintf("%d chunks", len(texts)))
 	out := make([]preparedChunk, len(chunks))
 	for i, c := range chunks {
-		out[i] = preparedChunk{text: c.text, page: pageFor(c.start, pageStarts)} // page 0 when the source has none
+		out[i] = preparedChunk{ord: i, text: c.text, page: pageFor(c.start, pageStarts)} // page 0 when the source has none
 		if i < len(vecs) {
 			if out[i].vec, err = sqlite_vec.SerializeFloat32(vecs[i]); err != nil {
 				return nil, err
@@ -407,7 +410,7 @@ func writeChunks(ctx context.Context, tx *sql.Tx, docID int64, chunks []prepared
 	if len(chunks) == 0 {
 		return nil
 	}
-	ins, err := tx.PrepareContext(ctx, `INSERT INTO doc_chunks(document_id, ord, content, page) VALUES (?, ?, ?, ?)`)
+	ins, err := tx.PrepareContext(ctx, `INSERT INTO doc_chunks(document_id, ord, content, metadata, page) VALUES (?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -422,8 +425,8 @@ func writeChunks(ctx context.Context, tx *sql.Tx, docID int64, chunks []prepared
 		return err
 	}
 	defer vec.Close()
-	for i, c := range chunks {
-		r, err := ins.ExecContext(ctx, docID, i, c.text, c.page)
+	for _, c := range chunks {
+		r, err := ins.ExecContext(ctx, docID, c.ord, c.text, c.metadata, c.page)
 		if err != nil {
 			return err
 		}
@@ -641,6 +644,29 @@ func (s *Store) CopyInto(ctx context.Context, src, dst *sql.DB, srcFiles, dstFil
 		return 0, err
 	}
 
+	// Disk I/O stays out of the transaction: read the original now, write it after
+	// the commit. Only the inserts run under the write lock.
+	var fileData []byte
+	var haveFile bool
+	var rest string
+	if stored != "" && srcFiles != "" && dstFiles != "" {
+		data, err := os.ReadFile(filepath.Join(srcFiles, filepath.Base(stored)))
+		if err != nil && !os.IsNotExist(err) {
+			return 0, fmt.Errorf("read stored file: %w", err)
+		}
+		if err == nil {
+			fileData, haveFile = data, true
+			rest = filepath.Base(stored)
+			if i := strings.IndexByte(rest, '-'); i > 0 && strings.Trim(rest[:i], "0123456789") == "" {
+				rest = rest[i+1:]
+			}
+		}
+	}
+	prepared := make([]preparedChunk, len(chunks))
+	for i, c := range chunks {
+		prepared[i] = preparedChunk{ord: c.ord, text: c.content, page: c.page, metadata: c.metadata, vec: c.vec}
+	}
+
 	tx, err := dst.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -654,50 +680,52 @@ func (s *Store) CopyInto(ctx context.Context, src, dst *sql.DB, srcFiles, dstFil
 		return 0, err
 	}
 	newID, _ := res.LastInsertId()
-	for _, c := range chunks {
-		r, err := tx.ExecContext(ctx, `INSERT INTO doc_chunks(document_id, ord, content, metadata, page) VALUES (?, ?, ?, ?, ?)`,
-			newID, c.ord, c.content, c.metadata, c.page)
-		if err != nil {
-			return 0, err
-		}
-		cid, _ := r.LastInsertId()
-		if _, err := tx.ExecContext(ctx, `INSERT INTO doc_chunks_fts(rowid, content) VALUES (?, ?)`, cid, c.content); err != nil {
-			return 0, fmt.Errorf("copy fts row: %w", err)
-		}
-		if len(c.vec) > 0 {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO doc_chunks_vec(rowid, embedding) VALUES (?, ?)`, cid, c.vec); err != nil {
-				return 0, fmt.Errorf("copy vec row: %w", err)
-			}
-		}
-	}
-	// Copy the original file under a name for the new id ("<id>-<rest>").
-	var newStored string
-	if stored != "" && srcFiles != "" && dstFiles != "" {
-		data, err := os.ReadFile(filepath.Join(srcFiles, filepath.Base(stored)))
-		if err != nil && !os.IsNotExist(err) {
-			return 0, fmt.Errorf("read stored file: %w", err)
-		}
-		if err == nil {
-			rest := filepath.Base(stored)
-			if i := strings.IndexByte(rest, '-'); i > 0 && strings.Trim(rest[:i], "0123456789") == "" {
-				rest = rest[i+1:]
-			}
-			newStored = fmt.Sprintf("%d-%s", newID, rest)
-			if err := os.WriteFile(filepath.Join(dstFiles, newStored), data, 0o600); err != nil {
-				return 0, fmt.Errorf("write stored file: %w", err)
-			}
-			if _, err := tx.ExecContext(ctx, `UPDATE documents SET stored_path = ? WHERE id = ?`, newStored, newID); err != nil {
-				return 0, err
-			}
-		}
+	if err := writeChunks(ctx, tx, newID, prepared); err != nil {
+		return 0, fmt.Errorf("copy chunks: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		if newStored != "" {
-			_ = os.Remove(filepath.Join(dstFiles, newStored))
-		}
 		return 0, err
 	}
+	if haveFile {
+		// A failure here must not leave a half-copied document behind (a move
+		// would then delete the only complete one), so undo the copy.
+		newStored := fmt.Sprintf("%d-%s", newID, rest)
+		path := filepath.Join(dstFiles, newStored)
+		err := os.WriteFile(path, fileData, 0o600)
+		if err != nil {
+			err = fmt.Errorf("write stored file: %w", err)
+		} else if _, uerr := dst.ExecContext(ctx, `UPDATE documents SET stored_path = ? WHERE id = ?`, newStored, newID); uerr != nil {
+			_ = os.Remove(path)
+			err = uerr
+		}
+		if err != nil {
+			_ = s.DeleteFrom(context.WithoutCancel(ctx), dst, "", newID)
+			return 0, err
+		}
+	}
 	return newID, nil
+}
+
+// deleteChunkBatch removes the given chunks and their FTS and vector rows in one
+// short transaction.
+func deleteChunkBatch(ctx context.Context, conn *sql.Conn, ids []int64) error {
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, cid := range ids {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM doc_chunks_fts WHERE rowid = ?`, cid); err != nil {
+			return fmt.Errorf("delete fts row: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM doc_chunks_vec WHERE rowid = ?`, cid); err != nil {
+			return fmt.Errorf("delete vec row: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM doc_chunks WHERE id = ?`, cid); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // DeleteFrom removes a document, its chunks/index rows and (after the commit)
@@ -721,16 +749,11 @@ func (s *Store) DeleteFrom(ctx context.Context, db *sql.DB, filesDir string, id 
 		return err
 	}
 	defer conn.ExecContext(context.WithoutCancel(ctx), `PRAGMA secure_delete = OFF`)
-	tx, err := conn.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
 	var stored string
-	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(stored_path, '') FROM documents WHERE id = ?`, id).Scan(&stored); err != nil && err != sql.ErrNoRows {
+	if err := conn.QueryRowContext(ctx, `SELECT COALESCE(stored_path, '') FROM documents WHERE id = ?`, id).Scan(&stored); err != nil && err != sql.ErrNoRows {
 		return err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id FROM doc_chunks WHERE document_id = ?`, id)
+	rows, err := conn.QueryContext(ctx, `SELECT id FROM doc_chunks WHERE document_id = ?`, id)
 	if err != nil {
 		return err
 	}
@@ -744,17 +767,33 @@ func (s *Store) DeleteFrom(ctx context.Context, db *sql.DB, filesDir string, id 
 		chunkIDs = append(chunkIDs, cid)
 	}
 	rows.Close()
-	// Index errors abort the delete: a stale FTS/vec row would outlive its chunk.
-	for _, cid := range chunkIDs {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM doc_chunks_fts WHERE rowid = ?`, cid); err != nil {
-			return fmt.Errorf("delete fts row: %w", err)
+	// Index rows go in small batches, each its own transaction, so a big
+	// document (vec0 deletes plus secure_delete are slow) never holds the write
+	// lock for seconds and starves other writers. Each chunk's chunk/FTS/vec rows
+	// leave together, so an interrupted delete leaves a smaller but consistent
+	// document that a retry finishes. Index errors abort: a stale FTS/vec row
+	// must not outlive its chunk.
+	// SQLite's busy handler polls (sleeping up to 100 ms), so a deleter that
+	// re-takes the lock the instant it releases it would starve waiting writers
+	// all the same: pause between batches so they get in.
+	const batch, yield = 25, 15 * time.Millisecond
+	for start := 0; start < len(chunkIDs); start += batch {
+		if err := deleteChunkBatch(ctx, conn, chunkIDs[start:min(start+batch, len(chunkIDs))]); err != nil {
+			return err
 		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM doc_chunks_vec WHERE rowid = ?`, cid); err != nil {
-			return fmt.Errorf("delete vec row: %w", err)
+		select {
+		case <-time.After(yield):
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
 	// Explicit, not left to ON DELETE CASCADE: the text must go even if a
 	// connection ever runs without foreign keys.
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
 	if _, err := tx.ExecContext(ctx, `DELETE FROM doc_chunks WHERE document_id = ?`, id); err != nil {
 		return err
 	}
