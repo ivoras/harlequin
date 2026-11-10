@@ -253,6 +253,7 @@ func (s *Server) Router() http.Handler {
 			r.Get("/audit", s.handleAudit)
 			r.Get("/audit/stats", s.handleAuditStats)
 			r.Get("/admin/projects", s.handleAdminProjects)
+			r.Get("/admin/projects/{id}/documents", s.handleAdminProjectDocs)
 			r.Post("/admin/projects/{id}/join", s.handleAdminJoinProject)
 			r.Post("/admin/projects/{id}/members", s.handleAdminAddMember)
 		})

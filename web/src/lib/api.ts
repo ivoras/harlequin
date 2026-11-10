@@ -304,6 +304,7 @@ export const api = {
   getProject: (id: number) => req<Project>("GET", `/projects/${id}`),
   // owner only: every project (member or not), join one, add a user by email
   adminProjects: () => reqList<Project>("GET", "/admin/projects"),
+  adminProjectDocs: (id: number) => reqList<Document>("GET", `/admin/projects/${id}/documents`),
   adminJoinProject: (id: number) => req<void>("POST", `/admin/projects/${id}/join`),
   adminAddProjectMember: (id: number, email: string) => req<void>("POST", `/admin/projects/${id}/members`, { email }),
   inviteToProject: (id: number, email: string) => req<void>("POST", `/projects/${id}/invite`, { email }),

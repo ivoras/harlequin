@@ -1712,7 +1712,7 @@ func (s *Server) handleGetDocumentFile(w http.ResponseWriter, r *http.Request) {
 		}
 	case documents.ScopeProject:
 		projectID, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64)
-		if member, _ := s.Projects.IsMember(r.Context(), projectID, u.ID); !member {
+		if member, _ := s.Projects.IsMember(r.Context(), projectID, u.ID); !member && !types.IsOwner(u.Role) { // owners may read any project's files
 			writeErr(w, http.StatusForbidden, "not a member of this project")
 			return
 		}
@@ -1772,7 +1772,7 @@ func (s *Server) handleGetDocumentContent(w http.ResponseWriter, r *http.Request
 		content, err = s.Docs.FullText(r.Context(), s.Docs.SharedDB(), id)
 	case documents.ScopeProject:
 		projectID, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64)
-		if member, _ := s.Projects.IsMember(r.Context(), projectID, u.ID); !member {
+		if member, _ := s.Projects.IsMember(r.Context(), projectID, u.ID); !member && !types.IsOwner(u.Role) {
 			writeErr(w, http.StatusForbidden, "not a member of this project")
 			return
 		}

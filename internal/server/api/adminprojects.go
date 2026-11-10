@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/project"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
@@ -102,4 +103,30 @@ func (s *Server) adminProject(w http.ResponseWriter, r *http.Request) (*types.Pr
 		return nil, false
 	}
 	return p, true
+}
+
+// handleAdminProjectDocs lists a project's own documents (project corpus only).
+// Files download through the normal /documents/{id}/file, which lets owners in.
+func (s *Server) handleAdminProjectDocs(w http.ResponseWriter, r *http.Request) {
+	if _, ok := requireOwner(w, r); !ok {
+		return
+	}
+	p, ok := s.adminProject(w, r)
+	if !ok {
+		return
+	}
+	var docs []types.Document
+	err := s.Storage.WithProjectReadOnly(r.Context(), p.ID, func(pdb *sql.DB) error {
+		var e error
+		docs, e = s.Docs.ListScoped(r.Context(), []documents.ScopeDB{{Scope: documents.ScopeProject, DB: pdb}})
+		return e
+	})
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if docs == nil {
+		docs = []types.Document{}
+	}
+	writeJSON(w, http.StatusOK, docs)
 }
