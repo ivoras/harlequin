@@ -316,8 +316,8 @@ func TestUploadedFilesRefused(t *testing.T) {
 	h := newGenHarness(t)
 	for mime, want := range map[string]string{
 		"application/pdf": "uploaded PDF",
-		docxMime:          "editing uploaded Word/Excel files in place is not available yet",
-		xlsxMime:          "editing uploaded Word/Excel files in place is not available yet",
+		docxMime:          "is not a .docx", // the stored bytes are not a Word file
+		xlsxMime:          "editing uploaded Excel files in place is not available yet",
 	} {
 		doc, err := h.store.IngestInto(h.ctx, h.db, types.CreateDocumentRequest{Title: "Up " + strconv.Itoa(len(mime)), URI: "upload", Mime: mime, Content: "text"}, 1)
 		if err != nil {

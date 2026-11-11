@@ -344,7 +344,27 @@ document came from:
   the PDF's page count).
 - **uploaded PDF**: refused (a PDF's pages are fixed); the message points to
   `create_pdf`/`create_word` with `source`, or `pdf_pages`.
-- **uploaded Word/Excel**: refused for now.
+- **uploaded Word (`.docx`)**: edited inside the original file
+  (`internal/server/docxedit`): only the bytes of `word/document.xml` the edit
+  needs are spliced and every other zip entry is copied unchanged, so fonts,
+  styles, headers/footers, numbering, images and page setup stay. Passages are
+  quoted as `read_doc` shows them (whitespace collapsed; `#`, list markers, `**`,
+  `_` and table pipes ignored) and must lie in one paragraph. Replace puts the new
+  text in the first run the match touches (its formatting applies); an emptied
+  paragraph is removed. Insert (`after`/`before`) and append add paragraphs that
+  copy the neighbour's paragraph and run properties (next to a heading: the
+  nearest body paragraph's); `#`/`##`/`###` lines use the document's own heading
+  styles (found by name, `heading 1` etc.), `**bold**`/`*italic*` and list items
+  work, `| a | b |` next to a table row adds a row with the same cell count, plain
+  text next to a cell goes into that cell; new tables are not supported. No
+  `diff`. Refused: tracked changes in the document, a passage inside a text box,
+  a hyperlink or a field (insert a paragraph next to it instead). The result is
+  re-parsed and every untouched paragraph checked before the file is replaced. The
+  searchable text is derived like an upload's (the configured converter, else
+  `docxextract`). Undo works. Not handled: headers/footers/footnotes text,
+  merged-cell geometry, content controls' placeholders, text split by soft
+  hyphens or symbols, legacy `.doc`.
+- **uploaded Excel**: refused for now.
 
 Unchanged passages keep their chunk ids across an edit, so citations to them stay
 valid. **Undo:** before replacing the stored file the previous version is kept
@@ -424,7 +444,7 @@ size/CPU limits, one conversion at a time), then the page size is set to A4.
 Output uses Word's own styles (Heading 1–3, lists, tables), not a house
 stylesheet, so the user can restyle it. Saved like `save_doc`, with the Markdown
 as its searchable text. Its source is kept, so the result can be changed later
-with `edit_doc` (the file is rebuilt); an uploaded `.docx` cannot be edited yet. When LibreOffice or
+with `edit_doc` (the file is rebuilt); an uploaded `.docx` is edited in place by `edit_doc` too. When LibreOffice or
 `bwrap` is missing the tool stays offered and says Word creation is not set up.
 Converter: `internal/server/mdword`; the `create-word` skill teaches the model.
 **Example:** `create_word({"title": "Service agreement", "source": "tmp://contract.md"})`

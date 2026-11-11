@@ -122,7 +122,7 @@ func (a *Agent) editDocEntry() toolEntry {
 	})
 	schema["required"] = []string{"doc"}
 	return toolEntry{
-		def: fnTool("edit_doc", `Edit a saved document in place, keeping its id, title and scope. Use it when the user asks to change a document: fix a passage, add a paragraph, add text at the end, or append other documents. Works on: text/Markdown documents (save_doc, or uploaded .md/.txt) and on documents made with create_pdf, create_word or create_excel (their file is rebuilt from the edited Markdown). Uploaded PDF, Word and Excel files cannot be edited yet. `+editOpsHelp+` To go back one step: edit_doc with doc and undo true. Given a sandbox file (tmp://notes.md) as doc it edits that file, like edit_file. The document is re-indexed afterwards, so search_docs sees the new text. Unchanged passages keep their chunk ids, so citations to them stay valid. Edit only when the user asked you to change that document.`, schema),
+		def: fnTool("edit_doc", `Edit a saved document in place, keeping its id, title and scope. Use it when the user asks to change a document: fix a passage, add a paragraph, add text at the end, or append other documents. Works on: text/Markdown documents (save_doc, or uploaded .md/.txt); documents made with create_pdf, create_word or create_excel (their file is rebuilt from the edited Markdown); and uploaded Word (.docx) files, which are edited inside the original file so fonts, styles, headers and layout stay (replace, insert, append and append_source work; diff does not). For a Word file quote passages as read_doc shows them. A passage must lie in one paragraph. insert next to a table cell adds a paragraph in that cell; insert "| a | b |" next to a table row adds a row. Uploaded PDF and Excel files cannot be edited yet. `+editOpsHelp+` To go back one step: edit_doc with doc and undo true. Given a sandbox file (tmp://notes.md) as doc it edits that file, like edit_file. The document is re-indexed afterwards, so search_docs sees the new text. Unchanged passages keep their chunk ids, so citations to them stay valid. Edit only when the user asked you to change that document.`, schema),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 			undo := argBool(args, "undo", false)
 			if p := argString(args, "doc"); isSandboxPath(p) { // a sandbox file: edit_file's job
@@ -192,10 +192,10 @@ func (a *Agent) editDocEntry() toolEntry {
 				return a.editTextDoc(ctx, e)
 			case mime == pdfMime:
 				return fmt.Sprintf("error: document %s is an uploaded PDF, so it cannot be edited: its pages are fixed. To change it, make a new document from its text with create_pdf or create_word (source %q), or cut pages out with pdf_pages.", e.ref, e.ref), nil
-			case mime == docxMime: // Stage C plugs in here
-				return fmt.Sprintf("error: document %s is an uploaded Word file, and editing uploaded Word/Excel files in place is not available yet. Make a new document from its text with create_word (source %q), or save an edited copy with save_doc.", e.ref, e.ref), nil
+			case mime == docxMime:
+				return a.editWordDoc(ctx, e)
 			case mime == xlsxMime: // Stage D plugs in here
-				return fmt.Sprintf("error: document %s is an uploaded Excel file, and editing uploaded Word/Excel files in place is not available yet. Make a new workbook from its tables with create_excel (source %q), or save an edited copy with save_doc.", e.ref, e.ref), nil
+				return fmt.Sprintf("error: document %s is an uploaded Excel file, and editing uploaded Excel files in place is not available yet. Make a new workbook from its tables with create_excel (source %q), or save an edited copy with save_doc.", e.ref, e.ref), nil
 			}
 			return fmt.Sprintf("error: document %s is %s, not text/Markdown, so it cannot be edited in place; save an edited copy with save_doc.", e.ref, mime), nil
 		},
@@ -335,6 +335,10 @@ func (a *Agent) undoDocEdit(ctx context.Context, e *docEdit) (string, error) {
 			return fmt.Sprintf("error: cannot restore %s: %v", e.ref, err), nil
 		}
 		text = g.text
+	} else if e.mime == docxMime { // an uploaded Word file: text comes from the restored file, as at upload
+		if text, err = a.docxText(ctx, e.path, prev); err != nil {
+			return fmt.Sprintf("error: cannot restore %s: %v", e.ref, err), nil
+		}
 	} else if !utf8.Valid(prev) {
 		return fmt.Sprintf("error: cannot read the previous text of %s.", e.ref), nil
 	} else {
