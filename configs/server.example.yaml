@@ -143,6 +143,12 @@ model_suites:
 
 agent:
   max_steps: 50
+  # Context compaction: once a request passes threshold_tokens, the oldest large
+  # tool results are replaced with short stubs (the newest keep_tool_results stay
+  # whole; the stored session is untouched). Separate from the model's window:
+  # every step resends the prompt, so a 600k-token context is costly long before
+  # it is full. Defaults: enabled, 150000, 8.
+  # compaction: {enabled: true, threshold_tokens: 150000, keep_tool_results: 8}
   temperature: 0.2         # lower = less creative, fewer hallucinations (0–2)
   skill_render_timeout: "2s"
   js_tool_timeout: "10s"

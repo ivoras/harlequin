@@ -345,6 +345,41 @@ type AgentConfig struct {
 	// AutoTitle controls the background task that titles idle, generically-named
 	// sessions using the default LLM.
 	AutoTitle AutoTitleConfig `yaml:"auto_title"`
+	// Compaction keeps long agent turns from resending an ever-growing prompt.
+	Compaction CompactionConfig `yaml:"compaction"`
+}
+
+// CompactionConfig controls tier-1 context compaction: past ThresholdTokens the
+// oldest large tool results are replaced with short stubs (see
+// agent.elideOldToolResults). The threshold is separate from the model's window
+// because with a 1M window "near the limit" is far too late: every call
+// resends the prompt, and a cache miss on a 600k prompt costs real money.
+type CompactionConfig struct {
+	// Enabled defaults to true when omitted.
+	Enabled *bool `yaml:"enabled"`
+	// ThresholdTokens is the request size that triggers compaction (default 150000).
+	ThresholdTokens int `yaml:"threshold_tokens"`
+	// KeepToolResults is how many of the newest tool results stay intact (default 8).
+	KeepToolResults int `yaml:"keep_tool_results"`
+}
+
+// Threshold returns the trigger size in tokens, 0 when compaction is disabled.
+func (c CompactionConfig) Threshold() int {
+	if c.Enabled != nil && !*c.Enabled {
+		return 0
+	}
+	if c.ThresholdTokens > 0 {
+		return c.ThresholdTokens
+	}
+	return 150000
+}
+
+// Keep returns how many newest tool results are never elided.
+func (c CompactionConfig) Keep() int {
+	if c.KeepToolResults > 0 {
+		return c.KeepToolResults
+	}
+	return 8
 }
 
 // AutoTitleConfig controls the background session auto-titler.

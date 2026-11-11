@@ -287,6 +287,8 @@ func main() {
 		WebFetchTools:       cfg.Agent.WebFetch.ToolsEnabledValue(),
 		ReportTiming:        cfg.Agent.ReportTiming,
 		MaxSteps:            cfg.Agent.MaxSteps,
+		CompactThreshold:    cfg.Agent.Compaction.Threshold(),
+		CompactKeep:         cfg.Agent.Compaction.Keep(),
 		Vision:              cfg.ChatVision(),
 		Email:               emailSender,
 		Temperature:         cfg.Agent.TemperatureValue(),

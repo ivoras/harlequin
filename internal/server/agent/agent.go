@@ -115,6 +115,19 @@ type Agent struct {
 	// userDB is the caller's open per-user database.
 	// ContextMax, if set, returns the model's max context window in tokens.
 	ContextMax func(model string) int
+	// CompactThreshold (tokens; 0 = off) and CompactKeep configure tier-1 context
+	// compaction in the step loop (see elideOldToolResults).
+	CompactThreshold, CompactKeep int
+}
+
+// compactThreshold is the effective compaction trigger: the configured size,
+// capped at 60% of the model's window once that is known (after the first call).
+func (a *Agent) compactThreshold(modelWindow int) int {
+	thr := a.CompactThreshold
+	if thr > 0 && modelWindow > 0 && thr > modelWindow*6/10 {
+		thr = modelWindow * 6 / 10
+	}
+	return thr
 }
 
 // EmitFunc receives streaming events for the client (SSE).
@@ -355,6 +368,19 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 		rc.step = step
 		if ctx.Err() != nil {
 			return "", ctx.Err()
+		}
+
+		// Tier-1 context compaction: shrink old tool results once the request is
+		// over budget. In-memory for this turn only; the stored session is untouched.
+		if thr := a.compactThreshold(turnContextMax); thr > 0 {
+			if c, st := elideOldToolResults(msgs, toolDefs, thr, a.CompactKeep); st.Elided > 0 {
+				msgs = c
+				log.Printf("agent: session %d step %d compacted context: %d old tool results elided, ~%d -> ~%d tokens", sessionID, step, st.Elided, st.TokensBefore, st.TokensAfter)
+				a.logEvent(ctx, rc, sessionlog.TypeContextCompacted, map[string]any{
+					"elided": st.Elided, "chars_freed": st.CharsFreed,
+					"tokens_before": st.TokensBefore, "tokens_after": st.TokensAfter, "threshold": thr,
+				})
+			}
 		}
 
 		// The last allowed step gets no tools and a nudge to answer: a model

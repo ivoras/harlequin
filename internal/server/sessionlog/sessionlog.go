@@ -14,23 +14,24 @@ import (
 
 // Event types.
 const (
-	TypeSessionStart    = "session_start"
-	TypeUserMessage     = "user_message"
-	TypeSystemPrompt    = "system_prompt"
-	TypeLLMRequest      = "llm_request"
-	TypeLLMResponse     = "llm_response"
-	TypeLLMDelta        = "llm_delta"
-	TypeThinkingDelta   = "thinking_delta"
-	TypeToolCall        = "tool_call"
-	TypeToolResult      = "tool_result"
-	TypeToolsAvailable  = "tools_available"
-	TypeSkillsAvailable = "skills_available"
-	TypeSkillLoaded     = "skill_loaded"
-	TypeUsage           = "usage"
-	TypeError           = "error"
-	TypeLLMRetry        = "llm_retry"      // a stream failed transiently and the step is being re-run
-	TypeReasoningLoop   = "reasoning_loop" // a streaming LLM call was cancelled for repeating itself / running away
-	TypeSessionEnd      = "session_end"
+	TypeSessionStart     = "session_start"
+	TypeUserMessage      = "user_message"
+	TypeSystemPrompt     = "system_prompt"
+	TypeLLMRequest       = "llm_request"
+	TypeLLMResponse      = "llm_response"
+	TypeLLMDelta         = "llm_delta"
+	TypeThinkingDelta    = "thinking_delta"
+	TypeToolCall         = "tool_call"
+	TypeToolResult       = "tool_result"
+	TypeToolsAvailable   = "tools_available"
+	TypeSkillsAvailable  = "skills_available"
+	TypeSkillLoaded      = "skill_loaded"
+	TypeUsage            = "usage"
+	TypeContextCompacted = "context_compacted" // old tool results were replaced by stubs to shrink the prompt
+	TypeError            = "error"
+	TypeLLMRetry         = "llm_retry"      // a stream failed transiently and the step is being re-run
+	TypeReasoningLoop    = "reasoning_loop" // a streaming LLM call was cancelled for repeating itself / running away
+	TypeSessionEnd       = "session_end"
 	// WebFetch tool: the network fetch and the delegated (inner) LLM call that
 	// analyses the fetched page.
 	TypeWebFetch             = "web_fetch"
