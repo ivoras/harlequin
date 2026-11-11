@@ -166,3 +166,33 @@ func TestDocEmbedConcurrency(t *testing.T) {
 		t.Errorf("explicit setting = %d, want 3", got)
 	}
 }
+
+// vision_model_for_ocr adds a routed "vision" provider; without a suite vision
+// model it is a load error, and when off the vision model is ignored.
+func TestResolveModelSuiteVisionOCR(t *testing.T) {
+	mk := func(on bool, vis ModelSpec) *Config {
+		return &Config{
+			ModelSuite: "s", VisionModelForOCR: on,
+			ModelSuites: map[string]ModelSuite{"s": {
+				Chat:   ModelSpec{BaseURL: "http://x/v1", Model: "chat-m"},
+				Embed:  ModelSpec{BaseURL: "http://x/v1", Model: "embed-m", Dim: 8},
+				Vision: vis,
+			}},
+		}
+	}
+	vis := ModelSpec{BaseURL: "http://v/v1", Model: "vl-m"}
+	c := mk(true, vis)
+	if err := c.resolveModelSuite(); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Providers) != 2 || c.Providers[1].Name != "vision" || c.Routing.ModelRules["vl-m"] != "vision" || c.OCRVisionModel() != "vl-m" {
+		t.Fatalf("providers=%+v rules=%v", c.Providers, c.Routing.ModelRules)
+	}
+	if err := mk(true, ModelSpec{}).resolveModelSuite(); err == nil {
+		t.Fatal("expected an error when enabled without a vision model")
+	}
+	off := mk(false, vis)
+	if err := off.resolveModelSuite(); err != nil || len(off.Providers) != 1 || off.OCRVisionModel() != "" {
+		t.Fatalf("off: err=%v providers=%+v", err, off.Providers)
+	}
+}

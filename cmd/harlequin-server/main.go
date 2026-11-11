@@ -30,6 +30,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/notify"
 	"github.com/ivoras/harlequin/internal/server/notifyx"
+	"github.com/ivoras/harlequin/internal/server/ocrvision"
 	"github.com/ivoras/harlequin/internal/server/pdfextract"
 	"github.com/ivoras/harlequin/internal/server/presence"
 	"github.com/ivoras/harlequin/internal/server/project"
@@ -337,6 +338,14 @@ func main() {
 	} else {
 		srv.PDFExtract = ex
 		defer ex.Close()
+		if m := cfg.OCRVisionModel(); m != "" {
+			if dc, ok := docConv.(*docling.Client); ok {
+				dc.SetNoTextFallback((&ocrvision.Reader{Provider: router, Model: m, Render: ex.RenderPages, Context: ocrvision.OrgContext(cfg.Server.OrgName, cfg.Server.OrgDescription)}).PDF)
+				log.Printf("documents: scanned PDFs are OCRed with vision model %s", m)
+			} else {
+				log.Printf("documents: vision_model_for_ocr needs docling as the converter; ignored")
+			}
+		}
 	}
 
 	srv.Converter = docConv

@@ -5,7 +5,9 @@
 package pdfextract
 
 import (
+	"bytes"
 	"fmt"
+	"image/jpeg"
 	"strings"
 	"sync"
 	"time"
@@ -120,4 +122,44 @@ func (e *Extractor) Text(data []byte) (string, int, error) {
 		sb.WriteString(pt.Text)
 	}
 	return sb.String(), pc.PageCount, nil
+}
+
+// RenderPages rasterises up to maxPages pages as JPEGs (for a vision model),
+// returning them in page order and the document's total page count.
+func (e *Extractor) RenderPages(data []byte, dpi, maxPages int) ([][]byte, int, error) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	inst, err := e.pool.GetInstance(instanceTimeout)
+	if err != nil {
+		return nil, 0, fmt.Errorf("pdfextract: get instance: %w", err)
+	}
+	defer inst.Close()
+	doc, err := inst.OpenDocument(&requests.OpenDocument{File: &data})
+	if err != nil {
+		return nil, 0, fmt.Errorf("pdfextract: open document: %w", err)
+	}
+	defer inst.FPDF_CloseDocument(&requests.FPDF_CloseDocument{Document: doc.Document})
+	pc, err := inst.FPDF_GetPageCount(&requests.FPDF_GetPageCount{Document: doc.Document})
+	if err != nil {
+		return nil, 0, fmt.Errorf("pdfextract: page count: %w", err)
+	}
+	var out [][]byte
+	for i := 0; i < pc.PageCount && i < maxPages; i++ {
+		r, err := inst.RenderPageInDPI(&requests.RenderPageInDPI{
+			DPI:  dpi,
+			Page: requests.Page{ByIndex: &requests.PageByIndex{Document: doc.Document, Index: i}},
+		})
+		if err != nil {
+			return nil, 0, fmt.Errorf("pdfextract: render page %d: %w", i+1, err)
+		}
+		var buf bytes.Buffer
+		err = jpeg.Encode(&buf, r.Result.Image, &jpeg.Options{Quality: 85})
+		r.Cleanup()
+		if err != nil {
+			return nil, 0, err
+		}
+		out = append(out, buf.Bytes())
+	}
+	return out, pc.PageCount, nil
 }

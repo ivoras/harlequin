@@ -5,6 +5,7 @@ server:
   addr: ":8080"
   # Organisation name shown next to the brand in the web UI.
   org_name: "Unnamed"
+  # org_description: "Short description of the organisation (any language)."   # context for vision OCR
   # Optionally serve the static browser UI at / (same origin as /api/v1, no CORS).
   # Web UI. Left empty, the server serves the UI embedded in the binary at
   # build time (`make build` embeds a fresh web build; a fully self-contained
@@ -36,6 +37,13 @@ data_retention_days: 7     # delete session logs + per-user tmp dumps older than
 # Switching the embed model usually changes `dim`, which requires recreating the
 # vec0 tables — run `harlequin-server reindex-vectors`.
 model_suite: "local"   # "local" / "openrouter" / "deepseek" below, or your own
+
+# OCR scanned PDFs (no text in docling's fast mode) with the active suite's `vision`
+# model instead of docling's OCR; docling OCR stays the fallback. Pages are sent to
+# that model's provider. Add under a suite:
+#   vision: {base_url: ..., model: ..., api_key_env: ...}
+vision_model_for_ocr: false
+# server.org_description (next to org_name) is sent to that model as context.
 
 model_suites:
   local:                                     # local llama-server lineup (see llm_for_harlequin.py)

@@ -52,22 +52,26 @@ type Config struct {
 	// the WebFetch model — so a deployment switches its whole model lineup by
 	// changing one name. When empty, the legacy top-level Providers/Routing/
 	// Embeddings below are used as-is.
-	ModelSuite     string                `yaml:"model_suite"`
-	ModelSuites    map[string]ModelSuite `yaml:"model_suites"`
-	Providers      []ProviderConfig      `yaml:"-"` // built from the active model suite
-	Routing        RoutingConfig         `yaml:"-"` // built from the active model suite
-	Prices         map[string]Price      `yaml:"prices"`
-	ContextWindows map[string]int        `yaml:"context_windows"` // model id -> max input tokens
-	Embeddings     EmbeddingsConfig      `yaml:"-"`               // built from the active model suite
-	Documents      DocumentsConfig       `yaml:"documents"`
-	Agent          AgentConfig           `yaml:"agent"`
-	Memory         MemoryConfig          `yaml:"memory"`
-	Sessions       SessionsConfig        `yaml:"sessions"`
-	MCP            MCPConfig             `yaml:"mcp"`
-	Auth           AuthConfig            `yaml:"auth"`
-	Email          email.Config          `yaml:"email"`
-	Telegram       TelegramConfig        `yaml:"telegram"`
-	WebSearch      WebSearchConfig       `yaml:"web_search"`
+	ModelSuite string `yaml:"model_suite"`
+	// VisionModelForOCR: when a PDF has no text in docling's fast mode, OCR it
+	// with the suite's `vision` model instead of docling's own OCR (which stays
+	// the fallback if the vision model fails). Default false.
+	VisionModelForOCR bool                  `yaml:"vision_model_for_ocr"`
+	ModelSuites       map[string]ModelSuite `yaml:"model_suites"`
+	Providers         []ProviderConfig      `yaml:"-"` // built from the active model suite
+	Routing           RoutingConfig         `yaml:"-"` // built from the active model suite
+	Prices            map[string]Price      `yaml:"prices"`
+	ContextWindows    map[string]int        `yaml:"context_windows"` // model id -> max input tokens
+	Embeddings        EmbeddingsConfig      `yaml:"-"`               // built from the active model suite
+	Documents         DocumentsConfig       `yaml:"documents"`
+	Agent             AgentConfig           `yaml:"agent"`
+	Memory            MemoryConfig          `yaml:"memory"`
+	Sessions          SessionsConfig        `yaml:"sessions"`
+	MCP               MCPConfig             `yaml:"mcp"`
+	Auth              AuthConfig            `yaml:"auth"`
+	Email             email.Config          `yaml:"email"`
+	Telegram          TelegramConfig        `yaml:"telegram"`
+	WebSearch         WebSearchConfig       `yaml:"web_search"`
 
 	// Secrets, populated from the environment (not YAML).
 	JWTSecret string `yaml:"-"`
@@ -134,6 +138,10 @@ type ServerConfig struct {
 	// OrgName is the organisation name shown next to the brand in the web UI
 	// (default "Unnamed").
 	OrgName string `yaml:"org_name"`
+	// OrgDescription is a sentence or two about the organisation, in whatever
+	// language its documents use. Given to the vision OCR model as context
+	// (names, language); empty = none.
+	OrgDescription string `yaml:"org_description"`
 	// Web optionally serves the static browser SPA at / (same origin as the API).
 	Web WebUIConfig `yaml:"web"`
 }
@@ -154,6 +162,9 @@ type ModelSuite struct {
 	Chat  ModelSpec `yaml:"chat"`
 	Aux   ModelSpec `yaml:"aux"`
 	Embed ModelSpec `yaml:"embed"`
+	// Vision is an image-capable model for OCR of scanned PDFs, used only when
+	// the top-level vision_model_for_ocr is true. Omitted = no vision OCR.
+	Vision ModelSpec `yaml:"vision"`
 }
 
 // ModelSpec configures one model role within a ModelSuite. The embed-only fields
@@ -625,6 +636,18 @@ func (c *Config) resolveModelSuite() error {
 		webFetchModel = aux.Model
 	}
 
+	vis := suite.Vision
+	if c.VisionModelForOCR {
+		if vis.BaseURL == "" || vis.Model == "" {
+			return fmt.Errorf("vision_model_for_ocr is true but model_suite %q has no vision model (base_url and model)", c.ModelSuite)
+		}
+		providers = append(providers, ProviderConfig{
+			Name: "vision", BaseURL: vis.BaseURL, Model: vis.Model, APIKeyEnv: vis.APIKeyEnv,
+			ContextWindow: vis.ContextWindow, Local: vis.Local,
+		})
+		rules[vis.Model] = "vision"
+	}
+
 	c.Providers = providers
 	c.Routing = RoutingConfig{DefaultProvider: "chat", FallbackOrder: []string{"chat"}, ModelRules: rules, FallbackModel: chat.FallbackModel}
 
@@ -643,6 +666,7 @@ func (c *Config) resolveModelSuite() error {
 	}{
 		{chat.Model, chat.Price, chat.ContextWindow},
 		{aux.Model, aux.Price, aux.ContextWindow},
+		{vis.Model, vis.Price, vis.ContextWindow},
 		{suite.Embed.Model, suite.Embed.Price, 0},
 		{chat.FallbackModel, chat.FallbackPrice, chat.FallbackContextWindow},
 	} {
@@ -803,6 +827,15 @@ func (c *Config) ProviderByName(name string) *ProviderConfig {
 		}
 	}
 	return nil
+}
+
+// OCRVisionModel is the model that OCRs scanned PDFs, or "" when
+// vision_model_for_ocr is off.
+func (c *Config) OCRVisionModel() string {
+	if !c.VisionModelForOCR {
+		return ""
+	}
+	return c.ModelSuites[c.ModelSuite].Vision.Model
 }
 
 // ChatVision reports whether the active chat model accepts images.

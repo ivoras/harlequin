@@ -26,6 +26,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/docxextract"
 	"github.com/ivoras/harlequin/internal/server/email"
 	"github.com/ivoras/harlequin/internal/server/imgshrink"
+	"github.com/ivoras/harlequin/internal/server/llm"
 	"github.com/ivoras/harlequin/internal/server/mdconv"
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/officeconv"
@@ -1268,7 +1269,7 @@ func (s *Server) handleCreateDocumentAsync(w http.ResponseWriter, r *http.Reques
 		ctx = documents.WithPhaseLog(ctx, pl)
 
 		job.set("extracting")
-		req, _, msg := s.extractDocument(ctx, in)
+		req, _, msg := s.extractDocument(attributeUpload(ctx, uCopy.ID, in), in)
 		if msg != "" {
 			pl.Fail(msg)
 			job.fail(msg)
@@ -1397,7 +1398,11 @@ func (s *Server) documentFromUpload(w http.ResponseWriter, r *http.Request) (typ
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return req, nil, err
 	}
-	req, status, msg := s.extractDocument(r.Context(), in)
+	ctx := r.Context()
+	if u, ok := auth.UserFromContext(ctx); ok {
+		ctx = attributeUpload(ctx, u.ID, in)
+	}
+	req, status, msg := s.extractDocument(ctx, in)
 	if msg != "" {
 		writeErr(w, status, msg)
 		return req, nil, fmt.Errorf("%s", msg)
@@ -1414,6 +1419,16 @@ var legacyOfficeMime = map[string]string{
 	".xls": "application/vnd.ms-excel",
 	".ppt": "application/vnd.ms-powerpoint",
 	".ods": "application/vnd.oasis.opendocument.spreadsheet",
+}
+
+// attributeUpload charges LLM calls made while extracting an upload (vision OCR)
+// to the uploader, so they show up in Usage.
+func attributeUpload(ctx context.Context, userID int64, in uploadInput) context.Context {
+	a := llm.Attribution{UserID: userID}
+	if in.scope == documents.ScopeProject {
+		a.ProjectID = in.projectID
+	}
+	return llm.WithAttribution(ctx, a)
 }
 
 func (s *Server) extractDocument(ctx context.Context, in uploadInput) (req types.CreateDocumentRequest, status int, msg string) {

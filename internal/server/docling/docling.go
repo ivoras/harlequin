@@ -31,6 +31,15 @@ type Client struct {
 	baseURL string
 	fast    bool
 	hc      *http.Client
+	// noTextFallback, when set, is tried before the OCR retry for a PDF with no
+	// text in fast mode (see SetNoTextFallback).
+	noTextFallback func(ctx context.Context, filename string, data []byte) (string, []int, error)
+}
+
+// SetNoTextFallback registers a paged converter (e.g. a vision model) tried
+// first when fast mode finds no text; if it fails, the docling OCR retry runs.
+func (c *Client) SetNoTextFallback(f func(ctx context.Context, filename string, data []byte) (string, []int, error)) {
+	c.noTextFallback = f
 }
 
 // New builds a client for the docling-serve at baseURL (e.g.
@@ -242,7 +251,16 @@ func (c *Client) convertMD(ctx context.Context, filename string, data []byte, fa
 func (c *Client) ConvertPaged(ctx context.Context, filename string, data []byte) (string, []int, error) {
 	text, starts, err := c.convertPaged(ctx, filename, data, c.fast)
 	if errors.Is(err, errNoText) && c.fast {
-		log.Printf("docling: %q has no text in fast mode; retrying with OCR", filename)
+		if c.noTextFallback != nil {
+			log.Printf("docling: %q has no text in fast mode; trying the vision model", filename)
+			t, st, ferr := c.noTextFallback(ctx, filename, data)
+			if ferr == nil {
+				return t, st, nil
+			}
+			log.Printf("docling: vision OCR of %q failed (%v); retrying with docling OCR", filename, ferr)
+		} else {
+			log.Printf("docling: %q has no text in fast mode; retrying with OCR", filename)
+		}
 		return c.convertPaged(ctx, filename, data, false)
 	}
 	return text, starts, err

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"github.com/ivoras/harlequin/internal/server/llm"
 	"net/http"
 	"testing"
 )
@@ -48,5 +49,18 @@ func TestLegacyOfficeUploads(t *testing.T) {
 		if _, status, _ = (&Server{Converter: &fakeConv{md: "  "}}).extractDocument(context.Background(), in); status != http.StatusUnprocessableEntity {
 			t.Errorf("%s empty output: status %d", name, status)
 		}
+	}
+}
+
+// Uploads are attributed to the uploader (project too for project scope) so LLM
+// OCR cost lands in their Usage.
+func TestAttributeUpload(t *testing.T) {
+	a, ok := llm.AttributionFrom(attributeUpload(context.Background(), 7, uploadInput{scope: "project", projectID: 3}))
+	if !ok || a.UserID != 7 || a.ProjectID != 3 {
+		t.Fatalf("project: %+v %v", a, ok)
+	}
+	a, _ = llm.AttributionFrom(attributeUpload(context.Background(), 7, uploadInput{scope: "personal", projectID: 3}))
+	if a.UserID != 7 || a.ProjectID != 0 {
+		t.Fatalf("personal: %+v", a)
 	}
 }

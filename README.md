@@ -496,6 +496,23 @@ Large or scanned PDFs can take a while to convert on CPU — Harlequin uses docl
 async conversion endpoint and polls for completion, so slow conversions don't block the
 request beyond the configured `timeout`.
 
+**Scanned PDFs.** With `fast: true` (the default) docling skips OCR, so a PDF made of page
+images yields no text. Harlequin then retries that file once with OCR on, so scans work
+without any setting. Optionally, a vision model can do this OCR instead — better layout
+(rows stay aligned) on photographed receipts, at a per-page cost, and the pages are sent to
+that model's provider. Set `vision_model_for_ocr: true` at the top of `server.yaml` and give
+the active model suite a `vision` model:
+
+```yaml
+vision_model_for_ocr: true
+model_suites:
+  opper:
+    vision: {base_url: "https://api.opper.ai/v3/compat", model: "alibaba:eu/qwen3-vl-plus", api_key_env: "OPPER_API_KEY"}
+```
+
+If the vision model fails, docling's own OCR runs as the last fallback. Only the first 30
+pages are read, and only with docling as the converter.
+
 ### Legacy Office files (.doc, .xls, .ppt, .ods)
 
 docling-serve needs LibreOffice to read these, and its container does not include it, so
