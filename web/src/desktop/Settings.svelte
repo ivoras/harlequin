@@ -23,9 +23,9 @@
     ...(isOwner($user?.role) ? [{ id: "users" as SettingsTab, label: "Users", icon: "users" }] : []),
     { id: "hats", label: "Hats", icon: "hat" },
     { id: "mcp", label: "MCP servers", icon: "plug" },
+    ...(isOwner($user?.role) ? [{ id: "allprojects" as SettingsTab, label: "All projects", icon: "folder" }] : []),
     { id: "config", label: "Config", icon: "key" },
     { id: "usage", label: "Usage", icon: "chart" },
-    ...(isOwner($user?.role) ? [{ id: "allprojects" as SettingsTab, label: "All projects", icon: "folder" }] : []),
     ...(isOwner($user?.role) ? [{ id: "audit" as SettingsTab, label: "Audit", icon: "shield" }] : []),
   ]);
   const themes: { id: ThemePref; label: string; icon: string }[] = [
