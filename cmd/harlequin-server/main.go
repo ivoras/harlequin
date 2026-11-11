@@ -26,6 +26,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/jsrun"
 	"github.com/ivoras/harlequin/internal/server/llm"
 	"github.com/ivoras/harlequin/internal/server/mcp"
+	"github.com/ivoras/harlequin/internal/server/mdpdf"
 	"github.com/ivoras/harlequin/internal/server/mdtmpl"
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/notify"
@@ -301,6 +302,12 @@ func main() {
 		NotifyDispatch:      dispatch,
 		Presence:            presenceTracker,
 		ContextMax:          router.ContextMax,
+	}
+
+	if r, err := mdpdf.New(cfg.Documents.PDFChrome); err != nil {
+		log.Printf("create_pdf is unavailable: %v", err)
+	} else {
+		ag.PDF = r
 	}
 
 	// Live sessions: each active chat is a server-side goroutine that survives

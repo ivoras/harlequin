@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -24,7 +25,7 @@ func TestCreateExcelTool(t *testing.T) {
 	defer mgr.Close()
 	db := mgr.Shared
 	store := documents.NewStore(db, crossCheckFakeEmbedder{dim: 4})
-	a := &Agent{Docs: store, Storage: mgr}
+	a := &Agent{DataDir: dir, Docs: store, Storage: mgr}
 	rc := &runContext{userDB: db, userID: 1}
 	create := a.buildTools(ctx, rc)["create_excel"].handler
 
@@ -55,6 +56,20 @@ func TestCreateExcelTool(t *testing.T) {
 	text, _ := store.FullText(ctx, db, id)
 	if !strings.Contains(text, "| North | 120 |") {
 		t.Fatalf("searchable text: %q", text)
+	}
+
+	// The Markdown can also come from a sandbox file or from a saved document
+	// (here the workbook just created, whose text is its tables).
+	if err := a.tmpRoot(1).Write("t.md", []byte("| City | Pop |\n|---|---|\n| Zagreb | 767131 |\n")); err != nil {
+		t.Fatal(err)
+	}
+	for title, src := range map[string]string{"from tmp": "tmp://t.md", "from bare path": "t.md", "from doc": "s." + strconv.FormatInt(id, 10), "from attached": `@"s.` + strconv.FormatInt(id, 10) + `/Q1 sales.xlsx"`} {
+		if out, _ := create(ctx, rc, map[string]any{"title": title, "source": src}); !strings.Contains(out, "1 sheet(s), 1 table(s), 2 row(s)") {
+			t.Errorf("source %s: %q", src, out)
+		}
+	}
+	if out, _ := create(ctx, rc, map[string]any{"title": "x", "source": "s.9999"}); !strings.Contains(out, "not found") {
+		t.Errorf("missing document: %q", out)
 	}
 
 	// A header with no data rows (e.g. a call cut off mid-table) is refused, not saved.

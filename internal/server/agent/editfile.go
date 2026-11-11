@@ -15,11 +15,12 @@ import (
 // editArgsSchema is the operation part shared by edit_file and edit_doc.
 func editArgsSchema(target map[string]any) map[string]any {
 	props := map[string]any{
-		"old_string":  map[string]any{"type": "string", "description": "Replace: the exact text to replace (must occur once unless replace_all). Use with new_string."},
-		"new_string":  map[string]any{"type": "string", "description": "Replace: the replacement text (empty string deletes old_string)."},
-		"replace_all": map[string]any{"type": "boolean", "description": "Replace every occurrence of old_string instead of requiring exactly one."},
-		"diff":        map[string]any{"type": "string", "description": "A unified diff ('@@ -a,b +c,d @@' hunks with ' ' context, '-' removed and '+' added lines). Hunks are located by their content, so the line numbers need not be exact; all hunks must apply or nothing changes."},
-		"append":      map[string]any{"type": "string", "description": "Text added at the end (on a new line if the text does not end with one)."},
+		"old_string":    map[string]any{"type": "string", "description": "Replace: the exact text to replace (must occur once unless replace_all). Use with new_string."},
+		"new_string":    map[string]any{"type": "string", "description": "Replace: the replacement text (empty string deletes old_string)."},
+		"replace_all":   map[string]any{"type": "boolean", "description": "Replace every occurrence of old_string instead of requiring exactly one."},
+		"diff":          map[string]any{"type": "string", "description": "A unified diff ('@@ -a,b +c,d @@' hunks with ' ' context, '-' removed and '+' added lines). Hunks are located by their content, so the line numbers need not be exact; all hunks must apply or nothing changes."},
+		"append":        map[string]any{"type": "string", "description": "Append: text you write, added at the end (on a new line if the text does not end with one)."},
+		"append_source": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": `Append from: documents and/or sandbox files whose whole text is added at the end, in order, e.g. ["u.18", "tmp://annex.md"]. The text is read on the server and does not pass through you.`},
 	}
 	for k, v := range target {
 		props[k] = v
@@ -27,24 +28,23 @@ func editArgsSchema(target map[string]any) map[string]any {
 	return map[string]any{"type": "object", "properties": props}
 }
 
-const editOpsHelp = `Give exactly ONE operation: (1) old_string + new_string — exact replace (old_string must be unique unless replace_all is true; include enough surrounding text); (2) diff — a unified diff, best for several changes at once; (3) append — add text at the end. The edit is all-or-nothing: on any error nothing is changed and the message says what to fix.`
+const editOpsHelp = `It can do four things — give exactly ONE per call: (1) REPLACE: old_string + new_string — exact replace (old_string must be unique unless replace_all is true; include enough surrounding text; an empty new_string deletes); (2) PATCH: diff — a unified diff, best for several changes at once; (3) APPEND: append — add text you write at the end; (4) APPEND FROM: append_source — add the whole text of other documents and/or sandbox files at the end (concatenation; any length, since the text does not pass through you; for a PDF, Word or Excel source its Markdown text is used; sources are not changed). The edit is all-or-nothing: on any error nothing is changed and the message says what to fix.`
 
 // editFileEntry registers edit_file: apply an edit to a sandbox file.
 func (a *Agent) editFileEntry() toolEntry {
 	schema := editArgsSchema(map[string]any{
-		"path": map[string]any{"type": "string", "description": "Sandbox file, e.g. tmp://combined.md or storage://notes.md"},
+		"path": map[string]any{"type": "string", "description": "Sandbox file, e.g. tmp://combined.md or storage://notes.md (a bare path means tmp://)"},
 	})
 	schema["required"] = []string{"path"}
 	return toolEntry{
-		def: fnTool("edit_file", `Edit a text file in your sandbox (tmp:// or storage://) in place — without re-sending the whole file. `+editOpsHelp+` append creates the file if it does not exist yet. Use it to build up a long document in pieces (append section by section), fix a passage, or apply a diff; then save it with save_doc(source="tmp://...").`, schema),
+		def: fnTool("edit_file", `Edit a text file in your sandbox (tmp:// or storage://; a bare path means tmp://) in place — without re-sending the whole file. `+editOpsHelp+` append and append_source create the file if it does not exist yet. Use it to build up a long document in pieces (append section by section), combine several documents into one file (append_source), fix a passage, or apply a diff; then save it with save_doc(source="tmp://..."). Given a document id (u.12) as path it edits that saved document, like edit_doc.`, schema),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 			path := strings.TrimSpace(argString(args, "path"))
 			if path == "" {
 				return "error: path is required (e.g. tmp://combined.md)", nil
 			}
-			op, err := parseTextEditOp(args)
-			if err != nil {
-				return "error: " + err.Error(), nil
+			if docSourceRE.MatchString(path) && a.Docs != nil { // a document id: edit_doc's job
+				return a.editDocEntry().handler(ctx, rc, withArg(args, "doc", path))
 			}
 			root, _, rel, err := a.resolveNamespaceRoot(rc, path)
 			if err != nil {
@@ -53,8 +53,21 @@ func (a *Agent) editFileEntry() toolEntry {
 			if rel == "" {
 				return "error: path must name a file, not a namespace root", nil
 			}
-			var text string
 			exists, _ := root.Exists(rel)
+			from := ""
+			if add, what, ok, errMsg := a.appendSourceArg(ctx, rc, args); errMsg != "" {
+				return errMsg, nil
+			} else if ok {
+				if exists {
+					add = "\n" + add // an empty line between the old text and the new
+				}
+				args, from = withArg(args, "append", add), " from "+what
+			}
+			op, err := parseTextEditOp(args)
+			if err != nil {
+				return "error: " + err.Error(), nil
+			}
+			var text string
 			if exists {
 				data, err := root.Read(rel)
 				if err != nil {
@@ -74,7 +87,7 @@ func (a *Agent) editFileEntry() toolEntry {
 			if err := root.Write(rel, []byte(out)); err != nil {
 				return fmt.Sprintf("error: cannot write %s: %v", path, err), nil
 			}
-			return fmt.Sprintf("%s: %s; file is now %d characters.", path, what, utf8.RuneCountInString(out)), nil
+			return fmt.Sprintf("%s: %s%s; file is now %d characters.", path, what, from, utf8.RuneCountInString(out)), nil
 		},
 	}
 }
@@ -82,12 +95,21 @@ func (a *Agent) editFileEntry() toolEntry {
 // editDocEntry registers edit_doc: apply an edit to a saved corpus document.
 func (a *Agent) editDocEntry() toolEntry {
 	schema := editArgsSchema(map[string]any{
-		"doc": map[string]any{"type": "string", "description": "Scoped document id, e.g. \"u.12\", \"s.3\" or \"p.7\" (resolve with list_documents)"},
+		"doc": map[string]any{"type": "string", "description": "Scoped document id, e.g. \"u.12\", \"s.3\" or \"p.7\" (resolve with list_documents); or a sandbox file such as tmp://notes.md"},
 	})
 	schema["required"] = []string{"doc"}
 	return toolEntry{
-		def: fnTool("edit_doc", `Edit a saved text/Markdown document in the corpus in place, keeping its id, title and scope — for fixing or extending a document you (or the user) saved with save_doc or uploaded as .md/.txt. `+editOpsHelp+` The document is re-indexed afterwards, so search_docs sees the new text; its chunk ids change, so [d.x.N] chunk citations pointing INTO this document may no longer match (document ids stay valid). Documents whose original is a PDF/DOCX/etc. cannot be edited — save an edited copy with save_doc instead. Edit only when the user asked you to change that document.`, schema),
+		def: fnTool("edit_doc", `Edit a saved text/Markdown document in the corpus in place, keeping its id, title and scope — for fixing a passage in, adding text to the end of, or appending other documents to a document you (or the user) saved with save_doc or uploaded as .md/.txt. `+editOpsHelp+` Given a sandbox file (tmp://notes.md) as doc it edits that file, like edit_file. The document is re-indexed afterwards, so search_docs sees the new text; its chunk ids change, so [d.x.N] chunk citations pointing INTO this document may no longer match (document ids stay valid). Documents whose original is a PDF/DOCX/etc. cannot be edited — save an edited copy with save_doc instead. Edit only when the user asked you to change that document.`, schema),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+			if p := argString(args, "doc"); isSandboxPath(p) { // a sandbox file: edit_file's job
+				return a.editFileEntry().handler(ctx, rc, withArg(args, "path", strings.TrimSpace(p)))
+			}
+			from := ""
+			if add, what, ok, errMsg := a.appendSourceArg(ctx, rc, args); errMsg != "" {
+				return errMsg, nil
+			} else if ok {
+				args, from = withArg(args, "append", "\n"+add), " from "+what
+			}
 			op, err := parseTextEditOp(args)
 			if err != nil {
 				return "error: " + err.Error(), nil
@@ -164,7 +186,20 @@ func (a *Agent) editDocEntry() toolEntry {
 			if err != nil {
 				return fmt.Sprintf("Edited and re-indexed %s (%s, %d sections), but could not update its stored file (%v); view/download will show the old text.", ref, what, chunks, err), nil
 			}
-			return fmt.Sprintf("Edited document %s (%q): %s; now %d characters in %d sections, re-indexed for search_docs.", ref, doc.Title, what, utf8.RuneCountInString(out), chunks), nil
+			return fmt.Sprintf("Edited document %s (%q): %s%s; now %d characters in %d sections, re-indexed for search_docs.", ref, doc.Title, what, from, utf8.RuneCountInString(out), chunks), nil
 		},
 	}
+}
+
+// withArg returns a copy of args with key set to val (the caller's map is the
+// model's arguments, which are also logged; it is not modified).
+func withArg(args map[string]any, key string, val any) map[string]any {
+	out := make(map[string]any, len(args)+1)
+	for k, v := range args {
+		if k != "append_source" || key != "append" {
+			out[k] = v
+		}
+	}
+	out[key] = val
+	return out
 }

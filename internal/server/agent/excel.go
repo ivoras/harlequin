@@ -2,9 +2,9 @@ package agent
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/ivoras/harlequin/internal/server/docevents"
 	"github.com/ivoras/harlequin/internal/server/documents"
@@ -23,7 +23,7 @@ func (a *Agent) createExcelEntry() toolEntry {
 			"properties": map[string]any{
 				"title":   map[string]any{"type": "string", "description": `File name for the workbook, e.g. "Q1 sales" (".xlsx" is added)`},
 				"content": map[string]any{"type": "string", "description": "The Markdown (headings + pipe tables). Omit when source is given."},
-				"source":  map[string]any{"type": "string", "description": "Sandbox file holding the Markdown instead, e.g. tmp://sales.md. Omit when content is given."},
+				"source":  map[string]any{"type": "string", "description": "Where to read the Markdown from instead: a sandbox file (tmp://sales.md, storage://sales.md) or a saved document (u.12). Omit when content is given."},
 				"scope":   map[string]any{"type": "string", "enum": []string{"personal", "project", "shared"}},
 			},
 			"required": []string{"title"},
@@ -40,51 +40,18 @@ func (a *Agent) createExcel(ctx context.Context, rc *runContext, args map[string
 	if !strings.HasSuffix(strings.ToLower(title), ".xlsx") {
 		title += ".xlsx"
 	}
-	md := argString(args, "content")
-	if src := strings.TrimSpace(argString(args, "source")); src != "" {
-		if strings.TrimSpace(md) != "" {
-			return "error: pass either content or source, not both", nil
-		}
-		root, _, rel, err := a.resolveNamespaceRoot(rc, src)
-		if err != nil {
-			return "error: " + err.Error(), nil
-		}
-		data, err := root.Read(rel)
-		if err != nil {
-			return fmt.Sprintf("error: cannot read source %s: %v", src, err), nil
-		}
-		if !utf8.Valid(data) {
-			return fmt.Sprintf("error: source %s is not UTF-8 text", src), nil
-		}
-		md = string(data)
+	md, errMsg := a.markdownArg(ctx, rc, args)
+	if errMsg != "" {
+		return errMsg, nil
 	}
 	xlsx, st, err := mdxlsx.Convert(md)
 	if err != nil {
 		return "error: " + err.Error() + ` — each table row must be a line starting with "|"; see load_skill "create-excel"`, nil
 	}
 
-	scope, _ := args["scope"].(string)
-	if scope == "" {
-		scope = documents.ScopePersonal
-		if rc.projectDB != nil {
-			scope = documents.ScopeProject
-		}
-	}
-	db := rc.userDB
-	switch scope {
-	case documents.ScopePersonal:
-	case documents.ScopeProject:
-		if rc.projectDB == nil {
-			return `error: project scope is only available in a project session; use scope "personal"`, nil
-		}
-		db = rc.projectDB
-	case documents.ScopeShared:
-		if !rc.canShareMemory {
-			return `error: only owner or admin users can save shared documents; use scope "personal" instead`, nil
-		}
-		db = a.Docs.SharedDB()
-	default:
-		return "error: invalid scope (personal|project|shared)", nil
+	scope, db, errMsg := a.saveScope(rc, args)
+	if errMsg != "" {
+		return errMsg, nil
 	}
 	// The searchable text is the Markdown itself — what docling would extract
 	// from this workbook — so search_docs and read_doc work on it at once.
@@ -102,4 +69,47 @@ func (a *Agent) createExcel(ctx context.Context, rc *runContext, args map[string
 		msg += fmt.Sprintf(" Note: %d non-table line(s) were left out (only headings and tables go into the workbook).", st.Ignored)
 	}
 	return msg, nil
+}
+
+// markdownArg returns a file-creating tool's text: the inline content, or what
+// source names — a sandbox file (tmp://, storage://) or a saved document.
+// errMsg is the tool result on bad input.
+func (a *Agent) markdownArg(ctx context.Context, rc *runContext, args map[string]any) (md, errMsg string) {
+	md = argString(args, "content")
+	src := strings.TrimSpace(argString(args, "source"))
+	if src == "" {
+		return md, ""
+	}
+	if strings.TrimSpace(md) != "" {
+		return "", "error: pass either content or source, not both"
+	}
+	md, _, errMsg = a.sourceText(ctx, rc, src)
+	return md, errMsg
+}
+
+// saveScope resolves where a created document goes: the scope argument, else
+// the project in a project session, else the user's personal files.
+func (a *Agent) saveScope(rc *runContext, args map[string]any) (scope string, db *sql.DB, errMsg string) {
+	scope, _ = args["scope"].(string)
+	if scope == "" {
+		scope = documents.ScopePersonal
+		if rc.projectDB != nil {
+			scope = documents.ScopeProject
+		}
+	}
+	switch scope {
+	case documents.ScopePersonal:
+		return scope, rc.userDB, ""
+	case documents.ScopeProject:
+		if rc.projectDB == nil {
+			return "", nil, `error: project scope is only available in a project session; use scope "personal"`
+		}
+		return scope, rc.projectDB, ""
+	case documents.ScopeShared:
+		if !rc.canShareMemory {
+			return "", nil, `error: only owner or admin users can save shared documents; use scope "personal" instead`
+		}
+		return scope, a.Docs.SharedDB(), ""
+	}
+	return "", nil, "error: invalid scope (personal|project|shared)"
 }

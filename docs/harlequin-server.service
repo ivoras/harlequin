@@ -50,7 +50,10 @@ ReadWritePaths=/opt/harlequin/data
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes
-ProtectKernelTunables=yes
+# ProtectKernelTunables is left off: its /proc overmounts make the kernel refuse
+# the fresh /proc of the create_pdf sandbox ("Can't mount proc"). The service
+# runs unprivileged with no capabilities, so it cannot write tunables anyway.
+ProtectKernelTunables=no
 ProtectKernelModules=yes
 ProtectControlGroups=yes
 RestrictSUIDSGID=yes
@@ -59,7 +62,9 @@ LockPersonality=yes
 # runtime, which needs writable+executable memory; "yes" would break PDF
 # uploads (everything else in the server is pure Go).
 MemoryDenyWriteExecute=no
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# AF_NETLINK: bubblewrap needs it to set up the private (empty) network of the
+# sandbox create_pdf runs headless Chrome in.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 CapabilityBoundingSet=
 AmbientCapabilities=
 SystemCallArchitectures=native

@@ -281,6 +281,11 @@ type DocumentsConfig struct {
 	// lexical matches do not pollute paraphrase queries. 90 keeps the top decile;
 	// 0 disables gating (keep all). Range 0-99.
 	FTS5ScoreGatePct int `yaml:"fts5_score_gate_pct"`
+	// PDFChrome is the headless Chrome executable the create_pdf tool prints
+	// with (inside a bubblewrap sandbox). Empty = "chrome-headless-shell" on
+	// PATH; when it is not installed the tool reports that PDF creation is
+	// unavailable.
+	PDFChrome string `yaml:"pdf_chrome"`
 	// Docling, when base_url is set, converts PDF/DOCX uploads to structured
 	// Markdown via a docling-serve instance (layout analysis, tables, OCR). Any
 	// failure falls back to the built-in pure-Go extractors.

@@ -32,6 +32,8 @@ Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a fu
   document scrolled to the cited passage. The agent can also edit its saved text
   documents in place (replace / diff / append), produce downloadable Excel
   workbooks from tables (or edit an uploaded spreadsheet and save a new one),
+  write new PDF documents (reports, letters, tables) typeset from Markdown or
+  HTML, concatenate and copy documents server-side (see [docs/TOOLS.md](docs/TOOLS.md)),
   and document lists in the web UI update live when documents are added,
   edited or removed.
 - **Projects** — shared workspaces (members, sessions, documents, memories, live
@@ -464,6 +466,30 @@ To power invite autocomplete, any signed-in user can list all account emails via
 user directory endpoint — set `auth.user_directory: false` if org addresses
 should not be enumerable.
 
+
+# PDF creation (optional)
+
+The agent's `create_pdf` tool typesets Markdown into a PDF with headless Chrome.
+It needs two programs on the server:
+
+- **bubblewrap** (`bwrap`; `apt install bubblewrap`) — Chrome is only ever run
+  inside its sandbox, with no network and no access to the host's files.
+- **chrome-headless-shell** — download the `chrome-headless-shell` build for
+  your platform from [Chrome for Testing](https://googlechromelabs.github.io/chrome-for-testing/),
+  unpack it (e.g. to `/opt/chrome-headless-shell`) and put the executable on the
+  server's `PATH` (`ln -s /opt/chrome-headless-shell/chrome-headless-shell /usr/local/bin/`),
+  or point `documents.pdf_chrome` at it. On Debian/Ubuntu it also needs
+  `libatk1.0-0t64 libatk-bridge2.0-0t64 libxdamage1 libasound2t64 libatspi2.0-0t64`
+  and a font package such as `fonts-dejavu`.
+
+Nothing else is configured. At startup the server logs `create_pdf is
+unavailable: …` when either program is missing; the tool then tells the user
+that PDF creation is not set up. Chrome's own sandbox is disabled
+(`--no-sandbox`) because AppArmor on current Ubuntu denies it; bubblewrap is the
+boundary. A hardened systemd unit has to leave room for it, as
+`docs/harlequin-server.service` does: no `RestrictNamespaces=`, `AF_NETLINK` in
+`RestrictAddressFamilies=` (else "Failed to create NETLINK_ROUTE socket") and
+`ProtectKernelTunables=no` (else "Can't mount proc").
 
 # Running Docling (optional PDF/DOCX conversion)
 

@@ -249,11 +249,11 @@ func parseTextEditOp(args map[string]any) (textEditOp, error) {
 	}
 	switch n {
 	case 0:
-		return op, fmt.Errorf("give exactly one operation: old_string+new_string (replace), diff (unified diff), or append")
+		return op, fmt.Errorf("give exactly one operation: old_string+new_string (replace), diff (unified diff), append (text), or append_source (documents/files)")
 	case 1:
 		return op, nil
 	}
-	return op, fmt.Errorf("give exactly one operation (old_string+new_string, diff, or append), not several")
+	return op, fmt.Errorf("give exactly one operation (old_string+new_string, diff, append, or append_source), not several")
 }
 
 // apply runs the operation on text and describes what it did.

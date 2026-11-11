@@ -272,6 +272,12 @@ func (s *Store) SetDescription(ctx context.Context, db *sql.DB, id int64, desc s
 	return err
 }
 
+// SetTitle renames a document.
+func (s *Store) SetTitle(ctx context.Context, db *sql.DB, id int64, title string) error {
+	_, err := db.ExecContext(ctx, `UPDATE documents SET title = ? WHERE id = ?`, title, id)
+	return err
+}
+
 // SetStoredPath records the on-disk path of a document's persisted file.
 func (s *Store) SetStoredPath(ctx context.Context, db *sql.DB, id int64, path string) error {
 	_, err := db.ExecContext(ctx, `UPDATE documents SET stored_path = ? WHERE id = ?`, path, id)
