@@ -155,6 +155,7 @@ var dropped = map[string]bool{
 	"embed": true, "applet": true, "link": true, "meta": true, "base": true, "form": true, "input": true,
 	"button": true, "select": true, "textarea": true, "audio": true, "video": true, "source": true,
 	"track": true, "portal": true, "dialog": true, "foreignobject": true, "animate": true, "set": true,
+	"sdfield": true, // LibreOffice's HTML import: a document field (author, dates, …)
 }
 
 // droppedAttrs can only name something to load or somewhere to send.
@@ -220,7 +221,10 @@ func sanitize(src string, st *Stats) (body, styles string, err error) {
 			for _, a := range c.Attr {
 				key := strings.ToLower(a.Key)
 				switch {
-				case strings.HasPrefix(key, "on"), droppedAttrs[key]:
+				// "sd…" is LibreOffice's own HTML dialect (mdword converts with it):
+				// sdonclick and friends bind macros to events. No HTML attribute
+				// starts with it, so the whole prefix goes.
+				case strings.HasPrefix(key, "on"), strings.HasPrefix(key, "sd"), droppedAttrs[key]:
 					st.Removed++
 					continue
 				case key == "src":

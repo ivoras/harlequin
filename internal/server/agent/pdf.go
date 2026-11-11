@@ -46,18 +46,9 @@ func (a *Agent) createPDF(ctx context.Context, rc *runContext, args map[string]a
 	if errMsg != "" {
 		return errMsg, nil
 	}
-	var isHTML bool
-	switch format := strings.ToLower(strings.TrimSpace(argString(args, "format"))); format {
-	case "html":
-		isHTML = true
-	case "markdown", "md":
-	case "":
-		name := strings.ToLower(strings.TrimSpace(argString(args, "source")))
-		head := strings.ToLower(strings.TrimSpace(src))
-		isHTML = strings.HasSuffix(name, ".html") || strings.HasSuffix(name, ".htm") ||
-			strings.HasPrefix(head, "<!doctype") || strings.HasPrefix(head, "<html")
-	default:
-		return `error: format must be "markdown" or "html"`, nil
+	isHTML, errMsg := sourceIsHTML(args, src)
+	if errMsg != "" {
+		return errMsg, nil
 	}
 	landscape, _ := args["landscape"].(bool)
 	page, text, st, err := mdpdf.Page(strings.TrimSuffix(title, ".pdf"), src, isHTML, landscape)
@@ -94,4 +85,22 @@ func (a *Agent) createPDF(ctx context.Context, rc *runContext, args map[string]a
 		msg += fmt.Sprintf(" Note: %d script, form, embedded or external item(s) were removed from the HTML (a PDF is static and self-contained).", st.Removed)
 	}
 	return msg, nil
+}
+
+// sourceIsHTML decides whether a create_pdf/create_word text is HTML: the
+// format argument, else a .html source name or a text that starts as an HTML
+// document. Markdown that merely mentions tags stays Markdown.
+func sourceIsHTML(args map[string]any, src string) (isHTML bool, errMsg string) {
+	switch strings.ToLower(strings.TrimSpace(argString(args, "format"))) {
+	case "html":
+		return true, ""
+	case "markdown", "md":
+		return false, ""
+	case "":
+		name := strings.ToLower(strings.TrimSpace(argString(args, "source")))
+		head := strings.ToLower(strings.TrimSpace(src))
+		return strings.HasSuffix(name, ".html") || strings.HasSuffix(name, ".htm") ||
+			strings.HasPrefix(head, "<!doctype") || strings.HasPrefix(head, "<html"), ""
+	}
+	return false, `error: format must be "markdown" or "html"`
 }

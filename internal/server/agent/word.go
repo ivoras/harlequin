@@ -47,18 +47,9 @@ func (a *Agent) createWord(ctx context.Context, rc *runContext, args map[string]
 	if errMsg != "" {
 		return errMsg, nil
 	}
-	var isHTML bool
-	switch format := strings.ToLower(strings.TrimSpace(argString(args, "format"))); format {
-	case "html":
-		isHTML = true
-	case "markdown", "md":
-	case "":
-		name := strings.ToLower(strings.TrimSpace(argString(args, "source")))
-		head := strings.ToLower(strings.TrimSpace(src))
-		isHTML = strings.HasSuffix(name, ".html") || strings.HasSuffix(name, ".htm") ||
-			strings.HasPrefix(head, "<!doctype") || strings.HasPrefix(head, "<html")
-	default:
-		return `error: format must be "markdown" or "html"`, nil
+	isHTML, errMsg := sourceIsHTML(args, src)
+	if errMsg != "" {
+		return errMsg, nil
 	}
 	landscape, _ := args["landscape"].(bool)
 	page, text, st, err := mdword.Page(strings.TrimSuffix(title, ".docx"), src, isHTML)

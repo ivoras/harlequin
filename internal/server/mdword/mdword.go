@@ -31,8 +31,9 @@ const (
 )
 
 // LibreOffice imports a table without borders and ignores class-based page
-// breaks, so those are spelled the way its HTML filter reads them.
-const baseCSS = `table{border-collapse:collapse}th,td{border:1px solid #888;padding:3px 6px}`
+// breaks, so those are spelled the way its HTML filter reads them. Its default
+// margins for an HTML import are lopsided (2 cm left, 1 cm elsewhere).
+const baseCSS = `@page{margin:2cm}table{border-collapse:collapse}th,td{border:1px solid #888;padding:3px 6px}`
 
 var pageBreakRE = regexp.MustCompile(`<div class="pagebreak"></div>`)
 
@@ -67,6 +68,14 @@ func New(soffice string) (*Renderer, error) {
 	if path, err = filepath.EvalSymlinks(path); err != nil {
 		return nil, err
 	}
+	if path, err = filepath.Abs(path); err != nil {
+		return nil, err
+	}
+	// The sandbox shows LibreOffice /usr and nothing else of the host, so an
+	// install elsewhere would start here and then fail on every conversion.
+	if !strings.HasPrefix(path, "/usr/") {
+		return nil, fmt.Errorf("LibreOffice at %s is outside /usr, which is all the sandbox mounts; use the distribution's package", path)
+	}
 	bwrap, err := exec.LookPath("bwrap")
 	if err != nil {
 		return nil, fmt.Errorf("bubblewrap (bwrap) not found, and LibreOffice is never run unsandboxed: %w", err)
@@ -92,9 +101,10 @@ func (r *Renderer) DOCX(ctx context.Context, page string, landscape bool) ([]byt
 	}
 	ctx, cancel := context.WithTimeout(ctx, convertTimeout)
 	defer cancel()
-	// shortcut: assumes a merged-/usr distro, as mdpdf does; the soffice
-	// install must live under /usr (the Debian/Ubuntu package does).
-	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", fmt.Sprintf(`ulimit -f %d && ulimit -t 120 && exec "$@"`, maxDOCX/512), "sh",
+	// shortcut: assumes a merged-/usr distro, as mdpdf does (New checks that
+	// soffice lives under /usr). Limits as in mdpdf: file size, CPU seconds and
+	// data segment (4 GB) per process.
+	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", fmt.Sprintf(`ulimit -f %d && ulimit -t 120 && ulimit -d 4194304 && exec "$@"`, maxDOCX/512), "sh",
 		r.bwrap, "--unshare-all", "--die-with-parent", "--new-session", "--clearenv",
 		"--setenv", "HOME", "/tmp", "--setenv", "LANG", "C.UTF-8",
 		"--ro-bind", "/usr", "/usr", "--ro-bind-try", "/etc/fonts", "/etc/fonts", "--ro-bind-try", "/etc/libreoffice", "/etc/libreoffice",

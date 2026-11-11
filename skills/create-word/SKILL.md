@@ -17,7 +17,7 @@ Same Markdown as `create_pdf`:
 ```markdown
 # Service agreement
 
-Between **Fiducia d.o.o.** and the client.
+Between **Primjer d.o.o.** and the client.
 
 ## 1. Scope
 
