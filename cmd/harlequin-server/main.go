@@ -460,6 +460,12 @@ func recordUsage(store *storage.Manager, us *usage.Store) llm.UsageRecorder {
 	return func(ctx context.Context, provider, model string, u llm.Usage) {
 		at, ok := llm.AttributionFrom(ctx)
 		if !ok || at.UserID == 0 {
+			// No acting user (background/delegated call): keep the spend anyway.
+			wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			defer cancel()
+			if err := us.RecordUnattributed(wctx, store.System, provider, model, u.PromptTokens, u.CachedPromptTokens(), u.CompletionTokens, u.Cost); err != nil {
+				log.Printf("usage: record unattributed call: %v", err)
+			}
 			return
 		}
 		var sid *int64

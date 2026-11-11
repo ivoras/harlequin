@@ -1901,6 +1901,10 @@ func (s *Server) handleUsageUsers(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// Calls with no acting user (background work) still cost money.
+	if days, e := s.Usage.DailyUnattributed(r.Context(), s.Storage.System, tz); e == nil && len(days) > 0 {
+		out = append(out, types.UsageUser{Email: "(no user: background calls)", Days: days})
+	}
 	writeJSON(w, http.StatusOK, out)
 }
 

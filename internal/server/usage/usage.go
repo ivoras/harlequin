@@ -32,6 +32,19 @@ func (s *Store) EstimateCost(model string, promptTokens, completionTokens int) f
 	return float64(promptTokens)/1000*p.PromptPer1K + float64(completionTokens)/1000*p.CompletionPer1K
 }
 
+// RecordUnattributed stores a call that has no acting user in the system
+// database (see migration system/0004).
+func (s *Store) RecordUnattributed(ctx context.Context, sysDB *sql.DB, provider, model string, promptTokens, cachedTokens, completionTokens int, reportedCost *float64) error {
+	cost, reported := s.EstimateCost(model, promptTokens, completionTokens), 0
+	if reportedCost != nil {
+		cost, reported = *reportedCost, 1
+	}
+	_, err := sysDB.ExecContext(ctx,
+		`INSERT INTO usage_unattributed(provider, model, prompt_tokens, cached_tokens, completion_tokens, est_cost_usd, cost_reported)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`, provider, model, promptTokens, cachedTokens, completionTokens, cost, reported)
+	return err
+}
+
 // Record stores a usage row in the user's database. reportedCost is the
 // provider's own figure (nil if it sent none) and wins over the price-table
 // estimate. projectID is 0 for personal sessions.
@@ -58,11 +71,21 @@ func (s *Store) Record(ctx context.Context, db *sql.DB, projectID int64, session
 // records. tzMinutes shifts the stored UTC timestamps into the viewer's local
 // time (e.g. 60 for UTC+1) so days break at their midnight.
 func (s *Store) Daily(ctx context.Context, db *sql.DB, tzMinutes int) ([]types.UsageDay, error) {
+	return s.daily(ctx, db, "usage", tzMinutes)
+}
+
+// DailyUnattributed is Daily for calls made with no acting user (system db).
+func (s *Store) DailyUnattributed(ctx context.Context, sysDB *sql.DB, tzMinutes int) ([]types.UsageDay, error) {
+	return s.daily(ctx, sysDB, "usage_unattributed", tzMinutes)
+}
+
+// daily: table is one of this package's two constants, never user input.
+func (s *Store) daily(ctx context.Context, db *sql.DB, table string, tzMinutes int) ([]types.UsageDay, error) {
 	mod := fmt.Sprintf("%+d minutes", tzMinutes)
 	rows, err := db.QueryContext(ctx,
 		`SELECT date(created_at, ?) AS d, COALESCE(SUM(est_cost_usd),0), COUNT(*),
 		        COALESCE(SUM(prompt_tokens),0), COALESCE(SUM(cached_tokens),0), COALESCE(SUM(completion_tokens),0)
-		 FROM usage GROUP BY d ORDER BY d`, mod)
+		 FROM `+table+` GROUP BY d ORDER BY d`, mod)
 	if err != nil {
 		return nil, err
 	}
