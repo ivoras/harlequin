@@ -31,17 +31,27 @@
   }
   const perUser = $derived(
     users
-      .map((u) => ({
-        email: u.email || `user ${u.user_id}`,
-        calls: u.days.reduce((s, d) => s + d.calls, 0),
-        total: u.days.reduce((s, d) => s + d.cost_usd, 0),
-        today: u.days.filter((d) => d.day === today).reduce((s, d) => s + d.cost_usd, 0),
-      }))
+      .map((u) => {
+        const recent = u.days.filter((d) => d.day >= since);
+        return {
+          email: u.email || `user ${u.user_id}`,
+          calls: recent.reduce((s, d) => s + d.calls, 0),
+          total: recent.reduce((s, d) => s + d.cost_usd, 0),
+          today: recent.filter((d) => d.day === today).reduce((s, d) => s + d.cost_usd, 0),
+        };
+      })
+      .filter((u) => u.calls > 0)
       .sort((a, b) => b.total - a.total),
   );
   const money = (n: number) => `$${n.toFixed(n < 1 ? 4 : 2)}`;
   const today = localToday();
-  const byDay = $derived(daily(days, today, 90));
+  // First day of the 30-day window (today inclusive); days are YYYY-MM-DD.
+  const since = (() => {
+    const d = new Date(today + "T00:00:00");
+    d.setDate(d.getDate() - 29);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  })();
+  const byDay = $derived(daily(days, today, 30));
   const byWeek = $derived(weekly(days, today, 52));
   const byMonth = $derived(monthly(days, today));
   const sum = (k: keyof Omit<UsageDay, "day">) => days.reduce((s, d) => s + d[k], 0);
@@ -111,25 +121,25 @@
       <div class="row"><b class="muted">Generated tokens</b><span class="spacer"></span>{completion.toLocaleString()}</div>
       <div class="row"><b class="muted">Cost (all time{allMode ? ", all users" : ""})</b><span class="spacer"></span>${cost.toFixed(cost < 1 ? 4 : 2)}</div>
     </div>
-    {#if allMode && perUser.length}
-      <div class="card">
-        <b class="muted">By user</b>
-        {#each perUser as u (u.email)}
-          <div class="row small">
-            <span>{u.email}</span><span class="spacer"></span>
-            <span class="muted">{u.calls.toLocaleString()} calls</span>
-            <span style="min-width:7ch;text-align:right">{money(u.today)} today</span>
-            <b style="min-width:8ch;text-align:right">{money(u.total)}</b>
-          </div>
-        {/each}
-      </div>
-    {/if}
     {#if loading}
       <div class="muted small">Loading…</div>
     {:else if days.length === 0}
       <div class="muted small">No usage recorded yet.</div>
     {:else}
-      <UsageBars title="Daily cost — last 90 days" buckets={byDay} barWidth={12} />
+      <UsageBars title="Daily cost — last 30 days" buckets={byDay} barWidth={12} />
+      {#if allMode && perUser.length}
+        <div class="card">
+          <b class="muted">By user — last 30 days</b>
+          {#each perUser as u (u.email)}
+            <div class="row small">
+              <span>{u.email}</span><span class="spacer"></span>
+              <span class="muted">{u.calls.toLocaleString()} calls</span>
+              <span style="min-width:7ch;text-align:right">{money(u.today)} today</span>
+              <b style="min-width:8ch;text-align:right">{money(u.total)}</b>
+            </div>
+          {/each}
+        </div>
+      {/if}
       <UsageBars title="Weekly cost — last 52 weeks" buckets={byWeek} barWidth={16} />
       <UsageBars title="Monthly cost — all time" buckets={byMonth} barWidth={36} />
       <div class="muted small">Costs are the provider-reported figure where available, otherwise estimated from configured model prices. Days follow your local time.</div>
