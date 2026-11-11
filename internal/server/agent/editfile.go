@@ -34,7 +34,7 @@ func editArgsSchema(target map[string]any) map[string]any {
 	return map[string]any{"type": "object", "properties": props}
 }
 
-const editOpsHelp = `Give exactly ONE of these five operations per call. (1) REPLACE: old_string + new_string. The old_string must occur once in the text (or set replace_all). Copy it exactly and include enough surrounding text. An empty new_string deletes it. (2) PATCH: diff, a unified diff. Best for several changes at once. (3) APPEND: append, text you write, added at the end. (4) APPEND FROM: append_source, a list of documents and/or sandbox files whose whole text is added at the end. The text does not pass through you, so any length works; a PDF, Word or Excel source is read as its Markdown text; sources are not changed. (5) INSERT: insert + one of after or before. The after/before text is a passage you quote exactly from the document; it must occur once. Example: insert "New paragraph." after "Payment is due in 30 days." The new text becomes its own paragraph next to the one that holds the passage. A single table row ("| a | b |") or list item ("- text") quoted next to a row or item of the same kind is added on the next line, so adding rows and items works. The edit is all-or-nothing: on any error nothing is changed and the message says what to fix.`
+const editOpsHelp = `Give exactly ONE of these five operations per call. (1) REPLACE: old_string + new_string. The old_string must occur once in the text (or set replace_all). Copy it exactly and include enough surrounding text. An empty new_string deletes it. (2) PATCH: diff, a unified diff. Best for several changes at once. (3) APPEND: append, text you write, added at the end. (4) APPEND FROM: append_source, a list of documents and/or sandbox files whose whole text is added at the end. The text does not pass through you, so any length works; a PDF, Word or Excel source is read as its Markdown text; sources are not changed. (5) INSERT: insert + one of after or before. The after/before text is a passage you quote exactly from the document; it must occur once. Example: insert "New paragraph." after "Payment is due in 30 days." The new text becomes its own paragraph next to the one that holds the passage. A single table row ("| a | b |") or list item ("- text") quoted next to a row or item of the same kind is added on the next line, so adding rows and items works. For an uploaded Excel file edit_doc also has (6) CELLS: cells sets cells by address. The edit is all-or-nothing: on any error nothing is changed and the message says what to fix.`
 
 // editFileEntry registers edit_file: apply an edit to a sandbox file.
 func (a *Agent) editFileEntry() toolEntry {
@@ -112,17 +112,19 @@ type docEdit struct {
 }
 
 // editOpArgs are the arguments that make up an edit operation (undo excludes them).
-var editOpArgs = []string{"old_string", "new_string", "diff", "append", "append_source", "insert", "after", "before"}
+var editOpArgs = []string{"old_string", "new_string", "diff", "append", "append_source", "insert", "after", "before", "cells"}
 
 // editDocEntry registers edit_doc: apply an edit to a saved corpus document.
 func (a *Agent) editDocEntry() toolEntry {
 	schema := editArgsSchema(map[string]any{
-		"doc":  map[string]any{"type": "string", "description": "Scoped document id, e.g. \"u.12\", \"s.3\" or \"p.7\" (resolve with list_documents); or a sandbox file such as tmp://notes.md"},
-		"undo": map[string]any{"type": "boolean", "description": "Set true (with doc only, no other argument) to restore the version before the last edit. Only one step back is kept."},
+		"doc":   map[string]any{"type": "string", "description": "Scoped document id, e.g. \"u.12\", \"s.3\" or \"p.7\" (resolve with list_documents); or a sandbox file such as tmp://notes.md"},
+		"cells": map[string]any{"type": "object", "description": `Uploaded Excel only: set cells. An object from cell address to value, e.g. {"October!B2": 1700, "C2": "=B2*0.73", "D2": "paid"}. A number sets a number, text starting with = a formula, other text text; null clears the cell.`},
+		"sheet": map[string]any{"type": "string", "description": "Uploaded Excel only: the sheet for cells addresses without a sheet name, and for append, insert and replace. Not needed when the workbook has one sheet."},
+		"undo":  map[string]any{"type": "boolean", "description": "Set true (with doc only, no other argument) to restore the version before the last edit. Only one step back is kept."},
 	})
 	schema["required"] = []string{"doc"}
 	return toolEntry{
-		def: fnTool("edit_doc", `Edit a saved document in place, keeping its id, title and scope. Use it when the user asks to change a document: fix a passage, add a paragraph, add text at the end, or append other documents. Works on: text/Markdown documents (save_doc, or uploaded .md/.txt); documents made with create_pdf, create_word or create_excel (their file is rebuilt from the edited Markdown); and uploaded Word (.docx) files, which are edited inside the original file so fonts, styles, headers and layout stay (replace, insert, append and append_source work; diff does not). For a Word file quote passages as read_doc shows them. A passage must lie in one paragraph. insert next to a table cell adds a paragraph in that cell; insert "| a | b |" next to a table row adds a row. Uploaded PDF and Excel files cannot be edited yet. `+editOpsHelp+` To go back one step: edit_doc with doc and undo true. Given a sandbox file (tmp://notes.md) as doc it edits that file, like edit_file. The document is re-indexed afterwards, so search_docs sees the new text. Unchanged passages keep their chunk ids, so citations to them stay valid. Edit only when the user asked you to change that document.`, schema),
+		def: fnTool("edit_doc", `Edit a saved document in place, keeping its id, title and scope. Use it when the user asks to change a document: fix a passage, add a paragraph, add text at the end, or append other documents. Works on: text/Markdown documents (save_doc, or uploaded .md/.txt); documents made with create_pdf, create_word or create_excel (their file is rebuilt from the edited Markdown); and uploaded Word (.docx) files, which are edited inside the original file so fonts, styles, headers and layout stay (replace, insert, append and append_source work; diff does not). For a Word file quote passages as read_doc shows them. A passage must lie in one paragraph. insert next to a table cell adds a paragraph in that cell; insert "| a | b |" next to a table row adds a row. Uploaded Excel (.xlsx) files are edited in place too, keeping formatting and formulas: FIRST call read_doc with cells true to see sheet names and cell addresses, then use cells (set cells, e.g. {"October!B2": 1700}), append (table rows "| a | b |" after the last row), insert (table rows after or before "row 5" or a quoted row) or replace (text and formulas only); diff does not work. Use the sheet argument when the workbook has several sheets. Uploaded PDF files cannot be edited. `+editOpsHelp+` To go back one step: edit_doc with doc and undo true. Given a sandbox file (tmp://notes.md) as doc it edits that file, like edit_file. The document is re-indexed afterwards, so search_docs sees the new text. Unchanged passages keep their chunk ids, so citations to them stay valid. Edit only when the user asked you to change that document.`, schema),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 			undo := argBool(args, "undo", false)
 			if p := argString(args, "doc"); isSandboxPath(p) { // a sandbox file: edit_file's job
@@ -185,6 +187,12 @@ func (a *Agent) editDocEntry() toolEntry {
 			}
 			// Where the document came from decides how it is edited.
 			side, sideErr := os.ReadFile(e.path + sidecarExt)
+			if e.op.hasCells && (sideErr == nil || mime != xlsxMime) {
+				if sideErr == nil && mime == xlsxMime {
+					return "error: this workbook is generated from Markdown; change it with replace, insert or append (cells only works on uploaded Excel files).", nil
+				}
+				return fmt.Sprintf("error: cells only works on an uploaded Excel (.xlsx) workbook; document %s is %s. Use replace, insert or append.", e.ref, mime), nil
+			}
 			switch {
 			case sideErr == nil: // made by create_excel/create_pdf/create_word
 				return a.editGeneratedDoc(ctx, e, side)
@@ -194,8 +202,8 @@ func (a *Agent) editDocEntry() toolEntry {
 				return fmt.Sprintf("error: document %s is an uploaded PDF, so it cannot be edited: its pages are fixed. To change it, make a new document from its text with create_pdf or create_word (source %q), or cut pages out with pdf_pages.", e.ref, e.ref), nil
 			case mime == docxMime:
 				return a.editWordDoc(ctx, e)
-			case mime == xlsxMime: // Stage D plugs in here
-				return fmt.Sprintf("error: document %s is an uploaded Excel file, and editing uploaded Excel files in place is not available yet. Make a new workbook from its tables with create_excel (source %q), or save an edited copy with save_doc.", e.ref, e.ref), nil
+			case mime == xlsxMime:
+				return a.editExcelDoc(ctx, e)
 			}
 			return fmt.Sprintf("error: document %s is %s, not text/Markdown, so it cannot be edited in place; save an edited copy with save_doc.", e.ref, mime), nil
 		},
@@ -335,6 +343,10 @@ func (a *Agent) undoDocEdit(ctx context.Context, e *docEdit) (string, error) {
 			return fmt.Sprintf("error: cannot restore %s: %v", e.ref, err), nil
 		}
 		text = g.text
+	} else if e.mime == xlsxMime { // an uploaded workbook: text comes from the restored file, as at upload
+		if text, err = a.xlsxText(ctx, e.path, prev); err != nil {
+			return fmt.Sprintf("error: cannot restore %s: %v", e.ref, err), nil
+		}
 	} else if e.mime == docxMime { // an uploaded Word file: text comes from the restored file, as at upload
 		if text, err = a.docxText(ctx, e.path, prev); err != nil {
 			return fmt.Sprintf("error: cannot restore %s: %v", e.ref, err), nil

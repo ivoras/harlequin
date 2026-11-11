@@ -307,6 +307,9 @@ type textEditOp struct {
 	insertText, anchor   string
 	insertBefore         bool
 	hasInsert            bool
+	cells                map[string]any // uploaded Excel: address -> value
+	hasCells             bool
+	sheet                string // uploaded Excel: default sheet
 }
 
 // parseTextEditOp reads exactly one operation (old_string/new_string, diff,
@@ -338,24 +341,34 @@ func parseTextEditOp(args map[string]any) (textEditOp, error) {
 		return op, fmt.Errorf("insert needs exactly one of after or before: a passage quoted exactly from the document")
 	}
 	op.hasInsert = op.insertText != ""
+	op.sheet = strings.TrimSpace(argString(args, "sheet"))
+	if v, ok := args["cells"]; ok && v != nil {
+		m, isMap := v.(map[string]any)
+		if !isMap {
+			return op, fmt.Errorf(`cells must be an object from cell address to value, for example {"B2": 1700, "October!C2": "=B2*0.73"}`)
+		}
+		op.cells, op.hasCells = m, true
+	}
 	n := 0
-	for _, b := range []bool{op.hasReplace, op.hasDiff, op.hasAppend, op.hasInsert} {
+	for _, b := range []bool{op.hasReplace, op.hasDiff, op.hasAppend, op.hasInsert, op.hasCells} {
 		if b {
 			n++
 		}
 	}
 	switch n {
 	case 0:
-		return op, fmt.Errorf("give exactly one operation: old_string+new_string (replace), diff (unified diff), append (text), append_source (documents/files), or insert with after or before (add text next to a passage)")
+		return op, fmt.Errorf("give exactly one operation: old_string+new_string (replace), diff (unified diff), append (text), append_source (documents/files), insert with after or before (add text next to a passage), or cells (set Excel cells)")
 	case 1:
 		return op, nil
 	}
-	return op, fmt.Errorf("give exactly one operation (old_string+new_string, diff, append, append_source, or insert+after/before), not several")
+	return op, fmt.Errorf("give exactly one operation (old_string+new_string, diff, append, append_source, insert+after/before, or cells), not several")
 }
 
 // apply runs the operation on text and describes what it did.
 func (op textEditOp) apply(text string) (string, string, error) {
 	switch {
+	case op.hasCells:
+		return "", "", fmt.Errorf("cells only works on an uploaded Excel workbook (an .xlsx file saved as a document); for text use replace, insert or append")
 	case op.hasReplace:
 		out, n, err := textEditReplace(text, op.oldString, op.newString, op.replaceAll)
 		if err != nil {

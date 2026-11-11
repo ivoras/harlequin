@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -24,6 +25,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/skills"
+	"github.com/ivoras/harlequin/internal/server/xlsxedit"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
@@ -500,16 +502,18 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 			},
 		}
 		reg["read_doc"] = toolEntry{
-			def: fnTool("read_doc", `Read a document's text (its Markdown rendering) by reference. Use this for documents the user attached to their message — listed at its end as @"u.18/report.pdf" — pass the reference as written (or just the id, u.18). It also reads a text file in your sandbox: pass its path (tmp://combined.md, storage://notes.md; a bare path means tmp://). Returns up to limit characters from offset; when truncated, the result says where to continue. To find something in a long document prefer search_docs with docs=[id] or check_text.`, map[string]any{
+			def: fnTool("read_doc", `Read a document's text (its Markdown rendering) by reference. Use this for documents the user attached to their message — listed at its end as @"u.18/report.pdf" — pass the reference as written (or just the id, u.18). It also reads a text file in your sandbox: pass its path (tmp://combined.md, storage://notes.md; a bare path means tmp://). Returns up to limit characters from offset; when truncated, the result says where to continue. To find something in a long document prefer search_docs with docs=[id] or check_text. For an Excel workbook you want to edit, pass cells true: it shows every sheet as a grid with its name, column letters and row numbers, so you can name the cell to change.`, map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"doc":    map[string]any{"type": "string", "description": `Document reference: u.N / s.N / p.N, optionally as written in the prompt, e.g. @"u.18/report.pdf"; or a sandbox file, e.g. tmp://combined.md`},
 					"offset": map[string]any{"type": "integer", "description": "Character offset to start from (default 0)"},
 					"limit":  map[string]any{"type": "integer", "description": "Maximum characters to return (default 30000)"},
+					"cells":  map[string]any{"type": "boolean", "description": "Excel files only: show each sheet as a grid with its name, column letters and row numbers (formulas as text), to find cell addresses for edit_doc"},
 				},
 				"required": []string{"doc"},
 			}),
 			handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+				const gridOnlyExcel = "error: the cells grid view exists only for Excel (.xlsx) files; read this document without cells."
 				window := func(title, ref, note, text string) string {
 					r := []rune(text)
 					off := min(max(argInt(args, "offset", 0), 0), len(r))
@@ -524,7 +528,11 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 					}
 					return out
 				}
+				wantGrid := argBool(args, "cells", false)
 				if p := strings.TrimSpace(argString(args, "doc")); isSandboxPath(p) {
+					if wantGrid {
+						return gridOnlyExcel, nil
+					}
 					text, _, errMsg := a.sourceText(ctx, rc, p)
 					if errMsg != "" {
 						return errMsg, nil
@@ -538,6 +546,17 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 				db, dbErrMsg := a.docDBForScope(ctx, rc, doc.Scope)
 				if dbErrMsg != "" {
 					return dbErrMsg, nil
+				}
+				if wantGrid {
+					data, _, mime, ok := a.storedOriginal(ctx, rc, doc)
+					if !ok || mime != xlsxMime || !bytes.HasPrefix(data, []byte("PK")) {
+						return gridOnlyExcel, nil
+					}
+					grid, err := xlsxedit.Grid(data)
+					if err != nil {
+						return "error: " + err.Error(), nil
+					}
+					return window(doc.Title, docRef(doc), "", grid), nil
 				}
 				text, err := a.Docs.FullText(ctx, db, doc.ID)
 				if err != nil {

@@ -180,3 +180,13 @@ func stripMarkdown(line string) string {
 	}
 	return line
 }
+
+// Normalize and StripMarkdown expose the passage matching rules (whitespace
+// collapsed, * and _ ignored, heading/list/quote marks removed) to other
+// editors of uploaded files, so every "quote it as read_doc shows it" matches alike.
+func Normalize(s string) string {
+	n, _ := normalize([]rune(s))
+	return string(n)
+}
+
+func StripMarkdown(line string) string { return stripMarkdown(line) }

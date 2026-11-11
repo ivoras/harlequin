@@ -268,6 +268,7 @@ for files the user attached to their message, listed at its end as
 notes whether the model can see the picture (vision) or only its OCR text. To find
 something in a long document, `search_docs` with `docs` or `check_text` is better.
 **Example:** `read_doc({"doc": "u.18", "offset": 30000})`
+`cells: true` on an Excel file renders it from the file itself: one section per sheet (`## Sheet "October" (A1:C4)`), a table whose header row is the column letters and whose first column is the row number, formulas as `=…` text and a `Merged:` line; the usual `offset`/`limit` window applies. On any other document it says the grid view exists only for Excel files.
 
 #### `check_text`
 **Why:** authoritatively confirm or rule out that an exact phrase exists
@@ -332,7 +333,7 @@ to pass through the model's output.
 **Why:** change a saved document in place — keeps its id, title and scope,
 re-indexes it for `search_docs`, and updates the stored original. The same five
 operations as `edit_file` (replace, patch, append, append from, insert after/before
-a passage), one per call, all-or-nothing. How it edits depends on where the
+a passage) plus `cells` for Excel, one per call, all-or-nothing. How it edits depends on where the
 document came from:
 - **text/Markdown** (saved with `save_doc`, or uploaded `.md`/`.txt`): the stored
   text is edited.
@@ -364,7 +365,28 @@ document came from:
   `docxextract`). Undo works. Not handled: headers/footers/footnotes text,
   merged-cell geometry, content controls' placeholders, text split by soft
   hyphens or symbols, legacy `.doc`.
-- **uploaded Excel**: refused for now.
+- **uploaded Excel (`.xlsx`)**: edited inside the original file with excelize
+  (`internal/server/xlsxedit`), so styles, number formats, column widths, formulas
+  and the other sheets stay. Call `read_doc` with `cells: true` first to get the
+  sheet names and cell addresses. Operations: `cells` (an object from address to
+  value, `{"October!B2": 1700, "C2": "=B2*0.73"}`; a number is numeric, `=…` a
+  formula, other text text, `null` clears; the cell keeps its style; only the
+  top-left cell of a merged range is writable), `append` (Markdown table rows
+  after the last used row, styled like the row above), `insert` + `after`/`before`
+  (table rows next to `row N` or a quoted row; rows below move and formulas,
+  merged ranges, names and validation follow), and `replace` (text and formula
+  text only; use `cells` for numbers). `sheet` names the sheet for addresses
+  without one and for the other operations (optional when there is one sheet);
+  `cells` counts as the one operation of a call; `diff` is refused. Formulas are
+  recalculated by Excel on open (the workbook is flagged `fullCalcOnLoad`, and a
+  written formula's stale cached value is dropped). Before returning the file the
+  output is re-read and every cell compared with the input (only the intended
+  change and an insert's row shift may differ), and the package's charts, images,
+  pivot tables, comments, tables and so on must still be present. Refused: legacy
+  `.xls`, encrypted or macro-enabled (`.xlsm`) files, a missing sheet, a bad
+  address, a write into a merged range, and row insertion in a workbook with
+  charts or pivot tables (their ranges would not move). The searchable text is
+  derived like an upload's (the configured converter, else `mdconv`).
 
 Unchanged passages keep their chunk ids across an edit, so citations to them stay
 valid. **Undo:** before replacing the stored file the previous version is kept

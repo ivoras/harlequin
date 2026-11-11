@@ -411,3 +411,9 @@ func esc(s string) string {
 	}
 	return b.String()
 }
+
+// SplitRow, IsSeparator and IsNumber expose the table-row and number rules so
+// edits to an existing workbook type cells exactly as create_excel does.
+func SplitRow(line string) []string   { return splitRow(line) }
+func IsSeparator(cells []string) bool { return isSeparator(cells) }
+func IsNumber(v string) bool          { return isNumber(v) }

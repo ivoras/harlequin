@@ -30,8 +30,10 @@ Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a fu
   quoted claims against sources, and save its own reports as searchable,
   citation-pinned documents rendered in the web UI. Clicking a citation opens the
   document scrolled to the cited passage. The agent can also edit its saved text
-  documents in place (replace / diff / append), produce downloadable Excel
-  workbooks from tables (or edit an uploaded spreadsheet and save a new one),
+  documents in place (replace / diff / append / insert, with undo), edit Word
+  and Excel documents on request — uploaded `.docx`/`.xlsx` files are changed inside
+  the original file so their formatting and formulas are kept — produce downloadable
+  Excel workbooks from tables,
   write new PDF documents (reports, letters, tables) typeset from Markdown or
   HTML, cut, split and merge pages of existing PDFs, e-mail documents as
   attachments, concatenate and copy documents server-side (see [docs/TOOLS.md](docs/TOOLS.md)),

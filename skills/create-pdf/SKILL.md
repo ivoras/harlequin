@@ -110,8 +110,9 @@ columns, a letter layout, exact spacing). Then write HTML and pass
    number of pages) and that they can open or download it from their files.
    Repeat any note the tool returned (e.g. images left out).
 
-To change a PDF you created, change the Markdown and call `create_pdf` again: it
-makes a new file.
+To change a PDF you created, use `edit_doc` (load_skill "edit-document"): it
+edits the Markdown the PDF was made from and rebuilds the file, keeping the
+document's id. An **uploaded** PDF cannot be edited.
 
 `create_pdf` writes **new** documents only. To cut pages out of an existing
 PDF, split it or merge PDF files, use `pdf_pages` (load_skill "pdf-pages"). It

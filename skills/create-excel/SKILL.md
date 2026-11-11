@@ -77,11 +77,15 @@ Rules — follow them exactly:
    and that they can open or download it from their files. Mention anything you
    left out (see rule 7).
 
-**Editing an uploaded spreadsheet.** `read_doc` the spreadsheet (e.g. `u.6`) to
-get its tables in this same format (each sheet's tables follow one another;
-sheet names are not included, so add `# Name` headings if you know them), make
-the requested changes, and `create_excel` a new file — the original is left
-unchanged. Keep values exactly as they were unless asked to change them.
+**Editing an uploaded spreadsheet.** To change an uploaded workbook and keep
+its formatting, formulas and other sheets, use `edit_doc` (load_skill
+"edit-document") — it changes the file in place. A workbook you created with
+this tool can be changed the same way (`edit_doc` replace, insert or append).
+To make a **new** workbook from an old one, `read_doc` the spreadsheet (e.g.
+`u.6`) to get its tables in this same format (each sheet's tables follow one
+another; sheet names are not included, so add `# Name` headings if you know
+them), make the requested changes, and `create_excel` a new file — the original
+is left unchanged. Keep values exactly as they were unless asked to change them.
 
 If `create_excel` reports an error, fix the Markdown as the message says and
 call it again.

@@ -85,11 +85,12 @@ how many items it removed. Do not write `<html>`, `<head>` or `<body>`.
    and that they can open or download it from their files. Repeat any note the
    tool returned (e.g. images left out).
 
-To change a Word document you created, change the Markdown and call
-`create_word` again: it makes a new file. The tool **cannot edit an existing
-.docx** (one the user uploaded) — say so, and offer to create a new document
-from its text (`"source": "u.12"` uses the extracted text; the original layout
-is not kept).
+To change a Word document you created, use `edit_doc` (load_skill
+"edit-document"): it edits the Markdown the file was made from and rebuilds the
+file, keeping the document's id. An **uploaded** .docx is also changed in place
+by `edit_doc`, with its formatting kept. `create_word` itself always makes a new
+file: use it to turn another document's text into a Word file
+(`"source": "u.12"` uses the extracted text; the original layout is not kept).
 
 If it says Word creation is not set up on this server, tell the user and offer
 to save the text with `save_doc` instead.

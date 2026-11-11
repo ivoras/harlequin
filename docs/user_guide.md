@@ -108,10 +108,31 @@ so you can follow a report's sources without leaving it.
 Ask for a spreadsheet ("make an Excel file of these prices", "export this table
 to Excel") and the agent creates a downloadable `.xlsx` in the same place a
 report would go — one sheet per section, a bold header row, real numbers, and
-working formulas such as totals. It can also edit an uploaded spreadsheet: it
-reads the tables, applies your changes and saves a **new** workbook (the
-original stays as it was). Only the data comes across — not colours, merged
-cells, charts or column formats.
+working formulas such as totals. Only the data goes into a workbook the agent
+makes — not colours, merged cells, charts or column formats. To change a
+spreadsheet you uploaded, see "Changing a document" below: it is edited in place
+and keeps its formatting; ask for a *new* workbook if you want the original left
+unchanged.
+
+#### Changing a document
+
+Ask the agent to change a document that already exists and it edits it **in
+place**, keeping the same document: "in the contract, change the notice period
+from 30 to 60 days", "add a paragraph after the one about payment terms", "add a
+row for the new employee", "set Ana's gross in the October sheet to 1700". This
+works on notes and Markdown documents, on Word (`.docx`) and Excel (`.xlsx`) files
+you uploaded, and on PDF, Word and Excel files the agent made for you earlier.
+
+- **Uploaded Word and Excel files keep their formatting**: fonts, styles, headers
+  and footers, numbering, images, number formats and formulas are untouched; only
+  the change is made. Word files with tracked changes, and Excel files with
+  macros or protected by a password, are refused — the agent tells you why.
+- **Files the agent made** are rebuilt from the edited text (so their formatting is
+  the agent's standard layout).
+- **Uploaded PDFs cannot be edited.** The agent can make a new document from the
+  PDF's text, or cut pages out of it.
+- **The last change can be undone**: say "undo that". Only one step back is kept;
+  the next edit replaces it.
 
 ### The web app
 

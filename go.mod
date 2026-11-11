@@ -23,10 +23,11 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/refraction-networking/utls v1.8.2
 	github.com/robfig/cron/v3 v3.0.1
+	github.com/xuri/excelize/v2 v2.11.1
 	github.com/yuin/goldmark v1.8.2
-	golang.org/x/crypto v0.52.0
+	golang.org/x/crypto v0.58.0
 	golang.org/x/image v0.47.0
-	golang.org/x/net v0.55.0
+	golang.org/x/net v0.62.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sync v0.24.0
 	golang.org/x/text v0.43.0
@@ -58,11 +59,16 @@ require (
 	github.com/mattn/go-runewidth v0.0.23 // indirect
 	github.com/microcosm-cc/bluemonday v1.0.27 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
+	github.com/richardlehane/mscfb v1.0.9 // indirect
+	github.com/richardlehane/msoleps v1.0.6 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/segmentio/asm v1.1.3 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/tetratelabs/wazero v1.12.0 // indirect
+	github.com/tiendc/go-deepcopy v1.7.2 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
+	github.com/xuri/efp v0.0.3-0.20260924042702-217b81952dec // indirect
+	github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/yuin/goldmark-emoji v1.0.5 // indirect
 	golang.org/x/sys v0.49.0 // indirect
