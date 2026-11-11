@@ -30,12 +30,24 @@ const (
 	maxDOCX        = 200 << 20
 )
 
-// LibreOffice imports a table without borders and ignores class-based page
-// breaks, so those are spelled the way its HTML filter reads them. Its default
-// margins for an HTML import are lopsided (2 cm left, 1 cm elsewhere).
-const baseCSS = `@page{margin:2cm}table{border-collapse:collapse}th,td{border:1px solid #888;padding:3px 6px}`
+// LibreOffice's HTML import ignores CSS borders on cells and class-based page
+// breaks, so those are spelled the way its filter reads them: table attributes
+// and an inline page-break style. Its default margins for an HTML import are
+// lopsided (2 cm left, 1 cm elsewhere).
+const baseCSS = `@page{margin:2cm}`
 
-var pageBreakRE = regexp.MustCompile(`<div class="pagebreak"></div>`)
+var (
+	pageBreakRE = regexp.MustCompile(`<div class="pagebreak"></div>`)
+	tableRE     = regexp.MustCompile(`<table\b[^>]*>`)
+)
+
+// tableAttrs gives a table visible cell borders unless the source set its own.
+func tableAttrs(tag string) string {
+	if strings.Contains(tag, " border=") {
+		return tag
+	}
+	return tag[:len(tag)-1] + ` border="1" cellspacing="0" cellpadding="4">`
+}
 
 // Page builds the HTML that LibreOffice converts, and the plain-Markdown text
 // of src for indexing. Stats are mdpdf's (images and active content removed).
@@ -45,6 +57,7 @@ func Page(title, src string, isHTML bool) (page, text string, st mdpdf.Stats, er
 		return "", "", st, err
 	}
 	body = pageBreakRE.ReplaceAllString(body, `<p style="page-break-before:always"></p>`)
+	body = tableRE.ReplaceAllStringFunc(body, tableAttrs)
 	return "<!DOCTYPE html>\n<html><head><meta charset=\"utf-8\"><title>" + html.EscapeString(title) +
 		"</title><style>" + baseCSS + "</style><style>" + styles + "</style></head><body>\n" + body + "</body></html>\n", text, st, nil
 }

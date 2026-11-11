@@ -6,6 +6,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -47,6 +48,9 @@ func TestDOCX(t *testing.T) {
 			if !strings.Contains(x, want) {
 				t.Errorf("landscape=%v: missing %q", land, want)
 			}
+		}
+		if !regexp.MustCompile(`<w:tcBorders><w:top w:val="single"`).MatchString(x) {
+			t.Errorf("landscape=%v: table cells have no borders", land)
 		}
 		if !strings.Contains(x, `w:left="1134" w:right="1134"`) || !strings.Contains(x, `w:top="1134"`) || !strings.Contains(x, `w:bottom="1134"`) {
 			t.Errorf("landscape=%v: margins are not 2 cm all round", land)
@@ -104,5 +108,16 @@ func TestNewRefusesLibreOfficeOutsideUsr(t *testing.T) {
 	}
 	if _, err := New(fake); err == nil || !strings.Contains(err.Error(), "outside /usr") {
 		t.Fatalf("want an 'outside /usr' error, got %v", err)
+	}
+}
+
+// A table gets borders unless the HTML source chose its own.
+func TestTableBorders(t *testing.T) {
+	page, _, _, err := Page("T", `<table><tr><td>a</td></tr></table><table border="0" class="x"><tr><td>b</td></tr></table>`, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(page, `<table border="1" cellspacing="0" cellpadding="4">`) || !strings.Contains(page, `<table border="0" class="x">`) {
+		t.Errorf("page: %s", page)
 	}
 }
