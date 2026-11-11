@@ -11,8 +11,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"strings"
@@ -115,6 +117,11 @@ const pollInterval = 3 * time.Second
 // submit, poll until terminal, fetch the result. The client timeout bounds the
 // whole exchange via ctx.
 func (c *Client) convert(ctx context.Context, filename string, data []byte, format string) (*convertResponse, error) {
+	return c.convertFast(ctx, filename, data, format, c.fast)
+}
+
+// convertFast is convert with the fast (no-OCR) mode chosen per call.
+func (c *Client) convertFast(ctx context.Context, filename string, data []byte, format string, fast bool) (*convertResponse, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.hc.Timeout)
 	defer cancel()
 
@@ -136,7 +143,7 @@ func (c *Client) convert(ctx context.Context, filename string, data []byte, form
 	if err := mw.WriteField("md_compact_tables", "true"); err != nil {
 		return nil, err
 	}
-	if c.fast {
+	if fast {
 		// docling CLI equivalents: --no-ocr --pdf-backend=dlparse_v2.
 		if err := mw.WriteField("do_ocr", "false"); err != nil {
 			return nil, err
@@ -205,12 +212,25 @@ func (c *Client) Convert(ctx context.Context, filename string, data []byte) (str
 	if isSpreadsheet(filename) {
 		return c.convertSpreadsheet(ctx, filename, data)
 	}
-	cr, err := c.convert(ctx, filename, data, "md")
+	md, err := c.convertMD(ctx, filename, data, c.fast)
+	if errors.Is(err, errNoText) && c.fast {
+		log.Printf("docling: %q has no text in fast mode; retrying with OCR", filename)
+		return c.convertMD(ctx, filename, data, false)
+	}
+	return md, err
+}
+
+// errNoText marks a conversion that succeeded but produced nothing — typically
+// a scanned document, which fast mode (no OCR) cannot read.
+var errNoText = errors.New("docling: conversion produced no text")
+
+func (c *Client) convertMD(ctx context.Context, filename string, data []byte, fast bool) (string, error) {
+	cr, err := c.convertFast(ctx, filename, data, "md", fast)
 	if err != nil {
 		return "", err
 	}
 	if strings.TrimSpace(cr.Document.MDContent) == "" {
-		return "", fmt.Errorf("docling: conversion produced no text")
+		return "", errNoText
 	}
 	return cr.Document.MDContent, nil
 }
@@ -220,7 +240,16 @@ func (c *Client) Convert(ctx context.Context, filename string, data []byte) (str
 // which each page begins (parallel to pdfextract's page mapping) so document
 // chunks keep their page citations.
 func (c *Client) ConvertPaged(ctx context.Context, filename string, data []byte) (string, []int, error) {
-	cr, err := c.convert(ctx, filename, data, "json")
+	text, starts, err := c.convertPaged(ctx, filename, data, c.fast)
+	if errors.Is(err, errNoText) && c.fast {
+		log.Printf("docling: %q has no text in fast mode; retrying with OCR", filename)
+		return c.convertPaged(ctx, filename, data, false)
+	}
+	return text, starts, err
+}
+
+func (c *Client) convertPaged(ctx context.Context, filename string, data []byte, fast bool) (string, []int, error) {
+	cr, err := c.convertFast(ctx, filename, data, "json", fast)
 	if err != nil {
 		return "", nil, err
 	}
@@ -232,7 +261,7 @@ func (c *Client) ConvertPaged(ctx context.Context, filename string, data []byte)
 		return "", nil, err
 	}
 	if strings.TrimSpace(text) == "" {
-		return "", nil, fmt.Errorf("docling: conversion produced no text")
+		return "", nil, errNoText
 	}
 	return text, pageStarts, nil
 }
