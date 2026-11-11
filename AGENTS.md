@@ -67,6 +67,7 @@ Client-server AI agent system in Go. A REST + WebSocket **server** talks to LLMs
   3. **Prefer structured output** — use JSON (or an equally machine-parseable format), not free-form prose lines.
   4. **Silence on uncertainty** — if nothing meets the bar, return an empty collection or explicit negative; never persist placeholder/meta text (e.g. "no facts found").
   - Shared helpers live in `internal/server/llm/judge` (`MinConfidence`, `Accept`, `Clamp`, `PromptRules`, `ParseJSONObject`). Domain-specific parsers (e.g. `internal/server/agent/memextract`) embed `judge.PromptRules()` and call `judge.Accept` before side effects.
+- **No client data in the repository.** Never put real client names, their people, companies, documents, figures or any other client-specific information into code, tests, fixtures, documentation, config examples or commit messages (or PR descriptions). Use neutral placeholders (e.g. "Acme d.o.o.", "Ana Horvat"). This applies to examples taken from real sessions or uploads too: anonymise them first. Real values belong only in git-ignored files (`server.yaml`, `.env`, `data/`).
 - Plan of record: `.cursor/plans/harlequin_agent_base_*.plan.md`.
 - When coding, ask the user for input (interview them) if you notice any inconsistencies or ideas for improvement.
 
