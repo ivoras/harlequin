@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/ivoras/harlequin/internal/server/decimalcalc"
 	"github.com/ivoras/harlequin/internal/server/docevents"
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/jsrun"
@@ -1071,7 +1072,7 @@ func conflictLine(h memory.ConflictHit) string {
 // to delegated calls such as WebFetch analysis).
 func (a *Agent) calculatorEntry() toolEntry {
 	return toolEntry{
-		def: fnTool("calculator", `Evaluate a single arithmetic/JavaScript expression and return the result. Examples: "2 + 2 * 10", "(1500 * 1.08).toFixed(2)", "Math.sqrt(144)". ES5.1+ expression syntax; Math is available. On error, returns what went wrong. Do not second-guess this tool's output.`, map[string]any{
+		def: fnTool("calculator", `Evaluate one arithmetic expression in EXACT decimal arithmetic (no floating-point rounding error: 0.1 + 0.2 is 0.3) and return the result. Use it for money, prices, VAT, totals, interest and any figure that must be exact. Supports + - * / ^ (or **) with integer exponents, parentheses, unary minus, decimals and 1e3 notation, and the functions round(x, digits) (halves away from zero; a top-level round(x, 2) prints exactly 2 decimals, e.g. "1620.00"), floor, ceil, trunc, abs, min, max. Examples: "round(1500 * 1.08, 2)", "19.99 * 3", "(1 + 0.05) ^ 3", "1 / 3" (non-terminating results are shown to 20 decimals with the exact fraction). Anything else (Math.sqrt, %, methods like .toFixed) is evaluated as floating-point JavaScript and the result says so. On error, returns what went wrong. Do not second-guess this tool's output.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"expression": map[string]any{"type": "string", "description": "The expression to evaluate, e.g. \"3 * (4 + 5)\""},
@@ -1083,6 +1084,15 @@ func (a *Agent) calculatorEntry() toolEntry {
 			expr = strings.TrimSpace(expr)
 			if expr == "" {
 				return "error: expression is required", nil
+			}
+			// Exact decimal arithmetic first; only syntax outside its grammar
+			// (Math.*, methods, %, non-integer powers) falls back to JS floats.
+			out, derr := decimalcalc.Eval(expr)
+			if derr == nil {
+				return out, nil
+			}
+			if !errors.Is(derr, decimalcalc.ErrUnsupported) {
+				return fmt.Sprintf("error evaluating %q: %v", expr, derr), nil
 			}
 			// Wrap as a return so the expression's value is captured (the runner
 			// wraps code in a function body, where a bare expression yields nothing).
@@ -1100,7 +1110,7 @@ func (a *Agent) calculatorEntry() toolEntry {
 			if err != nil {
 				return fmt.Sprintf("%v", res.Value), nil
 			}
-			return string(b), nil
+			return string(b) + "\n(note: evaluated as floating-point JavaScript, not exact decimal; for money use + - * / ^ and round(x, 2) so it is exact)", nil
 		},
 	}
 }
