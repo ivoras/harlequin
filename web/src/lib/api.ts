@@ -6,7 +6,7 @@ import type {
   LoginResponse, User, Session, Message, Hat, SkillInfo, SkillFiles, SkillFile, DocChunkInfo,
   Memory, MemoryConflict, SearchResult, MCPServer, RegisterMCPRequest,
   MCPTestResult, MCPAuthStartResult, CronJob, CreateCronJobRequest,
-  UpdateCronJobRequest, UsageRecord, UsageDay, Notification, Document, CreateDocumentRequest,
+  UpdateCronJobRequest, UsageRecord, UsageDay, UsageUser, Notification, Document, CreateDocumentRequest,
   CreateMemoryRequest, UpdateMemoryRequest, Project, ProjectInvite, AlignResult, ContextBreakdown,
   IngestJobStatus,
 } from "./types";
@@ -330,6 +330,7 @@ export const api = {
   // misc
   usage: () => reqList<UsageRecord>("GET", "/usage"),
   // Per-day totals; tz is the viewer's UTC offset in minutes so days break at local midnight.
+  usageUsers: (tz: number) => reqList<UsageUser>("GET", `/usage/users?tz=${tz}`),
   usageDaily: (tz: number) => reqList<UsageDay>("GET", `/usage/daily?tz=${tz}`),
   // Live connection counts: server-wide for owners/admins (scope "server"), else your own.
   usageLive: () =>

@@ -1,13 +1,45 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api } from "../lib/api";
-  import { toast } from "../lib/stores";
-  import type { UsageDay } from "../lib/types";
+  import { toast, user } from "../lib/stores";
+  import { isElevated, type UsageDay, type UsageUser } from "../lib/types";
   import { daily, weekly, monthly, localToday } from "../lib/usagebuckets";
   import UsageBars from "./UsageBars.svelte";
 
-  let days = $state<UsageDay[]>([]);
+  // Owners/admins see the whole server's usage (what the provider bills); the
+  // per-user tables only ever held one account's calls.
+  const elevated = $derived(isElevated($user?.role));
+  let scope = $state<"all" | "mine">("all");
+  let mine = $state<UsageDay[]>([]);
+  let users = $state<UsageUser[]>([]);
   let loading = $state(true);
+  const allMode = $derived(elevated && scope === "all");
+  const days = $derived(allMode ? mergeDays(users) : mine);
+  function mergeDays(us: UsageUser[]): UsageDay[] {
+    const by = new Map<string, UsageDay>();
+    for (const u of us)
+      for (const d of u.days) {
+        const t = by.get(d.day) ?? { day: d.day, cost_usd: 0, calls: 0, prompt_tokens: 0, cached_tokens: 0, completion_tokens: 0 };
+        t.cost_usd += d.cost_usd;
+        t.calls += d.calls;
+        t.prompt_tokens += d.prompt_tokens;
+        t.cached_tokens += d.cached_tokens;
+        t.completion_tokens += d.completion_tokens;
+        by.set(d.day, t);
+      }
+    return [...by.values()].sort((a, b) => a.day.localeCompare(b.day));
+  }
+  const perUser = $derived(
+    users
+      .map((u) => ({
+        email: u.email || `user ${u.user_id}`,
+        calls: u.days.reduce((s, d) => s + d.calls, 0),
+        total: u.days.reduce((s, d) => s + d.cost_usd, 0),
+        today: u.days.filter((d) => d.day === today).reduce((s, d) => s + d.cost_usd, 0),
+      }))
+      .sort((a, b) => b.total - a.total),
+  );
+  const money = (n: number) => `$${n.toFixed(n < 1 ? 4 : 2)}`;
   const today = localToday();
   const byDay = $derived(daily(days, today, 90));
   const byWeek = $derived(weekly(days, today, 52));
@@ -38,7 +70,9 @@
 
   async function loadDays() {
     try {
-      days = await api.usageDaily(-new Date().getTimezoneOffset());
+      const tz = -new Date().getTimezoneOffset();
+      mine = await api.usageDaily(tz);
+      if (elevated) users = await api.usageUsers(tz);
     } catch (e) {
       toast((e as Error).message, "error");
     } finally {
@@ -49,7 +83,16 @@
 
 <section class="panel">
   <div class="container col">
-    <h3>Usage</h3>
+    <div class="row">
+      <h3>Usage{allMode ? " · all users" : ""}</h3>
+      <span class="spacer"></span>
+      {#if elevated}
+        <select id="usage-scope" bind:value={scope} aria-label="Usage scope">
+          <option value="all">All users</option>
+          <option value="mine">Only mine</option>
+        </select>
+      {/if}
+    </div>
     {#if live}
       <div class="card">
         <div class="row">
@@ -66,8 +109,21 @@
       <div class="row"><b class="muted">LLM calls</b><span class="spacer"></span>{calls.toLocaleString()}</div>
       <div class="row"><b class="muted">Prompt tokens</b><span class="spacer"></span>{prompt.toLocaleString()}{prompt ? ` (${Math.round((cached * 100) / prompt)}% cached)` : ""}</div>
       <div class="row"><b class="muted">Generated tokens</b><span class="spacer"></span>{completion.toLocaleString()}</div>
-      <div class="row"><b class="muted">Cost (all time)</b><span class="spacer"></span>${cost.toFixed(cost < 1 ? 4 : 2)}</div>
+      <div class="row"><b class="muted">Cost (all time{allMode ? ", all users" : ""})</b><span class="spacer"></span>${cost.toFixed(cost < 1 ? 4 : 2)}</div>
     </div>
+    {#if allMode && perUser.length}
+      <div class="card">
+        <b class="muted">By user</b>
+        {#each perUser as u (u.email)}
+          <div class="row small">
+            <span>{u.email}</span><span class="spacer"></span>
+            <span class="muted">{u.calls.toLocaleString()} calls</span>
+            <span style="min-width:7ch;text-align:right">{money(u.today)} today</span>
+            <b style="min-width:8ch;text-align:right">{money(u.total)}</b>
+          </div>
+        {/each}
+      </div>
+    {/if}
     {#if loading}
       <div class="muted small">Loading…</div>
     {:else if days.length === 0}

@@ -249,6 +249,7 @@ func (s *Server) Router() http.Handler {
 
 			r.Get("/usage", s.handleUsage)
 			r.Get("/usage/daily", s.handleUsageDaily)
+			r.Get("/usage/users", s.handleUsageUsers)
 			r.Get("/usage/live", s.handleUsageLive)
 			r.Get("/audit", s.handleAudit)
 			r.Get("/audit/stats", s.handleAuditStats)

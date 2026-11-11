@@ -1872,6 +1872,38 @@ func (s *Server) handleUsageDaily(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, days)
 }
 
+// handleUsageUsers returns every account's daily usage (owner/admin), so clients
+// can show the server-wide total that the provider bills, not just one user's.
+func (s *Server) handleUsageUsers(w http.ResponseWriter, r *http.Request) {
+	if _, ok := requireElevated(w, r); !ok {
+		return
+	}
+	tz, _ := strconv.Atoi(r.URL.Query().Get("tz"))
+	if tz < -14*60 || tz > 14*60 {
+		writeErr(w, http.StatusBadRequest, "tz must be a UTC offset in minutes (-840..840)")
+		return
+	}
+	emails := map[int64]string{}
+	if us, err := s.Auth.ListUsers(r.Context()); err == nil {
+		for _, u := range us {
+			emails[u.ID] = u.Email
+		}
+	}
+	out := []types.UsageUser{}
+	err := s.Storage.EachUser(r.Context(), func(id int64, udb *sql.DB) error {
+		days, e := s.Usage.Daily(r.Context(), udb, tz)
+		if e == nil && len(days) > 0 {
+			out = append(out, types.UsageUser{UserID: id, Email: emails[id], Days: days})
+		}
+		return e
+	})
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 // handleUsageLive reports how many sessions currently have connected clients:
 // server-wide for owners/admins (scope "server"), else the caller's own.
 func (s *Server) handleUsageLive(w http.ResponseWriter, r *http.Request) {

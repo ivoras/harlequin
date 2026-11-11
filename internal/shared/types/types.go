@@ -800,6 +800,13 @@ type UsageDay struct {
 	CompletionTokens int     `json:"completion_tokens"`
 }
 
+// UsageUser is one account's daily usage (GET /usage/users, owner/admin).
+type UsageUser struct {
+	UserID int64      `json:"user_id"`
+	Email  string     `json:"email"`
+	Days   []UsageDay `json:"days"`
+}
+
 // AuditEntry is a coarse security/audit event.
 type AuditEntry struct {
 	ID        int64     `json:"id"`

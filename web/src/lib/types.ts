@@ -433,6 +433,13 @@ export interface UsageDay {
   completion_tokens: number;
 }
 
+// UsageUser is one account's daily usage (GET /usage/users, owner/admin).
+export interface UsageUser {
+  user_id: number;
+  email: string;
+  days: UsageDay[];
+}
+
 export interface AuditEntry {
   id: number;
   user_id?: number;
