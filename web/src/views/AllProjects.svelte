@@ -104,7 +104,7 @@
         <ul>
           {#each p.members ?? [] as m (m.user_id)}
             <li>
-              <span class="grow">{m.email}{#if m.user_id === p.created_by} <span class="muted small">creator</span>{/if}</span>
+              <span class="grow">{m.email}{#if m.user_id === p.created_by}<span class="pill">creator</span>{/if}</span>
               {#if m.user_id !== p.created_by && m.user_id !== $user?.id}
                 <button class="ghost danger" onclick={() => remove(p, m.user_id, m.email)}>Remove</button>
               {/if}
@@ -146,6 +146,7 @@
   h4 { margin: 4px 0 0; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted, inherit); }
   ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
   li { display: flex; align-items: center; gap: 8px; }
+  .grow .pill { margin-left: 6px; }
   .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   form { display: flex; gap: 8px; align-items: center; }
   form input { flex: 1; min-width: 0; }
