@@ -393,7 +393,6 @@ func (s *Store) embedTexts(ctx context.Context, texts []string, progress func(do
 // database access), so the caller can then insert the result in one short
 // transaction via writeChunks.
 func (s *Store) prepareChunks(ctx context.Context, content string, pageStarts []int, progress func(done, total int)) ([]preparedChunk, error) {
-	pl := PhaseLogFrom(ctx)
 	chunks, err := s.chunkContent(ctx, content)
 	if err != nil {
 		return nil, fmt.Errorf("chunk document: %w", err)
