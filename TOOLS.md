@@ -97,12 +97,12 @@ demand, so they don't bloat every prompt.
 
 ### `calculator`
 **Why:** do exact arithmetic instead of guessing; LLMs are unreliable at math.
-Exact decimal arithmetic (no floating-point error: `0.1 + 0.2` is `0.3`): `+ - * / ^`,
+Exact decimal arithmetic (no floating-point error: `0.1 + 0.2` is `0.3`): `+ - * / % ^`,
 parentheses, `round(x, digits)` (halves away from zero; a top-level `round(x, 2)` prints
 two decimals), `floor`, `ceil`, `trunc`, `abs`, `min`, `max`. A non-terminating result such
 as `1 / 3` is shown to 20 decimals with its exact fraction. Syntax outside that grammar
-(`Math.sqrt`, `%`, `.toFixed`) falls back to floating-point JavaScript and the result says
-so. The system prompt tells the model to use it for all money figures.
+(`Math.sqrt`, fractional powers, `.toFixed`) falls back to floating-point JavaScript and the
+result says so (`^` stays power there). Thousands separators (`1,234.56`) are an error. The system prompt tells the model to use it for all money figures.
 **Example:** `calculator({"expression": "round(1500 * 1.08, 2)"})` → `1620.00`
 
 ### `run_js`

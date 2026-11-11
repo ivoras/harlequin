@@ -37,6 +37,11 @@ func Eval(expr string) (string, error) {
 		return "", err
 	}
 	if p.pos != len(p.toks) {
+		if p.isOp(",") {
+			// Never fall back to JS here: its comma operator would silently drop
+			// everything before the comma ("1,234.56 * 2" -> 469.12).
+			return "", errors.New(`unexpected ","; write numbers without thousands separators and with "." as the decimal point (1234.56)`)
+		}
 		return "", fmt.Errorf("%w: unexpected %q", ErrUnsupported, p.toks[p.pos].text)
 	}
 	return format(n), nil
@@ -91,7 +96,7 @@ func lex(s string) ([]token, error) {
 		case c == '*' && i+1 < len(s) && s[i+1] == '*':
 			out = append(out, token{tOp, "^"})
 			i += 2
-		case strings.IndexByte("+-*/^(),", c) >= 0:
+		case strings.IndexByte("+-*/%^(),", c) >= 0:
 			out = append(out, token{tOp, string(c)})
 			i++
 		default:
@@ -155,7 +160,7 @@ func (p *parser) term() (val, error) {
 	if err != nil {
 		return l, err
 	}
-	for p.isOp("*") || p.isOp("/") {
+	for p.isOp("*") || p.isOp("/") || p.isOp("%") {
 		op := p.toks[p.pos].text
 		p.pos++
 		r, err := p.unary()
@@ -170,6 +175,10 @@ func (p *parser) term() (val, error) {
 				return l, errors.New("division by zero")
 			}
 			z.Quo(l.r, r.r)
+			if op == "%" { // remainder with the dividend's sign, as in JS/C: l - r*trunc(l/r)
+				q := new(big.Rat).SetInt(new(big.Int).Quo(z.Num(), z.Denom()))
+				z.Sub(l.r, q.Mul(q, r.r))
+			}
 		}
 		if l, err = check(z); err != nil {
 			return l, err
@@ -187,9 +196,9 @@ func (p *parser) unary() (val, error) {
 			return v, err
 		}
 		if neg {
-			return val{new(big.Rat).Neg(v.r), -1}, nil
+			return val{new(big.Rat).Neg(v.r), v.scale}, nil
 		}
-		return val{v.r, -1}, nil
+		return v, nil
 	}
 	return p.power()
 }
@@ -323,7 +332,7 @@ func (p *parser) call(name string) (val, error) {
 		x := args[0].r
 		switch name {
 		case "abs":
-			return val{new(big.Rat).Abs(x), -1}, nil
+			return val{new(big.Rat).Abs(x), args[0].scale}, nil
 		case "floor":
 			return val{new(big.Rat).SetInt(floorDiv(x.Num(), x.Denom())), -1}, nil
 		case "ceil":

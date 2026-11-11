@@ -29,6 +29,17 @@ func TestCalculatorExactDecimalWithFloatFallback(t *testing.T) {
 	if got := run("Math.sqrt(144)"); !strings.HasPrefix(got, "12\n(note: evaluated as floating-point JavaScript") {
 		t.Errorf("fallback = %q", got)
 	}
+	// "^" stays power in the fallback (JS would XOR), and a thousands separator
+	// is an error rather than a JS comma expression.
+	if got := run("Math.sqrt(3 ^ 2)"); !strings.HasPrefix(got, "3\n(note:") {
+		t.Errorf("^ in fallback = %q", got)
+	}
+	if got := run("4 ^ -0.5"); !strings.HasPrefix(got, "0.5\n(note:") {
+		t.Errorf("fractional power = %q", got)
+	}
+	if got := run("1,234.56 * 2"); !strings.HasPrefix(got, "error evaluating") {
+		t.Errorf("thousands separator = %q", got)
+	}
 	if got := run("1 / 0"); !strings.HasPrefix(got, "error evaluating") || strings.Contains(got, "Infinity") {
 		t.Errorf("division by zero = %q", got)
 	}
