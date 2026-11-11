@@ -346,6 +346,7 @@ func main() {
 		log.Printf("pdf extraction unavailable: %v", err)
 	} else {
 		srv.PDFExtract = ex
+		ag.PDFPages = ex
 		defer ex.Close()
 		if m := cfg.OCRVisionModel(); m != "" {
 			if dc, ok := docConv.(*docling.Client); ok {

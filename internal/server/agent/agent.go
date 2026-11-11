@@ -28,6 +28,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/notify"
 	"github.com/ivoras/harlequin/internal/server/notifyx"
+	"github.com/ivoras/harlequin/internal/server/pdfextract"
 	"github.com/ivoras/harlequin/internal/server/presence"
 	"github.com/ivoras/harlequin/internal/server/session"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
@@ -116,6 +117,9 @@ type Agent struct {
 	// userDB is the caller's open per-user database.
 	// ContextMax, if set, returns the model's max context window in tokens.
 	ContextMax func(model string) int
+	// PDFPages reads and copies pages of existing PDFs (pdf_pages, and exact
+	// page numbers for check_text); nil when PDFium failed to start.
+	PDFPages *pdfextract.Extractor
 	// PDF typesets create_pdf's documents; nil when headless Chrome is not
 	// installed (the tool then explains that instead of working).
 	PDF *mdpdf.Renderer

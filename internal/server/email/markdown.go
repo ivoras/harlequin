@@ -2,9 +2,11 @@ package email
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"html"
+	"mime"
 	"mime/multipart"
 	"mime/quotedprintable"
 	"net/mail"
@@ -73,22 +75,26 @@ func ParseRecipient(to string) (string, error) {
 	return to, nil
 }
 
+// Attachment is a file sent along with a message.
+type Attachment struct {
+	Name string // file name shown to the recipient
+	Mime string // content type; empty = application/octet-stream
+	Data []byte
+}
+
 // BuildMarkdownMessage assembles a multipart/alternative message: the Markdown
 // source as the text/plain part and its rendering as the text/html part (last,
 // so clients prefer it). Bodies are quoted-printable UTF-8; the subject is
 // RFC 2047-encoded, and CR/LF are stripped from every header value. replyTo may
-// be empty.
-func BuildMarkdownMessage(from, to, replyTo, subject, markdown string) ([]byte, error) {
+// be empty. With attachments the message is multipart/mixed: that alternative
+// body first, then each file base64-encoded.
+func BuildMarkdownMessage(from, to, replyTo, subject, markdown string, atts ...Attachment) ([]byte, error) {
 	htmlDoc, err := MarkdownToHTML(subject, markdown)
 	if err != nil {
 		return nil, fmt.Errorf("render markdown: %w", err)
 	}
-	var out bytes.Buffer
-	mw := multipart.NewWriter(&out) // random boundary; the headers are written separately
-	var head strings.Builder
-	writeHeaders(&head, from, to, replyTo, subject)
-	fmt.Fprintf(&head, "Content-Type: multipart/alternative; boundary=%s\r\n\r\n", mw.Boundary())
-
+	var alt bytes.Buffer
+	mw := multipart.NewWriter(&alt) // random boundary; the headers are written separately
 	for _, p := range []struct{ ctype, body string }{
 		{"text/plain; charset=utf-8", markdown},
 		{"text/html; charset=utf-8", htmlDoc},
@@ -111,13 +117,64 @@ func BuildMarkdownMessage(from, to, replyTo, subject, markdown string) ([]byte, 
 	if err := mw.Close(); err != nil {
 		return nil, err
 	}
-	return append([]byte(head.String()), out.Bytes()...), nil
+	var head strings.Builder
+	writeHeaders(&head, from, to, replyTo, subject)
+	altType := "multipart/alternative; boundary=" + mw.Boundary()
+	if len(atts) == 0 {
+		fmt.Fprintf(&head, "Content-Type: %s\r\n\r\n", altType)
+		return append([]byte(head.String()), alt.Bytes()...), nil
+	}
+
+	var mixed bytes.Buffer
+	xw := multipart.NewWriter(&mixed)
+	pw, err := xw.CreatePart(textproto.MIMEHeader{"Content-Type": {altType}})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := pw.Write(alt.Bytes()); err != nil {
+		return nil, err
+	}
+	for _, at := range atts {
+		ctype := at.Mime
+		if ctype == "" {
+			ctype = "application/octet-stream"
+		}
+		// A name is header text: no line breaks or path, and non-ASCII goes out
+		// RFC 2231-encoded (FormatMediaType does that).
+		name := strings.NewReplacer("\r", "", "\n", "", "/", "_", "\\", "_").Replace(strings.TrimSpace(at.Name))
+		if name == "" {
+			name = "attachment"
+		}
+		pw, err := xw.CreatePart(textproto.MIMEHeader{
+			"Content-Type":              {ctype},
+			"Content-Transfer-Encoding": {"base64"},
+			"Content-Disposition":       {mime.FormatMediaType("attachment", map[string]string{"filename": name})},
+		})
+		if err != nil {
+			return nil, err
+		}
+		enc := base64.StdEncoding.EncodeToString(at.Data)
+		for len(enc) > 76 { // RFC 2045 line length
+			if _, err := pw.Write([]byte(enc[:76] + "\r\n")); err != nil {
+				return nil, err
+			}
+			enc = enc[76:]
+		}
+		if _, err := pw.Write([]byte(enc + "\r\n")); err != nil {
+			return nil, err
+		}
+	}
+	if err := xw.Close(); err != nil {
+		return nil, err
+	}
+	fmt.Fprintf(&head, "Content-Type: multipart/mixed; boundary=%s\r\n\r\n", xw.Boundary())
+	return append([]byte(head.String()), mixed.Bytes()...), nil
 }
 
 // SendMarkdown sends markdown to one recipient as a multipart/alternative
 // message (Markdown text + rendered HTML). It fails with ErrNotConfigured
 // rather than silently logging when SMTP is not set up.
-func (s *Sender) SendMarkdown(to, replyTo, subject, markdown string) error {
+func (s *Sender) SendMarkdown(to, replyTo, subject, markdown string, atts ...Attachment) error {
 	if !s.Configured() {
 		return ErrNotConfigured
 	}
@@ -125,7 +182,7 @@ func (s *Sender) SendMarkdown(to, replyTo, subject, markdown string) error {
 	if err != nil {
 		return err
 	}
-	msg, err := BuildMarkdownMessage(s.fromHeader(), to, replyTo, subject, markdown)
+	msg, err := BuildMarkdownMessage(s.fromHeader(), to, replyTo, subject, markdown, atts...)
 	if err != nil {
 		return err
 	}

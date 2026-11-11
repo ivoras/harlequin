@@ -557,18 +557,25 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 			},
 		}
 		reg["check_text"] = toolEntry{
-			def: fnTool("check_text", `Authoritatively check whether an exact phrase or keyword appears anywhere in ONE document — a literal, exhaustive scan, unlike search_docs (which ranks by relevance and can miss an exact phrase). Use this BEFORE asserting a section is "new", "removed", or "only in" one document/version: a heading-only sighting in an align_docs summary is not proof of absence elsewhere. Returns every matching chunk with a citation and surrounding snippet, or "not found". doc may also be a text file in your sandbox (tmp://combined.md; a bare path means tmp://): matches are then reported by line number.`, map[string]any{
+			def: fnTool("check_text", `Authoritatively check whether an exact phrase or keyword appears anywhere in ONE document — a literal, exhaustive scan, unlike search_docs (which ranks by relevance and can miss an exact phrase). Use this BEFORE asserting a section is "new", "removed", or "only in" one document/version: a heading-only sighting in an align_docs summary is not proof of absence elsewhere. Returns every matching chunk with a citation and surrounding snippet, or "not found". To look up MANY phrases at once — e.g. a list of names, to learn which pages of a PDF each is on — pass them all as texts in one call instead of one call per phrase: the result is a table of each phrase and its page numbers (exact for PDF documents), ready for pdf_pages. doc may also be a text file in your sandbox (tmp://combined.md; a bare path means tmp://): matches are then reported by line number.`, map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"doc":  map[string]any{"type": "string", "description": "Scoped document id to search within, e.g. \"p.6\" (or a specific project's doc, e.g. \"p3.17\"); or a sandbox file, e.g. tmp://combined.md"},
-					"text": map[string]any{"type": "string", "description": "Exact phrase or keyword to look for (case-insensitive)"},
+					"doc":   map[string]any{"type": "string", "description": "Scoped document id to search within, e.g. \"p.6\" (or a specific project's doc, e.g. \"p3.17\"); or a sandbox file, e.g. tmp://combined.md"},
+					"text":  map[string]any{"type": "string", "description": "Exact phrase or keyword to look for (case-insensitive)"},
+					"texts": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": `Instead of text: many phrases to look up in one call (up to 500), e.g. ["Ana Horvat", "Ivan Kovač"]; returns the pages of each`},
 				},
-				"required": []string{"doc", "text"},
+				"required": []string{"doc"},
 			}),
 			handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+				if texts := argStrings(args, "texts"); len(texts) > 0 {
+					if t := strings.TrimSpace(argString(args, "text")); t != "" {
+						texts = append([]string{t}, texts...)
+					}
+					return a.lookupTexts(ctx, rc, strings.TrimSpace(argString(args, "doc")), texts)
+				}
 				text := strings.TrimSpace(argString(args, "text"))
 				if text == "" {
-					return "error: text is required", nil
+					return "error: text (one phrase) or texts (a list of phrases) is required", nil
 				}
 				if p := strings.TrimSpace(argString(args, "doc")); isSandboxPath(p) {
 					body, _, errMsg := a.sourceText(ctx, rc, p)
@@ -739,6 +746,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 		reg["create_excel"] = a.createExcelEntry()
 		reg["create_pdf"] = a.createPDFEntry()
 		reg["copy_doc"] = a.copyDocEntry()
+		reg["pdf_pages"] = a.pdfPagesEntry()
 		a.registerProjectTools(reg, rc)
 
 		reg["delete_doc"] = toolEntry{

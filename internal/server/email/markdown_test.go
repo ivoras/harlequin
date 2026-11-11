@@ -1,6 +1,8 @@
 package email
 
 import (
+	"bytes"
+	"encoding/base64"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -128,5 +130,72 @@ func TestFromWithDisplayName(t *testing.T) {
 	// A bare configured address still works unchanged.
 	if b := New(Config{Host: "x", From: "a@b.hr"}); b.envelopeFrom() != "a@b.hr" || b.fromHeader() != "<a@b.hr>" && b.fromHeader() != "a@b.hr" {
 		t.Errorf("bare address: envelope %q header %q", b.envelopeFrom(), b.fromHeader())
+	}
+}
+
+// With attachments the message is multipart/mixed: the Markdown/HTML body
+// first, then each file, base64-encoded under its (possibly non-ASCII) name.
+func TestBuildMarkdownMessageWithAttachments(t *testing.T) {
+	pdf := append([]byte("%PDF-1.4 "), bytes.Repeat([]byte{0, 0xff, 'x'}, 300)...)
+	raw, err := BuildMarkdownMessage("h@example.org", "to@example.com", "", "Plaća", "# Hi\n\nu privitku",
+		Attachment{Name: "Platna lista Đurđica.pdf", Mime: "application/pdf", Data: pdf},
+		Attachment{Name: "../evil\r\nBcc: x@example.com.csv", Data: []byte("a;b\n")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := mail.ReadMessage(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Header.Get("Bcc") != "" {
+		t.Fatal("an attachment name injected a header")
+	}
+	mt, params, err := mime.ParseMediaType(m.Header.Get("Content-Type"))
+	if err != nil || mt != "multipart/mixed" {
+		t.Fatalf("content type %q (%v)", mt, err)
+	}
+	mr := multipart.NewReader(m.Body, params["boundary"])
+	body, err := mr.NextPart()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bt, bp, _ := mime.ParseMediaType(body.Header.Get("Content-Type")); bt != "multipart/alternative" {
+		t.Fatalf("first part is %q", bt)
+	} else {
+		inner := multipart.NewReader(body, bp["boundary"])
+		n := 0
+		for {
+			p, err := inner.NextPart()
+			if err != nil {
+				break
+			}
+			n++
+			if b, _ := io.ReadAll(p); !strings.Contains(string(b), "u privitku") {
+				t.Errorf("body part %d lacks the text", n)
+			}
+		}
+		if n != 2 {
+			t.Errorf("%d body parts, want text + html", n)
+		}
+	}
+	var names []string
+	for {
+		p, err := mr.NextPart()
+		if err != nil {
+			break
+		}
+		names = append(names, p.FileName())
+		data, _ := io.ReadAll(base64.NewDecoder(base64.StdEncoding, p))
+		if p.FileName() == "Platna lista Đurđica.pdf" && (!bytes.Equal(data, pdf) || p.Header.Get("Content-Type") != "application/pdf") {
+			t.Errorf("PDF attachment did not round-trip (%d bytes, %q)", len(data), p.Header.Get("Content-Type"))
+		}
+	}
+	if len(names) != 2 || names[0] != "Platna lista Đurđica.pdf" || strings.ContainsAny(names[1], "/\r\n") {
+		t.Errorf("attachment names %q", names)
+	}
+	for _, line := range strings.Split(string(raw), "\r\n") {
+		if len(line) > 998 {
+			t.Fatalf("a line of %d bytes exceeds the SMTP limit", len(line))
+		}
 	}
 }

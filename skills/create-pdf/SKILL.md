@@ -113,9 +113,9 @@ columns, a letter layout, exact spacing). Then write HTML and pass
 To change a PDF you created, change the Markdown and call `create_pdf` again: it
 makes a new file.
 
-`create_pdf` writes **new** documents only. It cannot cut pages out of an
-existing PDF, merge PDF files page by page or fill in a PDF form — say so if the
-user asks. (Turning the *text* of a PDF into a new PDF works: use its id as
+`create_pdf` writes **new** documents only. To cut pages out of an existing
+PDF, split it or merge PDF files, use `pdf_pages` (load_skill "pdf-pages"). It
+cannot fill in a PDF form — say so if the user asks. (Turning the *text* of a PDF into a new PDF works: use its id as
 `source`; the original layout is not kept.)
 
 If `create_pdf` reports an error, fix what the message says and call it again.
