@@ -769,6 +769,7 @@ func (s *Store) CopyInto(ctx context.Context, src, dst *sql.DB, srcFiles, dstFil
 	// the commit. Only the inserts run under the write lock.
 	var fileData []byte
 	var haveFile bool
+	var sideData []byte
 	var rest string
 	if stored != "" && srcFiles != "" && dstFiles != "" {
 		data, err := os.ReadFile(filepath.Join(srcFiles, filepath.Base(stored)))
@@ -777,6 +778,12 @@ func (s *Store) CopyInto(ctx context.Context, src, dst *sql.DB, srcFiles, dstFil
 		}
 		if err == nil {
 			fileData, haveFile = data, true
+			// A generated file's source travels with it, so the copy stays editable.
+			if side, serr := os.ReadFile(filepath.Join(srcFiles, filepath.Base(stored)+".src.json")); serr == nil {
+				sideData = side
+			} else if !os.IsNotExist(serr) {
+				return 0, fmt.Errorf("read stored file source: %w", serr)
+			}
 			rest = filepath.Base(stored)
 			if i := strings.IndexByte(rest, '-'); i > 0 && strings.Trim(rest[:i], "0123456789") == "" {
 				rest = rest[i+1:]
@@ -813,10 +820,16 @@ func (s *Store) CopyInto(ctx context.Context, src, dst *sql.DB, srcFiles, dstFil
 		newStored := fmt.Sprintf("%d-%s", newID, rest)
 		path := filepath.Join(dstFiles, newStored)
 		err := os.WriteFile(path, fileData, 0o600)
+		if err == nil && sideData != nil {
+			if err = os.WriteFile(path+".src.json", sideData, 0o600); err != nil {
+				_ = os.Remove(path)
+			}
+		}
 		if err != nil {
 			err = fmt.Errorf("write stored file: %w", err)
 		} else if _, uerr := dst.ExecContext(ctx, `UPDATE documents SET stored_path = ? WHERE id = ?`, newStored, newID); uerr != nil {
 			_ = os.Remove(path)
+			_ = os.Remove(path + ".src.json")
 			err = uerr
 		}
 		if err != nil {
@@ -926,9 +939,12 @@ func (s *Store) DeleteFrom(ctx context.Context, db *sql.DB, filesDir string, id 
 	}
 	if stored != "" && filesDir != "" {
 		// Base(): stored_path is a bare filename; never let it escape filesDir.
-		if err := os.Remove(filepath.Join(filesDir, filepath.Base(stored))); err != nil && !os.IsNotExist(err) {
-			log.Printf("documents: delete %d: remove stored file %q: %v", id, stored, err)
-			return fmt.Errorf("document %d removed from the index, but deleting its stored file %q failed: %w", id, stored, err)
+		// Also the generated-file source (.src.json) and the one-level undo copies (.prev).
+		for _, suffix := range []string{"", ".prev", ".src.json", ".src.json.prev"} {
+			if err := os.Remove(filepath.Join(filesDir, filepath.Base(stored)+suffix)); err != nil && !os.IsNotExist(err) {
+				log.Printf("documents: delete %d: remove stored file %q: %v", id, stored+suffix, err)
+				return fmt.Errorf("document %d removed from the index, but deleting its stored file %q failed: %w", id, stored+suffix, err)
+			}
 		}
 	}
 	return nil

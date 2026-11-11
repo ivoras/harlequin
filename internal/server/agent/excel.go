@@ -8,7 +8,6 @@ import (
 
 	"github.com/ivoras/harlequin/internal/server/docevents"
 	"github.com/ivoras/harlequin/internal/server/documents"
-	"github.com/ivoras/harlequin/internal/server/mdxlsx"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
@@ -44,31 +43,27 @@ func (a *Agent) createExcel(ctx context.Context, rc *runContext, args map[string
 	if errMsg != "" {
 		return errMsg, nil
 	}
-	xlsx, st, err := mdxlsx.Convert(md)
-	if err != nil {
-		return "error: " + err.Error() + ` — each table row must be a line starting with "|"; see load_skill "create-excel"`, nil
-	}
-
 	scope, db, errMsg := a.saveScope(rc, args)
 	if errMsg != "" {
 		return errMsg, nil
 	}
+	gs := genSource{Kind: genExcel, Format: "markdown", Source: md}
+	g, err := a.generate(ctx, title, gs, true)
+	if err != nil {
+		return "error: " + err.Error() + ` — each table row must be a line starting with "|"; see load_skill "create-excel"`, nil
+	}
 	// The searchable text is the Markdown itself — what docling would extract
 	// from this workbook — so search_docs and read_doc work on it at once.
 	doc, err := a.Docs.IngestInto(ctx, db, types.CreateDocumentRequest{
-		Title: title, URI: "agent://create_excel", Mime: xlsxMime, Content: strings.TrimSpace(md),
+		Title: title, URI: "agent://create_excel", Mime: xlsxMime, Content: g.text,
 	}, rc.userID)
 	if err != nil {
 		return "", err
 	}
-	a.storeDocFile(ctx, db, scope, rc, doc, xlsx, ".xlsx")
+	a.storeGenerated(ctx, db, scope, rc, doc, g.data, ".xlsx", gs)
 	a.publishDocChange(docevents.Created, scope, rc, doc.ID)
-	msg := fmt.Sprintf("Created Excel workbook %s.%d %q: %d sheet(s), %d table(s), %d row(s). The user can open or download it from their files.",
-		scopeLetter(scope), doc.ID, title, st.Sheets, st.Tables, st.Rows)
-	if st.Ignored > 0 {
-		msg += fmt.Sprintf(" Note: %d non-table line(s) were left out (only headings and tables go into the workbook).", st.Ignored)
-	}
-	return msg, nil
+	return fmt.Sprintf("Created Excel workbook %s.%d %q%s. The user can open or download it from their files.%s",
+		scopeLetter(scope), doc.ID, title, g.detail, g.notes), nil
 }
 
 // markdownArg returns a file-creating tool's text: the inline content, or what

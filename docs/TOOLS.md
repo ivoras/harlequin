@@ -138,6 +138,12 @@ what to fix):
 | Patch | `diff` (unified diff; hunks located by content) | several changes at once |
 | Append | `append` | add text the model writes; creates the file |
 | Append from | `append_source` (list of documents and/or sandbox files) | concatenate whole texts server-side, any length; creates the file |
+| Insert | `insert` + one of `after` / `before` (a passage quoted exactly, must occur once) | add a paragraph, table row or list item next to a passage |
+
+Insert puts the text in its own paragraph beside the block (run of non-empty
+lines) holding the passage, with one empty line between; a single table row or
+list item quoted next to a row or item of the same kind goes on the adjacent
+line. The rest of the text is untouched.
 
 Publish the result with `save_doc(source=...)`. Given a document id as `path` it
 behaves as `edit_doc`.
@@ -323,22 +329,36 @@ to pass through the model's output.
 - `save_doc({"title": "Combined law", "source": "tmp://combined.md", "is_raw": true})`
 
 #### `edit_doc`
-**Why:** change a saved text/Markdown document in place — keeps its id, title and
-scope, re-indexes it for `search_docs`, and updates the stored original. The same
-four operations as `edit_file`, one per call, all-or-nothing: replace
-(`old_string`+`new_string`, exact, must be unique unless `replace_all`), patch
-(`diff`, a unified diff; hunks are located by content so line numbers may be off),
-append (`append`, text the model writes) and append from (`append_source`: the
-whole text of other documents and/or sandbox files, concatenated server-side —
-for a PDF/DOCX/XLSX source its Markdown text). Only documents whose original is
-text/Markdown (saved with `save_doc`, or uploaded `.md`/`.txt`) can be edited;
-PDF/DOCX originals are refused (save an edited copy instead). Shared documents:
-owner/admin only. Chunk ids change on edit, so `[d.x.N]` citations *into* the
-document may stop matching (document ids stay valid). Given a sandbox file as
-`doc` it behaves as `edit_file`.
+**Why:** change a saved document in place — keeps its id, title and scope,
+re-indexes it for `search_docs`, and updates the stored original. The same five
+operations as `edit_file` (replace, patch, append, append from, insert after/before
+a passage), one per call, all-or-nothing. How it edits depends on where the
+document came from:
+- **text/Markdown** (saved with `save_doc`, or uploaded `.md`/`.txt`): the stored
+  text is edited.
+- **made by `create_excel` / `create_pdf` / `create_word`**: the Markdown (or
+  HTML) it was generated from — kept beside the file as `<stored file>.src.json`
+  (kind, format, landscape, source text) — is edited and the file is rebuilt with
+  the same converter and options. If the new source cannot be converted, or the
+  renderer is missing, nothing changes. The result says the file was rebuilt (and
+  the PDF's page count).
+- **uploaded PDF**: refused (a PDF's pages are fixed); the message points to
+  `create_pdf`/`create_word` with `source`, or `pdf_pages`.
+- **uploaded Word/Excel**: refused for now.
+
+Unchanged passages keep their chunk ids across an edit, so citations to them stay
+valid. **Undo:** before replacing the stored file the previous version is kept
+(`<stored file>.prev`, and `.src.json.prev` for a generated file); `edit_doc({"doc":
+"u.12", "undo": true})` restores it, once — one level, overwritten by each edit,
+not available for sandbox files, not combinable with an operation. Deleting the
+document removes the file, the sidecar and the `.prev` copies; `copy_doc` copies
+the sidecar so a copy stays editable. Shared documents: owner/admin only. Given a
+sandbox file as `doc` it behaves as `edit_file`.
 **Examples:**
 - `edit_doc({"doc": "p.7", "append": "## Addendum\nNew section…"})`
 - `edit_doc({"doc": "u.12", "append_source": ["u.18", "tmp://annex.md"]})`
+- `edit_doc({"doc": "u.12", "insert": "Late payment accrues interest.", "after": "Payment is due in 30 days."})`
+- `edit_doc({"doc": "u.12", "undo": true})`
 
 ### Produce files
 
@@ -356,7 +376,8 @@ Excel opens the file), anything else is text. Docling's Markdown for an uploaded
 `u.12`, whose text is used). A table must have data rows under its header: a header-only table (typically a call cut off mid-table) is rejected instead of saved as an empty workbook.
 Saved like `save_doc` (project in a project session, else personal; shared for
 owners/admins), with the Markdown as its searchable text. The `create-excel`
-skill teaches the model the format. Converter: `internal/server/mdxlsx`.
+skill teaches the model the format. Converter: `internal/server/mdxlsx`. The
+Markdown is kept as the workbook's source, so the result can be changed later with `edit_doc`.
 **Example:** `create_excel({"title": "Sales 2026", "source": "tmp://sales.md"})`
 
 #### `create_pdf`
@@ -385,7 +406,8 @@ by the server blocks scripts and every non-inline load; and headless Chrome
 (`chrome-headless-shell`) runs inside a bubblewrap sandbox with no network, no
 host files, an empty environment and file-size/CPU/memory limits. When Chrome or
 `bwrap` is not installed the tool stays offered and answers that PDF creation is
-not set up. The `create-pdf` skill teaches the model the formats.
+not set up. The `create-pdf` skill teaches the model the formats. The source is
+kept, so the result can be changed later with `edit_doc` (the PDF is rebuilt).
 **Examples:**
 - `create_pdf({"title": "Q1 report", "source": "tmp://report.md"})`
 - `create_pdf({"title": "Offer letter", "source": "tmp://letter.html", "landscape": false})`
@@ -401,7 +423,8 @@ bubblewrap sandbox (no network, empty environment, scratch directory only, file
 size/CPU limits, one conversion at a time), then the page size is set to A4.
 Output uses Word's own styles (Heading 1–3, lists, tables), not a house
 stylesheet, so the user can restyle it. Saved like `save_doc`, with the Markdown
-as its searchable text. It cannot edit an existing `.docx`. When LibreOffice or
+as its searchable text. Its source is kept, so the result can be changed later
+with `edit_doc` (the file is rebuilt); an uploaded `.docx` cannot be edited yet. When LibreOffice or
 `bwrap` is missing the tool stays offered and says Word creation is not set up.
 Converter: `internal/server/mdword`; the `create-word` skill teaches the model.
 **Example:** `create_word({"title": "Service agreement", "source": "tmp://contract.md"})`

@@ -102,7 +102,7 @@ func testAppendAndCopy(t *testing.T, ctx context.Context, dir string, mgr *stora
 	}
 	for tool, cases := range map[string]map[*map[string]any]string{
 		"edit_doc": {
-			{"doc": pdf, "append_source": []any{second}}:                   "not text/Markdown",
+			{"doc": pdf, "append_source": []any{second}}:                   "is an uploaded PDF",
 			{"doc": second, "append_source": []any{first}, "append": "x"}:  "not both",
 			{"doc": second, "append_source": []any{first}, "diff": "@@ x"}: "exactly one operation",
 		},

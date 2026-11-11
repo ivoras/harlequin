@@ -218,6 +218,84 @@ func abs(x int) int {
 	return x
 }
 
+var listItemRE = regexp.MustCompile(`^\s*(?:[-*+]|\d+[.)])\s`)
+
+// lineKind classifies a line as a Markdown table row, a list item or neither.
+func lineKind(line string) string {
+	switch {
+	case strings.HasPrefix(strings.TrimSpace(line), "|"):
+		return "table"
+	case listItemRE.MatchString(line):
+		return "list"
+	}
+	return ""
+}
+
+// textEditInsert adds ins after (or, with before, in front of) the passage
+// anchor, which must occur exactly once. Normally ins becomes its own paragraph,
+// placed beside the block (run of non-empty lines) holding the anchor and
+// separated by one empty line; a single table row or list item next to a row or
+// item of the same kind goes on the adjacent line instead. Other text is untouched.
+func textEditInsert(text, ins, anchor string, before bool) (string, error) {
+	name := "after"
+	if before {
+		name = "before"
+	}
+	ins = strings.Trim(ins, "\r\n")
+	if ins == "" {
+		return "", fmt.Errorf("insert must not be empty")
+	}
+	if strings.Trim(anchor, "\r\n") == "" {
+		return "", fmt.Errorf("%s must name a passage of the document", name)
+	}
+	switch n := strings.Count(text, anchor); {
+	case n == 0:
+		return "", fmt.Errorf("%s was not found (matching is exact, including whitespace and line breaks); read the current text and copy the passage exactly", name)
+	case n > 1:
+		return "", fmt.Errorf("%s occurs %d times; include more surrounding text to make it unique", name, n)
+	}
+	idx := strings.Index(text, anchor)
+	end := idx + len(strings.TrimRight(anchor, "\r\n"))
+	// The line holding the start (before) or the end (after) of the anchor.
+	pos := end
+	if before {
+		pos = idx
+	}
+	ls := strings.LastIndex(text[:pos], "\n") + 1
+	le := len(text)
+	if i := strings.IndexByte(text[pos:], '\n'); i >= 0 {
+		le = pos + i
+	}
+	if k := lineKind(text[ls:le]); k != "" && !strings.Contains(ins, "\n") && lineKind(ins) == k {
+		if before {
+			return text[:ls] + ins + "\n" + text[ls:], nil
+		}
+		return text[:le] + "\n" + ins + text[le:], nil
+	}
+	blank := func(a, b int) bool { return strings.TrimSpace(text[a:b]) == "" }
+	if before {
+		for ls > 0 { // walk up to the block's first line
+			ps := strings.LastIndex(text[:ls-1], "\n") + 1
+			if blank(ps, ls-1) {
+				break
+			}
+			ls = ps
+		}
+		return text[:ls] + ins + "\n\n" + text[ls:], nil
+	}
+	for le < len(text) { // walk down to the block's last line
+		ne := len(text)
+		if i := strings.IndexByte(text[le+1:], '\n'); i >= 0 {
+			ne = le + 1 + i
+		}
+		if blank(le+1, ne) {
+			break
+		}
+		le = ne
+	}
+	return text[:le] + "\n\n" + ins + text[le:], nil
+}
+
 // textEditOp is the shared, validated form of an edit request.
 type textEditOp struct {
 	oldString, newString string
@@ -226,10 +304,13 @@ type textEditOp struct {
 	appendText           string
 	hasReplace, hasDiff  bool
 	hasAppend            bool
+	insertText, anchor   string
+	insertBefore         bool
+	hasInsert            bool
 }
 
-// parseTextEditOp reads exactly one operation (old_string/new_string, diff or
-// append) from tool args.
+// parseTextEditOp reads exactly one operation (old_string/new_string, diff,
+// append, append_source or insert with after/before) from tool args.
 func parseTextEditOp(args map[string]any) (textEditOp, error) {
 	var op textEditOp
 	_, op.hasReplace = args["old_string"]
@@ -241,19 +322,35 @@ func parseTextEditOp(args map[string]any) (textEditOp, error) {
 	op.appendText = argString(args, "append")
 	op.hasAppend = op.appendText != ""
 	op.hasReplace = op.hasReplace && (op.oldString != "" || op.newString != "")
+	op.insertText = argString(args, "insert")
+	after, before := argString(args, "after"), argString(args, "before")
+	if after != "" && before != "" {
+		return op, fmt.Errorf("give either after or before with insert, not both")
+	}
+	op.anchor, op.insertBefore = after, false
+	if before != "" {
+		op.anchor, op.insertBefore = before, true
+	}
+	if (op.insertText != "") != (op.anchor != "") {
+		if op.insertText == "" {
+			return op, fmt.Errorf("after/before needs insert: the text to add")
+		}
+		return op, fmt.Errorf("insert needs exactly one of after or before: a passage quoted exactly from the document")
+	}
+	op.hasInsert = op.insertText != ""
 	n := 0
-	for _, b := range []bool{op.hasReplace, op.hasDiff, op.hasAppend} {
+	for _, b := range []bool{op.hasReplace, op.hasDiff, op.hasAppend, op.hasInsert} {
 		if b {
 			n++
 		}
 	}
 	switch n {
 	case 0:
-		return op, fmt.Errorf("give exactly one operation: old_string+new_string (replace), diff (unified diff), append (text), or append_source (documents/files)")
+		return op, fmt.Errorf("give exactly one operation: old_string+new_string (replace), diff (unified diff), append (text), append_source (documents/files), or insert with after or before (add text next to a passage)")
 	case 1:
 		return op, nil
 	}
-	return op, fmt.Errorf("give exactly one operation (old_string+new_string, diff, append, or append_source), not several")
+	return op, fmt.Errorf("give exactly one operation (old_string+new_string, diff, append, append_source, or insert+after/before), not several")
 }
 
 // apply runs the operation on text and describes what it did.
@@ -271,6 +368,16 @@ func (op textEditOp) apply(text string) (string, string, error) {
 			return "", "", err
 		}
 		return out, fmt.Sprintf("applied %d hunk(s)", n), nil
+	case op.hasInsert:
+		out, err := textEditInsert(text, op.insertText, op.anchor, op.insertBefore)
+		if err != nil {
+			return "", "", err
+		}
+		where := "after"
+		if op.insertBefore {
+			where = "before"
+		}
+		return out, fmt.Sprintf("inserted %d characters %s the given passage", len([]rune(op.insertText)), where), nil
 	default:
 		return textEditAppend(text, op.appendText), fmt.Sprintf("appended %d characters", len([]rune(op.appendText))), nil
 	}

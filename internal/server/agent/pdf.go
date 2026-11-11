@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/ivoras/harlequin/internal/server/docevents"
-	"github.com/ivoras/harlequin/internal/server/mdpdf"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
@@ -33,7 +32,7 @@ func (a *Agent) createPDFEntry() toolEntry {
 func (a *Agent) createPDF(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 	if a.PDF == nil {
 		// The tool is offered regardless, so the user hears why instead of "I can't".
-		return "error: PDF creation is not set up on this server (an administrator has to install headless Chrome; see the README). Tell the user, and offer to save the text as a Markdown document with save_doc instead.", nil
+		return pdfNotSetUp, nil
 	}
 	title := strings.TrimSpace(argString(args, "title"))
 	if title == "" {
@@ -51,40 +50,29 @@ func (a *Agent) createPDF(ctx context.Context, rc *runContext, args map[string]a
 		return errMsg, nil
 	}
 	landscape, _ := args["landscape"].(bool)
-	page, text, st, err := mdpdf.Page(strings.TrimSuffix(title, ".pdf"), src, isHTML, landscape)
-	if err != nil {
-		return "error: " + err.Error() + " — pass the text as content, or as source (a sandbox file or a saved document)", nil
-	}
 	scope, db, errMsg := a.saveScope(rc, args)
 	if errMsg != "" {
 		return errMsg, nil
 	}
-	pdf, err := a.PDF.PDF(ctx, page)
+	gs := genSource{Kind: genPDF, Format: formatName(isHTML), Landscape: landscape, Source: src}
+	g, err := a.generate(ctx, title, gs, true)
 	if err != nil {
-		return "error: could not create the PDF: " + err.Error(), nil
+		if _, conv := err.(convertError); conv {
+			return "error: " + err.Error() + " — pass the text as content, or as source (a sandbox file or a saved document)", nil
+		}
+		return "error: " + err.Error(), nil
 	}
 	// The searchable text is the Markdown the PDF was typeset from (HTML input
 	// converted to it), so search_docs and read_doc work on it at once.
 	doc, err := a.Docs.IngestInto(ctx, db, types.CreateDocumentRequest{
-		Title: title, URI: "agent://create_pdf", Mime: "application/pdf", Content: text,
+		Title: title, URI: "agent://create_pdf", Mime: "application/pdf", Content: g.text,
 	}, rc.userID)
 	if err != nil {
 		return "", err
 	}
-	a.storeDocFile(ctx, db, scope, rc, doc, pdf, ".pdf")
+	a.storeGenerated(ctx, db, scope, rc, doc, g.data, ".pdf", gs)
 	a.publishDocChange(docevents.Created, scope, rc, doc.ID)
-	msg := fmt.Sprintf("Created PDF %s.%d %q", scopeLetter(scope), doc.ID, title)
-	if n := mdpdf.Pages(pdf); n > 0 {
-		msg += fmt.Sprintf(": %d page(s)", n)
-	}
-	msg += ". The user can open or download it from their files."
-	if st.ImagesDropped > 0 {
-		msg += fmt.Sprintf(" Note: %d image(s) were left out (only inline data: images can be printed); tell the user.", st.ImagesDropped)
-	}
-	if st.Removed > 0 {
-		msg += fmt.Sprintf(" Note: %d script, form, embedded or external item(s) were removed from the HTML (a PDF is static and self-contained).", st.Removed)
-	}
-	return msg, nil
+	return fmt.Sprintf("Created PDF %s.%d %q%s. The user can open or download it from their files.%s", scopeLetter(scope), doc.ID, title, g.detail, g.notes), nil
 }
 
 // sourceIsHTML decides whether a create_pdf/create_word text is HTML: the

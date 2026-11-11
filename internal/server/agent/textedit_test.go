@@ -118,3 +118,67 @@ func TestParseTextEditOp(t *testing.T) {
 		t.Errorf("deleting via empty new_string: %q %v", out, err)
 	}
 }
+
+func TestTextEditInsert(t *testing.T) {
+	doc := "# Title\n\nFirst para line one\nline two.\n\nPayment is due in 30 days.\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n- apple\n- pear\n\nLast.\n"
+	cases := []struct {
+		name, ins, anchor string
+		before            bool
+		want              string
+	}{
+		{"after mid-paragraph", "New.", "line one", false, "First para line one\nline two.\n\nNew.\n\nPayment"},
+		{"before mid-paragraph", "New.", "line two", true, "# Title\n\nNew.\n\nFirst para"},
+		{"start of document", "Intro.", "# Title", true, "Intro.\n\n# Title\n\nFirst"},
+		{"end of document", "End.", "Last.", false, "Last.\n\nEnd.\n"},
+		{"table row after", "| 3 | 4 |", "| 1 | 2 |", false, "| 1 | 2 |\n| 3 | 4 |\n\n- apple"},
+		{"table row before", "| 0 | 0 |", "|---|---|", true, "| A | B |\n| 0 | 0 |\n|---|---|"},
+		{"list item after", "- plum", "apple", false, "- apple\n- plum\n- pear"},
+		{"list item before", "- fig", "pear", true, "- apple\n- fig\n- pear"},
+		{"paragraph after table", "After table.", "| 1 | 2 |", false, "| 1 | 2 |\n\nAfter table.\n\n- apple"},
+		{"multi-line insert after list item", "x\ny", "apple", false, "- apple\n- pear\n\nx\ny\n\nLast."},
+	}
+	for _, c := range cases {
+		got, err := textEditInsert(doc, c.ins, c.anchor, c.before)
+		if err != nil {
+			t.Errorf("%s: %v", c.name, err)
+			continue
+		}
+		if !strings.Contains(got, c.want) {
+			t.Errorf("%s: want %q in\n%s", c.name, c.want, got)
+		}
+		// Only the insertion is new: removing it gives the original back.
+		if strings.Replace(strings.Replace(got, c.ins+"\n\n", "", 1), c.ins+"\n", "", 1) != doc && strings.Replace(strings.Replace(got, "\n\n"+c.ins, "", 1), "\n"+c.ins, "", 1) != doc {
+			t.Errorf("%s: other text changed:\n%s", c.name, got)
+		}
+	}
+	for name, c := range map[string][3]string{
+		"not found": {"x", "nowhere", "was not found"},
+		"twice":     {"x", "- ", "occurs 2 times"},
+		"empty":     {"", "Last.", "must not be empty"},
+	} {
+		if _, err := textEditInsert(doc, c[0], c[1], false); err == nil || !strings.Contains(err.Error(), c[2]) {
+			t.Errorf("%s: got %v", name, err)
+		}
+	}
+	// Argument validation.
+	for name, c := range map[string]struct {
+		args map[string]any
+		want string
+	}{
+		"both":      {map[string]any{"insert": "x", "after": "a", "before": "b"}, "not both"},
+		"no anchor": {map[string]any{"insert": "x"}, "exactly one of after or before"},
+		"no insert": {map[string]any{"after": "a"}, "needs insert"},
+		"two ops":   {map[string]any{"insert": "x", "after": "a", "append": "y"}, "not several"},
+	} {
+		if _, err := parseTextEditOp(c.args); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: got %v", name, err)
+		}
+	}
+	op, err := parseTextEditOp(map[string]any{"insert": "x", "before": "Last."})
+	if err != nil || !op.hasInsert || !op.insertBefore {
+		t.Fatalf("parse: %+v %v", op, err)
+	}
+	if out, what, err := op.apply(doc); err != nil || !strings.Contains(what, "inserted") || !strings.Contains(out, "x\n\nLast.") {
+		t.Fatalf("apply: %q %q %v", out, what, err)
+	}
+}

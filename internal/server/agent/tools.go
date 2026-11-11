@@ -1008,9 +1008,9 @@ func (a *Agent) storeSavedDocFile(ctx context.Context, db *sql.DB, scope string,
 
 // storeDocFile persists a tool-made document's original bytes (the file the
 // user downloads) next to uploads, named <id>-<title><ext>.
-func (a *Agent) storeDocFile(ctx context.Context, db *sql.DB, scope string, rc *runContext, doc *types.Document, data []byte, ext string) {
+func (a *Agent) storeDocFile(ctx context.Context, db *sql.DB, scope string, rc *runContext, doc *types.Document, data []byte, ext string) string {
 	if a.Storage == nil {
-		return
+		return ""
 	}
 	var dir string
 	var err error
@@ -1024,7 +1024,7 @@ func (a *Agent) storeDocFile(ctx context.Context, db *sql.DB, scope string, rc *
 	}
 	if err != nil {
 		log.Printf("store doc file: %v", err)
-		return
+		return ""
 	}
 	base := documents.AsciiName(doc.Title)
 	if strings.HasSuffix(strings.ToLower(base), ext) {
@@ -1033,10 +1033,23 @@ func (a *Agent) storeDocFile(ctx context.Context, db *sql.DB, scope string, rc *
 	name := fmt.Sprintf("%d-%s%s", doc.ID, base, ext)
 	if werr := os.WriteFile(filepath.Join(dir, name), data, 0o600); werr != nil {
 		log.Printf("store doc file %q: %v", name, werr)
-		return
+		return ""
 	}
 	if serr := a.Docs.SetStoredPath(ctx, db, doc.ID, name); serr != nil {
 		log.Printf("store doc file: set stored_path: %v", serr)
+	}
+	return name
+}
+
+// storeGenerated is storeDocFile for a file generated from source text: it also
+// keeps that source beside the file, so edit_doc can regenerate it.
+func (a *Agent) storeGenerated(ctx context.Context, db *sql.DB, scope string, rc *runContext, doc *types.Document, data []byte, ext string, src genSource) {
+	name := a.storeDocFile(ctx, db, scope, rc, doc, data, ext)
+	if name == "" {
+		return
+	}
+	if err := writeSidecar(a.docFilesDir(rc, scope), name, src); err != nil {
+		log.Printf("store doc file %q: write source: %v", name, err)
 	}
 }
 

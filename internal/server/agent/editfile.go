@@ -2,12 +2,15 @@ package agent
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/ivoras/harlequin/internal/server/docalign"
 	"github.com/ivoras/harlequin/internal/server/docevents"
 	"github.com/ivoras/harlequin/internal/server/documents"
 )
@@ -20,6 +23,9 @@ func editArgsSchema(target map[string]any) map[string]any {
 		"replace_all":   map[string]any{"type": "boolean", "description": "Replace every occurrence of old_string instead of requiring exactly one."},
 		"diff":          map[string]any{"type": "string", "description": "A unified diff ('@@ -a,b +c,d @@' hunks with ' ' context, '-' removed and '+' added lines). Hunks are located by their content, so the line numbers need not be exact; all hunks must apply or nothing changes."},
 		"append":        map[string]any{"type": "string", "description": "Append: text you write, added at the end (on a new line if the text does not end with one)."},
+		"insert":        map[string]any{"type": "string", "description": "Insert: the new text to add next to a passage. Use with exactly one of after or before."},
+		"after":         map[string]any{"type": "string", "description": "Insert: a passage quoted exactly from the document (must occur once); the new text goes after the paragraph, table row or list item that holds it."},
+		"before":        map[string]any{"type": "string", "description": "Insert: like after, but the new text goes before that paragraph, row or item."},
 		"append_source": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": `Append from: documents and/or sandbox files whose whole text is added at the end, in order, e.g. ["u.18", "tmp://annex.md"]. The text is read on the server and does not pass through you.`},
 	}
 	for k, v := range target {
@@ -28,7 +34,7 @@ func editArgsSchema(target map[string]any) map[string]any {
 	return map[string]any{"type": "object", "properties": props}
 }
 
-const editOpsHelp = `It can do four things — give exactly ONE per call: (1) REPLACE: old_string + new_string — exact replace (old_string must be unique unless replace_all is true; include enough surrounding text; an empty new_string deletes); (2) PATCH: diff — a unified diff, best for several changes at once; (3) APPEND: append — add text you write at the end; (4) APPEND FROM: append_source — add the whole text of other documents and/or sandbox files at the end (concatenation; any length, since the text does not pass through you; for a PDF, Word or Excel source its Markdown text is used; sources are not changed). The edit is all-or-nothing: on any error nothing is changed and the message says what to fix.`
+const editOpsHelp = `Give exactly ONE of these five operations per call. (1) REPLACE: old_string + new_string. The old_string must occur once in the text (or set replace_all). Copy it exactly and include enough surrounding text. An empty new_string deletes it. (2) PATCH: diff, a unified diff. Best for several changes at once. (3) APPEND: append, text you write, added at the end. (4) APPEND FROM: append_source, a list of documents and/or sandbox files whose whole text is added at the end. The text does not pass through you, so any length works; a PDF, Word or Excel source is read as its Markdown text; sources are not changed. (5) INSERT: insert + one of after or before. The after/before text is a passage you quote exactly from the document; it must occur once. Example: insert "New paragraph." after "Payment is due in 30 days." The new text becomes its own paragraph next to the one that holds the passage. A single table row ("| a | b |") or list item ("- text") quoted next to a row or item of the same kind is added on the next line, so adding rows and items works. The edit is all-or-nothing: on any error nothing is changed and the message says what to fix.`
 
 // editFileEntry registers edit_file: apply an edit to a sandbox file.
 func (a *Agent) editFileEntry() toolEntry {
@@ -92,27 +98,56 @@ func (a *Agent) editFileEntry() toolEntry {
 	}
 }
 
+// docEdit is what the edit_doc handlers need about the target document.
+type docEdit struct {
+	rc      *runContext
+	db      *sql.DB
+	doc     *docalign.Doc
+	ref     string
+	path    string // the stored original
+	mime    string
+	op      textEditOp
+	from    string // " from <sources>" for append_source
+	pinProj bool   // qualify bare project citations (text documents in a project)
+}
+
+// editOpArgs are the arguments that make up an edit operation (undo excludes them).
+var editOpArgs = []string{"old_string", "new_string", "diff", "append", "append_source", "insert", "after", "before"}
+
 // editDocEntry registers edit_doc: apply an edit to a saved corpus document.
 func (a *Agent) editDocEntry() toolEntry {
 	schema := editArgsSchema(map[string]any{
-		"doc": map[string]any{"type": "string", "description": "Scoped document id, e.g. \"u.12\", \"s.3\" or \"p.7\" (resolve with list_documents); or a sandbox file such as tmp://notes.md"},
+		"doc":  map[string]any{"type": "string", "description": "Scoped document id, e.g. \"u.12\", \"s.3\" or \"p.7\" (resolve with list_documents); or a sandbox file such as tmp://notes.md"},
+		"undo": map[string]any{"type": "boolean", "description": "Set true (with doc only, no other argument) to restore the version before the last edit. Only one step back is kept."},
 	})
 	schema["required"] = []string{"doc"}
 	return toolEntry{
-		def: fnTool("edit_doc", `Edit a saved text/Markdown document in the corpus in place, keeping its id, title and scope — for fixing a passage in, adding text to the end of, or appending other documents to a document you (or the user) saved with save_doc or uploaded as .md/.txt. `+editOpsHelp+` Given a sandbox file (tmp://notes.md) as doc it edits that file, like edit_file. The document is re-indexed afterwards, so search_docs sees the new text; its chunk ids change, so [d.x.N] chunk citations pointing INTO this document may no longer match (document ids stay valid). Documents whose original is a PDF/DOCX/etc. cannot be edited — save an edited copy with save_doc instead. Edit only when the user asked you to change that document.`, schema),
+		def: fnTool("edit_doc", `Edit a saved document in place, keeping its id, title and scope. Use it when the user asks to change a document: fix a passage, add a paragraph, add text at the end, or append other documents. Works on: text/Markdown documents (save_doc, or uploaded .md/.txt) and on documents made with create_pdf, create_word or create_excel (their file is rebuilt from the edited Markdown). Uploaded PDF, Word and Excel files cannot be edited yet. `+editOpsHelp+` To go back one step: edit_doc with doc and undo true. Given a sandbox file (tmp://notes.md) as doc it edits that file, like edit_file. The document is re-indexed afterwards, so search_docs sees the new text. Unchanged passages keep their chunk ids, so citations to them stay valid. Edit only when the user asked you to change that document.`, schema),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+			undo := argBool(args, "undo", false)
 			if p := argString(args, "doc"); isSandboxPath(p) { // a sandbox file: edit_file's job
+				if undo {
+					return "error: undo is not available for sandbox files (it restores saved documents)", nil
+				}
 				return a.editFileEntry().handler(ctx, rc, withArg(args, "path", strings.TrimSpace(p)))
 			}
-			from := ""
-			if add, what, ok, errMsg := a.appendSourceArg(ctx, rc, args); errMsg != "" {
-				return errMsg, nil
-			} else if ok {
-				args, from = withArg(args, "append", "\n"+add), " from "+what
-			}
-			op, err := parseTextEditOp(args)
-			if err != nil {
-				return "error: " + err.Error(), nil
+			e := &docEdit{rc: rc}
+			if undo {
+				for _, k := range editOpArgs {
+					if v, ok := args[k]; ok && v != "" && v != nil {
+						return "error: undo cannot be combined with another operation; call edit_doc with doc and undo only", nil
+					}
+				}
+			} else {
+				if add, what, ok, errMsg := a.appendSourceArg(ctx, rc, args); errMsg != "" {
+					return errMsg, nil
+				} else if ok {
+					args, e.from = withArg(args, "append", "\n"+add), " from "+what
+				}
+				var err error
+				if e.op, err = parseTextEditOp(args); err != nil {
+					return "error: " + err.Error(), nil
+				}
 			}
 			doc, errMsg := a.loadDocRef(ctx, rc, argString(args, "doc"))
 			if errMsg != "" {
@@ -131,64 +166,193 @@ func (a *Agent) editDocEntry() toolEntry {
 			if dbErrMsg != "" {
 				return dbErrMsg, nil
 			}
-			var filesDir string
-			if a.Storage != nil {
-				switch doc.Scope {
-				case documents.ScopeShared:
-					filesDir, _ = a.Storage.SharedFilesDir()
-				case documents.ScopeProject:
-					filesDir, _ = a.Storage.ProjectFilesDir(rc.projectID)
-				default:
-					filesDir, _ = a.Storage.UserFilesDir(rc.userID)
-				}
-			}
-			ref := fmt.Sprintf("%s.%d", scopeLetter(doc.Scope), doc.ID)
+			filesDir := a.docFilesDir(rc, doc.Scope)
+			e.db, e.doc, e.ref = db, doc, fmt.Sprintf("%s.%d", scopeLetter(doc.Scope), doc.ID)
+			e.pinProj = doc.Scope == documents.ScopeProject && rc.projectID != 0
 			stored, mime, _, err := a.Docs.StoredFile(ctx, db, doc.ID)
 			if err != nil {
 				return "", err
 			}
-			// Only documents with a stored UTF-8 text original are editable: the
-			// indexed chunks overlap and normalise whitespace, so they are not a
-			// faithful source to edit from.
+			// Only documents with a stored original are editable: the indexed
+			// chunks overlap and normalise whitespace, so they are not a faithful
+			// source to edit from.
 			if stored == "" || filesDir == "" {
-				return fmt.Sprintf("error: document %s has no stored text original, so it cannot be edited in place; save a corrected copy with save_doc.", ref), nil
+				return fmt.Sprintf("error: document %s has no stored original, so it cannot be edited in place; save a corrected copy with save_doc.", e.ref), nil
 			}
-			if !strings.HasPrefix(mime, "text/") {
-				return fmt.Sprintf("error: document %s is %s, not text/Markdown, so it cannot be edited in place; save an edited copy with save_doc.", ref, mime), nil
+			e.path, e.mime = filepath.Join(filesDir, filepath.Base(stored)), mime
+			if undo {
+				return a.undoDocEdit(ctx, e)
 			}
-			path := filepath.Join(filesDir, filepath.Base(stored))
-			data, err := os.ReadFile(path)
-			if err != nil || !utf8.Valid(data) {
-				return fmt.Sprintf("error: cannot read the stored text of %s for editing.", ref), nil
+			// Where the document came from decides how it is edited.
+			side, sideErr := os.ReadFile(e.path + sidecarExt)
+			switch {
+			case sideErr == nil: // made by create_excel/create_pdf/create_word
+				return a.editGeneratedDoc(ctx, e, side)
+			case strings.HasPrefix(mime, "text/"):
+				return a.editTextDoc(ctx, e)
+			case mime == pdfMime:
+				return fmt.Sprintf("error: document %s is an uploaded PDF, so it cannot be edited: its pages are fixed. To change it, make a new document from its text with create_pdf or create_word (source %q), or cut pages out with pdf_pages.", e.ref, e.ref), nil
+			case mime == docxMime: // Stage C plugs in here
+				return fmt.Sprintf("error: document %s is an uploaded Word file, and editing uploaded Word/Excel files in place is not available yet. Make a new document from its text with create_word (source %q), or save an edited copy with save_doc.", e.ref, e.ref), nil
+			case mime == xlsxMime: // Stage D plugs in here
+				return fmt.Sprintf("error: document %s is an uploaded Excel file, and editing uploaded Word/Excel files in place is not available yet. Make a new workbook from its tables with create_excel (source %q), or save an edited copy with save_doc.", e.ref, e.ref), nil
 			}
-			out, what, err := op.apply(string(data))
-			if err != nil {
-				return "error: " + err.Error(), nil
-			}
-			out = documents.StripSoftHyphens(out)
-			if strings.TrimSpace(out) == "" {
-				return "error: the edit would leave the document empty; use delete_doc to remove it.", nil
-			}
-			if doc.Scope == documents.ScopeProject && rc.projectID != 0 {
-				out = pinProjectCitations(out, rc.projectID)
-			}
-			// Re-index first (a failure leaves the old chunks and file untouched),
-			// then replace the stored original.
-			chunks, err := a.Docs.ReplaceContent(ctx, db, doc.ID, out)
-			if err != nil {
-				return "", err
-			}
-			a.publishDocChange(docevents.Updated, doc.Scope, rc, doc.ID)
-			tmp := path + ".tmp"
-			if err := os.WriteFile(tmp, []byte(out), 0o600); err == nil {
-				err = os.Rename(tmp, path)
-			}
-			if err != nil {
-				return fmt.Sprintf("Edited and re-indexed %s (%s, %d sections), but could not update its stored file (%v); view/download will show the old text.", ref, what, chunks, err), nil
-			}
-			return fmt.Sprintf("Edited document %s (%q): %s%s; now %d characters in %d sections, re-indexed for search_docs.", ref, doc.Title, what, from, utf8.RuneCountInString(out), chunks), nil
+			return fmt.Sprintf("error: document %s is %s, not text/Markdown, so it cannot be edited in place; save an edited copy with save_doc.", e.ref, mime), nil
 		},
 	}
+}
+
+// editTextDoc edits a document whose stored original is UTF-8 text.
+func (a *Agent) editTextDoc(ctx context.Context, e *docEdit) (string, error) {
+	data, err := os.ReadFile(e.path)
+	if err != nil || !utf8.Valid(data) {
+		return fmt.Sprintf("error: cannot read the stored text of %s for editing.", e.ref), nil
+	}
+	out, what, err := e.op.apply(string(data))
+	if err != nil {
+		return "error: " + err.Error(), nil
+	}
+	out = documents.StripSoftHyphens(out)
+	if strings.TrimSpace(out) == "" {
+		return "error: the edit would leave the document empty; use delete_doc to remove it.", nil
+	}
+	if e.pinProj {
+		out = pinProjectCitations(out, e.rc.projectID)
+	}
+	chunks, warn, err := a.commitDocEdit(ctx, e, out, []byte(out), nil)
+	if err != nil {
+		return "", err
+	}
+	if warn != "" {
+		return "error: " + warn, nil
+	}
+	return fmt.Sprintf("Edited document %s (%q): %s%s; now %d characters in %d sections, re-indexed for search_docs.", e.ref, e.doc.Title, what, e.from, utf8.RuneCountInString(out), chunks), nil
+}
+
+// editGeneratedDoc edits the source a PDF/Word/Excel document was generated
+// from and rebuilds the file; any failure leaves the document as it was.
+func (a *Agent) editGeneratedDoc(ctx context.Context, e *docEdit, side []byte) (string, error) {
+	src, err := readSidecar(side)
+	if err != nil {
+		return fmt.Sprintf("error: document %s cannot be edited: %v. Make a new document with create_* instead.", e.ref, err), nil
+	}
+	if msg := a.notSetUp(src.Kind); msg != "" {
+		return msg, nil
+	}
+	out, what, err := e.op.apply(src.Source)
+	if err != nil {
+		return "error: " + err.Error(), nil
+	}
+	if strings.TrimSpace(out) == "" {
+		return "error: the edit would leave the document empty; use delete_doc to remove it.", nil
+	}
+	src.Source = out
+	g, err := a.generate(ctx, e.doc.Title, src, true)
+	if err != nil {
+		if _, conv := err.(convertError); conv {
+			return fmt.Sprintf("error: the edited text cannot be converted to a %s file: %v. Nothing was changed; change the edit so the result is valid.", src.Kind, err), nil
+		}
+		return "error: " + err.Error() + ". Nothing was changed.", nil
+	}
+	newSide, err := json.Marshal(src)
+	if err != nil {
+		return "", err
+	}
+	chunks, warn, err := a.commitDocEdit(ctx, e, g.text, g.data, newSide)
+	if err != nil {
+		return "", err
+	}
+	if warn != "" {
+		return "error: " + warn, nil
+	}
+	return fmt.Sprintf("Edited %s document %s (%q): %s%s; the file was rebuilt%s and re-indexed for search_docs (%d sections). The user's downloadable file now has the change.%s",
+		src.Kind, e.ref, e.doc.Title, what, e.from, g.detail, chunks, g.notes), nil
+}
+
+// commitDocEdit replaces a document's indexed text and stored file (and, for a
+// generated file, its source sidecar newSide), keeping the previous file(s) as
+// .prev for one level of undo. The new files are staged first and the index is
+// updated before they are moved into place, so a failure changes nothing; a
+// non-empty warn is such a failure.
+func (a *Agent) commitDocEdit(ctx context.Context, e *docEdit, text string, newFile, newSide []byte) (chunks int, warn string, err error) {
+	side := e.path + sidecarExt
+	type staged struct {
+		path string
+		data []byte
+	}
+	pairs := []staged{{e.path, newFile}}
+	if newSide != nil {
+		pairs = append(pairs, staged{side, newSide})
+	}
+	cleanup := func() {
+		for _, p := range pairs {
+			_ = os.Remove(p.path + ".tmp")
+		}
+	}
+	for _, p := range pairs {
+		if werr := os.WriteFile(p.path+".tmp", p.data, 0o600); werr != nil {
+			cleanup()
+			return 0, fmt.Sprintf("cannot write the stored file (%v); nothing was changed.", werr), nil
+		}
+	}
+	if chunks, err = a.Docs.ReplaceContent(ctx, e.db, e.doc.ID, text); err != nil {
+		cleanup()
+		return 0, "", err
+	}
+	a.publishDocChange(docevents.Updated, e.doc.Scope, e.rc, e.doc.ID)
+	for _, p := range pairs {
+		path := p.path
+		if old, rerr := os.ReadFile(path); rerr == nil {
+			if werr := os.WriteFile(path+prevExt, old, 0o600); werr != nil {
+				_ = os.Remove(e.path + prevExt) // never leave a .prev that does not match
+				_ = os.Remove(side + prevExt)
+			}
+		}
+		if rerr := os.Rename(path+".tmp", path); rerr != nil {
+			return chunks, fmt.Sprintf("the document was re-indexed but its stored file could not be updated (%v); view/download will show the old file.", rerr), nil
+		}
+	}
+	return chunks, "", nil
+}
+
+// undoDocEdit restores the version before the last edit: the stored file (and
+// a generated file's source) come back from .prev, and the index follows.
+func (a *Agent) undoDocEdit(ctx context.Context, e *docEdit) (string, error) {
+	prev, err := os.ReadFile(e.path + prevExt)
+	if err != nil {
+		return fmt.Sprintf("error: document %s has no previous version to restore (only the version before the latest edit is kept, and each undo uses it up).", e.ref), nil
+	}
+	side := e.path + sidecarExt
+	var text string
+	sidePrev, serr := os.ReadFile(side + prevExt)
+	if serr == nil {
+		src, err := readSidecar(sidePrev)
+		if err != nil {
+			return fmt.Sprintf("error: cannot restore %s: the previous version's %v.", e.ref, err), nil
+		}
+		g, err := a.generate(ctx, e.doc.Title, src, false) // text only: the file itself comes back from .prev
+		if err != nil {
+			return fmt.Sprintf("error: cannot restore %s: %v", e.ref, err), nil
+		}
+		text = g.text
+	} else if !utf8.Valid(prev) {
+		return fmt.Sprintf("error: cannot read the previous text of %s.", e.ref), nil
+	} else {
+		text = string(prev)
+	}
+	if _, err := a.Docs.ReplaceContent(ctx, e.db, e.doc.ID, text); err != nil {
+		return "", err
+	}
+	a.publishDocChange(docevents.Updated, e.doc.Scope, e.rc, e.doc.ID)
+	for _, p := range []string{e.path, side} {
+		if _, err := os.Stat(p + prevExt); err != nil {
+			continue
+		}
+		if err := os.Rename(p+prevExt, p); err != nil {
+			return fmt.Sprintf("error: the document %s was re-indexed from its previous version, but restoring its stored file failed (%v).", e.ref, err), nil
+		}
+	}
+	return fmt.Sprintf("Restored the previous version of document %s (%q) and re-indexed it for search_docs. Undo keeps one step only, so there is nothing further to undo.", e.ref, e.doc.Title), nil
 }
 
 // withArg returns a copy of args with key set to val (the caller's map is the

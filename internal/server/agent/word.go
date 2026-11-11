@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/ivoras/harlequin/internal/server/docevents"
-	"github.com/ivoras/harlequin/internal/server/mdword"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
@@ -34,7 +33,7 @@ func (a *Agent) createWordEntry() toolEntry {
 
 func (a *Agent) createWord(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 	if a.Word == nil {
-		return "error: Word document creation is not set up on this server (an administrator has to install LibreOffice and bubblewrap; see the README). Tell the user, and offer to save the text as a Markdown document with save_doc instead.", nil
+		return wordNotSetUp, nil
 	}
 	title := strings.TrimSpace(argString(args, "title"))
 	if title == "" {
@@ -52,32 +51,25 @@ func (a *Agent) createWord(ctx context.Context, rc *runContext, args map[string]
 		return errMsg, nil
 	}
 	landscape, _ := args["landscape"].(bool)
-	page, text, st, err := mdword.Page(strings.TrimSuffix(title, ".docx"), src, isHTML)
-	if err != nil {
-		return "error: " + err.Error() + " — pass the text as content, or as source (a sandbox file or a saved document)", nil
-	}
 	scope, db, errMsg := a.saveScope(rc, args)
 	if errMsg != "" {
 		return errMsg, nil
 	}
-	data, err := a.Word.DOCX(ctx, page, landscape)
+	gs := genSource{Kind: genWord, Format: formatName(isHTML), Landscape: landscape, Source: src}
+	g, err := a.generate(ctx, title, gs, true)
 	if err != nil {
-		return "error: could not create the Word document: " + err.Error(), nil
+		if _, conv := err.(convertError); conv {
+			return "error: " + err.Error() + " — pass the text as content, or as source (a sandbox file or a saved document)", nil
+		}
+		return "error: " + err.Error(), nil
 	}
 	doc, err := a.Docs.IngestInto(ctx, db, types.CreateDocumentRequest{
-		Title: title, URI: "agent://create_word", Mime: docxMime, Content: text,
+		Title: title, URI: "agent://create_word", Mime: docxMime, Content: g.text,
 	}, rc.userID)
 	if err != nil {
 		return "", err
 	}
-	a.storeDocFile(ctx, db, scope, rc, doc, data, ".docx")
+	a.storeGenerated(ctx, db, scope, rc, doc, g.data, ".docx", gs)
 	a.publishDocChange(docevents.Created, scope, rc, doc.ID)
-	msg := fmt.Sprintf("Created Word document %s.%d %q. The user can open or download it from their files.", scopeLetter(scope), doc.ID, title)
-	if st.ImagesDropped > 0 {
-		msg += fmt.Sprintf(" Note: %d image(s) were left out (only inline data: images are embedded); tell the user.", st.ImagesDropped)
-	}
-	if st.Removed > 0 {
-		msg += fmt.Sprintf(" Note: %d script, form, embedded or external item(s) were removed from the HTML.", st.Removed)
-	}
-	return msg, nil
+	return fmt.Sprintf("Created Word document %s.%d %q. The user can open or download it from their files.%s", scopeLetter(scope), doc.ID, title, g.notes), nil
 }
