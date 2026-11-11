@@ -25,6 +25,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/llm/loopdetect"
 	"github.com/ivoras/harlequin/internal/server/mcp"
 	"github.com/ivoras/harlequin/internal/server/mdpdf"
+	"github.com/ivoras/harlequin/internal/server/mdword"
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/notify"
 	"github.com/ivoras/harlequin/internal/server/notifyx"
@@ -123,6 +124,9 @@ type Agent struct {
 	// PDF typesets create_pdf's documents; nil when headless Chrome is not
 	// installed (the tool then explains that instead of working).
 	PDF *mdpdf.Renderer
+	// Word converts create_word's documents; nil when LibreOffice or bubblewrap
+	// is not installed (the tool then explains that instead of working).
+	Word *mdword.Renderer
 	// CompactThreshold (tokens; 0 = off) and CompactKeep configure tier-1 context
 	// compaction in the step loop (see compactHistory).
 	CompactThreshold, CompactKeep int

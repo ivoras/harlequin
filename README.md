@@ -468,6 +468,17 @@ user directory endpoint — set `auth.user_directory: false` if org addresses
 should not be enumerable.
 
 
+# Word document creation (optional)
+
+The agent's `create_word` tool converts Markdown or HTML into a `.docx` with
+headless LibreOffice. It needs **LibreOffice** (`apt install libreoffice-writer`;
+`soffice` on the server's `PATH`, or set `documents.word_soffice`) and
+**bubblewrap** (`apt install bubblewrap`; LibreOffice only ever runs inside its
+sandbox, with no network and no access to the host's files). At startup the
+server logs `create_word is unavailable: …` when either is missing, and the tool
+then tells the user that Word creation is not set up. The same systemd
+requirements as PDF creation below apply.
+
 # PDF creation (optional)
 
 The agent's `create_pdf` tool typesets Markdown into a PDF with headless Chrome.

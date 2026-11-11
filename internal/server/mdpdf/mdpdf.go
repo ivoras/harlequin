@@ -102,31 +102,9 @@ type Stats struct {
 // from the source can precede or replace it. HTML input keeps its own <style>
 // rules (that is its point), applied after the house stylesheet.
 func Page(title, src string, isHTML, landscape bool) (page, text string, st Stats, err error) {
-	if strings.TrimSpace(src) == "" {
-		return "", "", st, errors.New("the document is empty")
-	}
-	if len(src) > maxSource {
-		return "", "", st, fmt.Errorf("the document is too long (%d bytes; limit %d)", len(src), maxSource)
-	}
-	text = strings.TrimSpace(src)
-	if !isHTML {
-		var body bytes.Buffer
-		if err := md.Convert([]byte(src), &body); err != nil {
-			return "", "", st, err
-		}
-		src = pageBreakRE.ReplaceAllString(body.String(), `<div class="pagebreak"></div>`)
-	}
-	body, styles, err := sanitize(src, &st)
+	body, styles, text, st, err := Body(src, isHTML)
 	if err != nil {
 		return "", "", st, err
-	}
-	if isHTML {
-		if text, err = htmltomarkdown.ConvertString(body); err != nil {
-			return "", "", st, fmt.Errorf("cannot read the HTML: %w", err)
-		}
-		if text = strings.TrimSpace(text); text == "" {
-			return "", "", st, errors.New("the HTML has no visible text")
-		}
 	}
 	orient := "portrait"
 	if landscape {
@@ -136,6 +114,39 @@ func Page(title, src string, isHTML, landscape bool) (page, text string, st Stat
 		`<meta http-equiv="Content-Security-Policy" content="` + csp + `">` +
 		"<title>" + html.EscapeString(title) + "</title><style>" + fmt.Sprintf(css, orient) + "</style>" +
 		"<style>" + styles + "</style></head><body>\n" + body + "</body></html>\n", text, st, nil
+}
+
+// Body is the sanitised part of Page, for other converters (mdword): the body
+// HTML (\newpage already turned into <div class="pagebreak">), the text of the
+// source's <style> elements, and src as plain Markdown for indexing.
+func Body(src string, isHTML bool) (body, styles, text string, st Stats, err error) {
+	if strings.TrimSpace(src) == "" {
+		return "", "", "", st, errors.New("the document is empty")
+	}
+	if len(src) > maxSource {
+		return "", "", "", st, fmt.Errorf("the document is too long (%d bytes; limit %d)", len(src), maxSource)
+	}
+	text = strings.TrimSpace(src)
+	if !isHTML {
+		var b bytes.Buffer
+		if err := md.Convert([]byte(src), &b); err != nil {
+			return "", "", "", st, err
+		}
+		src = pageBreakRE.ReplaceAllString(b.String(), `<div class="pagebreak"></div>`)
+	}
+	body, styles, err = sanitize(src, &st)
+	if err != nil {
+		return "", "", "", st, err
+	}
+	if isHTML {
+		if text, err = htmltomarkdown.ConvertString(body); err != nil {
+			return "", "", "", st, fmt.Errorf("cannot read the HTML: %w", err)
+		}
+		if text = strings.TrimSpace(text); text == "" {
+			return "", "", "", st, errors.New("the HTML has no visible text")
+		}
+	}
+	return body, styles, text, st, nil
 }
 
 // dropped elements run code, load or embed something, or submit somewhere.

@@ -28,6 +28,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/mcp"
 	"github.com/ivoras/harlequin/internal/server/mdpdf"
 	"github.com/ivoras/harlequin/internal/server/mdtmpl"
+	"github.com/ivoras/harlequin/internal/server/mdword"
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/notify"
 	"github.com/ivoras/harlequin/internal/server/notifyx"
@@ -308,6 +309,11 @@ func main() {
 		log.Printf("create_pdf is unavailable: %v", err)
 	} else {
 		ag.PDF = r
+	}
+	if r, err := mdword.New(cfg.Documents.WordSoffice); err != nil {
+		log.Printf("create_word is unavailable: %v", err)
+	} else {
+		ag.Word = r
 	}
 
 	// Live sessions: each active chat is a server-side goroutine that survives

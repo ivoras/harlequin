@@ -227,7 +227,7 @@ files (`tmp://…` scratch space, `storage://…` kept per user; a bare path suc
 | `read_doc`, `check_text` | yes | yes (`doc`) |
 | `edit_doc` / `edit_file` | yes | yes (each accepts the other's target) |
 | `append_source` of the edit tools | yes | yes |
-| `create_excel`, `create_pdf` (`source`) | yes | yes |
+| `create_excel`, `create_pdf`, `create_word` (`source`) | yes | yes |
 | `save_doc` (`source`) | no — use `copy_doc` to duplicate a document | yes |
 | `copy_doc` (`source`; `target` is a sandbox file) | yes | yes |
 | `send_email` (`doc`, `attachments`) | yes | yes |
@@ -389,6 +389,22 @@ not set up. The `create-pdf` skill teaches the model the formats.
 **Examples:**
 - `create_pdf({"title": "Q1 report", "source": "tmp://report.md"})`
 - `create_pdf({"title": "Offer letter", "source": "tmp://letter.html", "landscape": false})`
+
+#### `create_word`
+**Why:** produce a downloadable, editable Word document (`.docx`) written from
+scratch. Same inputs as `create_pdf` (`content` or `source`; Markdown, or HTML
+with `format: "html"`; `\newpage`; `landscape`; `scope`), same sanitising
+(`mdpdf.Body`: scripts, forms, embeds, event handlers and external references
+are removed and reported; only inline `data:` images survive). The page is
+converted by headless LibreOffice (`soffice --convert-to docx`) inside a
+bubblewrap sandbox (no network, empty environment, scratch directory only, file
+size/CPU limits, one conversion at a time), then the page size is set to A4.
+Output uses Word's own styles (Heading 1–3, lists, tables), not a house
+stylesheet, so the user can restyle it. Saved like `save_doc`, with the Markdown
+as its searchable text. It cannot edit an existing `.docx`. When LibreOffice or
+`bwrap` is missing the tool stays offered and says Word creation is not set up.
+Converter: `internal/server/mdword`; the `create-word` skill teaches the model.
+**Example:** `create_word({"title": "Service agreement", "source": "tmp://contract.md"})`
 
 #### `pdf_pages`
 **Why:** make new PDFs out of pages of existing PDF documents — extract, split,

@@ -286,6 +286,10 @@ type DocumentsConfig struct {
 	// PATH; when it is not installed the tool reports that PDF creation is
 	// unavailable.
 	PDFChrome string `yaml:"pdf_chrome"`
+	// WordSoffice is the LibreOffice executable the create_word tool converts
+	// with (inside a bubblewrap sandbox). Empty = "soffice" on PATH; when it is
+	// not installed the tool reports that Word creation is unavailable.
+	WordSoffice string `yaml:"word_soffice"`
 	// Docling, when base_url is set, converts PDF/DOCX uploads to structured
 	// Markdown via a docling-serve instance (layout analysis, tables, OCR). Any
 	// failure falls back to the built-in pure-Go extractors.

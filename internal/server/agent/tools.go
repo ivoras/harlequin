@@ -745,6 +745,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 		reg["edit_doc"] = a.editDocEntry()
 		reg["create_excel"] = a.createExcelEntry()
 		reg["create_pdf"] = a.createPDFEntry()
+		reg["create_word"] = a.createWordEntry()
 		reg["copy_doc"] = a.copyDocEntry()
 		reg["pdf_pages"] = a.pdfPagesEntry()
 		a.registerProjectTools(reg, rc)

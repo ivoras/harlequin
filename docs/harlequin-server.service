@@ -51,7 +51,7 @@ ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes
 # ProtectKernelTunables is left off: its /proc overmounts make the kernel refuse
-# the fresh /proc of the create_pdf sandbox ("Can't mount proc"). The service
+# the fresh /proc of the create_pdf/create_word sandboxes ("Can't mount proc"). The service
 # runs unprivileged with no capabilities, so it cannot write tunables anyway.
 ProtectKernelTunables=no
 ProtectKernelModules=yes
