@@ -201,6 +201,8 @@ go to the project you have selected. Progress shows in the bottom-left
 corner; failed uploads stay there until you dismiss them. The Files page also
 filters by scope, searches inside documents, adds pasted text as a document,
 and compares two documents side by side. Each row's **…** menu has
+**View extracted text** (for PDFs, Word files and images), which shows the
+Markdown text taken from the file — what search and the assistant read — and
 **Delete**, which permanently removes the file, its extracted Markdown text and
 its search-index entries (deleted data is also wiped from the database file).
 

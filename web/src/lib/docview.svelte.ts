@@ -95,6 +95,20 @@ export async function viewDocument(d: Document, projectID: number) {
   }
 }
 
+// viewExtractedText shows the Markdown the server extracted from an uploaded
+// file (PDF, DOCX, image OCR…), which is what search and the agent read — the
+// original itself opens with viewDocument.
+export async function viewExtractedText(d: Document, projectID: number) {
+  const scope = d.scope ?? "";
+  try {
+    const res = await api.getDocumentContent(d.id, scope, projectID);
+    const base = d.title.replace(/\.[^.\/]+$/, "");
+    await showTextDoc(new Blob([res.content], { type: "text/markdown;charset=utf-8" }), d.title + " (extracted text)", base + ".md", { scope, id: d.id, projectID });
+  } catch (err) {
+    toast((err as Error).message || `couldn't read the text of "${d.title}"`, "error");
+  }
+}
+
 // focusCited is a Svelte action for the element holding the rendered document:
 // it scrolls to (and flashes) the block containing the cited chunk. Chunk text
 // is raw markdown and the view is rendered HTML, so compare letters+digits only.

@@ -103,6 +103,24 @@
   function docProjectID(d: Document): number {
     return d.scope === "project" ? ($activeProject?.id ?? 0) : 0;
   }
+  // The extracted Markdown of an uploaded file (what search and the assistant read).
+  async function viewText(d: Document) {
+    if (openTextDoc === d) {
+      openTextDoc = null;
+      return;
+    }
+    openTextDoc = d;
+    textContent = "";
+    loadingText = true;
+    try {
+      textContent = (await api.getDocumentContent(d.id, d.scope ?? "", docProjectID(d))).content;
+    } catch (e) {
+      toast((e as Error).message, "error");
+      openTextDoc = null;
+    } finally {
+      loadingText = false;
+    }
+  }
   async function viewDoc(d: Document) {
     if (FILE_MIME.has(d.mime) || d.mime.startsWith("image/")) {
       try {
@@ -208,6 +226,7 @@
               {#if d.description}<span class="muted small wrap">{d.description}</span>{/if}
             </div>
             <button class="ghost small" onclick={() => viewDoc(d)}>{openTextDoc === d ? "Hide" : "View"}</button>
+            {#if !d.mime.startsWith("text/")}<button class="ghost small" title="Extracted text" onclick={() => viewText(d)}>Text</button>{/if}
             {#if canDelete(d)}<button class="ghost danger small" onclick={() => del(d)} aria-label="Delete">✕</button>{/if}
           </div>
           {#if openTextDoc === d}

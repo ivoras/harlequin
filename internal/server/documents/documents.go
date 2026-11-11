@@ -344,21 +344,10 @@ type preparedChunk struct {
 	vec      []byte // nil when no embedding was produced
 }
 
-// prepareChunks chunks content and embeds the chunks, entirely in memory (no
-// database access), so the caller can then insert the result in one short
-// transaction via writeChunks.
-func (s *Store) prepareChunks(ctx context.Context, content string, pageStarts []int, progress func(done, total int)) ([]preparedChunk, error) {
-	pl := PhaseLogFrom(ctx)
-	chunks, err := s.chunkContent(ctx, content)
-	if err != nil {
-		return nil, fmt.Errorf("chunk document: %w", err)
-	}
-	if len(chunks) == 0 {
+// embedTexts embeds texts in sub-batches (no database access).
+func (s *Store) embedTexts(ctx context.Context, texts []string, progress func(done, total int)) ([][]float32, error) {
+	if len(texts) == 0 {
 		return nil, nil
-	}
-	texts := make([]string, len(chunks))
-	for i, c := range chunks {
-		texts[i] = c.text
 	}
 	// Embed in sub-batches so a progress callback can report per-batch
 	// (one request for everything would be opaque for minutes on big docs).
@@ -396,7 +385,30 @@ func (s *Store) prepareChunks(ctx context.Context, content string, pageStarts []
 	for _, bv := range results {
 		vecs = append(vecs, bv...)
 	}
-	pl.Phase("embed-chunks", fmt.Sprintf("%d chunks", len(texts)))
+	PhaseLogFrom(ctx).Phase("embed-chunks", fmt.Sprintf("%d chunks", len(texts)))
+	return vecs, nil
+}
+
+// prepareChunks chunks content and embeds the chunks, entirely in memory (no
+// database access), so the caller can then insert the result in one short
+// transaction via writeChunks.
+func (s *Store) prepareChunks(ctx context.Context, content string, pageStarts []int, progress func(done, total int)) ([]preparedChunk, error) {
+	pl := PhaseLogFrom(ctx)
+	chunks, err := s.chunkContent(ctx, content)
+	if err != nil {
+		return nil, fmt.Errorf("chunk document: %w", err)
+	}
+	if len(chunks) == 0 {
+		return nil, nil
+	}
+	texts := make([]string, len(chunks))
+	for i, c := range chunks {
+		texts[i] = c.text
+	}
+	vecs, err := s.embedTexts(ctx, texts, progress)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]preparedChunk, len(chunks))
 	for i, c := range chunks {
 		out[i] = preparedChunk{ord: i, text: c.text, page: pageFor(c.start, pageStarts)} // page 0 when the source has none
@@ -449,11 +461,60 @@ func writeChunks(ctx context.Context, tx *sql.Tx, docID int64, chunks []prepared
 	return nil
 }
 
-// ReplaceContent re-chunks and re-indexes an existing document with new text,
-// keeping its id, title and scope (so references to the document stay valid).
-// Its chunks are rebuilt, so chunk ids — and page numbers, which only a paged
-// source has — change.
+// ReplaceContent is ReplaceContentPaged without page structure.
 func (s *Store) ReplaceContent(ctx context.Context, db *sql.DB, docID int64, content string) (int, error) {
+	return s.ReplaceContentPaged(ctx, db, docID, content, nil)
+}
+
+type oldChunk struct {
+	id   int64
+	text string
+	page int
+}
+
+// matchChunks pairs each new chunk text with an unused old chunk of identical
+// text (duplicates one-to-one, in order); -1 when unmatched.
+func matchChunks(old []oldChunk, texts []string) []int {
+	pool := map[string][]int{}
+	for i, o := range old {
+		pool[o.text] = append(pool[o.text], i)
+	}
+	m := make([]int, len(texts))
+	for i, t := range texts {
+		m[i] = -1
+		if q := pool[t]; len(q) > 0 {
+			m[i], pool[t] = q[0], q[1:]
+		}
+	}
+	return m
+}
+
+func loadOldChunks(ctx context.Context, q interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}, docID int64) ([]oldChunk, error) {
+	rows, err := q.QueryContext(ctx, `SELECT id, content, page FROM doc_chunks WHERE document_id = ? ORDER BY ord, id`, docID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []oldChunk
+	for rows.Next() {
+		var o oldChunk
+		if err := rows.Scan(&o.id, &o.text, &o.page); err != nil {
+			return nil, err
+		}
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
+// ReplaceContentPaged re-chunks an existing document with new text, keeping its
+// id, title and scope. Chunks whose text is unchanged keep their row id (so
+// citations survive), vector and page; only new chunks are embedded and only
+// vanished ones deleted. pageStarts (rune offsets, as in
+// CreateDocumentRequest.PageStarts) recomputes every chunk's page; without it a
+// kept chunk keeps its page and a new one takes its neighbour's.
+func (s *Store) ReplaceContentPaged(ctx context.Context, db *sql.DB, docID int64, content string, pageStarts []int) (int, error) {
 	content = StripSoftHyphens(content)
 	// Embed before taking the write lock (see IngestIntoProgress); the existence
 	// check up front avoids embedding for a missing document, and is repeated in
@@ -462,10 +523,38 @@ func (s *Store) ReplaceContent(ctx context.Context, db *sql.DB, docID int64, con
 	if err := db.QueryRowContext(ctx, `SELECT 1 FROM documents WHERE id = ?`, docID).Scan(&exists); err != nil {
 		return 0, fmt.Errorf("document %d: %w", docID, err)
 	}
-	chunks, err := s.prepareChunks(ctx, content, nil, nil)
+	chunks, err := s.chunkContent(ctx, content)
+	if err != nil {
+		return 0, fmt.Errorf("chunk document: %w", err)
+	}
+	texts := make([]string, len(chunks))
+	for i, c := range chunks {
+		texts[i] = c.text
+	}
+	old, err := loadOldChunks(ctx, db, docID)
 	if err != nil {
 		return 0, err
 	}
+	var fresh []string // unmatched texts, deduplicated
+	vecOf := map[string][]byte{}
+	for i, m := range matchChunks(old, texts) {
+		if _, seen := vecOf[texts[i]]; m < 0 && !seen {
+			vecOf[texts[i]] = nil
+			fresh = append(fresh, texts[i])
+		}
+	}
+	vecs, err := s.embedTexts(ctx, fresh, nil)
+	if err != nil {
+		return 0, err
+	}
+	for i, t := range fresh {
+		if i < len(vecs) {
+			if vecOf[t], err = sqlite_vec.SerializeFloat32(vecs[i]); err != nil {
+				return 0, err
+			}
+		}
+	}
+
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -474,32 +563,59 @@ func (s *Store) ReplaceContent(ctx context.Context, db *sql.DB, docID int64, con
 	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM documents WHERE id = ?`, docID).Scan(&exists); err != nil {
 		return 0, fmt.Errorf("document %d: %w", docID, err)
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id FROM doc_chunks WHERE document_id = ?`, docID)
-	if err != nil {
+	// Re-read: the chunks may have changed since the embedding started.
+	if old, err = loadOldChunks(ctx, tx, docID); err != nil {
 		return 0, err
 	}
-	var old []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
+	match := matchChunks(old, texts)
+	used := make([]bool, len(old))
+	pages := make([]int, len(chunks))
+	havePage := make([]bool, len(chunks))
+	for i, m := range match {
+		switch {
+		case pageStarts != nil:
+			pages[i], havePage[i] = pageFor(chunks[i].start, pageStarts), true
+		case m >= 0:
+			pages[i], havePage[i] = old[m].page, true
+		}
+		if m >= 0 {
+			used[m] = true
+		} else if _, ok := vecOf[texts[i]]; !ok {
+			return 0, fmt.Errorf("document %d changed while it was being edited; retry", docID)
+		}
+	}
+	for i := range pages { // new chunk: nearest preceding page...
+		if !havePage[i] && i > 0 {
+			pages[i], havePage[i] = pages[i-1], true
+		}
+	}
+	for i := len(pages) - 2; i >= 0; i-- { // ...or following, when none precedes
+		if !havePage[i] {
+			pages[i], havePage[i] = pages[i+1], true
+		}
+	}
+	for i, o := range old {
+		if used[i] {
+			continue
+		}
+		for _, q := range []string{`DELETE FROM doc_chunks_fts WHERE rowid = ?`, `DELETE FROM doc_chunks_vec WHERE rowid = ?`, `DELETE FROM doc_chunks WHERE id = ?`} {
+			if _, err := tx.ExecContext(ctx, q, o.id); err != nil {
+				return 0, fmt.Errorf("delete chunk %d: %w", o.id, err)
+			}
+		}
+	}
+	var add []preparedChunk
+	for i, m := range match {
+		if m < 0 {
+			add = append(add, preparedChunk{ord: i, text: texts[i], page: pages[i], vec: vecOf[texts[i]]})
+			continue
+		}
+		// ord has no unique constraint, so in-place updates cannot collide.
+		if _, err := tx.ExecContext(ctx, `UPDATE doc_chunks SET ord = ?, page = ? WHERE id = ?`, i, pages[i], old[m].id); err != nil {
 			return 0, err
 		}
-		old = append(old, id)
 	}
-	rows.Close()
-	for _, id := range old {
-		if _, err := tx.ExecContext(ctx, `DELETE FROM doc_chunks_fts WHERE rowid = ?`, id); err != nil {
-			return 0, fmt.Errorf("delete fts row: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM doc_chunks_vec WHERE rowid = ?`, id); err != nil {
-			return 0, fmt.Errorf("delete vec row: %w", err)
-		}
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM doc_chunks WHERE document_id = ?`, docID); err != nil {
-		return 0, err
-	}
-	if err := writeChunks(ctx, tx, docID, chunks); err != nil {
+	if err := writeChunks(ctx, tx, docID, add); err != nil {
 		return 0, err
 	}
 	if err := tx.Commit(); err != nil {

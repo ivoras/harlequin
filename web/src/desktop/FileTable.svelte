@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { viewDocument } from "../lib/docview.svelte";
+  import { viewDocument, viewExtractedText } from "../lib/docview.svelte";
   import type { Document } from "../lib/types";
   import Icon from "./Icon.svelte";
   import { docRef, mimeLabel } from "./state.svelte";
@@ -71,6 +71,11 @@
                     onclick={() => { menuFor = null; onTransfer(d, "move"); }}><Icon name="folder" size={14} /><span class="grow">Move to project…</span></button>
                   <button class="menu-item" role="menuitem" title="Copy this file into another of your projects (the original stays)"
                     onclick={() => { menuFor = null; onTransfer(d, "copy"); }}><Icon name="copy" size={14} /><span class="grow">Copy to project…</span></button>
+                  <div class="menu-sep"></div>
+                {/if}
+                {#if !d.mime.startsWith("text/")}
+                  <button class="menu-item" role="menuitem" title="Show the Markdown text extracted from this file (what search and the assistant read)"
+                    onclick={() => { menuFor = null; viewExtractedText(d, d.scope === "project" ? projectID : 0); }}><Icon name="text" size={14} /><span class="grow">View extracted text</span></button>
                   <div class="menu-sep"></div>
                 {/if}
                 <button class="menu-item del" role="menuitem" disabled={!canDelete(d)}

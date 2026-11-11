@@ -256,9 +256,9 @@ export const api = {
     const filename = /filename="([^"]*)"/.exec(res.headers.get("Content-Disposition") || "")?.[1] || "";
     return { blob: await res.blob(), filename };
   },
-  // getDocumentContent returns a TXT-type document's full text (documents with
-  // no stored original file, e.g. save_doc reports) — use fetchDocumentFile
-  // instead for PDF/DOCX, which have an actual file to open.
+  // getDocumentContent returns a document's full indexed text (the Markdown
+  // extracted from an upload, or a text document itself); fetchDocumentFile
+  // returns the stored original.
   getDocumentContent: (id: number, scope: string, projectID = 0) => {
     const v = new URLSearchParams();
     if (scope) v.set("scope", scope);
