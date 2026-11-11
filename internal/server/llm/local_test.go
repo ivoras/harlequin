@@ -27,3 +27,11 @@ func TestRoutingProviderLocalFollowsDefault(t *testing.T) {
 		}
 	}
 }
+
+func TestRoutingContextMaxDefaultsToTheDefaultModel(t *testing.T) {
+	providers := map[string]*OpenAICompatible{"p": NewOpenAICompatible("p", "http://x", "", "small")}
+	r := NewRoutingProvider(providers, "p", nil, nil, map[string]int{"small": 32000}, nil)
+	if got := r.ContextMax(""); got != 32000 {
+		t.Fatalf("ContextMax(\"\") = %d, want the default model's 32000", got)
+	}
+}

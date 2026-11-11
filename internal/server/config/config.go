@@ -351,7 +351,7 @@ type AgentConfig struct {
 
 // CompactionConfig controls tier-1 context compaction: past ThresholdTokens the
 // oldest large tool results are replaced with short stubs (see
-// agent.elideOldToolResults). The threshold is separate from the model's window
+// agent.compactHistory). The threshold is separate from the model's window
 // because with a 1M window "near the limit" is far too late: every call
 // resends the prompt, and a cache miss on a 600k prompt costs real money.
 type CompactionConfig struct {

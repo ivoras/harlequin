@@ -78,8 +78,12 @@ func NewRoutingProvider(providers map[string]*OpenAICompatible, defaultProvider 
 	}
 }
 
-// ContextMax resolves the context window for a model name.
+// ContextMax resolves the context window for a model name; "" means the
+// default provider's model (what an unpinned request is sent to).
 func (r *RoutingProvider) ContextMax(model string) int {
+	if p, ok := r.providers[r.defaultProvider]; ok && model == "" {
+		model = p.Model()
+	}
 	return ContextMax(model, r.contextWindows)
 }
 

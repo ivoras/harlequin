@@ -116,12 +116,12 @@ type Agent struct {
 	// ContextMax, if set, returns the model's max context window in tokens.
 	ContextMax func(model string) int
 	// CompactThreshold (tokens; 0 = off) and CompactKeep configure tier-1 context
-	// compaction in the step loop (see elideOldToolResults).
+	// compaction in the step loop (see compactHistory).
 	CompactThreshold, CompactKeep int
 }
 
 // compactThreshold is the effective compaction trigger: the configured size,
-// capped at 60% of the model's window once that is known (after the first call).
+// capped at 60% of the model's window when that is known.
 func (a *Agent) compactThreshold(modelWindow int) int {
 	thr := a.CompactThreshold
 	if thr > 0 && modelWindow > 0 && thr > modelWindow*6/10 {
@@ -347,7 +347,12 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	var finalText string
 	var turnModel string
 	var turnContextTokens int
+	// Known before the first call (the default model's window), so compaction is
+	// already capped to the window on step 1; refined from each response's model.
 	var turnContextMax int
+	if a.ContextMax != nil {
+		turnContextMax = a.ContextMax("")
+	}
 
 	// Per-turn model operation timing, aggregated over LLM calls.
 	turnStart := time.Now()
@@ -370,14 +375,17 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 			return "", ctx.Err()
 		}
 
-		// Tier-1 context compaction: shrink old tool results once the request is
-		// over budget. In-memory for this turn only; the stored session is untouched.
+		// Tier-1 context compaction: old tool results are stubbed in the request
+		// once it is over budget. msgs itself stays whole (as does the stored
+		// session): the stubs are re-derived from it every step, which is what
+		// keeps them identical from one step and turn to the next.
+		reqMsgs, reqTools := msgs, toolDefs
 		if thr := a.compactThreshold(turnContextMax); thr > 0 {
-			if c, st := elideOldToolResults(msgs, toolDefs, thr, a.CompactKeep); st.Elided > 0 {
-				msgs = c
-				log.Printf("agent: session %d step %d compacted context: %d old tool results elided, ~%d -> ~%d tokens", sessionID, step, st.Elided, st.TokensBefore, st.TokensAfter)
+			var st compactStats
+			if reqMsgs, st = compactHistory(msgs, toolDefs, thr, a.CompactKeep); st.Elided > 0 {
+				log.Printf("agent: session %d step %d compacted context: %d old tool results elided (%d in all), ~%d -> ~%d tokens", sessionID, step, st.Elided, st.Total, st.TokensBefore, st.TokensAfter)
 				a.logEvent(ctx, rc, sessionlog.TypeContextCompacted, map[string]any{
-					"elided": st.Elided, "chars_freed": st.CharsFreed,
+					"elided": st.Elided, "elided_total": st.Total, "chars_freed": st.CharsFreed,
 					"tokens_before": st.TokensBefore, "tokens_after": st.TokensAfter, "threshold": thr,
 				})
 			}
@@ -386,10 +394,9 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 		// The last allowed step gets no tools and a nudge to answer: a model
 		// stuck re-running tools must still reply rather than the turn silently
 		// ending on a tool result. The nudge is not stored in the session.
-		reqMsgs, reqTools := msgs, toolDefs
 		if step == a.MaxSteps && a.MaxSteps > 1 {
 			reqTools = nil
-			reqMsgs = append(append([]llm.Message(nil), msgs...), llm.Message{Role: llm.RoleUser, Content: stepLimitNudge})
+			reqMsgs = append(append([]llm.Message(nil), reqMsgs...), llm.Message{Role: llm.RoleUser, Content: stepLimitNudge})
 		}
 
 		estimatedTokens := llm.EstimateMessagesTokens(reqMsgs, reqTools)

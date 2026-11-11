@@ -30,16 +30,18 @@ func history(n, size int) []llm.Message {
 	return msgs
 }
 
-func TestElideOldToolResults(t *testing.T) {
+func stubbed(m llm.Message) bool { return strings.HasPrefix(m.Content, elidedPrefix) }
+
+func TestCompactHistory(t *testing.T) {
 	msgs := history(10, 8000) // ~20k tokens
-	if out, st := elideOldToolResults(msgs, nil, 1_000_000, 3); st.Elided != 0 || &out[0] != &msgs[0] {
+	if out, st := compactHistory(msgs, nil, 1_000_000, 3); st.Total != 0 || &out[0] != &msgs[0] {
 		t.Fatalf("under threshold must not change anything: %+v", st)
 	}
-	out, st := elideOldToolResults(msgs, nil, 12000, 3)
-	if st.Elided == 0 || st.TokensAfter > 12000*6/10 || st.TokensBefore <= 12000 {
+	out, st := compactHistory(msgs, nil, 12000, 3)
+	if st.Total == 0 || st.TokensAfter > 12000 {
 		t.Fatalf("stats %+v", st)
 	}
-	if strings.HasPrefix(msgs[3].Content, elidedPrefix) {
+	if stubbed(msgs[3]) {
 		t.Fatal("input slice was modified")
 	}
 	// Oldest results are elided first, the newest keep=3 stay whole, and every
@@ -54,27 +56,93 @@ func TestElideOldToolResults(t *testing.T) {
 			t.Fatalf("tool message %d lost its pairing", i)
 		}
 	}
-	last := out[len(out)-1]
-	if tools != 10 || strings.HasPrefix(last.Content, elidedPrefix) || !strings.HasPrefix(out[3].Content, elidedPrefix) {
-		t.Fatalf("tools=%d first=%q last-elided=%v", tools, out[3].Content, strings.HasPrefix(last.Content, elidedPrefix))
+	if tools != 10 || !stubbed(out[3]) {
+		t.Fatalf("tools=%d first=%q", tools, out[3].Content)
 	}
 	for _, m := range out[len(out)-6:] { // the newest 3 results (and their calls)
-		if m.Role == llm.RoleTool && strings.HasPrefix(m.Content, elidedPrefix) {
+		if stubbed(m) {
 			t.Fatal("a protected result was elided")
 		}
 	}
-	// A second pass over the compacted history changes nothing (and costs no tokens).
-	if _, st2 := elideOldToolResults(out, nil, 12000, 3); st2.Elided != 0 {
-		t.Fatalf("second pass elided %d more", st2.Elided)
+	// A second pass over the compacted history changes nothing.
+	if _, st2 := compactHistory(out, nil, 12000, 3); st2.Total != 0 {
+		t.Fatalf("second pass elided %d more", st2.Total)
 	}
 }
 
-func TestElideLeavesSmallResultsAndDisabled(t *testing.T) {
-	small := history(10, 100)
-	if _, st := elideOldToolResults(small, nil, 1, 0); st.Elided != 0 {
+// The replay is what keeps the prompt prefix cacheable: compacting a longer
+// history (a later step, or a later turn that reloaded the full results) makes
+// the same decisions for the part already sent, and adds stubs only now and
+// then (hysteresis), not at every request.
+func TestCompactHistoryIsStableAsTheConversationGrows(t *testing.T) {
+	msgs := history(60, 8000) // 60 steps, ~2k tokens each
+	var prev []llm.Message
+	requests, changed := 0, 0
+	for end := 2; end <= len(msgs); end += 2 { // each request: history up to a tool result
+		out, st := compactHistory(msgs[:end], nil, 12000, 3)
+		requests++
+		rewrote := false
+		for i, m := range prev {
+			if m.Content != out[i].Content {
+				if stubbed(m) || !stubbed(out[i]) {
+					t.Fatalf("request ending at %d rewrote message %d other than by stubbing it", end, i)
+				}
+				rewrote = true
+			}
+		}
+		if rewrote != (st.Elided > 0) {
+			t.Fatalf("request ending at %d: prefix changed=%v but stats say %+v", end, rewrote, st)
+		}
+		if rewrote {
+			changed++
+		}
+		if size := llm.EstimateMessagesTokens(out, nil); size > 12000+2100 {
+			t.Fatalf("request ending at %d is ~%d tokens (threshold 12000)", end, size)
+		}
+		prev = out
+	}
+	// ~2k tokens/step against 4.8k of slack: a new cut-off every 2-3 steps.
+	if changed == 0 || changed > requests/2 {
+		t.Fatalf("prefix changed in %d of %d requests", changed, requests)
+	}
+}
+
+// Results of the step that just ran are never stubbed, however many there are:
+// the model has not read them yet.
+func TestCompactHistoryKeepsUnreadResults(t *testing.T) {
+	msgs := []llm.Message{{Role: llm.RoleSystem, Content: "sys"}, {Role: llm.RoleUser, Content: "go"}}
+	step := func() {
+		var calls []llm.ToolCall
+		for i := 0; i < 12; i++ {
+			calls = append(calls, llm.ToolCall{ID: fmt.Sprintf("c%d-%d", len(msgs), i)})
+		}
+		msgs = append(msgs, llm.Message{Role: llm.RoleAssistant, ToolCalls: calls})
+		for _, c := range calls {
+			msgs = append(msgs, llm.Message{Role: llm.RoleTool, ToolCallID: c.ID, Name: "t", Content: strings.Repeat("x", 8000)})
+		}
+	}
+	step() // 12 parallel results, ~24k tokens, keep is only 2
+	if _, st := compactHistory(msgs, nil, 12000, 2); st.Total != 0 {
+		t.Fatalf("stubbed %d results the model never saw", st.Total)
+	}
+	first := len(msgs)
+	step()
+	out, st := compactHistory(msgs, nil, 12000, 2)
+	if st.Total != 12 {
+		t.Fatalf("the first step's results should now be stubbed: %+v", st)
+	}
+	for _, m := range out[first:] {
+		if stubbed(m) {
+			t.Fatal("stubbed a result of the step that just ran")
+		}
+	}
+}
+
+func TestCompactLeavesSmallResultsAndDisabled(t *testing.T) {
+	if _, st := compactHistory(history(10, 100), nil, 1, 0); st.Total != 0 {
 		t.Fatal("results under the minimum size must stay")
 	}
-	if _, st := elideOldToolResults(history(10, 8000), nil, 0, 0); st.Elided != 0 {
+	if _, st := compactHistory(history(10, 8000), nil, 0, 0); st.Total != 0 {
 		t.Fatal("threshold 0 disables compaction")
 	}
 }
@@ -134,7 +202,14 @@ func TestRunCompactsOldToolResultsInTheStepLoop(t *testing.T) {
 		Provider: recordingProvider{calls: 12, reqs: &reqs}, Storage: mgr, Sessions: sessions, MaxSteps: 20,
 		Runner:           jsrun.New(jsrun.Options{}),
 		Skills:           skills.NewManager(mgr.Shared, fstest.MapFS{}, jsrun.New(jsrun.Options{}), nil),
-		CompactThreshold: 12000, CompactKeep: 2,
+		CompactThreshold: 150000, CompactKeep: 2,
+		// The window (so the 60% cap: 12000) is known before the first call.
+		ContextMax: func(model string) int {
+			if model != "" && model != "fake" {
+				t.Errorf("ContextMax(%q)", model)
+			}
+			return 20000
+		},
 	}
 	var sessID int64
 	_ = mgr.WithUser(ctx, 1, func(udb *sql.DB) error {
@@ -145,7 +220,33 @@ func TestRunCompactsOldToolResultsInTheStepLoop(t *testing.T) {
 	if err := a.Run(ctx, 0, sessID, 1, "u@x", types.RoleUser, "", "", "go", func(types.StreamEvent) {}); err != nil {
 		t.Fatal(err)
 	}
-	last := reqs[len(reqs)-1]
+	turn1 := len(reqs)
+	// A second turn reloads the full results from the store and must stub them
+	// again exactly as the first turn did.
+	if err := a.Run(ctx, 0, sessID, 1, "u@x", types.RoleUser, "", "", "more", func(types.StreamEvent) {}); err != nil {
+		t.Fatal(err)
+	}
+	if len(reqs) != turn1+1 {
+		t.Fatalf("second turn made %d requests", len(reqs)-turn1)
+	}
+	for r := 1; r < len(reqs); r++ {
+		for i, m := range reqs[r-1] {
+			if i == 0 || m.Content == stepLimitNudge {
+				continue // system prompt; last-step nudge
+			}
+			got := reqs[r][i]
+			if strings.HasPrefix(m.Content, got.Content) && !stubbed(m) {
+				continue // the step-budget note is this turn's context only
+			}
+			if got.Content != m.Content && (stubbed(m) || !stubbed(got)) {
+				t.Fatalf("request %d rewrote message %d of the previous request", r, i)
+			}
+		}
+	}
+	if n := len(reqs[turn1]); stubbed(reqs[turn1][n-1]) || reqs[turn1][n-1].Content != "more" {
+		t.Fatalf("second turn's request ends with %q", reqs[turn1][n-1].Content)
+	}
+	last := reqs[turn1-1]
 	elided, whole := 0, 0
 	for _, m := range last {
 		if m.Role == llm.RoleTool {
