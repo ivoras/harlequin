@@ -185,12 +185,12 @@
     {/if}
     <div class="container"><AttachChips {c} /></div>
     <div class="container row" style="align-items:flex-end; gap:8px;">
-      <button onclick={attach} title="Attach documents" aria-label="Attach documents">📎</button>
-      <textarea rows="1" placeholder={sc.loading ? "Message (will queue)…" : "Message or /command…"} bind:value={c.input} bind:this={c.el} onkeydown={c.onKey} oninput={c.onInput}></textarea>
+      <button onclick={attach} disabled={sc.missing} title="Attach documents" aria-label="Attach documents">📎</button>
+      <textarea rows="1" placeholder={sc.loading ? "Message (will queue)…" : "Message or /command…"} bind:value={c.input} bind:this={c.el} onkeydown={c.onKey} oninput={c.onInput} disabled={sc.missing}></textarea>
       {#if sc.loading}
         <button class="danger" onclick={() => sc.stop()} title="Stop">■</button>
       {:else}
-        <button class="primary" onclick={() => c.submit()} disabled={c.uploading || !c.input.trim() || (!$session.id && !c.input.trim().startsWith("/"))}>Send</button>
+        <button class="primary" onclick={() => c.submit()} disabled={sc.missing || c.uploading || !c.input.trim() || (!$session.id && !c.input.trim().startsWith("/"))}>Send</button>
       {/if}
     </div>
     {#if sc.missing}
