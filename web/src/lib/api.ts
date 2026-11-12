@@ -7,7 +7,7 @@ import type {
   Memory, MemoryConflict, SearchResult, MCPServer, RegisterMCPRequest,
   MCPTestResult, MCPAuthStartResult, CronJob, CreateCronJobRequest,
   UpdateCronJobRequest, UsageRecord, UsageDay, UsageUser, Notification, Document, CreateDocumentRequest,
-  CreateMemoryRequest, UpdateMemoryRequest, Project, ProjectInvite, AlignResult, ContextBreakdown,
+  CreateMemoryRequest, UpdateMemoryRequest, Project, ProjectInvite, ChatUnreadProject, AlignResult, ContextBreakdown,
   IngestJobStatus,
 } from "./types";
 
@@ -323,6 +323,8 @@ export const api = {
   departProject: (id: number) => req<void>("POST", `/projects/${id}/depart`),
   deleteProject: (id: number, confirmName: string) =>
     req<void>("DELETE", `/projects/${id}?confirm=${encodeURIComponent(confirmName)}`),
+  chatUnread: () => reqList<ChatUnreadProject>("GET", "/projects/chat/unread"),
+  markChatRead: (projectID: number, lastID: number) => req<{ last_read_id: number }>("PUT", `/projects/${projectID}/chat/read`, { last_id: lastID }),
   listProjectInvites: () => reqList<ProjectInvite>("GET", "/projects/invites"),
   acceptInvite: (inviteID: number) => req<{ project_id: number }>("POST", `/projects/invites/${inviteID}/accept`),
   declineInvite: (inviteID: number) => req<void>("POST", `/projects/invites/${inviteID}/decline`),

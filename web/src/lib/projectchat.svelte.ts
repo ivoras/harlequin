@@ -10,6 +10,10 @@ class ProjectChat {
 
   private socket: ProjectChatSocket | null = null;
   private projectID = 0;
+  // The project whose room this holds (0 = none): messages belong to it only.
+  get roomID(): number {
+    return this.projectID;
+  }
 
   // open connects to a project's chatroom (no-op if already on it).
   open(projectID: number): void {

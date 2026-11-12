@@ -20,6 +20,7 @@
   import Palette from "./Palette.svelte";
   import Settings from "./Settings.svelte";
   import { ui, persist } from "./state.svelte";
+  import { unread } from "./unread.svelte";
 
   let ready = $state(false);
   let started = false;
@@ -116,6 +117,13 @@
     const { id, title } = $session;
     const row = ui.sessions.find((c) => c.id === id);
     if (row && title && row.title !== title) row.title = title;
+  });
+
+  // Unread team-chat counts are polled while signed in.
+  $effect(() => {
+    if (!$user) return;
+    unread.start();
+    return () => unread.stop();
   });
 
   // Team chatroom connection follows the active project.

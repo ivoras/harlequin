@@ -56,6 +56,13 @@ export interface ProjectInvite {
   status: string;
   created_at: string;
 }
+// Unread team-chat messages of one project (GET /projects/chat/unread).
+export interface ChatUnreadProject {
+  project_id: number;
+  project_name: string;
+  count: number;
+  messages: { id: number; email: string; snippet: string; created_at: string }[]; // oldest first
+}
 export interface ChatMessage {
   id: number;
   user_id: number;

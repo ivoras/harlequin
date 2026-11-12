@@ -221,6 +221,8 @@ func (s *Server) Router() http.Handler {
 				r.Get("/projects/invites", s.handleListProjectInvites)
 				r.Post("/projects/invites/{inviteID}/accept", s.handleAcceptInvite)
 				r.Post("/projects/invites/{inviteID}/decline", s.handleDeclineInvite)
+				r.Get("/projects/chat/unread", s.handleChatUnread)
+				r.Put("/projects/{id}/chat/read", s.handleChatRead)
 				r.Get("/projects/{id}", s.handleGetProject)
 				r.Delete("/projects/{id}", s.handleDeleteProject)
 				r.Post("/projects/{id}/invite", s.handleInviteProject)

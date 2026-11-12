@@ -294,6 +294,24 @@ type ChatMessage struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// ChatUnreadMessage is one unread team-chat message, abridged for the
+// "unread messages" dropdown.
+type ChatUnreadMessage struct {
+	ID        int64     `json:"id"`
+	Email     string    `json:"email"`
+	Snippet   string    `json:"snippet"` // first words of the message
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// ChatUnreadProject is a project's unread team-chat messages for one user:
+// Count of them in total (capped), Messages the newest few, oldest first.
+type ChatUnreadProject struct {
+	ProjectID   int64               `json:"project_id"`
+	ProjectName string              `json:"project_name"`
+	Count       int                 `json:"count"`
+	Messages    []ChatUnreadMessage `json:"messages"`
+}
+
 // CreateProjectRequest is the body of POST /projects.
 type CreateProjectRequest struct {
 	Name string `json:"name"`

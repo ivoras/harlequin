@@ -92,6 +92,17 @@ the AI sessions:
 - **History:** messages are stored in the project database; the last 100 are
   sent when you connect (also `GET /api/v1/projects/{id}/messages`). Deleting the
   project deletes the chat history.
+- **Unread messages (desktop web):** an indicator in the top-right corner shows
+  how many team-chat messages from other members you haven't read, across all
+  your projects. Its drop-down lists them per project (newest 10, abridged to 15
+  words, oldest first); clicking a project opens it with the Team chat beside
+  it. Messages count as read when the Team chat tab is showing them. The marker
+  (last read message per project) is stored in your own database
+  (`project_chat_reads`); `GET /api/v1/projects/chat/unread` compares it with each
+  project's newest messages, and `PUT /api/v1/projects/{id}/chat/read`
+  `{"last_id": N}` advances it. Messages from before you joined are never unread.
+  The count refreshes every 45 seconds, when the browser tab regains focus and
+  when the drop-down opens.
 - The chat is for people only: the AI assistant doesn't read it, and it isn't
   part of any AI session's context.
 

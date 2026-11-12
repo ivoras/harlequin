@@ -7,6 +7,7 @@
   import Context from "../views/Context.svelte";
   import Icon from "./Icon.svelte";
   import { ui, type InspectorTab } from "./state.svelte";
+  import { unread } from "./unread.svelte";
 
   // The right-hand panel: the project team chat (while a project is active),
   // the document viewer (citations, file clicks), and session details.
@@ -29,6 +30,15 @@
   $effect(() => {
     pc.messages.length;
     if (ui.inspectorTab === "team") requestAnimationFrame(() => chatEl && (chatEl.scrollTop = chatEl.scrollHeight));
+  });
+
+  // Showing the team chat marks it read up to its newest message (only while the
+  // pane is open on that tab, the browser tab is in front, and the loaded room
+  // is the active project's).
+  $effect(() => {
+    const p = $activeProject;
+    const last = pc.messages.length ? pc.messages[pc.messages.length - 1].id : 0;
+    if (p && last && pc.roomID === p.id && ui.inspectorTab === "team" && unread.visible) unread.markRead(p.id, last);
   });
 
   function send() {

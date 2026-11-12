@@ -2,6 +2,7 @@
   import type { Snippet } from "svelte";
   import { activeProject } from "../lib/stores";
   import Icon from "./Icon.svelte";
+  import UnreadIndicator from "./UnreadIndicator.svelte";
   import { ui, MOD } from "./state.svelte";
 
   // The main pane's header: sidebar re-open (when hidden), workspace crumb,
@@ -20,6 +21,7 @@
   {#if title}{@render title()}{:else}<span class="page-title">{label}</span>{/if}
   <span class="spacer"></span>
   {#if actions}{@render actions()}{/if}
+  <UnreadIndicator />
   <button class="icon-btn" class:on={ui.inspectorOpen} onclick={() => (ui.inspectorOpen = !ui.inspectorOpen)}
     title="Toggle side panel ({MOD}+.)" aria-label="Toggle side panel">
     <Icon name="panelRight" />
