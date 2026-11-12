@@ -1,7 +1,7 @@
 // SessionController owns the live session WebSocket and all chat + alert state at
 // app scope, so it survives view switches (no socket churn) and the alert box can
 // live in the app shell. Components (App, Chat) are thin views over this singleton.
-import { api } from "./api";
+import { api, ApiError } from "./api";
 import { SessionSocket } from "./ws";
 import { SSE, NOTIFY_SESSION_TITLE } from "./types";
 import type { Message, StreamEvent, Notification } from "./types";
@@ -45,6 +45,9 @@ class SessionController {
   ppLabel = $state("");
   queue = $state<string[]>([]);
   reconnecting = $state(false);
+  // The attached session doesn't exist in this workspace (deleted, moved, or a
+  // personal id under a project). No socket is opened: retrying can't fix it.
+  missing = $state(false);
   // Context-window use reported by the last finished turn (null until one
   // finishes in this session); drives the desktop composer's context meter.
   ctx = $state<{ model: string; tokens: number; max: number } | null>(null);
@@ -89,12 +92,19 @@ class SessionController {
     this.streamingAssistant = null;
     this.queue = [];
     this.ctx = null;
+    this.missing = false;
+    this.reconnecting = false;
     this.socket?.close();
     this.socket = null;
     try {
       this.coldHistory = projectID > 0 ? await api.projectMessages(projectID, id) : await api.getMessages(id);
     } catch (e) {
       this.coldHistory = [];
+      if (gen !== this.attachGen) return;
+      if (e instanceof ApiError && e.status === 404) {
+        this.missing = true;
+        return;
+      }
       toast((e as Error).message, "error");
     }
     if (gen !== this.attachGen) return; // a newer attach superseded this one

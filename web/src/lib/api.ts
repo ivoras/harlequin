@@ -40,6 +40,14 @@ export function authHeaders(extra?: Record<string, string>): Record<string, stri
   return h;
 }
 
+// ApiError keeps the HTTP status so callers can tell "gone" (404) from a
+// transient failure.
+export class ApiError extends Error {
+  constructor(message: string, public status: number) {
+    super(message);
+  }
+}
+
 async function req<T>(method: string, path: string, body?: unknown): Promise<T> {
   const headers = authHeaders();
   let bodyStr: string | undefined;
@@ -55,7 +63,7 @@ async function req<T>(method: string, path: string, body?: unknown): Promise<T> 
       if (e && e.error) msg = e.error;
     } catch { /* keep status */ }
     if (res.status === 401) setToken("");
-    throw new Error(msg);
+    throw new ApiError(msg, res.status);
   }
   const text = await res.text();
   return (text ? JSON.parse(text) : undefined) as T;

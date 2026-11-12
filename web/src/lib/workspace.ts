@@ -23,7 +23,9 @@ export function setURLParams(sessionID: number, projectID: number): void {
 
 let creating = false;
 
-// ensureSession starts a fresh personal session and makes it current.
+// ensureSession starts a fresh session in the current workspace and makes it
+// current: inside a project it is created and assigned to that project (the
+// session is attached under the project, so a plain personal one would 404).
 export async function ensureSession(): Promise<void> {
   if (creating) return;
   creating = true;

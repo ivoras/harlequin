@@ -298,7 +298,8 @@
           bind:value={c.input} bind:this={c.el} onkeydown={c.onKey} oninput={c.onInput}></textarea>
         <div class="composer-bar">
           <button class="icon-btn" onclick={attach} title="Attach documents to this message (saved to {ui.defaultTarget().label})" aria-label="Attach files"><Icon name="paperclip" /></button>
-          {#if sc.reconnecting}<span class="warn small">Reconnecting…</span>{/if}
+          {#if sc.missing}<span class="small" style="color: var(--danger);">Session not found here (deleted or moved) — start a new one or pick another.</span>
+          {:else if sc.reconnecting}<span class="warn small">Reconnecting…</span>{/if}
           <span class="spacer"></span>
           {#if sc.ctx}
             <button class="ctx" onclick={() => ui.openInspector("session")}

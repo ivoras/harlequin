@@ -193,7 +193,9 @@
         <button class="primary" onclick={() => c.submit()} disabled={c.uploading || !c.input.trim() || (!$session.id && !c.input.trim().startsWith("/"))}>Send</button>
       {/if}
     </div>
-    {#if sc.reconnecting}
+    {#if sc.missing}
+      <div class="container small" style="padding-top:2px; color: var(--danger, #f66);">This session wasn't found here (deleted or moved) — start a new one or pick another.</div>
+    {:else if sc.reconnecting}
       <div class="container muted small" style="padding-top:2px;">Reconnecting…</div>
     {/if}
   </div>
