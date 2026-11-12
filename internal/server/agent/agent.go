@@ -124,6 +124,9 @@ type Agent struct {
 	// PDF typesets create_pdf's documents; nil when headless Chrome is not
 	// installed (the tool then explains that instead of working).
 	PDF *mdpdf.Renderer
+	// OrgLanguage is the organisation's language code (server.org_language);
+	// generated document descriptions are written in it.
+	OrgLanguage string
 	// Word converts create_word's documents; nil when LibreOffice or bubblewrap
 	// is not installed (the tool then explains that instead of working).
 	Word *mdword.Renderer

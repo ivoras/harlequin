@@ -33,3 +33,16 @@ func TestDataRetentionDaysValue(t *testing.T) {
 		t.Fatalf("explicit 14: got %d", got)
 	}
 }
+
+func TestOrgLanguageDefault(t *testing.T) {
+	var c Config
+	c.applyDefaults()
+	if c.Server.OrgLanguage != "en" {
+		t.Fatalf("default %q, want en", c.Server.OrgLanguage)
+	}
+	c.Server.OrgLanguage = " hr "
+	c.applyDefaults()
+	if c.Server.OrgLanguage != "hr" {
+		t.Fatalf("got %q, want hr", c.Server.OrgLanguage)
+	}
+}

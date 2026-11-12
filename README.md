@@ -355,6 +355,7 @@ server:
 
 Set `server.org_name` (default `Unnamed`) to show your organisation's name next to the
 brand in the web UI and on the login screen.
+`server.org_language` (an ISO 639 code such as `hr`; default `en`) is the organisation's main language.
 
 Now `http://<host>:<addr>/` serves the app and `…/api/v1/…` the API. Leave `web.dir`
 empty to disable serving.

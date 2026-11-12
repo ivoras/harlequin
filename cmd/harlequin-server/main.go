@@ -303,6 +303,7 @@ func main() {
 		NotifyDispatch:      dispatch,
 		Presence:            presenceTracker,
 		ContextMax:          router.ContextMax,
+		OrgLanguage:         cfg.Server.OrgLanguage,
 	}
 
 	if r, err := mdpdf.New(cfg.Documents.PDFChrome); err != nil {

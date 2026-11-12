@@ -6,6 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/text/language"
+	"golang.org/x/text/language/display"
+
 	"github.com/ivoras/harlequin/internal/server/llm"
 )
 
@@ -13,7 +16,22 @@ import (
 // the opening of a document identifies it; the rest just costs tokens.
 const describeInputCap = 6000
 
-const describeSystemPrompt = `You catalogue documents. Given a document's title and its opening text, reply with ONE line (at most 25 words) stating what the document is: its type, subject, issuing body if apparent, and any version/date/edition hints. No preamble, no quotes, no markdown.`
+const describeSystemPrompt = `You catalogue documents. Given a document's title and its opening text, reply with ONE line (at most 25 words) stating what the document is: its type, subject, issuing body if apparent, and any version/date/edition hints. No preamble, no quotes, no markdown. Write it in the language the user message names, whatever language the document is in.`
+
+// languageName turns a language code ("hr") into its English name ("Croatian")
+// for prompts; an empty code is English and an unknown one is used as written.
+func languageName(code string) string {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		return "English"
+	}
+	if tag, err := language.Parse(code); err == nil {
+		if n := display.English.Languages().Name(tag); n != "" {
+			return n
+		}
+	}
+	return code
+}
 
 // DescribeDocument produces the one-line catalogue description stored with an
 // ingested document, which lets the assistant resolve paraphrased references
@@ -51,7 +69,9 @@ func (a *Agent) describeOnce(ctx context.Context, title, text string, timeout ti
 	out, _, err := a.completeOnce(ctx, llm.ChatRequest{
 		Messages: []llm.Message{
 			{Role: llm.RoleSystem, Content: describeSystemPrompt},
-			{Role: llm.RoleUser, Content: "Title: " + title + "\n\nOpening text:\n" + text},
+			// Said again after the text: a long document in another language
+			// otherwise pulls the description into that language.
+			{Role: llm.RoleUser, Content: "Title: " + title + "\n\nOpening text:\n" + text + "\n\nWrite the description in " + languageName(a.OrgLanguage) + "."},
 		},
 		Temperature: llm.Ptr(0.0),
 	})
