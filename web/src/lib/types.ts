@@ -200,6 +200,8 @@ export interface Memory {
   content: string;
   slots?: MemorySlot[];
   source?: string;
+  source_doc?: string; // document it was derived from, in its own scope: "p.12"
+  source_doc_title?: string; // "" when that document has been deleted
   pinned: boolean;
   expires_at?: string;
   created_at: string;

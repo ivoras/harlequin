@@ -45,6 +45,9 @@ func dispatchCLI(args []string) bool {
 	case "reindex-vectors":
 		runReindexVectors(args[1:])
 		return true
+	case "rederive-doc-memories":
+		runRederiveDocMemories(args[1:])
+		return true
 	case "help", "-h", "--help":
 		printUsage()
 		os.Exit(0)
@@ -56,7 +59,7 @@ func dispatchCLI(args []string) bool {
 // must be the first argument (before any flags).
 func isSubcommand(name string) bool {
 	switch name {
-	case "createuser", "changepassword", "deleteuser", "listusers", "print-trajectory", "backfill-slot-keys", "reindex-vectors":
+	case "createuser", "changepassword", "deleteuser", "listusers", "print-trajectory", "backfill-slot-keys", "reindex-vectors", "rederive-doc-memories":
 		return true
 	}
 	return false
@@ -93,6 +96,7 @@ Usage:
   harlequin-server print-trajectory [flags] <file.jsonl>
   harlequin-server backfill-slot-keys [flags]
   harlequin-server reindex-vectors [flags]
+  harlequin-server rederive-doc-memories [--config path] [--delete-auto-shared] [--dry-run]
   harlequin-server help
 
 Server flags:

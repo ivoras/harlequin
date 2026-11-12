@@ -178,7 +178,7 @@ memory:
   slot_search_weight: 1.0  # RRF weight of the slot-key leg in search (0 disables); see docs/memory_experiment_key_slots.md
   fts_weight: 1.0          # RRF weight of the FTS lexical leg
   vector_weight: 1.0       # RRF weight of the content-vector leg
-  extract_from_documents: true # also distill memories from imported documents (default true; set false for RAG-only import)
+  extract_from_documents: true # also keep a few lasting facts from each uploaded document as memories, in the document's own scope (default true; set false for RAG-only import)
   search_max_distance: 0.2 # drop vector/slot search hits with cosine distance > this (range 0-2; 0 disables). Keeps unrelated queries from padding results.
 
 sessions:

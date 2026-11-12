@@ -16,6 +16,12 @@
 
   let projectID = $derived($activeProject?.id ?? 0);
 
+  // The page of the document a memory was derived from. Project ids are
+  // spelled out in document URLs (/doc/p3.12), so "p.12" gets the project's id.
+  function sourceDocURL(ref: string): string {
+    return "/doc/" + (ref.startsWith("p.") ? "p" + projectID + ref.slice(1) : ref);
+  }
+
   // Reload when the scope tab or active project changes; the project tab only
   // exists while a project is active.
   $effect(() => {
@@ -149,6 +155,17 @@
             </div>
           {:else}
             <div class="wrap">{m.content}</div>
+            {#if m.source_doc}
+              <div class="small muted">
+                From
+                {#if m.source_doc_title}
+                  <a href={sourceDocURL(m.source_doc)} target="_blank" rel="noopener">{m.source_doc_title}</a>
+                  ({m.source_doc})
+                {:else}
+                  document {m.source_doc} (since deleted)
+                {/if}
+              </div>
+            {/if}
             <div class="row small muted">
               <span class="pill">{m.id}</span>
               {#each m.slots ?? [] as s}<span class="pill" title={s.value}>{s.key}</span>{/each}

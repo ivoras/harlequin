@@ -177,7 +177,7 @@ func (s *Store) add(ctx context.Context, userDB *sql.DB, m types.CreateMemoryReq
 		return nil, fmt.Errorf("embed memory content: %w", err)
 	}
 
-	id, err := s.memFor(scope, userDB).insert(ctx, m.Content, source, nullableTime(m.ExpiresAt), blob)
+	id, err := s.memFor(scope, userDB).insert(ctx, m.Content, source, nullableTime(m.ExpiresAt), blob, m.SourceDoc)
 	if err != nil {
 		return nil, fmt.Errorf("insert memory row: %w", err)
 	}
@@ -185,6 +185,9 @@ func (s *Store) add(ctx context.Context, userDB *sql.DB, m types.CreateMemoryReq
 	mem := &types.Memory{
 		ID: encodeID(scope, id), Scope: scope, Content: m.Content, Source: source,
 		ExpiresAt: m.ExpiresAt, CreatedAt: time.Now().UTC(),
+	}
+	if m.SourceDoc > 0 {
+		mem.SourceDoc = docRefFor(mem.ID, m.SourceDoc)
 	}
 	if scope == scopeUser {
 		uid := userID
@@ -194,8 +197,16 @@ func (s *Store) add(ctx context.Context, userDB *sql.DB, m types.CreateMemoryReq
 	return mem, nil
 }
 
+// docRefFor is the scoped id of document docID in the scope of memory memID
+// ("p3.7" + 12 -> "p3.12"): a derived memory lives beside its document.
+func docRefFor(memID string, docID int64) string {
+	prefix, _, _ := strings.Cut(memID, ".")
+	return prefix + "." + strconv.FormatInt(docID, 10)
+}
+
 // insert writes a memory plus its FTS and vector index rows atomically.
-func (m memDB) insert(ctx context.Context, content, source string, expires, blob any) (int64, error) {
+// sourceDoc (0 = none) is the document it was derived from.
+func (m memDB) insert(ctx context.Context, content, source string, expires, blob any, sourceDoc int64) (int64, error) {
 	tx, err := m.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -203,7 +214,7 @@ func (m memDB) insert(ctx context.Context, content, source string, expires, blob
 	defer tx.Rollback()
 
 	res, err := tx.ExecContext(ctx,
-		`INSERT INTO memories(content, source, expires_at) VALUES (?, ?, ?)`, content, source, expires)
+		`INSERT INTO memories(content, source, expires_at, source_doc) VALUES (?, ?, ?, NULLIF(?, 0))`, content, source, expires, sourceDoc)
 	if err != nil {
 		return 0, err
 	}
@@ -386,7 +397,33 @@ func (s *Store) SearchFusedAcross(ctx context.Context, userDB, projDB *sql.DB, f
 	}
 	out := topN(ranks, contents, limit)
 	s.attachSlotsAcross(ctx, userDB, projDB, mems, out)
+	attachSourceDocs(ctx, mems, out)
 	return out, nil
+}
+
+// attachSourceDocs labels each hit that was derived from a document with that
+// document (SearchResult.Source), so the model can open or cite the original.
+func attachSourceDocs(ctx context.Context, mems []memDB, out []types.SearchResult) {
+	for i, r := range out {
+		prefix, num, _ := strings.Cut(r.ID, ".")
+		for _, m := range mems {
+			if p, _, _ := strings.Cut(m.encode(0), "."); p != prefix || m.db == nil {
+				continue
+			}
+			var doc int64
+			var title string
+			if err := m.db.QueryRowContext(ctx, `SELECT COALESCE(m.source_doc, 0), COALESCE(d.title, '')
+				FROM memories m LEFT JOIN documents d ON d.id = m.source_doc WHERE m.id = ?`, num).Scan(&doc, &title); err == nil && doc > 0 {
+				out[i].Source = "document " + docRefFor(r.ID, doc)
+				if title != "" {
+					out[i].Source += fmt.Sprintf(" %q", title)
+				} else {
+					out[i].Source += " (since deleted)"
+				}
+			}
+			break
+		}
+	}
 }
 
 // SearchTuned is Search with an additional slot-key RRF leg, weighted by
@@ -626,8 +663,7 @@ func (m memDB) list(ctx context.Context, userID int64, limit int) ([]types.Memor
 		return nil, nil
 	}
 	rows, err := m.db.QueryContext(ctx,
-		`SELECT id, content, source, pinned, expires_at, created_at
-		 FROM memories ORDER BY pinned DESC, created_at DESC LIMIT ?`, limit)
+		memSelect+` ORDER BY m.pinned DESC, m.created_at DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -647,20 +683,28 @@ type memoryScanner interface {
 	Scan(dest ...any) error
 }
 
-// scan reads a memories row (id, content, source, pinned, expires_at,
-// created_at) and assigns the composite id + scope for this file.
+// memSelect reads a memory with the title of the document it was derived
+// from, which is in the same database (scan reads these columns).
+const memSelect = `SELECT m.id, m.content, m.source, m.pinned, m.expires_at, m.created_at,
+		COALESCE(m.source_doc, 0), COALESCE(d.title, '')
+	 FROM memories m LEFT JOIN documents d ON d.id = m.source_doc`
+
+// scan reads a memSelect row and assigns the composite id + scope for this file.
 func (m memDB) scan(row memoryScanner, userID int64) (*types.Memory, error) {
-	var local int64
-	var content, source string
+	var local, srcDoc int64
+	var content, source, srcTitle string
 	var pinned int
 	var exp sql.NullTime
 	var created time.Time
-	if err := row.Scan(&local, &content, &source, &pinned, &exp, &created); err != nil {
+	if err := row.Scan(&local, &content, &source, &pinned, &exp, &created, &srcDoc, &srcTitle); err != nil {
 		return nil, err
 	}
 	mem := &types.Memory{
 		ID: m.encode(local), Scope: m.scope, Content: content,
 		Source: source, Pinned: pinned != 0, CreatedAt: created,
+	}
+	if srcDoc > 0 {
+		mem.SourceDoc, mem.SourceDocTitle = docRefFor(mem.ID, srcDoc), srcTitle
 	}
 	if exp.Valid {
 		mem.ExpiresAt = &exp.Time
@@ -695,7 +739,7 @@ func (s *Store) Get(ctx context.Context, userDB *sql.DB, id string, userID int64
 	}
 	m := s.memFor(scope, userDB)
 	row := m.db.QueryRowContext(ctx,
-		`SELECT id, content, source, pinned, expires_at, created_at FROM memories WHERE id = ?`, local)
+		memSelect+` WHERE m.id = ?`, local)
 	mem, err := m.scan(row, userID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

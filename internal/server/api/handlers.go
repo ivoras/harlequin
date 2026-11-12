@@ -1220,8 +1220,9 @@ func (s *Server) afterIngest(u *types.User, req types.CreateDocumentRequest, d *
 		return nil
 	})
 	// Optional bridge: distill durable facts from the document into memory.
-	if s.Cfg.Memory.ExtractFromDocumentsEnabled() && s.Agent != nil && strings.TrimSpace(req.Content) != "" {
-		go s.Agent.ExtractMemoriesFromText(context.Background(), u.ID, req.Title, req.Content, types.IsElevated(u.Role))
+	// The memories go where the document went, and point back at it.
+	if s.Cfg.Memory.ExtractFromDocumentsEnabled() && s.Agent != nil && d != nil && strings.TrimSpace(req.Content) != "" {
+		go s.Agent.ExtractMemoriesFromDoc(context.Background(), u.ID, req.Scope, req.ProjectID, d.ID, req.Title, req.Content)
 	}
 	// The synchronous description attempt can lose to model load/contention;
 	// retry in the background and repair the stored row.

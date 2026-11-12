@@ -629,15 +629,20 @@ type MemorySlot struct {
 
 // Memory is a stored memory entry.
 type Memory struct {
-	ID        string       `json:"id"`    // composite: "u.<localid>" | "s.<localid>"
-	Scope     string       `json:"scope"` // "user" | "shared"
-	UserID    *int64       `json:"user_id,omitempty"`
-	Content   string       `json:"content"`
-	Slots     []MemorySlot `json:"slots,omitempty"` // normalized attribute slots, if extracted
-	Source    string       `json:"source,omitempty"`
-	Pinned    bool         `json:"pinned"`
-	ExpiresAt *time.Time   `json:"expires_at,omitempty"`
-	CreatedAt time.Time    `json:"created_at"`
+	ID      string       `json:"id"`    // composite: "u.<localid>" | "s.<localid>"
+	Scope   string       `json:"scope"` // "user" | "shared"
+	UserID  *int64       `json:"user_id,omitempty"`
+	Content string       `json:"content"`
+	Slots   []MemorySlot `json:"slots,omitempty"` // normalized attribute slots, if extracted
+	Source  string       `json:"source,omitempty"`
+	// SourceDoc is the document this memory was derived from, as a scoped
+	// document id in the memory's own scope ("p.12"); SourceDocTitle is that
+	// document's title, empty when it has since been deleted.
+	SourceDoc      string     `json:"source_doc,omitempty"`
+	SourceDocTitle string     `json:"source_doc_title,omitempty"`
+	Pinned         bool       `json:"pinned"`
+	ExpiresAt      *time.Time `json:"expires_at,omitempty"`
+	CreatedAt      time.Time  `json:"created_at"`
 }
 
 // CreateMemoryRequest is the body of POST /memory.
@@ -648,6 +653,9 @@ type CreateMemoryRequest struct {
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 	// ProjectID targets a project's memory when Scope is "project" (members only).
 	ProjectID int64 `json:"project_id,omitempty"`
+	// SourceDoc is the local id of the document (in the same scope) the memory
+	// was derived from; set server-side by the document→memory bridge.
+	SourceDoc int64 `json:"-"`
 }
 
 // UpdateMemoryRequest is the body of PATCH /memory/{id}. A nil Content leaves
@@ -731,8 +739,9 @@ type SearchResult struct {
 	// Scope reports where the result was found: "personal" (the user's own
 	// data), "shared" (organisation-wide), or "project" (the active project).
 	Scope string `json:"scope,omitempty"`
-	// Source describes where a document hit came from ("<title> · chunk <n>");
-	// empty for memory results.
+	// Source describes where a hit came from: "<title> · chunk <n>" for a
+	// document hit; for a memory derived from a document, that document
+	// ("document p.12 \"Contract.pdf\""); empty for other memories.
 	Source string `json:"source,omitempty"`
 	// Citation metadata (document hits only): the owning document, the 1-based
 	// page the chunk starts on (0 = unpaged), its mime, and whether the original

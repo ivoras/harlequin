@@ -38,9 +38,29 @@ The defaults are chosen so the common case needs no decision:
 | Writing… | Outside a project | In a project |
 |----------|-------------------|--------------|
 | a memory (`memory_write`, automatic extraction) | personal | project |
+| a memory derived from an uploaded document | where the document went | where the document went |
 | a document (upload, `save_doc`) | personal | project |
 
 You can override the default when you need to: owners and admins may write
+### Automatic memories
+
+The assistant also remembers things without being asked, in two ways:
+
+- **From a conversation.** After a turn it may keep a lasting fact the *user*
+  stated or decided (a preference, something about the organisation, a decision
+  or deadline). In a project the project's own matters go to project memory and
+  a personal preference still goes to your own memory. What the assistant
+  merely looked up in a document or on the web is not remembered.
+- **From an uploaded document.** A document's text is searchable as it is, so
+  memory keeps only a few lasting facts about the parties it concerns (who an
+  organisation is, a standing contract, who signs for whom) — not amounts,
+  balances or anything else that belongs to one invoice or period, and nothing
+  private about named individuals. Those memories are stored **in the
+  document's own scope**: a client's contract uploaded to a project never
+  becomes organisation-wide memory. Each one links back to its document (shown
+  in the Memory view and by `/memory`), and stays, marked as such, if the
+  document is later deleted.
+
 **shared** memories and documents (for ordinary users a shared memory write is
 stored as personal instead), and any member may write to their project. In the
 web UI's Files page you pick an upload's destination explicitly.

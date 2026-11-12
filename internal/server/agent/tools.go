@@ -1260,7 +1260,11 @@ func renderResults(res []types.SearchResult) string {
 		if len(r.SlotKeys) > 0 {
 			fmt.Fprintf(&sb, " {%s}", strings.Join(r.SlotKeys, ", "))
 		}
-		fmt.Fprintf(&sb, "] %s\n", strings.TrimSpace(r.Content))
+		fmt.Fprintf(&sb, "] %s", strings.TrimSpace(r.Content))
+		if r.Source != "" { // derived from a document: where to read more
+			fmt.Fprintf(&sb, " (from %s)", r.Source)
+		}
+		sb.WriteByte('\n')
 	}
 	return sb.String()
 }

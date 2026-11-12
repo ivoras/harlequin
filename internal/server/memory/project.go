@@ -20,6 +20,12 @@ func (s *Store) projectMem(projDB *sql.DB) memDB { return memDB{db: projDB, scop
 // ProjectAdd stores a memory in the project database (FTS + vector indexed) and
 // returns it. userID is the acting member (recorded as provenance via source).
 func (s *Store) ProjectAdd(ctx context.Context, projDB *sql.DB, content, source string) (*types.Memory, error) {
+	return s.ProjectAddFrom(ctx, projDB, content, source, 0)
+}
+
+// ProjectAddFrom is ProjectAdd for a memory derived from the project document
+// sourceDoc (its local id; 0 = none).
+func (s *Store) ProjectAddFrom(ctx context.Context, projDB *sql.DB, content, source string, sourceDoc int64) (*types.Memory, error) {
 	if source == "" {
 		source = "manual"
 	}
@@ -27,14 +33,18 @@ func (s *Store) ProjectAdd(ctx context.Context, projDB *sql.DB, content, source 
 	if err != nil {
 		return nil, fmt.Errorf("embed memory content: %w", err)
 	}
-	id, err := s.projectMem(projDB).insert(ctx, content, source, nil, blob)
+	id, err := s.projectMem(projDB).insert(ctx, content, source, nil, blob, sourceDoc)
 	if err != nil {
 		return nil, fmt.Errorf("insert memory row: %w", err)
 	}
-	return &types.Memory{
+	mem := &types.Memory{
 		ID: encodeID(scopeProject, id), Scope: scopeProject, Content: content,
 		Source: source, CreatedAt: time.Now().UTC(),
-	}, nil
+	}
+	if sourceDoc > 0 {
+		mem.SourceDoc = docRefFor(mem.ID, sourceDoc)
+	}
+	return mem, nil
 }
 
 // ProjectList returns the project's memories (newest/pinned first).

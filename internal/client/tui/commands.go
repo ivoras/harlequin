@@ -1352,9 +1352,21 @@ func renderMemoryLine(mem types.Memory, canManageShared bool) string {
 	if memoryDeletable(mem, canManageShared) {
 		deletable = " (deletable)"
 	}
-	return fmt.Sprintf(" %s%-6s %s [%s/%s]%s %s %s",
+	line := fmt.Sprintf(" %s%-6s %s [%s/%s]%s %s %s",
 		pin, mem.ID, formatMemoryTime(mem.CreatedAt), mem.Scope, mem.Source, deletable,
 		formatMemorySlotKeys(mem.Slots), mem.Content)
+	if mem.SourceDoc != "" {
+		line += " (from " + mem.SourceDoc + ")"
+	}
+	return line
+}
+
+// formatMemorySourceDoc names the document a memory was derived from.
+func formatMemorySourceDoc(mem types.Memory) string {
+	if mem.SourceDocTitle == "" {
+		return mem.SourceDoc + " (since deleted)"
+	}
+	return fmt.Sprintf("%s %q", mem.SourceDoc, mem.SourceDocTitle)
 }
 
 // formatMemorySlotKeys renders the slot-key column for list lines as
@@ -1383,6 +1395,9 @@ func renderMemoryDetail(mem types.Memory, canManageShared bool) string {
 	fmt.Fprintf(&sb, "Memory %s\n", mem.ID)
 	fmt.Fprintf(&sb, "  scope:   %s\n", mem.Scope)
 	fmt.Fprintf(&sb, "  source:  %s\n", mem.Source)
+	if mem.SourceDoc != "" {
+		fmt.Fprintf(&sb, "  from:    document %s\n", formatMemorySourceDoc(mem))
+	}
 	fmt.Fprintf(&sb, "  pinned:  %t\n", mem.Pinned)
 	if mem.ExpiresAt != nil {
 		fmt.Fprintf(&sb, "  expires: %s\n", formatMemoryTime(*mem.ExpiresAt))
