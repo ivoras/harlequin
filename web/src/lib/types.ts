@@ -332,6 +332,7 @@ export interface Document {
   scope?: string; // personal | shared | project
   chunks?: number;
   description?: string; // LLM-generated catalogue line
+  original_name?: string; // uploaded file name (uploads only)
 }
 // Pollable state of an async document ingestion (POST /documents/async).
 export interface IngestJobStatus {
