@@ -12,118 +12,6 @@ top of each user's private data.
 This guide covers day-to-day usage. For installation and configuration, see
 the [README](../README.md); for architecture, see [AGENTS.md](../AGENTS.md).
 
-## Slash commands in the TUI
-
-Anything you type that starts with `/` at the beginning of the line is a
-command, not a chat message. Typing `/` opens an autocomplete menu; keep
-typing to filter it, and pick a command with the arrow keys and Enter.
-`/help` shows the built-in summary of everything below.
-
-### Sessions
-
-| Command | What it does |
-|---------|--------------|
-| `/new` | Start a new session (keeps the currently worn hat). |
-| `/clear` | Clear the current session's messages so the next turn starts with a fresh context. The session, its title, and its hat survive; works in project sessions too (clears for all members). |
-| `/resume` | Pick an earlier session to resume from a list. |
-| `/resume <id>` | Resume a specific session by id. |
-| `/resume <query>` | Filter the session picker by title. |
-| `/queue` | List messages you typed while the agent was busy (they are queued, not lost). |
-| `/queue del <n>` / `/queue clear` | Remove one queued message / all of them. |
-| `/export [raw]` | Save the transcript to `session_YYYYMMDD_HHMM.md` in the current directory. Plain form keeps User+Assistant messages; `raw` includes thinking and tool calls. |
-| `/context` | Show what fills the context window (system prompt, skills, messages, tool results) and the session's LLM cost so far. |
-| `/quit` (or `/exit`) | Leave the TUI. The session keeps living on the server. |
-
-Start the TUI with `--session <id>` to resume a session directly.
-
-### Skills and hats
-
-Skills are instructions (plus optional scripts) the agent can load on demand.
-They resolve across scopes: project (when one is active), then shared
-(organisation), then your own user scope.
-
-| Command | What it does |
-|---------|--------------|
-| `/skills` | List the skills available to you, with the scope each comes from. Copies in shallower scopes are flagged (`shadows user`), since edits there are invisible while a deeper copy exists. |
-| `/skill create <name> <description>` | Create a new skill (add `--user`, `--shared`, or `--project` to pick the scope). |
-| `/skill edit <name> [file]` | Edit a skill file in the built-in editor. On save you are asked which scope to save into when more than one is writable (Enter = the scope the file came from). |
-| `/skill download <name> [file]` | Download a skill (or one file) for local editing. |
-| `/skill upload <name> [file]` | Upload a skill (or one file); scope flags as above. |
-| `/skill del <name>` | Delete the skill from a scope (scope flags as above). |
-| `/skill diff <name>` | Show local edits vs the server version. |
-| `/hat` | List hats. A hat is an org-defined set of specialised skills that overlay normal resolution (see [How skills resolve](#how-skills-resolve-scopes-projects-hats)), plus an optional system prompt. |
-| `/hat show <name>` | Show a hat's details: its visible-skills list and the skills it overlays. |
-| `/hat wear <name>` | Wear a hat in this session. |
-| `/hat off` | Remove the hat (back to the default prompt and skill set). |
-| `/hat create <name> [description]` | (admin) Create a hat. |
-| `/hat edit <name> [file]` | (admin) Edit a hat file in the built-in editor (default `system_prompt.md`; overlays live at `skills/<skill>/…`). |
-| `/hat files <name>` | List a hat's files (prompt + skill overlays). |
-| `/hat view <name> [file]` | Show a hat file read-only (default `system_prompt.md`; overlays are `skills/<skill>/SKILL.md` etc.). Anyone can read a hat; only owners/admins edit. |
-| `/hat addskill <hat> <skill>` | (admin) Copy the currently-resolved skill into the hat's overlay, ready for specialising. |
-| `/hat rmskill <hat> <skill>` | (admin) Remove a skill overlay from the hat. |
-| `/hat prompt <name> on\|off` | (admin) Toggle the hat's custom system prompt; `off` keeps its content but the default prompt is used. Creating a custom prompt starts from a copy of the default. |
-| `/hat del <name>` | (admin) Delete a hat. |
-
-
-### Memory and documents
-
-| Command | What it does |
-|---------|--------------|
-| `/memory [scope]` | List memories with ids (`user`, `shared`, or `project` for the active project's). |
-| `/memory find <phrase>` | Search memories (your own + shared) by relevance. |
-| `/memory show <id>` | Show one memory (including the document it was taken from, if any). |
-| `/memory edit <id>` | Edit a memory's content (and, for `user`/`shared` memories, its slots) in a built-in text editor overlay. Project memories don't support slots — the editor omits the slots section for them. |
-| `/memory del <id>…` | Delete one or more memories by id (shared ones if you're an admin). |
-| `/memory conflicts` | List flagged duplicate/conflicting memory pairs. |
-| `/memory resolve <id>` | Mark a conflict flag as resolved. |
-| `/docs search <query>` | Search documents (personal + shared, + project if active). |
-| `/docs list` | List documents across scopes, each shown under its reference id (`u.2`, `s.5`, `p3.19`) — the same form `/docs view`, `/docs del`, and chat references accept. Project ids are qualified (`p<projectID>.<id>`) so a document stays unambiguous outside the context of "the active project". |
-| `/docs add [scope] <path>` | Upload a document; the same as `/upload` below. |
-| `/docs view <ref> [text\|file]` | Show a document's text, or with `file` save the original (PDF, DOCX) to a temporary file to open in your own viewer (e.g. `/docs view p3.19 file`; the long form `<scope> <id>` also works). |
-| `/docs del <ref>` | Delete a document by its reference (e.g. `/docs del p3.19`; the long form `<scope> <id>` still works). |
-| `/upload [scope] <path>` | Upload a document into `personal`, `shared`, or `project` scope (defaults to the active project, else personal). Accepted: `.txt`, `.md`, `.html`, `.pdf`, `.docx`, `.doc`, `.pptx`, `.ppt`, `.xlsx`, `.xls`, `.ods`, `.odt`, `.rtf`, `.epub`, and images (`.png`, `.jpg`, `.gif`, `.webp`). Ingestion runs server-side with a live status line (stage, percent, elapsed) — in the browser too. |
-| `/attach <path>` | Upload a document or image (same formats as `/upload`, to the active project else your personal files) and attach it to your **next message**: once ingested it is listed at the end of that message as `@"u.18/report.pdf"`, and the agent reads it (images are shown to vision models directly). Repeat for several files; `/attach` alone lists what is pending, `/attach clear` drops it. Sending waits for uploads to finish. |
-
-### Projects
-
-| Command | What it does |
-|---------|--------------|
-| `/project` | Manage projects: `list`, `new`, `switch`, `invites`, `accept <id>`, `decline <id>`, `invite <email>`, `remove <email>` (remove a member from the active project; creator or owner/admin only), `members`, `sessions` (list the active project's sessions), `assign <id-or-name>` (move the current **personal** session, with its history, into that project; run it from your personal workspace), `leave`, `depart`, `delete` (permanently delete a project, creator/admin only; needs `--yes`). |
-| `/say <message>` | Post a message to the active project's chatroom. |
-
-See the [Projects](#projects-1) chapter below for the full workflow.
-
-### Automation and integrations
-
-| Command | What it does |
-|---------|--------------|
-| `/cron` | List scheduled jobs. |
-| `/cron show <id>` | Show a job, including its last run output. |
-| `/cron add "<name>" "<spec>" js "<target>" ["<input-json>"]` | Schedule a JavaScript job. |
-| `/cron add "<name>" "<spec>" skill "<skill\|->" "<prompt>"` | Schedule a skill/prompt job. |
-| `/cron on\|off <id>` | Enable / disable a job. |
-| `/cron run <id>` | Run a job immediately. |
-| `/cron del <id>` | Delete a job. |
-| `/mcp` | List MCP servers (organisation + your personal ones) with status. |
-| `/mcp show <s/name>` | Show one server (`s` is the scope: `organisation` or `personal`; the older `shared`/`user` still work). |
-| `/mcp add <s/name> <url> [header Name:"Value" … \| oauth]` | Register an MCP server. |
-| `/mcp test <s/name>` | Connect and list the server's tools. |
-| `/mcp auth <s/name>` | Authorize an OAuth MCP server (prints a URL to open). |
-| `/mcp del <s/name>` | Remove an MCP server. |
-| `/config` | List your per-user config (small key/value settings). |
-| `/config set <k> <v>` | Set a key, e.g. `/config set telegram.chat_id 12345`. |
-| `/config del <key>` | Delete a key. |
-
-### Alerts, usage, misc
-
-| Command | What it does |
-|---------|--------------|
-| `/dismiss [n …\|all]` | Dismiss alert(s) shown above the transcript, by number or all. |
-| `/run <n>` | Run the prompt carried by alert *n*. |
-| `/alert <message>` | (owner/admin) Broadcast an alert to all users. |
-| `/usage` | Show your token/cost usage. |
-| `/help` | Show the built-in command summary. |
-
 ## Working with documents and memory
 
 In the browser, the Memory view lets you edit a memory's content and (for
@@ -500,3 +388,115 @@ only by owners and admins; anyone can read what a hat runs with
 `/hat view <name> skills/<skill>/SKILL.md`, or in the web Hats page (**view** next to an
 overlay, or **Files** → **View**). To get a hat's skill changed
 for everyone, ask an admin.
+
+## Slash commands in the TUI
+
+Anything you type that starts with `/` at the beginning of the line is a
+command, not a chat message. Typing `/` opens an autocomplete menu; keep
+typing to filter it, and pick a command with the arrow keys and Enter.
+`/help` shows the built-in summary of everything below.
+
+### Sessions
+
+| Command | What it does |
+|---------|--------------|
+| `/new` | Start a new session (keeps the currently worn hat). |
+| `/clear` | Clear the current session's messages so the next turn starts with a fresh context. The session, its title, and its hat survive; works in project sessions too (clears for all members). |
+| `/resume` | Pick an earlier session to resume from a list. |
+| `/resume <id>` | Resume a specific session by id. |
+| `/resume <query>` | Filter the session picker by title. |
+| `/queue` | List messages you typed while the agent was busy (they are queued, not lost). |
+| `/queue del <n>` / `/queue clear` | Remove one queued message / all of them. |
+| `/export [raw]` | Save the transcript to `session_YYYYMMDD_HHMM.md` in the current directory. Plain form keeps User+Assistant messages; `raw` includes thinking and tool calls. |
+| `/context` | Show what fills the context window (system prompt, skills, messages, tool results) and the session's LLM cost so far. |
+| `/quit` (or `/exit`) | Leave the TUI. The session keeps living on the server. |
+
+Start the TUI with `--session <id>` to resume a session directly.
+
+### Skills and hats
+
+Skills are instructions (plus optional scripts) the agent can load on demand.
+They resolve across scopes: project (when one is active), then shared
+(organisation), then your own user scope.
+
+| Command | What it does |
+|---------|--------------|
+| `/skills` | List the skills available to you, with the scope each comes from. Copies in shallower scopes are flagged (`shadows user`), since edits there are invisible while a deeper copy exists. |
+| `/skill create <name> <description>` | Create a new skill (add `--user`, `--shared`, or `--project` to pick the scope). |
+| `/skill edit <name> [file]` | Edit a skill file in the built-in editor. On save you are asked which scope to save into when more than one is writable (Enter = the scope the file came from). |
+| `/skill download <name> [file]` | Download a skill (or one file) for local editing. |
+| `/skill upload <name> [file]` | Upload a skill (or one file); scope flags as above. |
+| `/skill del <name>` | Delete the skill from a scope (scope flags as above). |
+| `/skill diff <name>` | Show local edits vs the server version. |
+| `/hat` | List hats. A hat is an org-defined set of specialised skills that overlay normal resolution (see [How skills resolve](#how-skills-resolve-scopes-projects-hats)), plus an optional system prompt. |
+| `/hat show <name>` | Show a hat's details: its visible-skills list and the skills it overlays. |
+| `/hat wear <name>` | Wear a hat in this session. |
+| `/hat off` | Remove the hat (back to the default prompt and skill set). |
+| `/hat create <name> [description]` | (admin) Create a hat. |
+| `/hat edit <name> [file]` | (admin) Edit a hat file in the built-in editor (default `system_prompt.md`; overlays live at `skills/<skill>/…`). |
+| `/hat files <name>` | List a hat's files (prompt + skill overlays). |
+| `/hat view <name> [file]` | Show a hat file read-only (default `system_prompt.md`; overlays are `skills/<skill>/SKILL.md` etc.). Anyone can read a hat; only owners/admins edit. |
+| `/hat addskill <hat> <skill>` | (admin) Copy the currently-resolved skill into the hat's overlay, ready for specialising. |
+| `/hat rmskill <hat> <skill>` | (admin) Remove a skill overlay from the hat. |
+| `/hat prompt <name> on\|off` | (admin) Toggle the hat's custom system prompt; `off` keeps its content but the default prompt is used. Creating a custom prompt starts from a copy of the default. |
+| `/hat del <name>` | (admin) Delete a hat. |
+
+
+### Memory and documents
+
+| Command | What it does |
+|---------|--------------|
+| `/memory [scope]` | List memories with ids (`user`, `shared`, or `project` for the active project's). |
+| `/memory find <phrase>` | Search memories (your own + shared) by relevance. |
+| `/memory show <id>` | Show one memory (including the document it was taken from, if any). |
+| `/memory edit <id>` | Edit a memory's content (and, for `user`/`shared` memories, its slots) in a built-in text editor overlay. Project memories don't support slots — the editor omits the slots section for them. |
+| `/memory del <id>…` | Delete one or more memories by id (shared ones if you're an admin). |
+| `/memory conflicts` | List flagged duplicate/conflicting memory pairs. |
+| `/memory resolve <id>` | Mark a conflict flag as resolved. |
+| `/docs search <query>` | Search documents (personal + shared, + project if active). |
+| `/docs list` | List documents across scopes, each shown under its reference id (`u.2`, `s.5`, `p3.19`) — the same form `/docs view`, `/docs del`, and chat references accept. Project ids are qualified (`p<projectID>.<id>`) so a document stays unambiguous outside the context of "the active project". |
+| `/docs add [scope] <path>` | Upload a document; the same as `/upload` below. |
+| `/docs view <ref> [text\|file]` | Show a document's text, or with `file` save the original (PDF, DOCX) to a temporary file to open in your own viewer (e.g. `/docs view p3.19 file`; the long form `<scope> <id>` also works). |
+| `/docs del <ref>` | Delete a document by its reference (e.g. `/docs del p3.19`; the long form `<scope> <id>` still works). |
+| `/upload [scope] <path>` | Upload a document into `personal`, `shared`, or `project` scope (defaults to the active project, else personal). Accepted: `.txt`, `.md`, `.html`, `.pdf`, `.docx`, `.doc`, `.pptx`, `.ppt`, `.xlsx`, `.xls`, `.ods`, `.odt`, `.rtf`, `.epub`, and images (`.png`, `.jpg`, `.gif`, `.webp`). Ingestion runs server-side with a live status line (stage, percent, elapsed) — in the browser too. |
+| `/attach <path>` | Upload a document or image (same formats as `/upload`, to the active project else your personal files) and attach it to your **next message**: once ingested it is listed at the end of that message as `@"u.18/report.pdf"`, and the agent reads it (images are shown to vision models directly). Repeat for several files; `/attach` alone lists what is pending, `/attach clear` drops it. Sending waits for uploads to finish. |
+
+### Projects
+
+| Command | What it does |
+|---------|--------------|
+| `/project` | Manage projects: `list`, `new`, `switch`, `invites`, `accept <id>`, `decline <id>`, `invite <email>`, `remove <email>` (remove a member from the active project; creator or owner/admin only), `members`, `sessions` (list the active project's sessions), `assign <id-or-name>` (move the current **personal** session, with its history, into that project; run it from your personal workspace), `leave`, `depart`, `delete` (permanently delete a project, creator/admin only; needs `--yes`). |
+| `/say <message>` | Post a message to the active project's chatroom. |
+
+See the [Projects](#projects-1) chapter below for the full workflow.
+
+### Automation and integrations
+
+| Command | What it does |
+|---------|--------------|
+| `/cron` | List scheduled jobs. |
+| `/cron show <id>` | Show a job, including its last run output. |
+| `/cron add "<name>" "<spec>" js "<target>" ["<input-json>"]` | Schedule a JavaScript job. |
+| `/cron add "<name>" "<spec>" skill "<skill\|->" "<prompt>"` | Schedule a skill/prompt job. |
+| `/cron on\|off <id>` | Enable / disable a job. |
+| `/cron run <id>` | Run a job immediately. |
+| `/cron del <id>` | Delete a job. |
+| `/mcp` | List MCP servers (organisation + your personal ones) with status. |
+| `/mcp show <s/name>` | Show one server (`s` is the scope: `organisation` or `personal`; the older `shared`/`user` still work). |
+| `/mcp add <s/name> <url> [header Name:"Value" … \| oauth]` | Register an MCP server. |
+| `/mcp test <s/name>` | Connect and list the server's tools. |
+| `/mcp auth <s/name>` | Authorize an OAuth MCP server (prints a URL to open). |
+| `/mcp del <s/name>` | Remove an MCP server. |
+| `/config` | List your per-user config (small key/value settings). |
+| `/config set <k> <v>` | Set a key, e.g. `/config set telegram.chat_id 12345`. |
+| `/config del <key>` | Delete a key. |
+
+### Alerts, usage, misc
+
+| Command | What it does |
+|---------|--------------|
+| `/dismiss [n …\|all]` | Dismiss alert(s) shown above the transcript, by number or all. |
+| `/run <n>` | Run the prompt carried by alert *n*. |
+| `/alert <message>` | (owner/admin) Broadcast an alert to all users. |
+| `/usage` | Show your token/cost usage. |
+| `/help` | Show the built-in command summary. |
