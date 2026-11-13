@@ -62,7 +62,12 @@ func (a *Agent) RunCronJS(ctx context.Context, userID int64, username string, us
 // bias toward; job.Prompt is the message; job.Input is appended as context. Returns
 // the agent's final text.
 func (a *Agent) RunCronSkill(ctx context.Context, userID int64, username, role string, userDB *sql.DB, job types.CronJob) (string, error) {
-	sess, err := a.Sessions.Create(ctx, userDB, userID, "cron: "+job.Name, "", types.APICron, types.InterfaceCron)
+	if job.Hat != "" {
+		if _, err := a.Skills.GetHat(ctx, job.Hat); err != nil {
+			return "", fmt.Errorf("hat %q no longer exists; edit the job to pick another or clear it", job.Hat)
+		}
+	}
+	sess, err := a.Sessions.Create(ctx, userDB, userID, "cron: "+job.Name, job.Hat, types.APICron, types.InterfaceCron)
 	if err != nil {
 		return "", err
 	}

@@ -150,6 +150,9 @@ type Hat struct {
 	// system prompt is used while the hat is worn.
 	HasCustomPrompt bool `json:"has_custom_prompt,omitempty"`
 	PromptDisabled  bool `json:"prompt_disabled,omitempty"`
+	// ReplacePrompt: the body replaces the default system prompt; otherwise it
+	// is appended to it.
+	ReplacePrompt bool `json:"replace_prompt,omitempty"`
 }
 
 // SetHatPromptRequest is the body of POST /hats/{name}/prompt.
@@ -347,6 +350,8 @@ type CronJob struct {
 	Target string `json:"target"`
 	// Prompt is the message sent to the agent for a skill job.
 	Prompt string `json:"prompt,omitempty"`
+	// Hat is the hat the run's session wears (skill jobs only); "" = none.
+	Hat string `json:"hat,omitempty"`
 	// Input is a JSON object of inputs: exposed to a JS job as the global `args`.
 	Input   string `json:"input,omitempty"`
 	Enabled bool   `json:"enabled"`
@@ -369,6 +374,7 @@ type CreateCronJobRequest struct {
 	Kind    string `json:"kind"`
 	Target  string `json:"target"`
 	Prompt  string `json:"prompt,omitempty"`
+	Hat     string `json:"hat,omitempty"` // skill jobs only
 	Input   string `json:"input,omitempty"`
 	Notify  *bool  `json:"notify,omitempty"`  // default true
 	Enabled *bool  `json:"enabled,omitempty"` // default true
@@ -383,6 +389,7 @@ type UpdateCronJobRequest struct {
 	Kind          *string `json:"kind,omitempty"`
 	Target        *string `json:"target,omitempty"`
 	Prompt        *string `json:"prompt,omitempty"`
+	Hat           *string `json:"hat,omitempty"` // "" clears
 	Input         *string `json:"input,omitempty"`
 	Notify        *bool   `json:"notify,omitempty"`
 	Enabled       *bool   `json:"enabled,omitempty"`
@@ -491,7 +498,19 @@ const (
 	SSEDocumentsChanged = "documents_changed"
 	// SSESessionsChanged: a visible session's title changed (auto-title); re-list sessions.
 	SSESessionsChanged = "sessions_changed"
+	// SSEHatChanged: the hat worn by a session changed (payload in
+	// StreamEvent.HatChange), so other clients/members update their chip.
+	// Connection-level: not part of a turn's replay buffer.
+	SSEHatChanged = "hat_changed"
 )
+
+// HatChange is the payload of an SSEHatChanged event. ProjectID 0 = a personal
+// session; Hat "" = taken off.
+type HatChange struct {
+	SessionID int64  `json:"session_id"`
+	ProjectID int64  `json:"project_id,omitempty"`
+	Hat       string `json:"hat"`
+}
 
 // DocChange is the payload of an SSEDocumentsChanged event.
 type DocChange struct {
@@ -569,6 +588,8 @@ type StreamEvent struct {
 	Notification *Notification `json:"notification,omitempty"`
 	// Doc (SSEDocumentsChanged) describes a document change visible to the user.
 	Doc *DocChange `json:"doc,omitempty"`
+	// HatChange (SSEHatChanged) is a session's new hat.
+	HatChange *HatChange `json:"hat_change,omitempty"`
 	// Chat (SSEChat) is a project chatroom message.
 	Chat *ChatMessage `json:"chat,omitempty"`
 }

@@ -15,6 +15,8 @@ const (
 	// SessionTitled is not a document change: a session got its auto-title, so
 	// clients should re-list sessions (Scope/ProjectID/UserID say whose).
 	SessionTitled = "session_titled"
+	// HatChanged: a session's worn hat changed (SessionID/Hat say which).
+	HatChanged = "hat_changed"
 )
 
 // Event describes one document change.
@@ -24,6 +26,8 @@ type Event struct {
 	ProjectID int64  // for project scope
 	UserID    int64  // owner, for personal scope
 	DocID     int64
+	SessionID int64  // HatChanged
+	Hat       string // HatChanged: the new hat, "" = off
 }
 
 // Sub is one connection's subscription.

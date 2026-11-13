@@ -195,6 +195,16 @@ func (s *Server) serveSessionWS(w http.ResponseWriter, r *http.Request, user *ty
 				}
 				continue
 			}
+			if de.Op == docevents.HatChanged {
+				hc := &types.HatChange{SessionID: de.SessionID, Hat: de.Hat}
+				if de.Scope == "project" {
+					hc.ProjectID = de.ProjectID
+				}
+				if err := wsjson.Write(ctx, c, types.StreamEvent{Type: types.SSEHatChanged, HatChange: hc}); err != nil {
+					return
+				}
+				continue
+			}
 			out := types.StreamEvent{Type: types.SSEDocumentsChanged, Doc: &types.DocChange{
 				Op: de.Op, Scope: de.Scope, ProjectID: de.ProjectID, DocID: de.DocID}}
 			if err := wsjson.Write(ctx, c, out); err != nil {

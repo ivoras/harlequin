@@ -263,9 +263,13 @@ func (c *Client) RemoveHatSkill(ctx context.Context, hat, skill string) error {
 }
 
 // SetSessionHat sets (or clears, when hat is empty) the session's hat.
+// A project session lives in the project db, so it has its own route.
 func (c *Client) SetSessionHat(ctx context.Context, sessionID int64, hat string) error {
-	return c.do(ctx, http.MethodPost, fmt.Sprintf("/sessions/%d/hat", sessionID),
-		types.SetSessionHatRequest{Hat: hat}, nil)
+	path := fmt.Sprintf("/sessions/%d/hat", sessionID)
+	if p := c.project.Load(); p > 0 {
+		path = fmt.Sprintf("/projects/%d/sessions/%d/hat", p, sessionID)
+	}
+	return c.do(ctx, http.MethodPost, path, types.SetSessionHatRequest{Hat: hat}, nil)
 }
 
 // ListMCP returns the visible MCP servers (shared + the user's own) with status.

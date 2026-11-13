@@ -40,7 +40,7 @@ export async function ensureSession(): Promise<void> {
     } else {
       session.set({ id: c.id, title: cleanTitle(c.title) });
     }
-    wornHat.set("");
+    wornHat.set(c.hat ?? ""); // new sessions start with the hat last worn
   } catch (e) {
     toast((e as Error).message, "error");
   } finally {

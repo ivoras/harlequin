@@ -36,11 +36,7 @@ func (a *Agent) ContextBreakdown(ctx context.Context, projectID, sessionID, user
 			toolsTokens += llm.EstimateToolTokens(t)
 		}
 
-		base := a.basePrompt(rc)
-		systemPromptTokens := llm.EstimateTextTokens(base)
-		if rc.hat != nil {
-			systemPromptTokens += llm.EstimateTextTokens(fmt.Sprintf("\n\nYou are wearing the %q hat.", rc.hat.Name))
-		}
+		systemPromptTokens := llm.EstimateTextTokens(a.hatPrompt(ctx, rc))
 
 		var skillsTokens int
 		if len(rc.skillInfos) > 0 {

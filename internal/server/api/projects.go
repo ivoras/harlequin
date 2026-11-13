@@ -350,6 +350,7 @@ func (s *Server) handleListProjectSessions(w http.ResponseWriter, r *http.Reques
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.dropGoneHats(r.Context(), out)
 	pid := id
 	for i := range out {
 		out[i].ProjectID = &pid

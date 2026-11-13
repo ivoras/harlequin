@@ -57,3 +57,38 @@ func TestBakedSkillsParse(t *testing.T) {
 		t.Fatalf("no skill directories found under %s", skillsDir)
 	}
 }
+
+// Every baked hat must parse with a description, and any skill it names must exist.
+func TestBakedHatsParse(t *testing.T) {
+	const hatsDir = "../../../hats"
+	entries, err := os.ReadDir(hatsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		md, err := os.ReadFile(filepath.Join(hatsDir, e.Name(), hatPromptFile))
+		if err != nil {
+			t.Fatalf("%s: %v", e.Name(), err)
+		}
+		h := hatFromPrompt(e.Name(), string(md))
+		if strings.TrimSpace(h.Description) == "" {
+			t.Errorf("hat %s: empty description", e.Name())
+		}
+		for _, s := range h.Skills {
+			if _, err := os.Stat(filepath.Join("../../../skills", s, "SKILL.md")); err != nil {
+				t.Errorf("hat %s names missing skill %q", e.Name(), s)
+			}
+		}
+	}
+	// The prompts name skills in backticks; those must exist too.
+	for _, hat := range []string{"analyst", "researcher"} {
+		md, _ := os.ReadFile(filepath.Join(hatsDir, hat, hatPromptFile))
+		for _, f := range strings.Fields(string(md)) {
+			if n := strings.Trim(f, "`,.;"); strings.HasPrefix(f, "`") && strings.ContainsAny(n, "-_") {
+				if _, err := os.Stat(filepath.Join("../../../skills", n, "SKILL.md")); err != nil {
+					t.Errorf("hat %s mentions missing skill %q", hat, n)
+				}
+			}
+		}
+	}
+}

@@ -44,7 +44,7 @@ export async function switchToProject(p: Project): Promise<void> {
     } else {
       const c = await api.createSession("Session", "");
       const { session_id } = await api.assignSession(p.id, c.id);
-      next = { id: session_id, title: "", hat: "" };
+      next = { id: session_id, title: "", hat: c.hat ?? "" };
     }
     activeProject.set(p);
     session.set({ id: next.id, title: next.title });
@@ -62,7 +62,7 @@ export async function leaveActiveProject(): Promise<void> {
     const c = await api.createSession("Session", "");
     activeProject.set(null);
     session.set({ id: c.id, title: cleanTitle(c.title) });
-    wornHat.set("");
+    wornHat.set(c.hat ?? "");
     view.set("chat");
   } catch (e) {
     toast((e as Error).message, "error");

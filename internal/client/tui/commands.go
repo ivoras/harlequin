@@ -48,7 +48,8 @@ const helpText = `Commands:
   /cron                 list scheduled jobs
   /cron show <id>       show a job (incl. last run output)
   /cron add "<name>" "<spec>" js "<target>" ["<input-json>"]   schedule a JS job
-  /cron add "<name>" "<spec>" skill "<skill|->" "<prompt>"     schedule a skill job
+  /cron add "<name>" "<spec>" skill "<skill|->" "<prompt>" [hat=<name>]   schedule a skill job
+  /cron hat <id> [<name>]                                      run a job wearing a hat (none: take it off)
   /cron on|off <id>     enable / disable a job
   /cron run <id>        run a job now
   /cron del <id>        delete a job
@@ -144,7 +145,11 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 			if err != nil {
 				return errMsg{err}
 			}
-			m.leaveProject() // a new personal session leaves any project context
+			m.leaveProject()  // a new personal session leaves any project context
+			m.currentHat = "" // new sessions start with the hat last worn (server-side)
+			if sess.Hat != nil {
+				m.currentHat = *sess.Hat
+			}
 			m.switchSession(sess.ID)
 			m.sessTitle = ""
 			m.blocks = nil
@@ -687,8 +692,10 @@ func renderHatDetail(h types.Hat) string {
 	switch {
 	case h.HasCustomPrompt && h.PromptDisabled:
 		sb.WriteString("  prompt:      custom, DISABLED (default in use; /hat prompt " + h.Name + " on)")
+	case h.HasCustomPrompt && h.ReplacePrompt:
+		sb.WriteString("  prompt:      custom (replaces the default)")
 	case h.HasCustomPrompt:
-		sb.WriteString("  prompt:      custom (overrides the default)")
+		sb.WriteString("  prompt:      custom (adds to the default)")
 	default:
 		sb.WriteString("  prompt:      (default)")
 	}

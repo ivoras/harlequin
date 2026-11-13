@@ -154,8 +154,54 @@ func seedTree(ctx context.Context, shared *sql.DB, baked fs.FS, root string, spe
 		}
 	}
 
+	removed, err := pruneRemoved(ctx, shared, spec, prev, bakedItems)
+	if err != nil {
+		return err
+	}
+	if len(removed) > 0 {
+		log.Printf("%s: removed %d no-longer-baked item(s): %s", spec.label, len(removed), strings.Join(removed, ", "))
+	}
 	logSeeded(spec.label, created, updated, preserved)
 	return saveSeedHashes(ctx, shared, spec.hashTable, newHashes)
+}
+
+// pruneRemoved deletes items that were seeded earlier (present in the previous
+// seed hashes) but are no longer baked, only when every stored file still
+// matches its seed hash; an edited copy is kept and logged. Once dropped from
+// the hashes an item is never considered again, so a kept copy stays for good.
+func pruneRemoved(ctx context.Context, shared *sql.DB, spec seedSpec, prev map[string]string, baked map[string]map[string]string) ([]string, error) {
+	gone := map[string]bool{}
+	for key := range prev {
+		if name, _, ok := strings.Cut(key, "/"); ok && baked[name] == nil {
+			gone[name] = true
+		}
+	}
+	var removed []string
+	for name := range gone {
+		files, err := readItemFiles(ctx, shared, spec.tables, name)
+		if err != nil {
+			return nil, err
+		}
+		if files == nil {
+			continue
+		}
+		pristine := true
+		for sub, content := range files {
+			if prev[name+"/"+sub] != hashBytes([]byte(content)) {
+				pristine = false
+			}
+		}
+		if !pristine {
+			log.Printf("%s: %q is no longer baked but has local edits; keeping it", spec.label, name)
+			continue
+		}
+		if _, err := shared.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE name = ?`, spec.tables.item), name); err != nil {
+			return nil, err
+		}
+		removed = append(removed, name)
+	}
+	sort.Strings(removed)
+	return removed, nil
 }
 
 // RepairDescriptions back-fills empty skill description columns from the

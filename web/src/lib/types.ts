@@ -105,6 +105,7 @@ export const SSE = {
   DocumentsChanged: "documents_changed",
   StepReset: "step_reset",
   SessionsChanged: "sessions_changed",
+  HatChanged: "hat_changed",
   Chat: "chat",
 } as const;
 
@@ -153,6 +154,8 @@ export interface StreamEvent {
   chat?: ChatMessage;
   // SSE.DocumentsChanged payload: a document visible to the user changed.
   doc?: { op: "created" | "updated" | "deleted"; scope: string; project_id?: number; doc_id?: number };
+  // SSE.HatChanged payload: the hat a session wears changed ("" = off).
+  hat_change?: { session_id: number; project_id?: number; hat: string };
 }
 
 export interface Notification {
@@ -175,6 +178,7 @@ export interface Hat {
   skills?: string[]; // visibility list (empty = all)
   overlay_skills?: string[]; // skills the hat carries its own variants of
   has_custom_prompt?: boolean; // system_prompt.md body is non-empty
+  replace_prompt?: boolean; // body replaces the default prompt (else it is added)
   prompt_disabled?: boolean; // body kept but inactive (use_prompt: false)
 }
 
@@ -296,6 +300,7 @@ export interface CronJob {
   kind: string; // js | skill
   target: string;
   prompt?: string;
+  hat?: string; // skill jobs: hat the run wears
   input?: string;
   enabled: boolean;
   notify: boolean;
@@ -312,6 +317,7 @@ export interface CreateCronJobRequest {
   kind: string;
   target: string;
   prompt?: string;
+  hat?: string;
   input?: string;
   notify?: boolean;
   enabled?: boolean;
@@ -323,6 +329,7 @@ export interface UpdateCronJobRequest {
   kind?: string;
   target?: string;
   prompt?: string;
+  hat?: string; // "" removes it
   input?: string;
   notify?: boolean;
   enabled?: boolean;

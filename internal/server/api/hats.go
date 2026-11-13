@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -238,35 +239,71 @@ func (s *Server) handleGetSystemPromptTemplate(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, map[string]string{"content": content})
 }
 
-// handleSetSessionHat sets (or clears) the hat worn by a session. The
-// hat must exist unless it is being cleared.
+// handleSetSessionHat sets (or clears) the hat worn by a personal session.
 func (s *Server) handleSetSessionHat(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	s.setSessionHat(w, r, u, 0, id)
+}
+
+// handleSetProjectSessionHat is the same for a project session (any member may).
+func (s *Server) handleSetProjectSessionHat(w http.ResponseWriter, r *http.Request) {
+	u, pid, ok := s.projectMember(w, r)
+	if !ok {
+		return
+	}
+	sid, _ := strconv.ParseInt(chi.URLParam(r, "sid"), 10, 64)
+	s.setSessionHat(w, r, u, pid, sid)
+}
+
+// setSessionHat applies a hat to session id in the user's db (projectID 0) or
+// the project's. The hat must exist unless it is being cleared.
+func (s *Server) setSessionHat(w http.ResponseWriter, r *http.Request, u *types.User, projectID, id int64) {
 	var req types.SetSessionHatRequest
 	if err := decode(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if req.Hat != "" {
-		if _, err := s.Skills.GetHat(r.Context(), req.Hat); err != nil {
-			if errors.Is(err, skills.ErrHatNotFound) {
-				writeErr(w, http.StatusNotFound, "hat not found")
-				return
-			}
-			writeErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-	}
-	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
-		if _, e := s.Sessions.Get(r.Context(), udb, id, u.ID); e != nil {
+	ctx := r.Context()
+	apply := func(udb, sessDB *sql.DB) error {
+		if _, e := s.Sessions.Get(ctx, sessDB, id, u.ID); e != nil {
 			return e
 		}
-		return s.Sessions.SetHat(r.Context(), udb, id, req.Hat)
-	})
-	if err != nil {
-		writeErr(w, http.StatusNotFound, "not found")
-		return
+		return s.Agent.SetSessionHat(ctx, udb, sessDB, u.ID, projectID, id, req.Hat)
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	err := s.Storage.WithUser(ctx, u.ID, func(udb *sql.DB) error {
+		if projectID == 0 {
+			return apply(udb, udb)
+		}
+		return s.Storage.WithProject(ctx, projectID, func(pdb *sql.DB) error { return apply(udb, pdb) })
+	})
+	switch {
+	case errors.Is(err, skills.ErrHatNotFound):
+		writeErr(w, http.StatusNotFound, "hat not found")
+	case err != nil:
+		writeErr(w, http.StatusNotFound, "not found")
+	default:
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}
+}
+
+// dropGoneHats blanks the hat of sessions whose hat no longer exists (deleted,
+// or a removed baked-in one), so no client shows a chip for it.
+func (s *Server) dropGoneHats(ctx context.Context, sessions []types.Session) {
+	var live map[string]bool
+	for i := range sessions {
+		if sessions[i].Hat == nil || *sessions[i].Hat == "" {
+			continue
+		}
+		if live == nil {
+			live = map[string]bool{}
+			hats, _ := s.Skills.ListHats(ctx)
+			for _, h := range hats {
+				live[h.Name] = true
+			}
+		}
+		if !live[*sessions[i].Hat] {
+			sessions[i].Hat = nil
+		}
+	}
 }

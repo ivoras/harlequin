@@ -103,7 +103,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.resume {
 			cmds = append(cmds, m.loadHistoryCmd(msg.sessionID), m.loadSessionHatCmd(msg.sessionID))
 		} else {
-			cmds = append(cmds, m.openSessionCmd())
+			cmds = append(cmds, m.openSessionCmd(), m.loadSessionHatCmd(msg.sessionID)) // a new session starts with the last worn hat
 		}
 		return m, tea.Batch(cmds...)
 
@@ -283,13 +283,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.activeProjectName = msg.name
 		m.client.SetProject(msg.id)    // skills etc. now resolve the project scope
 		m.switchSession(msg.sessionID) // resets the socket; keeps activeProjectID
+		m.currentHat = ""
 		m.phase = phaseChat
 		m.blocks = nil
 		m.chatMessages = nil
 		m.appendBlock("status", "switched to project "+msg.name+" — /say <msg> to chat, /project leave to exit")
 		m.layout()
 		m.refreshViewport()
-		return m, tea.Batch(m.input.Focus(), m.loadHistoryCmd(msg.sessionID), m.openChatCmd(msg.id))
+		return m, tea.Batch(m.input.Focus(), m.loadHistoryCmd(msg.sessionID), m.openChatCmd(msg.id), m.loadSessionHatCmd(msg.sessionID))
 
 	case chatOpenedMsg:
 		if msg.err != nil {
@@ -438,6 +439,12 @@ func (m *Model) handleStreamEvent(ev types.StreamEvent) (tea.Model, tea.Cmd) {
 		m.refreshViewport()
 	case types.SSEError:
 		m.appendBlock("error", ev.Error)
+	case types.SSEHatChanged:
+		// Another client or member (or the agent's wear_hat) changed this session's hat.
+		if h := ev.HatChange; h != nil && h.SessionID == m.sessionID && h.ProjectID == m.activeProjectID {
+			m.currentHat = h.Hat
+			m.refreshViewport()
+		}
 	case types.SSENotification:
 		if ev.Notification != nil {
 			return m, m.handlePushedNotification(*ev.Notification)

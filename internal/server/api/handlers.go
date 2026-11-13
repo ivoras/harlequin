@@ -33,6 +33,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/session"
 	"github.com/ivoras/harlequin/internal/server/sessionhub"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
+	"github.com/ivoras/harlequin/internal/server/userconfig"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
@@ -474,7 +475,22 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.dropGoneHats(r.Context(), sessions)
 	writeJSON(w, http.StatusOK, sessions)
+}
+
+// stickyHat is the hat a new session starts with: the requested one, else the
+// hat the user last wore (hat.last) if it still exists.
+func (s *Server) stickyHat(ctx context.Context, udb *sql.DB, requested string) string {
+	if requested != "" {
+		return requested
+	}
+	if last, _, _ := s.UserConfig.Get(ctx, udb, userconfig.KeyHatLast); last != "" {
+		if _, err := s.Skills.GetHat(ctx, last); err == nil {
+			return last
+		}
+	}
+	return ""
 }
 
 func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
@@ -484,6 +500,7 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	var c *types.Session
 	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
 		var e error
+		req.Hat = s.stickyHat(r.Context(), udb, req.Hat)
 		// A plain "new session" reuses the last empty one instead of adding a blank.
 		if req.Title == "" || req.Title == "New session" || req.Title == "Session" {
 			if c, e = s.Sessions.ReuseEmpty(r.Context(), udb, u.ID, req.Hat, types.APIREST, reqInterface(r)); e != nil || c != nil {

@@ -35,6 +35,9 @@ type hatFrontmatter struct {
 	// the body around but the default system prompt is used while worn.
 	// nil/true = body active when non-empty.
 	UsePrompt *bool `yaml:"use_prompt"`
+	// ReplacePrompt makes the body replace the default system prompt instead
+	// of being appended to it.
+	ReplacePrompt bool `yaml:"replace_prompt"`
 }
 
 // hatFromPrompt builds the Hat DTO from its (possibly empty) system_prompt.md.
@@ -45,6 +48,7 @@ func hatFromPrompt(name, raw string) types.Hat {
 		h.Description = fm.Description
 		h.Skills = fm.Skills
 		h.HasCustomPrompt = strings.TrimSpace(body) != ""
+		h.ReplacePrompt = fm.ReplacePrompt
 		h.PromptDisabled = fm.UsePrompt != nil && !*fm.UsePrompt
 		if !h.PromptDisabled {
 			// A disabled custom prompt is kept in the file but not served, so
@@ -162,6 +166,9 @@ func (m *Manager) CreateHat(ctx context.Context, name, description string, userI
 		"description: " + description,
 		"# skills: [name, ...] restricts which skills are visible while worn (empty = all).",
 		"skills: []",
+		"# The body below is added to the default system prompt. Set replace_prompt: true to",
+		"# replace the default prompt instead (you then lose its citation/document/memory rules).",
+		"# replace_prompt: true",
 		"---",
 		"",
 	}, "\n")

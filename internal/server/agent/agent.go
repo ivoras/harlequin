@@ -841,10 +841,7 @@ func logToolCalls(calls []llm.ToolCall) []map[string]any {
 
 // composeSystemPrompt builds the system prompt including the skill catalogue.
 func (a *Agent) composeSystemPrompt(ctx context.Context, rc *runContext) string {
-	prompt := a.basePrompt(rc)
-	if rc.hat != nil {
-		prompt += fmt.Sprintf("\n\nYou are wearing the %q hat.", rc.hat.Name)
-	}
+	prompt := a.hatPrompt(ctx, rc)
 	if len(rc.skillInfos) > 0 {
 		prompt += "\n\nAvailable skills (use load_skill to read full instructions):\n"
 		for _, i := range rc.skillInfos {
@@ -855,6 +852,47 @@ func (a *Agent) composeSystemPrompt(ctx context.Context, rc *runContext) string 
 		prompt += "\n\n" + mcpNeedAuthNote(rc.mcpNeedAuth)
 	}
 	return prompt
+}
+
+// hatPrompt is the base prompt plus the worn hat's line and (unless it
+// replaced the base) its role text.
+func (a *Agent) hatPrompt(ctx context.Context, rc *runContext) string {
+	prompt := a.basePrompt(rc)
+	if rc.hat != nil {
+		prompt += fmt.Sprintf("\n\nYou are wearing the %q hat.", rc.hat.Name)
+		if body := a.hatBody(rc); body != "" && !rc.hat.ReplacePrompt {
+			prompt += "\n\n" + body
+		}
+	}
+	return prompt + a.hatCatalogue(ctx, rc)
+}
+
+// hatCatalogue lists the hats a user could wear, so the agent can point out a
+// fitting one. It never switches by itself: wear_hat is for when the user asks.
+func (a *Agent) hatCatalogue(ctx context.Context, rc *runContext) string {
+	hats, err := a.Skills.ListHats(ctx)
+	if err != nil || len(hats) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("\n\nHats the user can wear (a hat adds a role and specialised skills):\n")
+	for _, h := range hats {
+		fmt.Fprintf(&sb, "- %s: %s\n", h.Name, h.Description)
+	}
+	sb.WriteString("When the request clearly fits a hat that is not worn, mention it briefly and let the user decide. Never switch hats unless the user asks; then use wear_hat.")
+	return sb.String()
+}
+
+// hatBody renders the hat's prompt body ("" when it has none or it fails).
+func (a *Agent) hatBody(rc *runContext) string {
+	if strings.TrimSpace(rc.hat.SystemPrompt) == "" {
+		return ""
+	}
+	out, err := a.Skills.RenderText(rc.hat.SystemPrompt, rc.userID, rc.username)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(out)
 }
 
 // loadHat sets rc.hat from the session's worn hat (if any), reading the
@@ -869,12 +907,12 @@ func (a *Agent) loadHat(ctx context.Context, rc *runContext) {
 	}
 }
 
-// basePrompt returns the rendered base system prompt: the worn hat's prompt when
-// it defines one, otherwise the deployed system_prompt.md (falling back to a
-// built-in default if that file is missing).
+// basePrompt returns the rendered base system prompt: the worn hat's body when
+// the hat has replace_prompt, otherwise the deployed system_prompt.md (falling
+// back to a built-in default if that file is missing).
 func (a *Agent) basePrompt(rc *runContext) string {
-	if rc.hat != nil && strings.TrimSpace(rc.hat.SystemPrompt) != "" {
-		if out, err := a.Skills.RenderText(rc.hat.SystemPrompt, rc.userID, rc.username); err == nil && strings.TrimSpace(out) != "" {
+	if rc.hat != nil && rc.hat.ReplacePrompt {
+		if out := a.hatBody(rc); out != "" {
 			return out
 		}
 	}

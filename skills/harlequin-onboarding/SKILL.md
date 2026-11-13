@@ -35,3 +35,8 @@ If an answer is empty, store nothing for it and move on.
 After all five questions are done and any non-empty answers are stored, greet the
 user with a short, original, funny welcome message (make it up; reference a
 detail they shared if they gave one). Do not ask any further questions.
+
+If hats are listed in your system prompt, end with one sentence telling the user
+that hats exist: a hat puts you in a working mode (for example comparing
+documents, or researching the outside world), they can pick one from the chat
+header, or ask you to wear one. Do not put a hat on yourself.

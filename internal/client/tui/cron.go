@@ -15,7 +15,8 @@ const cronUsage = `usage:
   /cron                              list jobs
   /cron show <id>                    show a job
   /cron add "<name>" "<spec>" js "<target>" ["<input-json>"] [notify=<channel>]
-  /cron add "<name>" "<spec>" skill "<skill|->" "<prompt>" [notify=<channel>]
+  /cron add "<name>" "<spec>" skill "<skill|->" "<prompt>" [notify=<channel>] [hat=<name>]
+  /cron hat <id> [<name>]            run a skill job wearing a hat (no name: take it off)
   /cron on <id> | /cron off <id>     enable / disable
   /cron run <id>                     run now
   /cron rm <id>                      delete
@@ -76,6 +77,24 @@ func (m *Model) handleCronSub(args []string, raw string) tea.Cmd {
 			}
 			return infoMsg{fmt.Sprintf("cron job #%d %s", id, state)}
 		}
+	case "hat":
+		id, ok := cronID(args, 1)
+		if !ok {
+			return infoCmd("usage: /cron hat <id> [<name>]")
+		}
+		name := ""
+		if len(args) > 2 {
+			name = args[2]
+		}
+		return func() tea.Msg {
+			if _, err := m.client.UpdateCron(context.Background(), id, types.UpdateCronJobRequest{Hat: &name}); err != nil {
+				return errMsg{err}
+			}
+			if name == "" {
+				return infoMsg{fmt.Sprintf("cron job #%d no longer wears a hat", id)}
+			}
+			return infoMsg{fmt.Sprintf("cron job #%d now wears the %s hat", id, name)}
+		}
 	case "run":
 		id, ok := cronID(args, 1)
 		if !ok {
@@ -98,11 +117,15 @@ func (m *Model) handleCronAdd(raw string) tea.Cmd {
 	rest := afterNFields(raw, 2)
 	toks := splitQuoted(rest)
 	// Pull out an optional notify=<channel> token (may appear anywhere).
-	var channel string
+	var channel, hat string
 	kept := toks[:0]
 	for _, t := range toks {
 		if low := strings.ToLower(t); strings.HasPrefix(low, "notify=") {
 			channel = strings.TrimPrefix(low, "notify=")
+			continue
+		}
+		if strings.HasPrefix(strings.ToLower(t), "hat=") {
+			hat = t[len("hat="):] // hat names are case-sensitive
 			continue
 		}
 		kept = append(kept, t)
@@ -116,6 +139,7 @@ func (m *Model) handleCronAdd(raw string) tea.Cmd {
 		Spec:          toks[1],
 		Kind:          strings.ToLower(toks[2]),
 		NotifyChannel: channel,
+		Hat:           hat,
 	}
 	switch req.Kind {
 	case types.CronKindJS:
@@ -195,6 +219,9 @@ func renderCronList(jobs []types.CronJob) string {
 			state = "disabled"
 		}
 		fmt.Fprintf(&sb, "  #%d %s [%s, %s, %s]  next %s", j.ID, j.Name, j.Kind, j.Spec, state, cronTime(j.NextRunAt))
+		if j.Hat != "" {
+			fmt.Fprintf(&sb, "  hat %s", j.Hat)
+		}
 		if j.LastStatus != "" {
 			fmt.Fprintf(&sb, "  last %s @ %s", j.LastStatus, cronTime(j.LastRunAt))
 		}
@@ -217,6 +244,9 @@ func renderCronDetail(j types.CronJob) string {
 	}
 	if j.Prompt != "" {
 		fmt.Fprintf(&sb, "  prompt:   %s\n", j.Prompt)
+	}
+	if j.Hat != "" {
+		fmt.Fprintf(&sb, "  hat:      %s\n", j.Hat)
 	}
 	if j.Input != "" {
 		fmt.Fprintf(&sb, "  input:    %s\n", j.Input)

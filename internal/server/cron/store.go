@@ -14,13 +14,15 @@ import (
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
+var errHatKind = fmt.Errorf("a hat applies only to %q jobs", types.CronKindSkill)
+
 // Store is stateless CRUD for cron jobs; methods take the user's DB handle.
 type Store struct{}
 
 // NewStore constructs a cron Store.
 func NewStore() *Store { return &Store{} }
 
-const selectCols = `id, name, spec, kind, target, prompt, input, enabled, notify,
+const selectCols = `id, name, spec, kind, target, prompt, hat, input, enabled, notify,
 	notify_channel, next_run_at, last_run_at, last_status, last_output, created_at`
 
 // Create validates and inserts a job, computing its first next_run_at.
@@ -37,6 +39,9 @@ func (s *Store) Create(ctx context.Context, db *sql.DB, req types.CreateCronJobR
 	if strings.TrimSpace(req.Target) == "" {
 		return types.CronJob{}, fmt.Errorf("target is required (js: script/URI; skill: skill name)")
 	}
+	if req.Hat != "" && req.Kind != types.CronKindSkill {
+		return types.CronJob{}, errHatKind
+	}
 	enabled := req.Enabled == nil || *req.Enabled
 	notify := req.Notify == nil || *req.Notify
 	channel := normalizeChannel(req.NotifyChannel)
@@ -47,9 +52,9 @@ func (s *Store) Create(ctx context.Context, db *sql.DB, req types.CreateCronJobR
 		}
 	}
 	res, err := db.ExecContext(ctx,
-		`INSERT INTO cron_jobs(name, spec, kind, target, prompt, input, enabled, notify, notify_channel, next_run_at)
-		 VALUES (?,?,?,?,?,?,?,?,?,?)`,
-		req.Name, req.Spec, req.Kind, req.Target, req.Prompt, req.Input,
+		`INSERT INTO cron_jobs(name, spec, kind, target, prompt, hat, input, enabled, notify, notify_channel, next_run_at)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		req.Name, req.Spec, req.Kind, req.Target, req.Prompt, req.Hat, req.Input,
 		b2i(enabled), b2i(notify), channel, next)
 	if err != nil {
 		return types.CronJob{}, err
@@ -131,6 +136,12 @@ func (s *Store) Update(ctx context.Context, db *sql.DB, id int64, req types.Upda
 	if req.Prompt != nil {
 		cur.Prompt = *req.Prompt
 	}
+	if req.Hat != nil {
+		cur.Hat = *req.Hat
+	}
+	if cur.Hat != "" && cur.Kind != types.CronKindSkill {
+		return types.CronJob{}, errHatKind
+	}
 	if req.Input != nil {
 		cur.Input = *req.Input
 	}
@@ -151,9 +162,9 @@ func (s *Store) Update(ctx context.Context, db *sql.DB, id int64, req types.Upda
 		}
 	}
 	_, err = db.ExecContext(ctx,
-		`UPDATE cron_jobs SET name=?, spec=?, kind=?, target=?, prompt=?, input=?,
+		`UPDATE cron_jobs SET name=?, spec=?, kind=?, target=?, prompt=?, hat=?, input=?,
 		 enabled=?, notify=?, notify_channel=?, next_run_at=? WHERE id=?`,
-		cur.Name, cur.Spec, cur.Kind, cur.Target, cur.Prompt, cur.Input,
+		cur.Name, cur.Spec, cur.Kind, cur.Target, cur.Prompt, cur.Hat, cur.Input,
 		b2i(cur.Enabled), b2i(cur.Notify), normalizeChannel(cur.NotifyChannel), next, id)
 	if err != nil {
 		return types.CronJob{}, err
@@ -206,7 +217,7 @@ func scanJob(row scanner) (types.CronJob, error) {
 		enabled, notify int
 		next, last      sql.NullInt64
 	)
-	if err := row.Scan(&j.ID, &j.Name, &j.Spec, &j.Kind, &j.Target, &j.Prompt, &j.Input,
+	if err := row.Scan(&j.ID, &j.Name, &j.Spec, &j.Kind, &j.Target, &j.Prompt, &j.Hat, &j.Input,
 		&enabled, &notify, &j.NotifyChannel, &next, &last, &j.LastStatus, &j.LastOutput, &j.CreatedAt); err != nil {
 		return types.CronJob{}, err
 	}

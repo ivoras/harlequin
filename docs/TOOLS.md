@@ -86,7 +86,15 @@ the user's own address; at most 20 e-mails per user per hour.
 
 ---
 
-## Skills
+## Skills and hats
+
+### `wear_hat`
+**Why:** put a hat on the session (or take it off with an empty name) when the
+user asks. The agent only suggests a fitting hat; it never switches on its own.
+The hat applies from the user's next message, is remembered for new sessions, and
+every client of the session (including other project members) sees the change.
+An unknown name returns an error listing the valid hats.
+**Example:** `wear_hat({"name": "analyst"})`
 
 ### `list_skills`
 **Why:** discover available skills (name + description) before loading one.
@@ -542,6 +550,8 @@ documents: from the current project; shared documents: owner/admin only.
 **Why:** set up recurring work for the user. `kind:"js"` runs a script with **no
 AI** each time (cheap periodic checks, e.g. watching a page); `kind:"skill"` runs a
 full agent turn. `spec` is a 5-field cron, a `@descriptor`, or `@every <dur>`.
+A skill job can wear a hat (`hat`); it defaults to the hat worn in the session
+that creates it, and the result names it. A run whose hat was deleted fails.
 **Example:**
 `cron_create({"name": "fzoeu", "spec": "@every 30m", "kind": "js", "target": "skill://web-monitor/lib/check.js", "input": "{\"name\":\"fzoeu\"}"})`
 

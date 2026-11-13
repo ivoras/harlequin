@@ -327,6 +327,34 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 		},
 	}
 
+	reg["wear_hat"] = toolEntry{
+		def: fnTool("wear_hat", "Put a hat on this session, or take the current one off (empty name). ONLY when the user asks to; never on your own initiative. The hat applies from the user's next message.", map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"name": map[string]any{"type": "string", "description": "Hat name; empty takes the hat off"},
+			},
+		}),
+		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+			name := strings.TrimSpace(argString(args, "name"))
+			if err := a.CheckHat(ctx, name); err != nil {
+				var names []string
+				if hats, lerr := a.Skills.ListHats(ctx); lerr == nil {
+					for _, h := range hats {
+						names = append(names, h.Name)
+					}
+				}
+				return fmt.Sprintf("error: %v. Available hats: %s", err, strings.Join(names, ", ")), nil
+			}
+			if err := a.SetSessionHat(ctx, rc.userDB, rc.sessDB, rc.userID, rc.projectID, rc.sessionID, name); err != nil {
+				return "error: " + err.Error(), nil
+			}
+			if name == "" {
+				return "Hat taken off. The default prompt and skills apply from the user's next message.", nil
+			}
+			return fmt.Sprintf("Now wearing the %q hat. Its prompt and skills apply from the user's next message, not this one.", name), nil
+		},
+	}
+
 	reg["list_skills"] = toolEntry{
 		def: fnTool("list_skills", "List available skills with their descriptions.", map[string]any{
 			"type": "object", "properties": map[string]any{},
@@ -837,6 +865,7 @@ Example (watch a saved web-monitor check every 30 min): cron_create(name="fzoeu"
 					"target": map[string]any{"type": "string", "description": "js: script URI or inline code; skill: skill name"},
 					"prompt": map[string]any{"type": "string", "description": "skill: message to send to the agent"},
 					"input":  map[string]any{"type": "string", "description": "JSON object of inputs (js: exposed as args)"},
+					"hat":    map[string]any{"type": "string", "description": "skill jobs: hat the run wears (default: the hat worn in this session, if any; \"\" = none)"},
 					"notify_channel": map[string]any{"type": "string", "enum": []string{"inapp", "email", "telegram"},
 						"description": "Where to deliver a change notification (default inapp). Check notify_channels and ask the user if unspecified."},
 				},
@@ -852,6 +881,14 @@ Example (watch a saved web-monitor check every 30 min): cron_create(name="fzoeu"
 					Input:         argString(args, "input"),
 					NotifyChannel: argString(args, "notify_channel"),
 				}
+				if h, ok := args["hat"].(string); ok {
+					req.Hat = h
+				} else if rc.hat != nil && req.Kind == types.CronKindSkill {
+					req.Hat = rc.hat.Name // asked for while wearing this hat: run it the same way
+				}
+				if err := a.CheckHat(ctx, req.Hat); err != nil {
+					return "error: " + err.Error(), nil
+				}
 				job, err := a.Cron.Create(ctx, rc.userDB, req)
 				if err != nil {
 					return "error: " + err.Error(), nil
@@ -860,7 +897,11 @@ Example (watch a saved web-monitor check every 30 min): cron_create(name="fzoeu"
 				if job.NextRunAt != nil {
 					next = job.NextRunAt.Format("2006-01-02 15:04")
 				}
-				return fmt.Sprintf("Created cron job #%d %q (%s, %s); next run %s.", job.ID, job.Name, job.Kind, job.Spec, next), nil
+				hat := ""
+				if job.Hat != "" {
+					hat = fmt.Sprintf(" wearing the %q hat", job.Hat)
+				}
+				return fmt.Sprintf("Created cron job #%d %q (%s, %s)%s; next run %s.", job.ID, job.Name, job.Kind, job.Spec, hat, next), nil
 			},
 		}
 
@@ -883,6 +924,9 @@ Example (watch a saved web-monitor check every 30 min): cron_create(name="fzoeu"
 						state = "disabled"
 					}
 					fmt.Fprintf(&sb, "#%d %s [%s, %s, %s] target=%s", j.ID, j.Name, j.Kind, j.Spec, state, j.Target)
+					if j.Hat != "" {
+						fmt.Fprintf(&sb, " hat=%s", j.Hat)
+					}
 					if j.LastStatus != "" {
 						fmt.Fprintf(&sb, " last=%s", j.LastStatus)
 					}
@@ -923,6 +967,7 @@ Example (watch a saved web-monitor check every 30 min): cron_create(name="fzoeu"
 					"target":         map[string]any{"type": "string"},
 					"prompt":         map[string]any{"type": "string"},
 					"input":          map[string]any{"type": "string", "description": "JSON object of inputs"},
+					"hat":            map[string]any{"type": "string", "description": "Hat the run wears (skill jobs only); \"\" removes it"},
 					"enabled":        map[string]any{"type": "boolean", "description": "Enable (true) or disable (false) the job"},
 					"notify_channel": map[string]any{"type": "string", "enum": []string{"inapp", "email", "telegram"}, "description": "Delivery channel for change notifications"},
 				},
@@ -952,6 +997,12 @@ Example (watch a saved web-monitor check every 30 min): cron_create(name="fzoeu"
 				if v, ok := args["input"].(string); ok {
 					req.Input = &v
 				}
+				if v, ok := args["hat"].(string); ok {
+					if err := a.CheckHat(ctx, v); err != nil {
+						return "error: " + err.Error(), nil
+					}
+					req.Hat = &v
+				}
 				if v, ok := args["enabled"].(bool); ok {
 					req.Enabled = &v
 				}
@@ -965,6 +1016,9 @@ Example (watch a saved web-monitor check every 30 min): cron_create(name="fzoeu"
 				state := "enabled"
 				if !job.Enabled {
 					state = "disabled"
+				}
+				if job.Hat != "" {
+					state += ", hat " + job.Hat
 				}
 				return fmt.Sprintf("Updated cron job #%d %q (%s, %s, %s).", job.ID, job.Name, job.Kind, job.Spec, state), nil
 			},

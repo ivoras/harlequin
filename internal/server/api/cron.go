@@ -48,6 +48,10 @@ func (s *Server) handleCreateCron(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
+	if err := s.Agent.CheckHat(r.Context(), req.Hat); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	var job types.CronJob
 	var createErr error
 	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
@@ -102,6 +106,12 @@ func (s *Server) handleUpdateCron(w http.ResponseWriter, r *http.Request) {
 	if err := decode(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
+	}
+	if req.Hat != nil {
+		if err := s.Agent.CheckHat(r.Context(), *req.Hat); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 	var job types.CronJob
 	var updErr error

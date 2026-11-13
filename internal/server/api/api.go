@@ -231,6 +231,7 @@ func (s *Server) Router() http.Handler {
 				r.Post("/projects/{id}/documents/{docID}/transfer", s.handleTransferProjectDocument)
 				r.Get("/projects/{id}/sessions", s.handleListProjectSessions)
 				r.Post("/projects/{id}/sessions/{sid}", s.handleAssignSession)
+				r.Post("/projects/{id}/sessions/{sid}/hat", s.handleSetProjectSessionHat)
 				r.Get("/projects/{id}/messages", s.handleProjectMessages)
 			}
 

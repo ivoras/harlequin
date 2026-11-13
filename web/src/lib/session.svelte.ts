@@ -5,7 +5,7 @@ import { api, ApiError } from "./api";
 import { SessionSocket } from "./ws";
 import { SSE, NOTIFY_SESSION_TITLE } from "./types";
 import type { Message, StreamEvent, Notification } from "./types";
-import { session, toast, lastModel, bumpDocs, bumpSessions, bumpInvites } from "./stores";
+import { session, toast, lastModel, bumpDocs, bumpSessions, bumpInvites, wornHat } from "./stores";
 
 export type Item =
   | { kind: "msg"; role: "user" | "assistant"; content: string }
@@ -342,6 +342,12 @@ class SessionController {
       case SSE.SessionsChanged:
         bumpSessions();
         break;
+      case SSE.HatChanged: {
+        // Another client/member (or the agent's wear_hat) changed this session's hat.
+        const h = ev.hat_change;
+        if (h && h.session_id === this.currentId && (h.project_id ?? 0) === this.projectID) wornHat.set(h.hat);
+        break;
+      }
       case SSE.StepReset: {
         // The failed step's unfinished thinking/text (everything after the last
         // tool or user item) is re-streamed from scratch.

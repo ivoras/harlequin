@@ -110,24 +110,10 @@
     filesOf = null;
     editing = { name, path, readonly: true };
   }
-  // Open the system-prompt editor; when the hat has no custom prompt yet, seed
-  // the body with the default system prompt template so specialising starts
-  // from the real default.
-  async function editPrompt(h: Hat) {
-    if (h.has_custom_prompt) {
-      editFile(h.name, "system_prompt.md");
-      return;
-    }
-    try {
-      const [file, tpl] = await Promise.all([
-        api.getHatFile(h.name, "system_prompt.md"),
-        api.getSystemPromptTemplate(),
-      ]);
-      const seeded = file.content.replace(/\s+$/, "") + "\n" + tpl.content;
-      editing = { name: h.name, path: "system_prompt.md", initial: seeded };
-    } catch (e) {
-      toast((e as Error).message, "error");
-    }
+  // The body is added to the default system prompt (replace_prompt: true in the
+  // frontmatter replaces it), so there is nothing to seed.
+  function editPrompt(h: Hat) {
+    editFile(h.name, "system_prompt.md");
   }
   async function togglePrompt(h: Hat) {
     try {
@@ -152,7 +138,7 @@
       A hat is a set of specialised skills that <b>overlay</b> normal resolution:
       while worn, its skill copies take precedence over the project/shared/user
       versions, and its optional visibility list restricts which skills the agent
-      sees. It can also replace the system prompt.
+      sees. It can also add to (or, with replace_prompt, replace) the system prompt.
     </div>
 
     {#if admin}
@@ -183,7 +169,8 @@
           <div class="muted small">
             prompt:
             {#if h.has_custom_prompt && h.prompt_disabled}<span class="warn">custom, disabled — default in use</span>
-            {:else if h.has_custom_prompt}custom (replaces the default)
+            {:else if h.has_custom_prompt && h.replace_prompt}custom (replaces the default)
+            {:else if h.has_custom_prompt}custom (adds to the default)
             {:else}default{/if}
           </div>
           {#if h.skills && h.skills.length}
@@ -207,7 +194,7 @@
           {/if}
           {#if admin}
             <div class="row small" style="gap:6px; flex-wrap:wrap;">
-              <button class="small" onclick={() => editPrompt(h)} title="The hat's system_prompt.md: frontmatter (description, visible skills) + optional body that replaces the default system prompt while worn. Creating one starts from a copy of the default.">{h.has_custom_prompt ? "Edit system prompt" : "Create system prompt"}</button>
+              <button class="small" onclick={() => editPrompt(h)} title="The hat's system_prompt.md: frontmatter (description, visible skills) + optional body that is added to the default system prompt while worn (replace_prompt: true replaces it).">{h.has_custom_prompt ? "Edit system prompt" : "Create system prompt"}</button>
               {#if h.has_custom_prompt}
                 <button class="small" onclick={() => togglePrompt(h)}>{h.prompt_disabled ? "Enable prompt" : "Use default prompt"}</button>
               {/if}

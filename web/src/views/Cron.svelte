@@ -2,13 +2,13 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api";
   import { toast } from "../lib/stores";
-  import type { CronJob, CreateCronJobRequest, SkillInfo } from "../lib/types";
+  import type { CronJob, CreateCronJobRequest, SkillInfo, Hat } from "../lib/types";
   import { PRESETS, WEEKDAYS, buildSpec, parseSpec, defaultSched, describe, type Sched } from "../lib/cronspec";
 
   let jobs = $state<CronJob[]>([]);
   let showAdd = $state(false);
   let editingID = $state<number | null>(null); // non-null: the form saves an existing job
-  const blank = (): CreateCronJobRequest => ({ name: "", spec: buildSpec(defaultSched()), kind: "skill", target: "", prompt: "", input: "", notify_channel: "inapp" });
+  const blank = (): CreateCronJobRequest => ({ name: "", spec: buildSpec(defaultSched()), kind: "skill", target: "", prompt: "", hat: "", input: "", notify_channel: "inapp" });
   let f = $state<CreateCronJobRequest>(blank());
 
   // Schedule: pick a common period, or tick "Custom" to type a raw cron spec.
@@ -33,6 +33,9 @@
   const skillOptions = $derived(
     f.target && !skills.some((k) => k.name === f.target) ? [{ name: f.target, description: "(not found)" } as SkillInfo, ...skills] : skills,
   );
+  // Hats for the picker; a job's current hat stays selectable even if it is gone.
+  let hats = $state<Hat[]>([]);
+  const hatOptions = $derived(f.hat && !hats.some((h) => h.name === f.hat) ? [{ name: f.hat, description: "(not found)" } as Hat, ...hats] : hats);
   const short = (t: string) => (t.length > 70 ? t.slice(0, 69) + "…" : t);
   function resetForm() {
     f = blank();
@@ -50,6 +53,7 @@
   onMount(() => {
     load();
     api.listSkills().then((l) => (skills = l)).catch(() => {});
+    api.listHats().then((l) => (hats = l)).catch(() => {});
   });
   async function add() {
     const wasEdit = editingID !== null;
@@ -70,7 +74,7 @@
   }
   function edit(j: CronJob) {
     editingID = j.id;
-    f = { name: j.name, spec: j.spec, kind: j.kind, target: j.target, prompt: j.prompt ?? "", input: j.input ?? "", notify_channel: j.notify_channel || "inapp" };
+    f = { name: j.name, spec: j.spec, kind: j.kind, target: j.target, prompt: j.prompt ?? "", hat: j.hat ?? "", input: j.input ?? "", notify_channel: j.notify_channel || "inapp" };
     const p = parseSpec(j.spec);
     custom = !p;
     sched = p ?? defaultSched();
@@ -132,7 +136,7 @@
           <label class="muted small row" style="gap:6px;"><input type="checkbox" checked={custom} onchange={toggleCustom} /> Custom (cron expression)</label>
           <div class="muted small">Times are server time · spec <code>{f.spec}</code></div>
         </div>
-        <select bind:value={f.kind} onchange={() => (f.target = "")}>
+        <select bind:value={f.kind} onchange={() => { f.target = ""; f.hat = ""; }}>
           <option value="skill">skill — run an agent turn</option>
           <option value="js">js — run a script, no AI</option>
         </select>
@@ -145,6 +149,12 @@
           </select>
         {/if}
         {#if f.kind === "skill"}<input placeholder="prompt for the agent" bind:value={f.prompt} />{/if}
+        {#if f.kind === "skill" && hatOptions.length}
+          <select bind:value={f.hat} aria-label="Hat">
+            <option value="">No hat</option>
+            {#each hatOptions as h (h.name)}<option value={h.name}>🎩 {h.name}{h.description ? " — " + short(h.description) : ""}</option>{/each}
+          </select>
+        {/if}
         <input placeholder={'input JSON — e.g. {"name":"fzoeu"}'} bind:value={f.input} />
         <label class="muted small">Notify via
           <select bind:value={f.notify_channel}>
@@ -161,6 +171,7 @@
         <div class="card col">
           <div class="row">
             <strong>{j.name}</strong><span class="pill">{j.kind}</span><span class="pill" title={j.spec}>{describe(j.spec)}</span>
+            {#if j.hat}<span class="pill" title="The run wears this hat">🎩 {j.hat}</span>{/if}
             {#if j.notify_channel && j.notify_channel !== "inapp"}<span class="pill">→ {j.notify_channel}</span>{/if}
             <span class="spacer"></span>{#if !j.enabled}<span class="muted small">disabled</span>{/if}
           </div>
