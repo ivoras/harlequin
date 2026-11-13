@@ -6,12 +6,13 @@ and who can change it.
 
 | Scope | Who sees it | Stored in | Ids / labels |
 |-------|-------------|-----------|--------------|
-| **personal** (a.k.a. *user*) | only you | `data/users/<id>/user.db` | memory `u.N`, document `u.N` (chunks `d.u.N`) |
+| **personal** | only you | `data/users/<id>/user.db` | memory `u.N`, document `u.N` (chunks `d.u.N`) |
 | **shared** (organisation) | everyone in the organisation | `data/shared.db` | memory `s.N`, document `s.N` (chunks `d.s.N`) |
 | **project** | the project's members | `data/projects/<id>/project.db` | memory `p.N`, document `p.N` (chunks `d.p.N`); from outside the project `p<project>.N`, e.g. `p3.17` |
 
-Memories call the personal scope `user`, documents call it `personal`; they are
-the same thing.
+The product always says **personal**. The API still calls this scope `user` for
+skills, memories and MCP servers (documents and hats use `personal`); it is the
+same scope, and clients show it as "personal".
 
 ## What a search covers
 
@@ -106,7 +107,7 @@ belongs to at most one project.
 ## MCP servers
 
 External MCP tool servers are registered either for the **shared** scope
-(owners/admins; available to everyone) or the **user** scope (just you).
+(owners/admins; available to everyone) or the **personal** scope (just you).
 Credentials for OAuth servers are always per user, even for shared servers —
 each user signs in with their own account.
 

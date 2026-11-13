@@ -35,7 +35,7 @@ the server, not just hidden in the clients.
 
 The default role for new accounts (including self-registration). A user:
 
-- owns their sessions, personal memories and documents, user-scope skills, MCP
+- owns their sessions, personal memories and documents, personal skills, MCP
   servers (if `mcp.allow_user_servers`, default on), scheduled jobs and per-user
   config;
 - can read everything shared with the organisation — shared memories,

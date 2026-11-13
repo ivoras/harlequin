@@ -474,10 +474,14 @@ func renderSkillList(infos []types.SkillInfo, hat string, overlays []string) str
 	var sb strings.Builder
 	sb.WriteString("Skills:\n")
 	for _, i := range infos {
-		scope := i.Source
+		scope := displayScope(i.Source)
 		if len(i.AlsoIn) > 0 {
 			// Copies in shallower scopes are shadowed — edits there are invisible.
-			scope += ", shadows " + strings.Join(i.AlsoIn, "+")
+			shadowed := make([]string, len(i.AlsoIn))
+			for k, s := range i.AlsoIn {
+				shadowed[k] = displayScope(s)
+			}
+			scope += ", shadows " + strings.Join(shadowed, "+")
 		}
 		if slices.Contains(overlays, i.Name) {
 			scope += ", overridden by hat " + hat

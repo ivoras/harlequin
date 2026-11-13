@@ -92,7 +92,7 @@ func (m *Model) startSkillEditor(msg skillEditorLoadedMsg) tea.Cmd {
 }
 
 // writableSkillScopes returns the scopes this user may save a skill into:
-// user always, shared when elevated, project when one is active.
+// personal always, shared when elevated, project when one is active.
 func (m *Model) writableSkillScopes() []string {
 	scopes := []string{"user"}
 	if m.canManageShared() {
@@ -204,22 +204,22 @@ func (m *Model) editorView() string {
 	var hint string
 	switch {
 	case ed.picking:
-		hint = "save to: (u)ser"
+		hint = "save to: [u] personal"
 		if hasScope(ed.writable, "shared") {
-			hint += " · (s)hared"
+			hint += " · [s] shared"
 		}
 		if hasScope(ed.writable, "project") {
-			hint += " · (p)roject"
+			hint += " · [p] project"
 		}
-		hint += " · Enter = " + ed.defaultScope() + " · Esc cancel"
+		hint += " · Enter = " + displayScope(ed.defaultScope()) + " · Esc cancel"
 	case ed.isHat:
-		hint = "Ctrl-S save · Esc cancel · hat file (shared)"
+		hint = "Ctrl-S save · Esc cancel · hat file"
 	default:
 		target := ed.scope
 		if target == "" {
 			target = "asks on save"
 		}
-		hint = "Ctrl-S save · Esc cancel · from: " + orDash(ed.fromScope) + " · save to: " + target
+		hint = "Ctrl-S save · Esc cancel · from: " + orDash(displayScope(ed.fromScope)) + " · save to: " + displayScope(target)
 	}
 	if ed.status != "" {
 		hint = ed.status + "  ·  " + hint

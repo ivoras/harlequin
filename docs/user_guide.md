@@ -328,7 +328,7 @@ members get a notification. This cannot be undone.
 
 ## How skills resolve (scopes, projects, hats)
 
-Skills live in three scopes at once — your **user** scope, the organisation's
+Skills live in three scopes at once — your **personal** scope, the organisation's
 **shared** scope, and a **project** scope when you have one active. Several
 copies of the same skill can exist; when the agent loads one, exactly one copy
 wins. A worn **hat** sits on top of all of that: it carries its own copies of
@@ -353,7 +353,7 @@ or both active.
                └───────────────┬────────────────┘
                                │ not there
                ┌───────────────▼────────────────┐
-               │ 4  USER scope     (yours)      │─ has foo ──────────▶ WINS
+               │ 4  PERSONAL scope (yours)      │─ has foo ──────────▶ WINS
                └───────────────┬────────────────┘
                                │
                                ▼
@@ -364,10 +364,10 @@ The four situations this produces:
 
 | Project active | Hat worn | Resolution order |
 |:-:|:-:|---|
-| no | no | shared → user |
-| yes | no | project → shared → user |
-| no | yes | **hat overlay** → shared → user |
-| yes | yes | **hat overlay** → project → shared → user |
+| no | no | shared → personal |
+| yes | no | project → shared → personal |
+| no | yes | **hat overlay** → shared → personal |
+| yes | yes | **hat overlay** → project → shared → personal |
 
 Further hat effects, independent of the overlay:
 
@@ -381,7 +381,7 @@ Further hat effects, independent of the overlay:
 
 Because a *deeper* scope wins (shared beats user, project beats shared), a copy
 you edit in a shallower scope can be silently invisible. `/skills` flags this:
-`web-extractor [shared, shadows user]` means a user-scope copy exists but the
+`web-extractor [shared, shadows personal]` means a personal copy exists but the
 shared one is being served.
 
 A worn hat shadows the same way, only harder: its copy of a skill wins over
@@ -447,12 +447,12 @@ Start the TUI with `--session <id>` to resume a session directly.
 
 Skills are instructions (plus optional scripts) the agent can load on demand.
 They resolve across scopes: project (when one is active), then shared
-(organisation), then your own user scope.
+(organisation), then your own personal scope.
 
 | Command | What it does |
 |---------|--------------|
-| `/skills` | List the skills available to you, with the scope each comes from. Copies in shallower scopes are flagged (`shadows user`), since edits there are invisible while a deeper copy exists. |
-| `/skill create <name> <description>` | Create a new skill (add `--user`, `--shared`, or `--project` to pick the scope). |
+| `/skills` | List the skills available to you, with the scope each comes from. Copies in shallower scopes are flagged (`shadows personal`), since edits there are invisible while a deeper copy exists. |
+| `/skill create <name> <description>` | Create a new skill (add `--personal`, `--shared`, or `--project` to pick the scope; `--user` still works). |
 | `/skill edit <name> [file]` | Edit a skill file in the built-in editor. On save you are asked which scope to save into when more than one is writable (Enter = the scope the file came from). |
 | `/skill download <name> [file]` | Download a skill (or one file) for local editing. |
 | `/skill upload <name> [file]` | Upload a skill (or one file); scope flags as above. |
@@ -476,10 +476,10 @@ They resolve across scopes: project (when one is active), then shared
 
 | Command | What it does |
 |---------|--------------|
-| `/memory [scope]` | List memories with ids (`user`, `shared`, or `project` for the active project's). |
+| `/memory [scope]` | List memories with ids (`personal`, `shared`, or `project` for the active project's). |
 | `/memory find <phrase>` | Search memories (your own + shared) by relevance. |
 | `/memory show <id>` | Show one memory (including the document it was taken from, if any). |
-| `/memory edit <id>` | Edit a memory's content (and, for `user`/`shared` memories, its slots) in a built-in text editor overlay. Project memories don't support slots — the editor omits the slots section for them. |
+| `/memory edit <id>` | Edit a memory's content (and, for personal/shared memories, its slots) in a built-in text editor overlay. Project memories don't support slots — the editor omits the slots section for them. |
 | `/memory del <id>…` | Delete one or more memories by id (shared ones if you're an admin). |
 | `/memory conflicts` | List flagged duplicate/conflicting memory pairs. |
 | `/memory resolve <id>` | Mark a conflict flag as resolved. |

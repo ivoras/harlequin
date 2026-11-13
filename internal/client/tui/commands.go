@@ -21,7 +21,7 @@ const helpText = `Commands:
   /clear                clear this session's messages (fresh context; keeps session, title, hat)
   /queue [del <n>|clear] messages typed while busy are queued; list/remove them
   /skills               list available skills
-  /skill create <name> <description>   create a new skill (scope: --user|--shared|--project)
+  /skill create <name> <description>   create a new skill (scope: --personal|--shared|--project)
   /skill edit <name> [file]            edit a skill file in the built-in editor
   /skill download <name> [file]        download a skill (or one file) for local editing
   /skill upload <name> [file]          upload a skill (or one file); scope flag as above
@@ -56,7 +56,7 @@ const helpText = `Commands:
   /config               list your per-user config
   /config set <k> <v>   set a config key (e.g. telegram.chat_id 12345)
   /config del <key>     delete a config key
-  /memory [scope]       list memories with ids (scope: user|shared)
+  /memory [scope]       list memories with ids (scope: personal|shared)
   /memory find <phrase> search memories (own + shared) by relevance
   /memory show <id>     show one memory
   /memory del <id>…     delete one or more memories by id (shared if admin)
@@ -1303,6 +1303,9 @@ func (m *Model) handleMemorySub(args []string) tea.Cmd {
 		}
 	default:
 		scope := args[0]
+		if scope == "personal" {
+			scope = "user" // the API's name for it
+		}
 		if scope == "project" {
 			pid := m.activeProjectID
 			if pid == 0 {
@@ -1317,7 +1320,7 @@ func (m *Model) handleMemorySub(args []string) tea.Cmd {
 			}
 		}
 		if scope != "user" && scope != "shared" {
-			return infoCmd("usage: /memory [user|shared|project|find|show|edit|del|conflicts|resolve]")
+			return infoCmd("usage: /memory [personal|shared|project|find|show|edit|del|conflicts|resolve]")
 		}
 		return func() tea.Msg {
 			mems, err := m.client.ListMemory(context.Background(), scope)
@@ -1386,7 +1389,7 @@ func renderMemoryLine(mem types.Memory, canManageShared bool) string {
 		deletable = " (deletable)"
 	}
 	line := fmt.Sprintf(" %s%-6s %s [%s/%s]%s %s %s",
-		pin, mem.ID, formatMemoryTime(mem.CreatedAt), mem.Scope, mem.Source, deletable,
+		pin, mem.ID, formatMemoryTime(mem.CreatedAt), displayScope(mem.Scope), mem.Source, deletable,
 		formatMemorySlotKeys(mem.Slots), mem.Content)
 	if mem.SourceDoc != "" {
 		line += " (from " + mem.SourceDoc + ")"
@@ -1426,7 +1429,7 @@ func formatMemoryTime(t time.Time) string {
 func renderMemoryDetail(mem types.Memory, canManageShared bool) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "Memory %s\n", mem.ID)
-	fmt.Fprintf(&sb, "  scope:   %s\n", mem.Scope)
+	fmt.Fprintf(&sb, "  scope:   %s\n", displayScope(mem.Scope))
 	fmt.Fprintf(&sb, "  source:  %s\n", mem.Source)
 	if mem.SourceDoc != "" {
 		fmt.Fprintf(&sb, "  from:    document %s\n", formatMemorySourceDoc(mem))
@@ -1471,14 +1474,23 @@ func renderMemoryConflicts(conflicts []types.MemoryConflict) string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-// skillScopeFlag extracts a --user/--shared/--project flag from args, returning
+// displayScope is a scope as users read it: the API's "user" is "personal".
+func displayScope(s string) string {
+	if s == "user" {
+		return "personal"
+	}
+	return s
+}
+
+// skillScopeFlag extracts a --personal/--shared/--project flag (--user and -u
+// remain accepted aliases) from args, returning
 // the remaining positional args and the scope ("" if unset).
 func skillScopeFlag(args []string) ([]string, string) {
 	var rest []string
 	scope := ""
 	for _, a := range args {
 		switch strings.ToLower(a) {
-		case "--user", "-u":
+		case "--personal", "--user", "-u":
 			scope = "user"
 		case "--shared", "-s":
 			scope = "shared"
@@ -1494,7 +1506,7 @@ func skillScopeFlag(args []string) ([]string, string) {
 func (m *Model) handleSkillSub(args []string) tea.Cmd {
 	args, scope := skillScopeFlag(args)
 	if len(args) < 1 {
-		return infoCmd("usage: /skill <create|edit|download|upload|del|diff> <name> [file] [--user|--shared|--project]")
+		return infoCmd("usage: /skill <create|edit|download|upload|del|diff> <name> [file] [--personal|--shared|--project]")
 	}
 	sub := strings.ToLower(args[0])
 	if len(args) < 2 {
@@ -1572,7 +1584,7 @@ func scopeLabel(scope string) string {
 	if scope == "" {
 		return ""
 	}
-	return " (" + scope + ")"
+	return " (" + displayScope(scope) + ")"
 }
 
 // skillDiff compares local files against the server's effective version.

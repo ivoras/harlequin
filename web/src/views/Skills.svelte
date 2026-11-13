@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { api } from "../lib/api";
   import { user, activeProject, wornHat, toast } from "../lib/stores";
+  import { scopeLabel } from "../lib/scope";
   import { hatOverlays, hatOverrideNote } from "../lib/hats";
   import { isElevated } from "../lib/types";
   import type { SkillInfo, SkillFiles } from "../lib/types";
@@ -12,7 +13,7 @@
   let editing = $state<{ name: string; path: string } | null>(null);
 
   // New-skill form. The scope pre-selects what the server would default to:
-  // the active project when one is set, else the user scope.
+  // the active project when one is set, else the personal scope.
   let newName = $state("");
   let newDesc = $state("");
   let newScope = $state("user");
@@ -94,7 +95,7 @@
         <input placeholder="name" bind:value={newName} />
         <input placeholder="description" bind:value={newDesc} style="flex:1; min-width:160px;" />
         <select bind:value={newScope}>
-          <option value="user">user</option>
+          <option value="user">personal</option>
           {#if $activeProject}<option value="project">project</option>{/if}
           {#if isElevated($user?.role)}<option value="shared">shared</option>{/if}
         </select>
@@ -106,9 +107,9 @@
       {#each skills as s}
         <div class="card col">
           <div class="row">
-            <strong>{s.name}</strong><span class="pill">{s.source}</span>
+            <strong>{s.name}</strong><span class="pill">{scopeLabel(s.source)}</span>
             {#if s.also_in?.length}
-              <span class="pill warn" title="A copy in {s.also_in.join(', ')} is shadowed by the {s.source} version — edits there are invisible.">shadows {s.also_in.join(", ")}</span>
+              <span class="pill warn" title="A copy in {s.also_in.map(scopeLabel).join(', ')} is shadowed by the {scopeLabel(s.source)} version — edits there are invisible.">shadows {s.also_in.map(scopeLabel).join(", ")}</span>
             {/if}
             {#if overlays.includes(s.name)}
               <span class="pill warn" title={hatOverrideNote($wornHat)}>overridden by hat {$wornHat}</span>
@@ -119,7 +120,7 @@
           </div>
           <div class="muted small">{s.description}</div>
           <div class="row small" style="gap:6px;">
-            <button onclick={() => reset(s.name, s.source)}>Delete ({s.source})</button>
+            <button onclick={() => reset(s.name, s.source)}>Delete ({scopeLabel(s.source)})</button>
             {#if isElevated($user?.role)}<button onclick={() => publish(s.name)}>Publish (org)</button>{/if}
           </div>
         </div>
@@ -133,7 +134,7 @@
   <div class="scrim" role="presentation" onclick={() => (open = null)}></div>
   <aside class="sheet bottom">
     <header>
-      <strong>{open.name}</strong><span class="pill">{open.scope}</span>
+      <strong>{open.name}</strong><span class="pill">{scopeLabel(open.scope ?? "")}</span>
       <span class="spacer"></span>
       <button class="ghost" onclick={() => (open = null)}>Close</button>
     </header>

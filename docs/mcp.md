@@ -34,7 +34,7 @@ undecryptable (re-register affected servers). Without a key, only auth-less
 
 - **shared** — org-wide, admin-only. Visible to every user. A `header` credential
   is an org-wide service credential. Lives in `shared.db`.
-- **user** — per-user. Only the owning user sees it. Lives in that user's `user.db`.
+- **personal** (`user` in the API) — per-user. Only the owning user sees it. Lives in that user's `user.db`.
 
 OAuth tokens are **always per-user**, even for a shared server: the admin
 registers the server once, then each user authorizes individually.

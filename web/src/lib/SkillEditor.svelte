@@ -4,6 +4,7 @@
   import { toast, user, activeProject, wornHat } from "./stores";
   import { isElevated } from "./types";
   import { hatOverlays, hatOverrideNote } from "./hats";
+  import { scopeLabel } from "./scope";
 
   // A small text editor: line-number gutter, active-line highlight, and the
   // usual textarea editing operations. Loads one skill file and saves it back
@@ -24,7 +25,7 @@
   let content = $state("");
   let scope = $state("user"); // save target; defaults to the resolved scope once loaded
   let fromScope = $state("");
-  // Scopes this user may save into: user always, shared when elevated,
+  // Scopes this user may save into: personal always, shared when elevated,
   // project when one is active. The select asks explicitly — a save into a
   // scope shadowed by a deeper one would otherwise be silently invisible.
   let writable = $derived([
@@ -116,7 +117,7 @@
       <label class="small muted">save to
         <select bind:value={scope}>
           {#each writable as w}
-            <option value={w}>{w}{w === fromScope ? " (resolved)" : ""}</option>
+            <option value={w}>{scopeLabel(w)}{w === fromScope ? " (resolved)" : ""}</option>
           {/each}
         </select>
       </label>
