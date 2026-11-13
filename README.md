@@ -9,7 +9,7 @@ Harlequin is an AI harness for boring office work. It does not aim to land on th
 * Lets IT manage their computer
 * Just tries to get on with their lives
 
-Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a full harness on user's machine, users are running light-weight clients that connect to the server, which does all the work. The server can be self-hosted, or you can try the official public server. The server is user-aware, has acces roles, differentiates between user-specific data, shared (e.g. company-wide) data, and per-project data. It has "sytem admins can perform memory surgery" as a first-class feature. It can reach out to do web search, document analysis and synthesis, and has a proactive memory system. All this is also available with small LLMs, because the author believes that (currently) most useful AI systems are ones with smart toolings and verbose skills, rather than those that stuff all data into huge contexts and just say "go do stuff" as a prompt. It doesn't use, or care about your local CLI tools, instead favouring server-side reproducibility and security isolation. Harlequin is not a coding agent harmness, and doesn't try to be omnipotent. It's not aiming for AGI, it's aiming to be the Ship Computer from Star Trek.
+Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a full harness on the user's machine, users run lightweight clients that connect to the server, which does all the work. The server can be self-hosted, or you can try the official public server. The server is user-aware, has access roles, differentiates between user-specific data, shared (e.g. company-wide) data, and per-project data. It has "system admins can perform memory surgery" as a first-class feature. It can reach out to do web search, document analysis and synthesis, and has a proactive memory system. All this is also available with small LLMs, because the author believes that (currently) most useful AI systems are ones with smart tooling and verbose skills, rather than those that stuff all data into huge contexts and just say "go do stuff" as a prompt. It doesn't use, or care about your local CLI tools, instead favouring server-side reproducibility and security isolation. Harlequin is not a coding agent harness, and doesn't try to be omnipotent. It's not aiming for AGI, it's aiming to be the Ship Computer from Star Trek.
 
 # How to install
 
@@ -19,39 +19,49 @@ The main part of Harlequin is `harlequin-server` and for now you'll have to buil
 - OpenRouter
 - OpenAI
 
-It's perfectly capable of playing nicely with specific requirements such as EU-based data retention rules, as long as you installed it on an EU server and connect to an EU-compliant LLM provider.
+It's perfectly capable of playing nicely with specific requirements such as EU-based data retention rules, as long as you install it on an EU server and connect it to an EU-compliant LLM provider.
 
 ## What it does
 
 - **Multi-user** — email-identified accounts, owner/admin/user roles, email-code
-  self-registration, per-user usage accounting, audit log. 
+  self-registration, per-user usage accounting, audit log. Owners manage
+  accounts, browse every project and search the audit log from the web UI's
+  Settings; owners/admins see server-wide LLM cost with a per-user breakdown.
 - **Server-side data** — everything lives server-side: personal (user) data,
   project data, and company-global data. Clients are thin clients, with no
   data storage, and *no local data access by default*.
 - **Server-side sessions** — chats live on the server and stream over WebSockets;
   disconnect mid-answer, reconnect from any client, and messages typed while the
-  agent is busy queue up. Sessions are auto-titled, exportable, and clearable. Users
-  see the same real-time LLM stream/chat when connected with multiple clients.
+  agent is busy queue up. Sessions are auto-titled, exportable, clearable, and can be
+  rewound to any earlier message. Users see the same real-time LLM stream/chat when
+  connected with multiple clients. Long conversations are compacted automatically
+  (old, large tool results are stubbed) to keep cost down.
 - **Layered memory** — personal / shared (org) / project [scopes](docs/SCOPES.md) with structured
   attribute *slots*, automatic conflict detection, and write-time rules that keep
   an attribute from living in two scopes at once. Harlequin data isn't just a big
-  bunch of MD files fed into RAG, there's an overlay of key-value pair with structured
+  bunch of MD files fed into RAG, there's an overlay of key-value pairs with structured
   naming (like `company.address`) to aid both machine-readability and user understanding.
-- **Documents (RAG)** — upload PDF / DOCX / text into any scope; hybrid FTS5 +
-  vector retrieval with inline, clickable citations. The shipped skils can
-  align two documents (`align_docs`) for version/topical comparison, verify
-  quoted claims against sources, and save its own reports as searchable,
-  citation-pinned documents rendered in the web UI. Clicking a citation opens the
-  document scrolled to the cited passage. The agent can also edit its saved text
-  documents in place (replace / diff / append / insert, with undo), edit Word
-  and Excel documents on request — uploaded `.docx`/`.xlsx` files are changed inside
-  the original file so their formatting and formulas are kept — produce downloadable
-  Excel workbooks from tables,
-  write new PDF documents (reports, letters, tables) typeset from Markdown or
-  HTML, cut, split and merge pages of existing PDFs, e-mail documents as
-  attachments, concatenate and copy documents server-side (see [docs/TOOLS.md](docs/TOOLS.md)),
-  and document lists in the web UI update live when documents are added,
-  edited or removed.
+  Memories are picked up automatically from chat turns and from uploaded documents
+  (a few lasting facts per document, kept in the document's own scope and linked to it).
+- **Documents (RAG)** — upload PDF, Word, Excel, PowerPoint, OpenDocument, RTF,
+  EPUB, text or images into any scope. Scanned PDFs are OCRed, and each document
+  gets a one-line description in the organisation's language.
+  - *Search and citations*: hybrid FTS5 + vector retrieval with inline, clickable
+    citations; clicking one opens the document scrolled to the cited passage.
+  - *Analysis*: the shipped skills align two documents (`align_docs`) for
+    version or topical comparison and verify quoted claims against their sources.
+  - *Reports*: the agent saves its reports as searchable documents with pinned
+    citations, rendered in the web UI.
+  - *Editing*: the agent edits documents in place on request (replace / diff /
+    append / insert, with one-step undo). Uploaded `.docx`/`.xlsx` files are
+    changed inside the original file, so their formatting and formulas are kept.
+  - *New files*: Excel workbooks from tables, and PDF and Word documents
+    (reports, letters, tables) typeset from Markdown or HTML.
+  - *PDF pages*: cut, split and merge pages of existing PDFs.
+  - *Sharing*: e-mail documents as attachments; copy and concatenate documents
+    server-side (see [docs/TOOLS.md](docs/TOOLS.md)).
+  - Document lists in the web UI update live when documents are added, edited
+    or removed.
 - **Projects** — shared workspaces (members, sessions, documents, memories, live
   chatroom). Search can span *all* projects a user belongs to, with
   project-qualified references (`p3.17`) that stay valid anywhere, or they can
@@ -63,22 +73,22 @@ It's perfectly capable of playing nicely with specific requirements such as EU-b
 - **LLM Tools** — WebFetch/WebFetchDOM/WebFetchGrep (page analysis, structural
   extraction, raw-HTML grep), MarkdownFetch (full, unsummarised URL or document → Markdown via
   Docling), file editing (`edit_file`, `edit_doc`), WebSearch (Brave Search API), sandboxed
-  JavaScript (`run_js`), calculator, cron scheduling, `send_email` (Markdown or a
+  JavaScript (`run_js`), an exact-decimal calculator (for money), cron scheduling, `send_email` (Markdown or a
   saved document, mailed as plain text + rendered HTML; needs `email.smtp_host`),
   and any MCP server the user registers.
 - **Automation** — per-user cron jobs (JS or agent-turn), background memory
   extraction, notifications delivered in-app, by email, or via Telegram.
 - **Two clients** — a terminal UI, and a web app with a desktop workspace layout
-  (sidebar, chat, side panel, command palette, drag-and-drop uploads, light/dark
-  themes) plus a touch-first mobile layout at `/m/`.
-- **JavaScript VM by default** - JS code executes in a sanboxed JS VM
-  directly on the server (no node.js dependancy), either called directly
+  (sidebar, chat, side panel, command palette, drag-and-drop uploads, unread
+  team-chat indicator, light/dark themes) plus a touch-first mobile layout at `/m/`.
+- **JavaScript VM by default** — JS code executes in a sandboxed JS VM
+  directly on the server (no Node.js dependency), either called directly
   by the user with the `run_js` tool, *or* as templated JS code
   [within skill files](https://raw.githubusercontent.com/ivoras/harlequin/refs/heads/master/skills/example-greeter/SKILL.md).
 
-## What it does not
+## What it does not do
 
-- **It's not a coding agent** - it doesn't operate on code repos.
+- **It's not a coding agent** — it doesn't operate on code repos.
 
 ## Tech
 
@@ -89,7 +99,7 @@ WebSocket, so a client can disconnect mid-turn and reconnect later to resume. A 
 Tea **TUI client** and a **web UI** (desktop layout at `/`, mobile layout at `/m/`) talk to it. Multi-user, organisation-aware. All
 harness data stored in SQLite database files, not as scattered markdown file trees.
 
-See [AGENTS.md](AGENTS.md) for a thousand-mile architecture overview, and
+See [AGENTS.md](AGENTS.md) for a high-level architecture overview, and
 [docs/user_guide.md](docs/user_guide.md) for day-to-day usage.
 
 ## Build prerequisites
@@ -105,10 +115,14 @@ under `third_party/sqlite/` (aligned with the `go-sqlite3` embedded engine). The
 Makefile sets `CGO_CFLAGS=-Ithird_party/sqlite/include` automatically.
 
 ```sh
-make build          # builds both binaries into ./bin (CGO_ENABLED=1 -tags sqlite_fts5)
+make build          # builds the web UI and both binaries into ./bin (CGO_ENABLED=1 -tags sqlite_fts5)
 make build-server
 make build-client
 ```
+
+`make build` also builds the web UI (needs Node 20+) and embeds it in the server
+binary; `make build-server` alone embeds whatever is in `web/dist` (nothing, on a
+fresh checkout).
 
 To refresh vendored headers after upgrading `github.com/mattn/go-sqlite3`:
 
@@ -134,7 +148,7 @@ Both binaries read a YAML config file plus a `.env` file. YAML holds non-secret 
 - Client: copy `configs/client.example.yaml`. Client config lives at
   `~/.config/harlequin/client.yaml` by default.
 
-#### Models: suites, fallback, outages
+### Models: suites, fallback, outages
 
 `server.yaml` defines the models in `model_suites` and selects one with `model_suite`
 (required). A suite names the three roles: **chat** (drives the conversation), **aux**
@@ -163,7 +177,7 @@ See [docs/embedders_comparison.md](docs/embedders_comparison.md) for measured
 retrieval quality of local vs hosted embedding models (including a
 Croatian↔English cross-lingual check).
 
-#### Server `.env` secrets
+### Server `.env` secrets
 
 The server loads `.env` from the working directory on startup (via `godotenv`). At minimum
 you must set:
@@ -189,7 +203,7 @@ Optional:
 | `ZYTE_API_KEY` | Zyte API: fallback for `WebFetch` on bot-protected sites, and the fetcher `MarkdownFetch` uses for web pages |
 | `TELEGRAM_BOT_TOKEN` | Outbound Telegram notification delivery |
 | `SMTP_PASSWORD` | SMTP auth for registration-code emails (see Self-registration) |
-| `HARLEQUIN_SECRET_KEY` | 32-byte base64 AES key encrypting MCP credentials at rest |
+| `HARLEQUIN_SECRET_KEY` | 32-byte AES key (hex or base64) encrypting MCP credentials at rest; see [docs/mcp.md](docs/mcp.md) |
 
 Local llama.cpp / embedding servers usually need no API keys — leave those variables empty.
 Never commit `.env`; only `.env.example` belongs in git.
@@ -224,17 +238,33 @@ plain user), or — once a server is running — as an owner from **Settings →
 in the desktop web UI (create, change role, reset password, delete). What each
 role may write per scope is in [docs/SCOPES.md](docs/SCOPES.md#roles).
 
-#### Scopes
-
-Memories, documents and skills live in a **personal**, **shared**
-(organisation) or **project** scope. How they're stored, searched, written and
-overlaid by hats is described in [docs/SCOPES.md](docs/SCOPES.md).
+#### Passwords and other server commands
 
 Change a user's password (revokes their existing API tokens):
 
 ```sh
 ./bin/harlequin-server changepassword alice@example.com --config server.yaml --password newsecret
 ```
+
+Users can also change their own password in the desktop web UI (**Settings → Login**).
+
+Other subcommands (`./bin/harlequin-server help` lists them all; a subcommand
+must come before any flags):
+
+| Subcommand | Purpose |
+|------------|---------|
+| `listusers` | List accounts |
+| `deleteuser <email>` | Delete an account |
+| `reindex-vectors` | Rebuild vector tables after changing the embedding model |
+| `rederive-doc-memories [--dry-run] [--delete-auto-shared]` | Re-run document → memory extraction over existing documents |
+| `backfill-slot-keys` | Re-embed every memory slot key (one-time upgrade step) |
+| `print-trajectory <file.jsonl>` | Pretty-print a session log |
+
+#### Scopes
+
+Memories, documents and skills live in a **personal**, **shared**
+(organisation) or **project** scope. How they're stored, searched, written and
+overlaid by hats is described in [docs/SCOPES.md](docs/SCOPES.md).
 
 #### Running as a systemd service
 
@@ -302,7 +332,8 @@ to the requesting user, limited to 20 messages per user per hour.
 ```
 
 On first run the TUI prompts for the server URL and your credentials, then stores the issued
-API token in the client config.
+API token in the client config. `--session <id>` resumes an existing session instead of
+starting a new one.
 
 The TUI client uses truecolor RGB when available (`COLORTERM=truecolor` or equivalent);
 older terminals get automatic downgrades to 256-color or 16-color via Lip Gloss and Bubble Tea.
@@ -353,7 +384,10 @@ other, and an explicit choice is remembered per browser. Both keep the session a
 project in the URL (`?s=<session>&p=<project>`), so a link opens the same session in
 either layout.
 
-Build it, then have the server serve it at `/` (same origin as the API — no CORS):
+`make build` embeds the built UI in the server binary, which then serves it at `/`
+(same origin as the API — no CORS) with nothing to configure. To serve it from disk
+instead — handy in development, where `make web-build` alone then updates the UI
+without recompiling the server — set `web.dir`:
 
 ```sh
 make web-build                       # -> web/dist (needs Node 20+)
@@ -368,10 +402,13 @@ server:
 
 Set `server.org_name` (default `Unnamed`) to show your organisation's name next to the
 brand in the web UI and on the login screen.
-`server.org_language` (an ISO 639 code such as `hr`; default `en`) is the organisation's main language.
+`server.org_language` (an ISO 639 code such as `hr`; default `en`) is the organisation's
+main language: the one-line descriptions the server writes for uploaded documents are in it.
+`server.org_description` is a short description of the organisation, given to the vision
+model as context when it OCRs scanned PDFs.
 
-Now `http://<host>:<addr>/` serves the app and `…/api/v1/…` the API. Leave `web.dir`
-empty to disable serving.
+Now `http://<host>:<addr>/` serves the app and `…/api/v1/…` the API. With `web.dir`
+empty the embedded UI is served (none, if the binary was built without one).
 
 **Development:** `make web-dev` runs Vite with hot reload (desktop at
 `http://localhost:5173/`, mobile at `…/m/`); it proxies `/api` to the server (set
@@ -432,7 +469,7 @@ server {
 For TLS (`wss://`), terminate HTTPS on the same `server` block (the SPA uses the
 page's scheme, so an `https://` page automatically opens `wss://`); `proxy_pass`
 still targets the plaintext local server. With nginx serving the static files,
-leave the server's `web.dir` empty.
+the server's own copy of the UI is simply never requested.
 
 ## Layout
 
@@ -459,15 +496,22 @@ third_party/sqlite     vendored sqlite3.h (compile-time; see third_party/sqlite/
   content. A background task deletes them — along with transient per-user tmp dumps — older than
   `data_retention_days` (default **7**; set **0** to keep forever) every hour. Configure redaction
   in the `sessions:` config block.
+- Logins, user management, new and cleared sessions, document uploads, memory writes and
+  deletes, and skill, hat and project changes are written to an audit log; owners search it
+  in **Settings → Audit**.
+- To power invite autocomplete, any signed-in user can list all account emails via the user
+  directory endpoint — set `auth.user_directory: false` if org addresses should not be
+  enumerable.
 
 
 # Running with llama.cpp local models
 
-These are just example command lines for starting the LLM server and the embeddings server.
-
 `scripts/llm_for_harlequin.py` launches and monitors the three llama.cpp servers Harlequin uses (chat, a tiny auxiliary model for delegate work like WebFetch analysis, and the embedding model), auto-restarting any that crash. It prints a live terminal dashboard with per-server status, memory usage, and token throughput sparklines, and lets you pause refresh or restart individual servers with a keypress.
 
 ![llm_for_harlequin.py dashboard](docs/llm_for_harlequin.png)
+
+To start the servers by hand instead, these are example command lines for the chat model
+and the embedding model:
 
 ```sh
 llama-server -m Qwen3.6-35B-A3B-IQ4_XS-3.53bpw.gguf --port 2234 --host 0.0.0.0 --metrics -c 120000 --timeout 3600 -ctk q8_0 -ctv q8_0 --kv-unified --batch-size 4096 -np 2 --presence-penalty 0.5 --repeat-penalty 1.05 --temperature 0.6 --min_p 0.05 --top_p 0.95 --reasoning-budget 3000 --chat-template-kwargs '{"preserve_thinking": true}' --spec-type ngram-mod --spec-ngram-mod-n-match 24 --spec-ngram-mod-n-min 48 --spec-ngram-mod-n-max 64
@@ -476,13 +520,6 @@ llama-server -m Qwen3.6-35B-A3B-IQ4_XS-3.53bpw.gguf --port 2234 --host 0.0.0.0 -
 ```sh
 llama-server -m granite-embedding-311M-multilingual-r2-Q8_0.gguf --embeddings -c 768 --port 2235
 ```
-
-# Security considerations
-
-To power invite autocomplete, any signed-in user can list all account emails via the
-user directory endpoint — set `auth.user_directory: false` if org addresses
-should not be enumerable.
-
 
 # Word document creation (optional)
 
@@ -497,7 +534,7 @@ requirements as PDF creation below apply.
 
 # PDF creation (optional)
 
-The agent's `create_pdf` tool typesets Markdown into a PDF with headless Chrome.
+The agent's `create_pdf` tool typesets Markdown or HTML into a PDF with headless Chrome.
 It needs two programs on the server:
 
 - **bubblewrap** (`bwrap`; `apt install bubblewrap`) — Chrome is only ever run

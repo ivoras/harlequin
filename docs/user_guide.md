@@ -31,7 +31,10 @@ typing to filter it, and pick a command with the arrow keys and Enter.
 | `/queue` | List messages you typed while the agent was busy (they are queued, not lost). |
 | `/queue del <n>` / `/queue clear` | Remove one queued message / all of them. |
 | `/export [raw]` | Save the transcript to `session_YYYYMMDD_HHMM.md` in the current directory. Plain form keeps User+Assistant messages; `raw` includes thinking and tool calls. |
+| `/context` | Show what fills the context window (system prompt, skills, messages, tool results) and the session's LLM cost so far. |
 | `/quit` (or `/exit`) | Leave the TUI. The session keeps living on the server. |
+
+Start the TUI with `--session <id>` to resume a session directly.
 
 ### Skills and hats
 
@@ -48,7 +51,7 @@ They resolve across scopes: project (when one is active), then shared
 | `/skill upload <name> [file]` | Upload a skill (or one file); scope flags as above. |
 | `/skill del <name>` | Delete the skill from a scope (scope flags as above). |
 | `/skill diff <name>` | Show local edits vs the server version. |
-| `/hat` | List hats. A hat is an org-defined set of specialised skills that overlay normal resolution (see the next section), plus an optional system prompt. |
+| `/hat` | List hats. A hat is an org-defined set of specialised skills that overlay normal resolution (see [How skills resolve](#how-skills-resolve-scopes-projects-hats)), plus an optional system prompt. |
 | `/hat show <name>` | Show a hat's details: its visible-skills list and the skills it overlays. |
 | `/hat wear <name>` | Wear a hat in this session. |
 | `/hat off` | Remove the hat (back to the default prompt and skill set). |
@@ -68,17 +71,60 @@ They resolve across scopes: project (when one is active), then shared
 |---------|--------------|
 | `/memory [scope]` | List memories with ids (`user`, `shared`, or `project` for the active project's). |
 | `/memory find <phrase>` | Search memories (your own + shared) by relevance. |
-| `/memory show <id>` | Show one memory. |
+| `/memory show <id>` | Show one memory (including the document it was taken from, if any). |
 | `/memory edit <id>` | Edit a memory's content (and, for `user`/`shared` memories, its slots) in a built-in text editor overlay. Project memories don't support slots — the editor omits the slots section for them. |
 | `/memory del <id>…` | Delete one or more memories by id (shared ones if you're an admin). |
 | `/memory conflicts` | List flagged duplicate/conflicting memory pairs. |
 | `/memory resolve <id>` | Mark a conflict flag as resolved. |
 | `/docs search <query>` | Search documents (personal + shared, + project if active). |
 | `/docs list` | List documents across scopes, each shown under its reference id (`u.2`, `s.5`, `p3.19`) — the same form `/docs view`, `/docs del`, and chat references accept. Project ids are qualified (`p<projectID>.<id>`) so a document stays unambiguous outside the context of "the active project". |
-| `/docs add [scope] <path>` | Upload a `.txt`/`.md`/`.html`/`.pdf`/`.docx`/`.doc`/`.pptx`/`.ppt`/`.xlsx`/`.xls`/`.ods`/`.odt`/`.rtf`/`.epub`/images (`.png`/`.jpg`/`.gif`/`.webp`) for retrieval (same as `/upload`). |
+| `/docs add [scope] <path>` | Upload a document; the same as `/upload` below. |
+| `/docs view <ref> [text\|file]` | Show a document's text, or with `file` save the original (PDF, DOCX) to a temporary file to open in your own viewer (e.g. `/docs view p3.19 file`; the long form `<scope> <id>` also works). |
 | `/docs del <ref>` | Delete a document by its reference (e.g. `/docs del p3.19`; the long form `<scope> <id>` still works). |
-| `/upload [scope] <path>` | Upload a document (`.txt`/`.md`/`.html`/`.pdf`/`.docx`/`.doc`/`.pptx`/`.ppt`/`.xlsx`/`.xls`/`.ods`/`.odt`/`.rtf`/`.epub`/images (`.png`/`.jpg`/`.gif`/`.webp`)) into `personal`, `shared`, or `project` scope (defaults to the active project, else personal). Ingestion runs server-side with a live status line (stage, percent, elapsed) — in the browser too. |
+| `/upload [scope] <path>` | Upload a document into `personal`, `shared`, or `project` scope (defaults to the active project, else personal). Accepted: `.txt`, `.md`, `.html`, `.pdf`, `.docx`, `.doc`, `.pptx`, `.ppt`, `.xlsx`, `.xls`, `.ods`, `.odt`, `.rtf`, `.epub`, and images (`.png`, `.jpg`, `.gif`, `.webp`). Ingestion runs server-side with a live status line (stage, percent, elapsed) — in the browser too. |
 | `/attach <path>` | Upload a document or image (same formats as `/upload`, to the active project else your personal files) and attach it to your **next message**: once ingested it is listed at the end of that message as `@"u.18/report.pdf"`, and the agent reads it (images are shown to vision models directly). Repeat for several files; `/attach` alone lists what is pending, `/attach clear` drops it. Sending waits for uploads to finish. |
+
+### Projects
+
+| Command | What it does |
+|---------|--------------|
+| `/project` | Manage projects: `list`, `new`, `switch`, `invites`, `accept <id>`, `decline <id>`, `invite <email>`, `remove <email>` (remove a member from the active project; creator or owner/admin only), `members`, `sessions` (list the active project's sessions), `assign <id-or-name>` (move the current **personal** session, with its history, into that project; run it from your personal workspace), `leave`, `depart`, `delete` (permanently delete a project, creator/admin only; needs `--yes`). |
+| `/say <message>` | Post a message to the active project's chatroom. |
+
+See the [Projects](#projects-1) chapter below for the full workflow.
+
+### Automation and integrations
+
+| Command | What it does |
+|---------|--------------|
+| `/cron` | List scheduled jobs. |
+| `/cron show <id>` | Show a job, including its last run output. |
+| `/cron add "<name>" "<spec>" js "<target>" ["<input-json>"]` | Schedule a JavaScript job. |
+| `/cron add "<name>" "<spec>" skill "<skill\|->" "<prompt>"` | Schedule a skill/prompt job. |
+| `/cron on\|off <id>` | Enable / disable a job. |
+| `/cron run <id>` | Run a job immediately. |
+| `/cron del <id>` | Delete a job. |
+| `/mcp` | List MCP servers (organisation + your personal ones) with status. |
+| `/mcp show <s/name>` | Show one server (`s` is the scope: `organisation` or `personal`; the older `shared`/`user` still work). |
+| `/mcp add <s/name> <url> [header Name:"Value" … \| oauth]` | Register an MCP server. |
+| `/mcp test <s/name>` | Connect and list the server's tools. |
+| `/mcp auth <s/name>` | Authorize an OAuth MCP server (prints a URL to open). |
+| `/mcp del <s/name>` | Remove an MCP server. |
+| `/config` | List your per-user config (small key/value settings). |
+| `/config set <k> <v>` | Set a key, e.g. `/config set telegram.chat_id 12345`. |
+| `/config del <key>` | Delete a key. |
+
+### Alerts, usage, misc
+
+| Command | What it does |
+|---------|--------------|
+| `/dismiss [n …\|all]` | Dismiss alert(s) shown above the transcript, by number or all. |
+| `/run <n>` | Run the prompt carried by alert *n*. |
+| `/alert <message>` | (owner/admin) Broadcast an alert to all users. |
+| `/usage` | Show your token/cost usage. |
+| `/help` | Show the built-in command summary. |
+
+## Working with documents and memory
 
 In the browser, the Memory view lets you edit a memory's content and (for
 `user`/`shared` scope) its slots inline, alongside delete; project memories
@@ -87,9 +133,18 @@ does the same for uploads: upload or paste text, with a scope picker (personal
 by default; owners/admins can ingest into the shared, org-wide corpus).
 Document listings show each document's type (PDF, DOCX, MD, TXT) and its
 reference id (`u.2`, `s.5`, `p3.19`) alongside its scope, in both the
-Documents view and a project's Documents tab in the Projects view.
+Documents view and a project's Documents tab in the Projects view. Each
+uploaded document also gets a one-line description, written automatically in
+your organisation's language and shown under its name; it helps the agent find
+"the new supplier contract" without you giving an id.
 
-#### Reports and citations
+**Memories from documents and chat.** The agent keeps lasting facts on its own:
+what you state or decide in a chat, and a handful of facts (who the parties
+are, standing agreements, roles) from each uploaded document. A fact taken from
+a document is stored in that document's scope — personal, shared, or its
+project — and shows a link to the document in the Memory view and `/memory`.
+
+### Reports and citations
 
 When you ask the agent to produce a report or comparison worth keeping, it
 saves it as a document (`saved as p.21`) — searchable later like anything else.
@@ -103,7 +158,7 @@ documents in a rendered side panel with buttons to view the raw file or
 download the original. Citations inside a rendered report are clickable too,
 so you can follow a report's sources without leaving it.
 
-#### Excel files
+### Excel files
 
 Ask for a spreadsheet ("make an Excel file of these prices", "export this table
 to Excel") and the agent creates a downloadable `.xlsx` in the same place a
@@ -114,7 +169,17 @@ spreadsheet you uploaded, see "Changing a document" below: it is edited in place
 and keeps its formatting; ask for a *new* workbook if you want the original left
 unchanged.
 
-#### Changing a document
+### PDF and Word files
+
+Ask for "a PDF of this report" or "a Word version of that letter" and the agent
+typesets a new `.pdf` or `.docx`, saved where a report would go and
+downloadable from the file list. It can also cut, split and merge the pages of
+PDFs you already have ("pages 3–5 of the contract as a separate PDF", "merge
+these two into one") and e-mail documents as attachments. These depend on the
+server's setup: if PDF or Word creation or e-mail isn't configured, the agent
+says so.
+
+### Changing a document
 
 Ask the agent to change a document that already exists and it edits it **in
 place**, keeping the same document: "in the contract, change the notice period
@@ -134,7 +199,7 @@ you uploaded, and on PDF, Word and Excel files the agent made for you earlier.
 - **The last change can be undone**: say "undo that". Only one step back is kept;
   the next edit replaces it.
 
-### The web app
+## The web app
 
 The browser app comes in two layouts over the same account and data:
 
@@ -170,33 +235,53 @@ files), shown as a chip, and listed at the end of the sent message as
 uploads to finish. Dropping files on the chat attaches them the same way.
 **Images** are shown to the model directly when the chat model supports vision
 (`vision:` on the model in `model_suites`; default on for hosted models, off
-for `local: true` ones). After each turn a context meter (tokens used / context window, model); click it for
-the full context breakdown.
+for `local: true` ones).
 
-The **side panel** on the right (toggle with the header's panel button) has
-up to three tabs: **Team chat** (the project chatroom, while a project is
-active), **Document** (opens whenever you click a citation, a document
-reference, or a file — text and reports render there; PDFs and DOCX open in a
-new browser tab), and **Session** (session details and the context-usage
-breakdown, including the session's LLM cost so far — the provider's reported
-cost where available, otherwise estimated from configured prices, marked ≈;
-it covers every LLM call made for the session, including web-page
-analysis, automatic memory extraction and titling; a project session's cost
-covers every member's turns). The TUI's `/context`
-shows the same. Drag its left edge to resize it.
+The top bar shows a count of unread
+team-chat messages across your projects; click it for the list and jump to a
+project's chat. After each turn a context meter shows the
+tokens used, the context window and the model; click it for the full context
+breakdown.
 
-**Settings** (account menu, or `Ctrl/⌘+,`) holds General (account, theme,
-mobile switch, and for owners/admins a broadcast alert), Users (owners only:
-add accounts, change roles, reset passwords, delete accounts; when the server
-can send e-mail, a checkbox e-mails a new or reset password straight to the
-user), Hats, MCP
-servers, Config and Usage (your LLM cost as three bar charts — per day for
-the last 90 days, per week for the last year, and per month since your first
-recorded use; each scrolls sideways and starts at the most recent bar; hover a
-bar for its cost, calls and tokens; above them, how many sessions have a
-client connected right now — across all users for owners/admins, your own
-otherwise). The server always keeps at least one owner, and you
-can't delete your own account there.
+The **side panel** on the right (toggle with the header's panel button; drag
+its left edge to resize it) has up to three tabs:
+
+- **Team chat** — the project chatroom, while a project is active.
+- **Document** — opens whenever you click a citation, a document reference, or
+  a file. Text and reports render there; PDFs and DOCX open in a new browser
+  tab.
+- **Session** — session details and the context-usage breakdown, including the
+  session's LLM cost so far (the TUI's `/context` shows the same). The cost is
+  the provider's reported figure where available, otherwise an estimate from
+  configured prices, marked ≈. It covers every LLM call made for the session,
+  including web-page analysis, automatic memory extraction and titling; a
+  project session's cost covers every member's turns.
+
+**Settings** (account menu, or `Ctrl/⌘+,`) has these tabs:
+
+- **General** — account, theme, mobile switch, and for owners/admins a
+  broadcast alert.
+- **Login** — change your password. You confirm the current one, and are
+  signed out everywhere else.
+- **Users** (owners only) — add accounts, change roles, reset passwords,
+  delete accounts. When the server can send e-mail, a checkbox e-mails a new or
+  reset password straight to the user. The server always keeps at least one
+  owner, and you can't delete your own account.
+- **Hats** — view hats and what they overlay; owners/admins create and edit
+  them.
+- **MCP servers** — register external tool servers (see **MCP tools** below).
+- **All projects** (owners only) — every project on the server with its
+  members and files; join one, or add and remove members.
+- **Config** — your small per-user settings (the TUI's `/config`).
+- **Usage** — LLM cost as three bar charts: per day for the last 30 days, per
+  week for the last year, and per month since the first recorded use. Hover a
+  bar for its cost, calls and tokens. Above the charts is the number of
+  sessions with a client connected right now. Owners/admins see the whole
+  server's usage with a per-user breakdown of the last 30 days, and can switch
+  to just their own.
+- **Audit** (owners only) — search the audit log (logins, user changes, new
+  and cleared sessions, uploads, and memory, skill, hat and project changes),
+  filtered by period, action and user, with counts per action, user and day.
 
 **MCP tools.** External MCP (Model Context Protocol) servers add tools the
 assistant uses on its own whenever a task needs them. The left sidebar's
@@ -259,51 +344,10 @@ session for every member. Removed turns' effects outside the conversation
 
 ## Projects
 
-| Command | What it does |
-|---------|--------------|
-| `/project` | Manage projects: `list`, `new`, `switch`, `invites`, `accept <id>`, `decline <id>`, `invite <email>`, `remove <email>` (remove a member from the active project; creator or owner/admin only), `members`, `assign <id-or-name>` (move the current **personal** session, with its history, into that project; run it from your personal workspace), `leave`, `depart`, `delete` (permanently delete a project, creator/admin only; needs `--yes`). |
-| `/say <message>` | Post a message to the active project's chatroom. |
-
-See the [Projects](#projects-1) chapter below for the full workflow.
-
-### Automation and integrations
-
-| Command | What it does |
-|---------|--------------|
-| `/cron` | List scheduled jobs. |
-| `/cron show <id>` | Show a job, including its last run output. |
-| `/cron add "<name>" "<spec>" js "<target>" ["<input-json>"]` | Schedule a JavaScript job. |
-| `/cron add "<name>" "<spec>" skill "<skill\|->" "<prompt>"` | Schedule a skill/prompt job. |
-| `/cron on\|off <id>` | Enable / disable a job. |
-| `/cron run <id>` | Run a job immediately. |
-| `/cron del <id>` | Delete a job. |
-| `/mcp` | List MCP servers (organisation + your personal ones) with status. |
-| `/mcp show <s/name>` | Show one server (`s` is the scope: `organisation` or `personal`; the older `shared`/`user` still work). |
-| `/mcp add <s/name> <url> [header Name:"Value" … \| oauth]` | Register an MCP server. |
-| `/mcp test <s/name>` | Connect and list the server's tools. |
-| `/mcp auth <s/name>` | Authorize an OAuth MCP server (prints a URL to open). |
-| `/mcp del <s/name>` | Remove an MCP server. |
-| `/config` | List your per-user config (small key/value settings). |
-| `/config set <k> <v>` | Set a key, e.g. `/config set telegram.chat_id 12345`. |
-| `/config del <key>` | Delete a key. |
-
-### Alerts, usage, misc
-
-| Command | What it does |
-|---------|--------------|
-| `/dismiss [n …\|all]` | Dismiss alert(s) shown above the transcript, by number or all. |
-| `/run <n>` | Run the prompt carried by alert *n*. |
-| `/alert <message>` | (owner/admin) Broadcast an alert to all users. |
-| `/usage` | Show your token/cost usage. |
-| `/help` | Show the built-in command summary. |
-
-## Projects
-
-Each project
-is a shared workspace with documents, an AI chat session and a human chat session: its members see the same chat sessions with the agent
-(a project can hold several), the same document corpus and project memory, and
-a members-only chatroom — while everything outside the project (your personal
-sessions, documents, and memories) stays private to you.
+A project is a shared workspace. Its members see the same chat sessions with
+the agent (a project can hold several), the same documents and project memory,
+and a members-only chatroom. Everything outside the project — your personal
+sessions, documents, and memories — stays private to you.
 
 **Creating and switching.** Anyone can create a project. In the desktop web
 app, use the workspace switcher at the top of the sidebar to create one and
