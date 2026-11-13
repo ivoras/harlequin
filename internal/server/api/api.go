@@ -21,6 +21,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/docevents"
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/email"
+	"github.com/ivoras/harlequin/internal/server/llm"
 	"github.com/ivoras/harlequin/internal/server/mcp"
 	"github.com/ivoras/harlequin/internal/server/memory"
 	"github.com/ivoras/harlequin/internal/server/notify"
@@ -131,6 +132,7 @@ func (s *Server) Router() http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(s.Auth.Middleware)
 			r.Use(s.touchPresence)
+			r.Use(attributeRequest)
 
 			r.Post("/auth/logout", s.handleLogout)
 			r.Get("/me", s.handleMe)
@@ -348,4 +350,18 @@ func requireOwner(w http.ResponseWriter, r *http.Request) (*types.User, bool) {
 		return nil, false
 	}
 	return u, true
+}
+
+// attributeRequest charges LLM and embedding calls made while serving an
+// authenticated request (document search, memory edits, …) to the caller, unless
+// a handler already set a more specific attribution.
+func attributeRequest(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if u, ok := auth.UserFromContext(r.Context()); ok {
+			if _, has := llm.AttributionFrom(r.Context()); !has {
+				r = r.WithContext(llm.WithAttribution(r.Context(), llm.Attribution{UserID: u.ID}))
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }

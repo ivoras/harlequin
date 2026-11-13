@@ -1182,6 +1182,13 @@ func (s *Server) checkDocScope(ctx context.Context, u *types.User, scope string,
 // directory, and optionally reports embedding progress. A non-empty msg is a
 // client-facing error with its status.
 func (s *Server) ingestToScope(ctx context.Context, u *types.User, req types.CreateDocumentRequest, raw []byte, progress func(done, total int)) (*types.Document, int, string) {
+	// The embedding calls of the ingest are the uploader's spend (the async job's
+	// ctx has no request, hence no attribution of its own).
+	att := llm.Attribution{UserID: u.ID}
+	if req.Scope == documents.ScopeProject {
+		att.ProjectID = req.ProjectID
+	}
+	ctx = llm.WithAttribution(ctx, att)
 	// ingestAndStore ingests into a corpus, then persists the uploaded file under
 	// that scope's files/ directory with a 7-bit ASCII name (the original name is
 	// kept in the DB) and records the on-disk path.

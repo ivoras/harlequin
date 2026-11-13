@@ -28,6 +28,11 @@ type Embedder interface {
 	Dim() int
 }
 
+// UsageFunc is told about every successful embeddings request so the spend can
+// be accounted. cost is the provider-reported USD cost (nil if it sent none);
+// estimated says promptTokens was guessed because the response carried no usage.
+type UsageFunc func(ctx context.Context, model string, promptTokens int, cost *float64, estimated bool)
+
 // OpenAIEmbedder calls an OpenAI-compatible /embeddings endpoint.
 type OpenAIEmbedder struct {
 	baseURL     string
@@ -37,7 +42,11 @@ type OpenAIEmbedder struct {
 	queryPrefix string
 	docPrefix   string
 	client      *http.Client
+	onUsage     UsageFunc
 }
+
+// SetUsageFunc installs the usage recorder (optional; call before use).
+func (e *OpenAIEmbedder) SetUsageFunc(f UsageFunc) { e.onUsage = f }
 
 // New builds an embedder. queryPrefix/docPrefix are the model's prompt
 // conventions (e.g. snowflake-arctic wants "query: " on queries and nothing on
@@ -74,6 +83,11 @@ type embedResponse struct {
 		Embedding []float32 `json:"embedding"`
 		Index     int       `json:"index"`
 	} `json:"data"`
+	Usage *struct {
+		PromptTokens int      `json:"prompt_tokens"`
+		TotalTokens  int      `json:"total_tokens"`
+		Cost         *float64 `json:"cost"`
+	} `json:"usage"`
 }
 
 // Embed returns document embeddings (the document prefix is applied).
@@ -124,7 +138,7 @@ func (e *OpenAIEmbedder) embed(ctx context.Context, prefix string, inputs []stri
 	// with backoff: a large document makes dozens of sequential calls, and one
 	// blip must not discard the whole ingestion.
 	for attempt := 0; ; attempt++ {
-		out, retryAfter, err := e.post(ctx, body)
+		out, retryAfter, err := e.post(ctx, body, inputs)
 		if err == nil {
 			return out, nil
 		}
@@ -167,7 +181,7 @@ func transient(err error) bool {
 
 // post sends one embeddings request. On a non-200 response it returns a
 // *statusError (with any Retry-After hint).
-func (e *OpenAIEmbedder) post(ctx context.Context, body []byte) ([][]float32, time.Duration, error) {
+func (e *OpenAIEmbedder) post(ctx context.Context, body []byte, inputs []string) ([][]float32, time.Duration, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.baseURL+"/embeddings", bytes.NewReader(body))
 	if err != nil {
 		return nil, 0, err
@@ -199,5 +213,30 @@ func (e *OpenAIEmbedder) post(ctx context.Context, body []byte) ([][]float32, ti
 			out[d.Index] = d.Embedding
 		}
 	}
+	e.reportUsage(ctx, er, inputs)
 	return out, 0, nil
+}
+
+// reportUsage tells the recorder what a successful request consumed: the
+// provider's token count (and cost) when given, else a chars/4 estimate.
+func (e *OpenAIEmbedder) reportUsage(ctx context.Context, er embedResponse, inputs []string) {
+	if e.onUsage == nil {
+		return
+	}
+	var cost *float64
+	tokens, estimated := 0, false
+	if er.Usage != nil {
+		cost = er.Usage.Cost
+		tokens = er.Usage.PromptTokens
+		if tokens == 0 {
+			tokens = er.Usage.TotalTokens
+		}
+	}
+	if tokens == 0 {
+		estimated = true
+		for _, s := range inputs {
+			tokens += (len(s) + 3) / 4
+		}
+	}
+	e.onUsage(ctx, e.model, tokens, cost, estimated)
 }

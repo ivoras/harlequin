@@ -162,7 +162,7 @@ its left edge to resize it) has up to three tabs:
 - **All projects** (owners only) — every project on the server with its
   members and files; join one, or add and remove members.
 - **Config** — your small per-user settings (the TUI's `/config`).
-- **Usage** — LLM cost as three bar charts: per day for the last 30 days, per
+- **Usage** — LLM cost (completions and document/memory embeddings) as three bar charts: per day for the last 30 days, per
   week for the last year, and per month since the first recorded use. Hover a
   bar for its cost, calls and tokens. Above the charts is the number of
   sessions with a client connected right now. Owners/admins see the whole

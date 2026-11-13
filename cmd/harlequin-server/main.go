@@ -132,7 +132,8 @@ func main() {
 			log.Printf("context window: provider %q: /v1/models discovery failed (%v); set context_window in config", p.Name, err)
 		}
 	}
-	router := llm.NewRoutingProvider(providers, cfg.Routing.DefaultProvider, cfg.Routing.FallbackOrder, cfg.Routing.ModelRules, ctxWindows, recordUsage(store, usageStore))
+	recorder := recordUsage(store, usageStore)
+	router := llm.NewRoutingProvider(providers, cfg.Routing.DefaultProvider, cfg.Routing.FallbackOrder, cfg.Routing.ModelRules, ctxWindows, recorder)
 	router.SetFallbackModel(cfg.Routing.FallbackModel)
 	log.Printf("models: suite=%s default_provider=%s fallback_order=%v fallback_model=%q", cfg.ModelSuite, cfg.Routing.DefaultProvider, cfg.Routing.FallbackOrder, cfg.Routing.FallbackModel)
 	for _, p := range cfg.Providers {
@@ -141,6 +142,11 @@ func main() {
 	log.Printf("models: embeddings=%s (dim %d) web_fetch=%q", cfg.Embeddings.Model, cfg.Embeddings.Dim, cfg.Agent.WebFetch.Model)
 
 	embedder := embed.New(cfg.Embeddings.BaseURL, cfg.Embeddings.APIKey, cfg.Embeddings.Model, cfg.Embeddings.Dim, cfg.Embeddings.QueryPrefix, cfg.Embeddings.DocPrefix)
+	// Embeddings are billed like completions (prompt tokens only), so they go
+	// through the same recorder, attributed to whoever's request caused them.
+	embedder.SetUsageFunc(func(ctx context.Context, model string, tokens int, cost *float64, _ bool) {
+		recorder(ctx, "embed", model, llm.Usage{PromptTokens: tokens, TotalTokens: tokens, Cost: cost})
+	})
 
 	skillRunner := jsrun.New(jsrun.Options{
 		Timeout:        cfg.Agent.SkillRenderTimeout.D(),
