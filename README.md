@@ -1,12 +1,25 @@
 # Harlequin
 
-![Harlequin in action](docs/watchprice.gif)
+![Harlequin in action](docs/web_ui.png)
 
-This started the answer to the questions I had: why all AI agent harnesses seem to be "local"? How would a "proper" client-server agentic system look like, from the aspects of scalability and common operation expectations?
+Harlequin is an AI harness for boring office work. It does not aim to land on the Moon, solve cancer, or achieve sentience. The ideal Harlequin user is:
 
-It has now became a "second-brain" style AI harness for teams that deal with a lot of document analysis, such as legal, research and accounding.
+* Not a developer / programmer
+* Works with a lot of documents of different "normal" types - contracts, invoices, rules and regulations, that need to be cross-checked
+* Lets IT manage their computer
+* Just tries to get on with their lives
 
-Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a full harness on user's machine, users are running light-weight clients that connect to the server, which does all the work. The server can be self-hosted, or you can try the official public server. The server is user-aware, has acces roles, differentiates between user-specific data, shared (e.g. company-wide) data, and per-project data. It has "sytem admins can perform memory surgery" as a first-class feature. It can reach out to do web search, document analysis and synthesis, and has a proactive memory system. All this is available with small LLMs, because the author believes that (currently) most useful AI systems are ones with smart toolings and verbose skills, rather than those that stuff all data into huge contexts and just say "go do stuff" as a prompt. It doesn't use, or care about your local CLI tools, instead favouring server-side reproducibility and security isolation. Harlequin is not a coding agent harmness, and doesn't try to be omnipotent. It's not aiming for AGI, it's aiming to be the Ship Computer from Star Trek.
+Harlequin has a bit of an "enterprise"-y architecture. Instead of executing a full harness on user's machine, users are running light-weight clients that connect to the server, which does all the work. The server can be self-hosted, or you can try the official public server. The server is user-aware, has acces roles, differentiates between user-specific data, shared (e.g. company-wide) data, and per-project data. It has "sytem admins can perform memory surgery" as a first-class feature. It can reach out to do web search, document analysis and synthesis, and has a proactive memory system. All this is also available with small LLMs, because the author believes that (currently) most useful AI systems are ones with smart toolings and verbose skills, rather than those that stuff all data into huge contexts and just say "go do stuff" as a prompt. It doesn't use, or care about your local CLI tools, instead favouring server-side reproducibility and security isolation. Harlequin is not a coding agent harmness, and doesn't try to be omnipotent. It's not aiming for AGI, it's aiming to be the Ship Computer from Star Trek.
+
+# How to install
+
+The main part of Harlequin is `harlequin-server` and for now you'll have to build it yourself. You can point a coding agent at this readme file and it will probably do the right thing. To configure it, you'll need an OpenAI-compatible LLM provider, which could be a local model, or one of the many service providers out there. Harlequin has been tested with:
+
+- Opper
+- OpenRouter
+- OpenAI
+
+It's perfectly capable of playing nicely with specific requirements such as EU-based data retention rules, as long as you installed it on an EU server and connect to an EU-compliant LLM provider.
 
 ## What it does
 
