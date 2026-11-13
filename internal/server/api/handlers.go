@@ -688,6 +688,7 @@ func (s *Server) handleClearSession(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	projectID, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64)
+	var removed int64
 	var err error
 	if projectID > 0 {
 		if member, _ := s.Projects.IsMember(r.Context(), projectID, u.ID); !member {
@@ -695,20 +696,31 @@ func (s *Server) handleClearSession(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		err = s.Storage.WithProject(r.Context(), projectID, func(pdb *sql.DB) error {
-			return s.Sessions.ClearMessages(r.Context(), pdb, id)
+			var e error
+			removed, e = s.Sessions.ClearMessages(r.Context(), pdb, id)
+			return e
 		})
 	} else {
 		err = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
 			if _, e := s.Sessions.Get(r.Context(), udb, id, u.ID); e != nil {
 				return e
 			}
-			return s.Sessions.ClearMessages(r.Context(), udb, id)
+			var e error
+			removed, e = s.Sessions.ClearMessages(r.Context(), udb, id)
+			return e
 		})
 	}
 	if err != nil {
 		writeErr(w, http.StatusNotFound, "not found")
 		return
 	}
+	// Audit in the acting user's log for personal and project sessions alike
+	// (a clear is destructive and any project member may do it).
+	_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		s.Audit.Log(r.Context(), udb, "session_clear", fmt.Sprintf("session %d", id),
+			map[string]any{"project_id": projectID, "messages_removed": removed})
+		return nil
+	})
 	// Mark the clear in the trajectory log so a reader understands why the
 	// composed context shrinks from here on.
 	s.Session.Log(r.Context(), sessionlog.Event{

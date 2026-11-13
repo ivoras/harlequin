@@ -202,9 +202,13 @@ func (s *Store) Delete(ctx context.Context, db *sql.DB, id, userID int64) error 
 
 // ClearMessages deletes all of a session's messages (a "/clear": the session,
 // its title, and its hat survive; the next turn starts with a fresh context).
-func (s *Store) ClearMessages(ctx context.Context, db *sql.DB, sessionID int64) error {
-	_, err := db.ExecContext(ctx, `DELETE FROM messages WHERE session_id = ?`, sessionID)
-	return err
+func (s *Store) ClearMessages(ctx context.Context, db *sql.DB, sessionID int64) (int64, error) {
+	res, err := db.ExecContext(ctx, `DELETE FROM messages WHERE session_id = ?`, sessionID)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
 }
 
 // RewindToUserMessage deletes the session's n-th user message (1-based, in
