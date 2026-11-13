@@ -2,6 +2,7 @@
   import { get } from "svelte/store";
   import { session, user, toast, activeProject } from "../lib/stores";
   import { sc } from "../lib/session.svelte";
+  import HatPicker from "../lib/HatPicker.svelte";
   import { renderMarkdown } from "../lib/markdown";
   import { availableCommands } from "../lib/slash";
   import { Composer } from "../lib/composer.svelte";
@@ -139,6 +140,7 @@
       {/if}
       {#if sc.items.length === 0}
         <div class="muted" style="text-align:center; margin-top:18vh;">Start the session.</div>
+        <HatPicker />
       {/if}
     </div>
   </div>

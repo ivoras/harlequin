@@ -103,7 +103,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.resume {
 			cmds = append(cmds, m.loadHistoryCmd(msg.sessionID), m.loadSessionHatCmd(msg.sessionID))
 		} else {
-			cmds = append(cmds, m.openSessionCmd(), m.loadSessionHatCmd(msg.sessionID)) // a new session starts with the last worn hat
+			cmds = append(cmds, m.openSessionCmd(), m.loadSessionHatCmd(msg.sessionID), // a new session starts with the last worn hat
+				func() tea.Msg {
+					if h := m.hatHint(); h != "" {
+						return infoMsg{h}
+					}
+					return nil
+				})
 		}
 		return m, tea.Batch(cmds...)
 

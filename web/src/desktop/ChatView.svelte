@@ -6,6 +6,7 @@
   import { availableCommands } from "../lib/slash";
   import { Composer } from "../lib/composer.svelte";
   import AttachChips from "../lib/AttachChips.svelte";
+  import HatPicker from "../lib/HatPicker.svelte";
   import { onCiteHover, onCiteClick, onDocrefClick, onCodeCopy } from "../lib/docview.svelte";
   import { isElevated, type Hat } from "../lib/types";
   import Icon from "./Icon.svelte";
@@ -260,6 +261,7 @@
             {#if $activeProject}This session is shared with everyone in <b>{$activeProject.name}</b>.
             {:else}A personal session — only you can see it.{/if}
           </p>
+          <HatPicker />
           <div class="hints">
             <span><kbd>/</kbd> commands</span>
             <span><kbd>{MOD} K</kbd> search everything</span>

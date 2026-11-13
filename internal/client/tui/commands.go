@@ -154,10 +154,14 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 			m.sessTitle = ""
 			m.blocks = nil
 			m.appendConnectedStatus()
+			out := "started a new session"
 			if m.currentHat != "" {
-				return infoMsg{"started a new session wearing the " + m.currentHat + " hat"}
+				out += " wearing the " + m.currentHat + " hat"
 			}
-			return infoMsg{"started a new session"}
+			if hint := m.hatHint(); hint != "" {
+				out += "\n" + hint
+			}
+			return infoMsg{out}
 		}
 	case "/hat":
 		return m.handleHatSub(args)
@@ -700,6 +704,27 @@ func renderHatDetail(h types.Hat) string {
 		sb.WriteString("  prompt:      (default)")
 	}
 	return sb.String()
+}
+
+// hatHint is the one-line "hats: a, b — /hat wear <name>" tip shown on a new
+// empty session; "" when the server has no hats (or cannot be asked).
+func (m *Model) hatHint() string {
+	hats, err := m.client.ListHats(context.Background())
+	if err != nil {
+		return ""
+	}
+	return formatHatHint(hats)
+}
+
+func formatHatHint(hats []types.Hat) string {
+	if len(hats) == 0 {
+		return ""
+	}
+	names := make([]string, len(hats))
+	for i, h := range hats {
+		names[i] = h.Name
+	}
+	return "hats: " + strings.Join(names, ", ") + " — /hat wear <name>"
 }
 
 // handleQueueSub lists or edits the pending message queue (messages typed while
