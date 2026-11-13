@@ -63,7 +63,7 @@ It's perfectly capable of playing nicely with specific requirements such as EU-b
   - Document lists in the web UI update live when documents are added, edited
     or removed.
 - **Projects** — shared workspaces (members, sessions, documents, memories, live
-  chatroom). Search can span *all* projects a user belongs to, with
+  per-project chatroom). Search can span *all* projects a user belongs to, with
   project-qualified references (`p3.17`) that stay valid anywhere, or they can
   be limited to per-project only. See [docs/PROJECTS.md](docs/PROJECTS.md).
 - **Skills & hats** — reusable instruction/script bundles resolved across
