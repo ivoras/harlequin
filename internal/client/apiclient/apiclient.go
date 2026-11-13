@@ -199,14 +199,14 @@ func (c *Client) SaveHat(ctx context.Context, name string, files map[string]stri
 	return c.do(ctx, http.MethodPut, "/hats/"+url.PathEscape(name), types.HatFiles{Name: name, Files: files}, nil)
 }
 
-// DeleteHat removes a hat. Owner/admin only.
+// DeleteHat removes a hat (shared ones: owner/admin only).
 func (c *Client) DeleteHat(ctx context.Context, name string) error {
 	return c.do(ctx, http.MethodDelete, "/hats/"+url.PathEscape(name), nil, nil)
 }
 
-// CreateHat scaffolds a new hat. Owner/admin only.
-func (c *Client) CreateHat(ctx context.Context, name, description string) error {
-	return c.do(ctx, http.MethodPost, "/hats", types.CreateHatRequest{Name: name, Description: description}, nil)
+// CreateHat scaffolds a new hat; scope "shared" is owner/admin only.
+func (c *Client) CreateHat(ctx context.Context, name, description, scope string) error {
+	return c.do(ctx, http.MethodPost, "/hats", types.CreateHatRequest{Name: name, Description: description, Scope: scope}, nil)
 }
 
 // GetHatFiles returns a hat's raw files.

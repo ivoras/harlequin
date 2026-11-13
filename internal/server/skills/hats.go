@@ -22,8 +22,13 @@ const hatPromptFile = "system_prompt.md"
 // "skills/<skill>/<file>".
 const hatSkillPrefix = "skills/"
 
-// ErrHatNotFound is returned when the shared database has no such hat.
+// ErrHatNotFound is returned when no shared or personal hat has the name.
 var ErrHatNotFound = errors.New("hat not found")
+
+// ErrPersonalHatInProject is returned when a personal hat is put on a project
+// session: the session is shared and other members' turns cannot read the
+// wearer's user.db.
+var ErrPersonalHatInProject = errors.New("a personal hat can't be worn in a project session (other members can't read it); use a shared hat")
 
 // hatFrontmatter is the optional YAML header of a hat's system_prompt.md. The
 // skills list is the hat's visible-skill set (which skills are available while
@@ -76,10 +81,38 @@ func overlaySkillNames(files map[string]string) []string {
 	return names
 }
 
-// ListHats returns the hats in the shared database (one query: the hat rows
-// joined to their system_prompt.md, whose frontmatter carries the metadata).
-func (m *Manager) ListHats(ctx context.Context) ([]types.Hat, error) {
-	rows, err := m.shared.QueryContext(ctx,
+// ListHats returns every hat the user can wear: the shared ones plus their own
+// personal ones (userDB may be nil). A shared hat shadows a personal one of the
+// same name, so each name appears once.
+func (m *Manager) ListHats(ctx context.Context, userDB *sql.DB) ([]types.Hat, error) {
+	out, err := listHatsIn(ctx, m.shared, types.HatScopeShared)
+	if err != nil {
+		return nil, err
+	}
+	if userDB == nil {
+		return out, nil
+	}
+	mine, err := listHatsIn(ctx, userDB, types.HatScopePersonal)
+	if err != nil {
+		return nil, err
+	}
+	taken := map[string]bool{}
+	for _, h := range out {
+		taken[h.Name] = true
+	}
+	for _, h := range mine {
+		if !taken[h.Name] {
+			out = append(out, h)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// listHatsIn lists one database's hats (one query: the hat rows joined to their
+// system_prompt.md, whose frontmatter carries the metadata).
+func listHatsIn(ctx context.Context, db *sql.DB, scope string) ([]types.Hat, error) {
+	rows, err := db.QueryContext(ctx,
 		`SELECT h.name, COALESCE(f.content, '')
 		 FROM hats h LEFT JOIN hat_files f ON f.hat_name = h.name AND f.relpath = ?
 		 ORDER BY h.name`, hatPromptFile)
@@ -94,13 +127,15 @@ func (m *Manager) ListHats(ctx context.Context) ([]types.Hat, error) {
 		if err := rows.Scan(&name, &raw); err != nil {
 			return nil, err
 		}
-		out = append(out, hatFromPrompt(name, string(raw)))
+		h := hatFromPrompt(name, string(raw))
+		h.Scope = scope
+		out = append(out, h)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	// Attach each hat's overlay-skill names (one grouped query for all hats).
-	ov, err := m.shared.QueryContext(ctx,
+	ov, err := db.QueryContext(ctx,
 		`SELECT hat_name, relpath FROM hat_files WHERE relpath LIKE ?`, hatSkillPrefix+"%")
 	if err != nil {
 		return nil, err
@@ -126,10 +161,40 @@ func (m *Manager) ListHats(ctx context.Context) ([]types.Hat, error) {
 	return out, nil
 }
 
-// GetHat reads a hat from the shared database: its optional system-prompt body
-// and frontmatter (description + the skills it makes visible).
-func (m *Manager) GetHat(ctx context.Context, name string) (*types.Hat, error) {
-	files, err := readItemFiles(ctx, m.shared, hatTables, name)
+func hatExists(ctx context.Context, db *sql.DB, name string) (bool, error) {
+	if db == nil {
+		return false, nil
+	}
+	var n int
+	err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM hats WHERE name = ?`, name).Scan(&n)
+	return n > 0, err
+}
+
+// HatHome finds the database holding the named hat and its scope: shared first
+// (a shared hat shadows a personal one), then the user's own. ErrHatNotFound
+// when neither has it.
+func (m *Manager) HatHome(ctx context.Context, userDB *sql.DB, name string) (*sql.DB, string, error) {
+	if ok, err := hatExists(ctx, m.shared, name); err != nil {
+		return nil, "", err
+	} else if ok {
+		return m.shared, types.HatScopeShared, nil
+	}
+	if ok, err := hatExists(ctx, userDB, name); err != nil {
+		return nil, "", err
+	} else if ok {
+		return userDB, types.HatScopePersonal, nil
+	}
+	return nil, "", ErrHatNotFound
+}
+
+// GetHat reads a hat (shared, else the user's own): its optional system-prompt
+// body and frontmatter (description + the skills it makes visible).
+func (m *Manager) GetHat(ctx context.Context, userDB *sql.DB, name string) (*types.Hat, error) {
+	db, scope, err := m.HatHome(ctx, userDB, name)
+	if err != nil {
+		return nil, err
+	}
+	files, err := readItemFiles(ctx, db, hatTables, name)
 	if err != nil {
 		return nil, err
 	}
@@ -138,25 +203,35 @@ func (m *Manager) GetHat(ctx context.Context, name string) (*types.Hat, error) {
 	}
 	h := hatFromPrompt(name, files[hatPromptFile])
 	h.OverlaySkills = overlaySkillNames(files)
+	h.Scope = scope
 	return &h, nil
 }
 
-// SaveHat writes a hat (all its files) into the shared database, replacing any
-// existing version. The description is taken from system_prompt.md frontmatter.
-func (m *Manager) SaveHat(ctx context.Context, name string, userID int64, files map[string]string) error {
+// SaveHat writes a hat (all its files) into db, replacing any existing version.
+// The description is taken from system_prompt.md frontmatter.
+func (m *Manager) SaveHat(ctx context.Context, db *sql.DB, name string, userID int64, files map[string]string) error {
 	fm, _ := splitHatFrontmatter(files[hatPromptFile])
-	return writeItem(ctx, m.shared, hatTables, name, fm.Description, userID, files)
+	return writeItem(ctx, db, hatTables, name, fm.Description, userID, files)
 }
 
-// CreateHat scaffolds a new hat: a system_prompt.md with frontmatter and an
-// empty body (an empty body keeps the default system prompt).
-func (m *Manager) CreateHat(ctx context.Context, name, description string, userID int64) error {
-	existing, err := readItemFiles(ctx, m.shared, hatTables, name)
-	if err != nil {
-		return err
+// CreateHat scaffolds a new hat in the shared database (shared) or userDB
+// (personal): a system_prompt.md with frontmatter and an empty body. A name
+// that exists as a shared hat is refused in either scope, so a personal hat can
+// never be shadowed from day one.
+func (m *Manager) CreateHat(ctx context.Context, userDB *sql.DB, scope, name, description string, userID int64) error {
+	db := m.shared
+	if scope == types.HatScopePersonal {
+		db = userDB
+	} else if scope != types.HatScopeShared {
+		return fmt.Errorf("scope must be %q or %q", types.HatScopeShared, types.HatScopePersonal)
 	}
-	if existing != nil {
+	if db == nil {
+		return fmt.Errorf("no database for %s hats", scope)
+	}
+	if _, _, err := m.HatHome(ctx, userDB, name); err == nil {
 		return fmt.Errorf("hat %q already exists", name)
+	} else if !errors.Is(err, ErrHatNotFound) {
+		return err
 	}
 	if strings.TrimSpace(description) == "" {
 		description = "TODO describe what kind of work this hat is for."
@@ -172,12 +247,12 @@ func (m *Manager) CreateHat(ctx context.Context, name, description string, userI
 		"---",
 		"",
 	}, "\n")
-	return writeItem(ctx, m.shared, hatTables, name, description, userID, map[string]string{hatPromptFile: md})
+	return writeItem(ctx, db, hatTables, name, description, userID, map[string]string{hatPromptFile: md})
 }
 
-// GetHatFiles returns a hat's raw files (relpath -> content) for management UIs.
-func (m *Manager) GetHatFiles(ctx context.Context, name string) (map[string]string, error) {
-	files, err := readItemFiles(ctx, m.shared, hatTables, name)
+// GetHatFiles returns a hat's raw files (relpath -> content) from db.
+func (m *Manager) GetHatFiles(ctx context.Context, db *sql.DB, name string) (map[string]string, error) {
+	files, err := readItemFiles(ctx, db, hatTables, name)
 	if err != nil {
 		return nil, err
 	}
@@ -189,20 +264,20 @@ func (m *Manager) GetHatFiles(ctx context.Context, name string) (map[string]stri
 
 // PutHatFile writes one file of a hat (e.g. system_prompt.md, or an overlay
 // file under skills/<skill>/...).
-func (m *Manager) PutHatFile(ctx context.Context, name, relpath, content string, userID int64) error {
-	files, err := m.GetHatFiles(ctx, name)
+func (m *Manager) PutHatFile(ctx context.Context, db *sql.DB, name, relpath, content string, userID int64) error {
+	files, err := m.GetHatFiles(ctx, db, name)
 	if err != nil {
 		return err
 	}
 	files[relpath] = content
-	return m.SaveHat(ctx, name, userID, files)
+	return m.SaveHat(ctx, db, name, userID, files)
 }
 
 // AddHatSkill copies the currently-resolved skill into the hat's overlay
 // (skills/<skill>/...), so the hat carries its own editable variant that takes
-// precedence over normal resolution while the hat is worn.
-func (m *Manager) AddHatSkill(ctx context.Context, userDB, projDB *sql.DB, hat, skill string, userID int64) error {
-	files, err := m.GetHatFiles(ctx, hat)
+// precedence over normal resolution while the hat is worn. db is the hat's home.
+func (m *Manager) AddHatSkill(ctx context.Context, db, userDB, projDB *sql.DB, hat, skill string, userID int64) error {
+	files, err := m.GetHatFiles(ctx, db, hat)
 	if err != nil {
 		return err
 	}
@@ -213,19 +288,19 @@ func (m *Manager) AddHatSkill(ctx context.Context, userDB, projDB *sql.DB, hat, 
 	for rel, content := range src {
 		files[hatSkillPrefix+skill+"/"+rel] = content
 	}
-	return m.SaveHat(ctx, hat, userID, files)
+	return m.SaveHat(ctx, db, hat, userID, files)
 }
 
 // SetHatPromptEnabled toggles the hat's custom system prompt via the
 // use_prompt frontmatter flag — a textual patch that preserves the body (and
 // any comments), so disabling never loses the prompt's content.
-func (m *Manager) SetHatPromptEnabled(ctx context.Context, name string, enabled bool, userID int64) error {
-	files, err := m.GetHatFiles(ctx, name)
+func (m *Manager) SetHatPromptEnabled(ctx context.Context, db *sql.DB, name string, enabled bool, userID int64) error {
+	files, err := m.GetHatFiles(ctx, db, name)
 	if err != nil {
 		return err
 	}
 	files[hatPromptFile] = setUsePromptFlag(files[hatPromptFile], enabled)
-	return m.SaveHat(ctx, name, userID, files)
+	return m.SaveHat(ctx, db, name, userID, files)
 }
 
 // setUsePromptFlag sets/replaces the use_prompt line in the YAML frontmatter,
@@ -257,17 +332,17 @@ func setUsePromptFlag(content string, enabled bool) string {
 
 // RemoveHatSkill drops a skill's overlay from the hat (the skill then resolves
 // normally again while the hat is worn).
-func (m *Manager) RemoveHatSkill(ctx context.Context, hat, skill string) error {
+func (m *Manager) RemoveHatSkill(ctx context.Context, db *sql.DB, hat, skill string) error {
 	prefix := hatSkillPrefix + skill + "/"
-	_, err := m.shared.ExecContext(ctx,
+	_, err := db.ExecContext(ctx,
 		`DELETE FROM hat_files WHERE hat_name = ? AND relpath LIKE ? ESCAPE '\'`,
 		hat, escapeLike(prefix)+"%")
 	return err
 }
 
-// DeleteHat removes a hat from the shared database.
-func (m *Manager) DeleteHat(ctx context.Context, name string) error {
-	_, err := m.shared.ExecContext(ctx, `DELETE FROM hats WHERE name = ?`, name)
+// DeleteHat removes a hat from db (its home).
+func (m *Manager) DeleteHat(ctx context.Context, db *sql.DB, name string) error {
+	_, err := db.ExecContext(ctx, `DELETE FROM hats WHERE name = ?`, name)
 	return err
 }
 
@@ -354,9 +429,9 @@ func escapeLike(s string) string {
 // hatOverrideFiles returns a hat's override files for one skill (relpaths
 // relative to the skill, i.e. with the "skills/<name>/" prefix stripped), or
 // nil when the hat has no override for that skill.
-func (m *Manager) hatOverrideFiles(ctx context.Context, hat, skill string) (map[string]string, error) {
+func hatOverrideFiles(ctx context.Context, db *sql.DB, hat, skill string) (map[string]string, error) {
 	prefix := hatSkillPrefix + skill + "/"
-	rows, err := m.shared.QueryContext(ctx,
+	rows, err := db.QueryContext(ctx,
 		`SELECT relpath, content FROM hat_files WHERE hat_name = ? AND relpath LIKE ? ESCAPE '\'`,
 		hat, escapeLike(prefix)+"%")
 	if err != nil {
@@ -387,8 +462,8 @@ type hatOverride struct {
 	hasSkillMD  bool
 }
 
-func (m *Manager) hatOverrideInfos(ctx context.Context, hat string) (map[string]hatOverride, error) {
-	rows, err := m.shared.QueryContext(ctx,
+func hatOverrideInfos(ctx context.Context, db *sql.DB, hat string) (map[string]hatOverride, error) {
+	rows, err := db.QueryContext(ctx,
 		`SELECT relpath, content FROM hat_files WHERE hat_name = ? AND relpath LIKE ?`,
 		hat, hatSkillPrefix+"%")
 	if err != nil {
@@ -421,8 +496,8 @@ func (m *Manager) hatOverrideInfos(ctx context.Context, hat string) (map[string]
 // resolveRawForHat resolves a skill's raw files while a hat is worn: a per-hat
 // override (hat_files "skills/<name>/...") wins; otherwise normal resolution
 // applies.
-func (m *Manager) resolveRawForHat(ctx context.Context, userDB, projDB *sql.DB, hat, name string) (map[string]string, string, error) {
-	files, err := m.hatOverrideFiles(ctx, hat, name)
+func (m *Manager) resolveRawForHat(ctx context.Context, userDB, projDB *sql.DB, hat *types.Hat, name string) (map[string]string, string, error) {
+	files, err := hatOverrideFiles(ctx, m.hatDB(hat, userDB), hat.Name, name)
 	if err != nil {
 		return nil, "", err
 	}
@@ -432,13 +507,22 @@ func (m *Manager) resolveRawForHat(ctx context.Context, userDB, projDB *sql.DB, 
 	return m.resolveRaw(ctx, userDB, projDB, name)
 }
 
+// hatDB is the database a worn hat's overlay files live in: the user's for a
+// personal hat, else the shared one.
+func (m *Manager) hatDB(hat *types.Hat, userDB *sql.DB) *sql.DB {
+	if hat.Scope == types.HatScopePersonal {
+		return userDB
+	}
+	return m.shared
+}
+
 // ResolveEffective resolves a skill honoring the worn hat's overrides. hat may
 // be nil (normal resolution).
 func (m *Manager) ResolveEffective(ctx context.Context, userDB, projDB *sql.DB, name string, userID int64, username string, hat *types.Hat) (*Skill, error) {
 	if hat == nil {
 		return m.Resolve(ctx, userDB, projDB, name, userID, username)
 	}
-	files, source, err := m.resolveRawForHat(ctx, userDB, projDB, hat.Name, name)
+	files, source, err := m.resolveRawForHat(ctx, userDB, projDB, hat, name)
 	if err != nil {
 		return nil, err
 	}
@@ -462,7 +546,7 @@ func (m *Manager) EffectiveSkillInfos(ctx context.Context, userDB, projDB *sql.D
 	if hat == nil || err != nil {
 		return base, err
 	}
-	overrides, err := m.hatOverrideInfos(ctx, hat.Name)
+	overrides, err := hatOverrideInfos(ctx, m.hatDB(hat, userDB), hat.Name)
 	if err != nil {
 		return nil, err
 	}

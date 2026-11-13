@@ -870,8 +870,8 @@ func (a *Agent) hatPrompt(ctx context.Context, rc *runContext) string {
 // hatCatalogue lists the hats a user could wear, so the agent can point out a
 // fitting one. It never switches by itself: wear_hat is for when the user asks.
 func (a *Agent) hatCatalogue(ctx context.Context, rc *runContext) string {
-	hats, err := a.Skills.ListHats(ctx)
-	if err != nil || len(hats) == 0 {
+	hats := a.wearableHats(ctx, rc.userDB, rc.projectID)
+	if len(hats) == 0 {
 		return ""
 	}
 	var sb strings.Builder
@@ -902,9 +902,11 @@ func (a *Agent) loadHat(ctx context.Context, rc *runContext) {
 	if err != nil || sess.Hat == nil || *sess.Hat == "" {
 		return
 	}
-	if hat, err := a.Skills.GetHat(ctx, *sess.Hat); err == nil {
-		rc.hat = hat
+	hat, err := a.Skills.GetHat(ctx, rc.userDB, *sess.Hat)
+	if err != nil || (rc.projectID != 0 && hat.Scope == types.HatScopePersonal) {
+		return // gone, or a personal hat on a shared session (unreadable to other members)
 	}
+	rc.hat = hat
 }
 
 // basePrompt returns the rendered base system prompt: the worn hat's body when

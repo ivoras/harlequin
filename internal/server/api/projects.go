@@ -350,7 +350,7 @@ func (s *Server) handleListProjectSessions(w http.ResponseWriter, r *http.Reques
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.dropGoneHats(r.Context(), out)
+	s.dropGoneHats(r.Context(), nil, out) // a project session never wears a personal hat
 	pid := id
 	for i := range out {
 		out[i].ProjectID = &pid
@@ -373,7 +373,16 @@ func (s *Server) handleAssignSession(w http.ResponseWriter, r *http.Request) {
 		return s.Storage.WithProject(r.Context(), id, func(pdb *sql.DB) error {
 			n, e := s.Projects.MoveSessionToProject(r.Context(), udb, pdb, id, sid, u.ID)
 			newID = n
-			return e
+			if e != nil {
+				return e
+			}
+			// A personal hat is unreadable to the other members: drop it on the way in.
+			if moved, ge := s.Sessions.Get(r.Context(), pdb, n, u.ID); ge == nil && moved.Hat != nil && *moved.Hat != "" {
+				if h, he := s.Skills.GetHat(r.Context(), nil, *moved.Hat); he != nil || h.Scope == types.HatScopePersonal {
+					return s.Sessions.SetHat(r.Context(), pdb, n, "")
+				}
+			}
+			return nil
 		})
 	})
 	if errors.Is(err, sql.ErrNoRows) {

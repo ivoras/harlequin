@@ -116,7 +116,8 @@ switch, and Log out.
 
 The chat header shows the workspace, the session title (click to rename a
 personal session), and the **hat** worn by the session — click it to wear a
-different hat or take it off. The composer's attach button adds documents to the message you are writing:
+different hat or take it off. A new, empty session also shows the available
+hats as cards under "What are we working on?". The composer's attach button adds documents to the message you are writing:
 each is uploaded and indexed (to the active project, else your personal
 files), shown as a chip, and listed at the end of the sent message as
 `@"u.18/report.pdf"`; the agent reads them with `read_doc`. Send waits for
@@ -155,8 +156,8 @@ its left edge to resize it) has up to three tabs:
   delete accounts. When the server can send e-mail, a checkbox e-mails a new or
   reset password straight to the user. The server always keeps at least one
   owner, and you can't delete your own account.
-- **Hats** — view hats and what they overlay; owners/admins create and edit
-  them.
+- **Hats** — view hats and what they overlay; create your own personal hats
+  (owners/admins can also create shared ones) and edit the ones you may edit.
 - **MCP servers** — register external tool servers (see **MCP tools** below).
 - **All projects** (owners only) — every project on the server with its
   members and files; join one, or add and remove members.
@@ -368,12 +369,15 @@ The four situations this produces:
 | no | yes | **hat overlay** → shared → user |
 | yes | yes | **hat overlay** → project → shared → user |
 
-Two further hat effects, independent of the overlay:
+Further hat effects, independent of the overlay:
 
 - **Visibility** — a hat may declare a `skills:` list in its frontmatter; while
   worn, only those skills are offered to the agent (empty list = all skills).
-- **System prompt** — a hat with a non-empty `system_prompt.md` body replaces
-  the default system prompt entirely.
+- **System prompt** — a hat's `system_prompt.md` body is *added to* the default
+  system prompt, so a short role description keeps all the default rules
+  (citations, documents, memory). Put `replace_prompt: true` in the frontmatter
+  to replace the default prompt entirely instead, or `use_prompt: false` to keep
+  the body but switch it off.
 
 Because a *deeper* scope wins (shared beats user, project beats shared), a copy
 you edit in a shallower scope can be silently invisible. `/skills` flags this:
@@ -383,11 +387,37 @@ shared one is being served.
 A worn hat shadows the same way, only harder: its copy of a skill wins over
 every scope. While you wear a hat, `/skills` marks those skills
 `overridden by hat <name>`, and `/skill edit` (and the web skill editor) warn
-that your edit won't take effect until you take the hat off. Hats are edited
-only by owners and admins; anyone can read what a hat runs with
+that your edit won't take effect until you take the hat off. Shared hats are
+edited only by owners and admins, personal hats by their owner; anyone can read
+what a hat they can wear runs with
 `/hat view <name> skills/<skill>/SKILL.md`, or in the web Hats page (**view** next to an
 overlay, or **Files** → **View**). To get a hat's skill changed
 for everyone, ask an admin.
+
+### Hats
+
+A **hat** is a working mode for a session. Wear one and the agent gets a role
+(the hat's prompt is added to its normal instructions) and, optionally, its own
+variants of some skills. Two hats ship with the server: **analyst** (compare and
+reconcile documents, tabular output, everything cited, saved as a report) and
+**researcher** (outside-world research, source and date for each fact, findings
+kept apart from inference).
+
+- **Wearing**: click the hat in the chat header (or a card on an empty
+  session), `/hat wear <name>` in the TUI, or just ask the agent ("put on the
+  analyst hat"). The agent mentions a fitting hat when your request clearly
+  matches one, but never switches on its own. A change applies from your next
+  message and shows up in every client attached to the session.
+- **It stays on**: the hat you last wore is remembered and new sessions start
+  with it. Take it off (`/hat off`, or the chip) to go back to no hat.
+- **Scheduled jobs**: a skill job can wear a hat (`hat=<name>` in `/cron add`,
+  `/cron hat <id> [<name>]`, the Cron page, or the agent's `cron_create`, which
+  uses the hat you are wearing). If the hat is deleted later, the job fails with
+  an error instead of silently running without it.
+- **Personal and shared hats**: you can create personal hats (only you see
+  them) and, as owner/admin, shared ones for everyone. A shared hat wins over a
+  personal one of the same name. Personal hats can't be worn in project
+  sessions, because other members couldn't see them.
 
 ## Slash commands in the TUI
 
@@ -400,7 +430,7 @@ typing to filter it, and pick a command with the arrow keys and Enter.
 
 | Command | What it does |
 |---------|--------------|
-| `/new` | Start a new session (keeps the currently worn hat). |
+| `/new` | Start a new session (it starts with the hat you last wore; a tip lists the available hats). |
 | `/clear` | Clear the current session's messages so the next turn starts with a fresh context. The session, its title, and its hat survive; works in project sessions too (clears for all members). |
 | `/resume` | Pick an earlier session to resume from a list. |
 | `/resume <id>` | Resume a specific session by id. |
@@ -428,18 +458,18 @@ They resolve across scopes: project (when one is active), then shared
 | `/skill upload <name> [file]` | Upload a skill (or one file); scope flags as above. |
 | `/skill del <name>` | Delete the skill from a scope (scope flags as above). |
 | `/skill diff <name>` | Show local edits vs the server version. |
-| `/hat` | List hats. A hat is an org-defined set of specialised skills that overlay normal resolution (see [How skills resolve](#how-skills-resolve-scopes-projects-hats)), plus an optional system prompt. |
+| `/hat` | List hats (shared ones, plus your personal ones marked `(personal)`). A hat is a working mode: a role added to the system prompt plus optional specialised skills that overlay normal resolution (see [How skills resolve](#how-skills-resolve-scopes-projects-hats)). |
 | `/hat show <name>` | Show a hat's details: its visible-skills list and the skills it overlays. |
-| `/hat wear <name>` | Wear a hat in this session. |
+| `/hat wear <name>` | Wear a hat in this session; it is remembered for new sessions. Personal hats can't be worn in a project session. |
 | `/hat off` | Remove the hat (back to the default prompt and skill set). |
-| `/hat create <name> [description]` | (admin) Create a hat. |
-| `/hat edit <name> [file]` | (admin) Edit a hat file in the built-in editor (default `system_prompt.md`; overlays live at `skills/<skill>/…`). |
+| `/hat create <name> [--shared] [description]` | Create a personal hat; with `--shared` (owners/admins) an organisation-wide one. |
+| `/hat edit <name> [file]` | Edit a hat file you may edit (your own hats; shared ones need owner/admin) in the built-in editor (default `system_prompt.md`; overlays live at `skills/<skill>/…`). |
 | `/hat files <name>` | List a hat's files (prompt + skill overlays). |
-| `/hat view <name> [file]` | Show a hat file read-only (default `system_prompt.md`; overlays are `skills/<skill>/SKILL.md` etc.). Anyone can read a hat; only owners/admins edit. |
-| `/hat addskill <hat> <skill>` | (admin) Copy the currently-resolved skill into the hat's overlay, ready for specialising. |
-| `/hat rmskill <hat> <skill>` | (admin) Remove a skill overlay from the hat. |
-| `/hat prompt <name> on\|off` | (admin) Toggle the hat's custom system prompt; `off` keeps its content but the default prompt is used. Creating a custom prompt starts from a copy of the default. |
-| `/hat del <name>` | (admin) Delete a hat. |
+| `/hat view <name> [file]` | Show a hat file read-only (default `system_prompt.md`; overlays are `skills/<skill>/SKILL.md` etc.). Anyone can read a hat they can wear. |
+| `/hat addskill <hat> <skill>` | Copy the currently-resolved skill into the hat's overlay, ready for specialising. |
+| `/hat rmskill <hat> <skill>` | Remove a skill overlay from the hat. |
+| `/hat prompt <name> on\|off` | Toggle the hat's custom prompt body; `off` keeps its content but the hat adds nothing to the default prompt. |
+| `/hat del <name>` | Delete a hat (your own, or a shared one as owner/admin). |
 
 
 ### Memory and documents
@@ -477,7 +507,8 @@ See the [Projects](#projects-1) chapter below for the full workflow.
 | `/cron` | List scheduled jobs. |
 | `/cron show <id>` | Show a job, including its last run output. |
 | `/cron add "<name>" "<spec>" js "<target>" ["<input-json>"]` | Schedule a JavaScript job. |
-| `/cron add "<name>" "<spec>" skill "<skill\|->" "<prompt>"` | Schedule a skill/prompt job. |
+| `/cron add "<name>" "<spec>" skill "<skill\|->" "<prompt>" [hat=<name>]` | Schedule a skill/prompt job, optionally run wearing a hat. |
+| `/cron hat <id> [<name>]` | Make a skill job wear a hat; without a name, take the hat off. |
 | `/cron on\|off <id>` | Enable / disable a job. |
 | `/cron run <id>` | Run a job immediately. |
 | `/cron del <id>` | Delete a job. |

@@ -5,6 +5,7 @@
   import { renderMarkdown } from "../lib/markdown";
   import { availableCommands } from "../lib/slash";
   import { Composer } from "../lib/composer.svelte";
+  import { wearableHats } from "../lib/hats";
   import AttachChips from "../lib/AttachChips.svelte";
   import HatPicker from "../lib/HatPicker.svelte";
   import { onCiteHover, onCiteClick, onDocrefClick, onCodeCopy } from "../lib/docview.svelte";
@@ -55,7 +56,7 @@
     hatMenu = !hatMenu;
     if (hatMenu) {
       try {
-        hats = await api.listHats();
+        hats = wearableHats(await api.listHats());
       } catch (e) {
         toast((e as Error).message, "error");
       }

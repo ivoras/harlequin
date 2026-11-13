@@ -336,12 +336,10 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 		}),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 			name := strings.TrimSpace(argString(args, "name"))
-			if err := a.CheckHat(ctx, name); err != nil {
+			if err := a.CheckHat(ctx, rc.userDB, name); err != nil {
 				var names []string
-				if hats, lerr := a.Skills.ListHats(ctx); lerr == nil {
-					for _, h := range hats {
-						names = append(names, h.Name)
-					}
+				for _, h := range a.wearableHats(ctx, rc.userDB, rc.projectID) {
+					names = append(names, h.Name)
 				}
 				return fmt.Sprintf("error: %v. Available hats: %s", err, strings.Join(names, ", ")), nil
 			}
@@ -886,7 +884,7 @@ Example (watch a saved web-monitor check every 30 min): cron_create(name="fzoeu"
 				} else if rc.hat != nil && req.Kind == types.CronKindSkill {
 					req.Hat = rc.hat.Name // asked for while wearing this hat: run it the same way
 				}
-				if err := a.CheckHat(ctx, req.Hat); err != nil {
+				if err := a.CheckHat(ctx, rc.userDB, req.Hat); err != nil {
 					return "error: " + err.Error(), nil
 				}
 				job, err := a.Cron.Create(ctx, rc.userDB, req)
@@ -998,7 +996,7 @@ Example (watch a saved web-monitor check every 30 min): cron_create(name="fzoeu"
 					req.Input = &v
 				}
 				if v, ok := args["hat"].(string); ok {
-					if err := a.CheckHat(ctx, v); err != nil {
+					if err := a.CheckHat(ctx, rc.userDB, v); err != nil {
 						return "error: " + err.Error(), nil
 					}
 					req.Hat = &v

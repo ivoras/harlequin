@@ -469,13 +469,13 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
 		var e error
 		sessions, e = s.Sessions.List(r.Context(), udb, u.ID, r.URL.Query().Get("q"))
+		s.dropGoneHats(r.Context(), udb, sessions)
 		return e
 	})
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	s.dropGoneHats(r.Context(), sessions)
 	writeJSON(w, http.StatusOK, sessions)
 }
 
@@ -486,7 +486,7 @@ func (s *Server) stickyHat(ctx context.Context, udb *sql.DB, requested string) s
 		return requested
 	}
 	if last, _, _ := s.UserConfig.Get(ctx, udb, userconfig.KeyHatLast); last != "" {
-		if _, err := s.Skills.GetHat(ctx, last); err == nil {
+		if _, err := s.Skills.GetHat(ctx, udb, last); err == nil {
 			return last
 		}
 	}

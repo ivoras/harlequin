@@ -18,12 +18,12 @@ the server, not just hidden in the clients.
 | Chat, own sessions, personal memories and documents | ✓ | ✓ | ✓ |
 | Own skills, MCP servers, scheduled jobs, config | ✓ | ✓ | ✓ |
 | Create projects; invite to, work in and leave projects they belong to | ✓ | ✓ | ✓ |
-| Wear any hat | ✓ | ✓ | ✓ |
+| Wear any shared hat; create, edit and wear **personal** hats | ✓ | ✓ | ✓ |
 | Delete a project they created, or remove its other members | ✓ | ✓ | ✓ |
 | Write, change and delete **shared** (org-wide) memories | | ✓ | ✓ |
 | Add and delete **shared** documents | | ✓ | ✓ |
 | Create, edit and publish **shared** skills | | ✓ | ✓ |
-| Create, edit and delete **hats** | | ✓ | ✓ |
+| Create, edit and delete **shared** hats | | ✓ | ✓ |
 | Register shared MCP servers | | ✓ | ✓ |
 | Delete **any** project, or remove members from it (without being a member) | | ✓ | ✓ |
 | Broadcast an alert to all users | | ✓ | ✓ |
@@ -44,7 +44,7 @@ The default role for new accounts (including self-registration). A user:
 - can create projects and, as a member, use and write the project's sessions,
   documents, memories and skills, invite others, and depart. They can delete a
   project, or remove its other members, only if they created it;
-- can wear any hat, but not edit hats.
+- can wear any shared hat and create, edit and wear their own personal hats, but not edit shared hats.
 
 ## admin
 
@@ -55,7 +55,7 @@ Everything a user can, plus management of organisation-wide content:
 - **Shared documents**: upload to the shared corpus and delete shared documents.
 - **Skills**: create and edit shared-scope skills, and publish a personal skill
   to the organisation.
-- **Hats**: create, edit and delete hats, their skill overlays and system
+- **Hats**: create, edit and delete shared hats, their skill overlays and system
   prompts.
 - **MCP**: register servers for everyone (each user still signs in to OAuth
   servers with their own account).

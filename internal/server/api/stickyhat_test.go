@@ -23,7 +23,7 @@ func TestStickyHat(t *testing.T) {
 	}
 	defer mgr.Close()
 	sk := skills.NewManager(mgr.Shared, fstest.MapFS{}, jsrun.New(jsrun.Options{}), nil)
-	if err := sk.CreateHat(ctx, "analyst", "d", 1); err != nil {
+	if err := sk.CreateHat(ctx, nil, types.HatScopeShared, "analyst", "d", 1); err != nil {
 		t.Fatal(err)
 	}
 	s := &Server{Skills: sk, UserConfig: userconfig.NewStore()}
@@ -55,11 +55,11 @@ func TestDropGoneHats(t *testing.T) {
 	}
 	defer mgr.Close()
 	sk := skills.NewManager(mgr.Shared, fstest.MapFS{}, jsrun.New(jsrun.Options{}), nil)
-	_ = sk.CreateHat(ctx, "analyst", "d", 1)
+	_ = sk.CreateHat(ctx, nil, types.HatScopeShared, "analyst", "d", 1)
 	s := &Server{Skills: sk}
 	a, b := "analyst", "gone"
 	list := []types.Session{{Hat: &a}, {Hat: &b}, {}}
-	s.dropGoneHats(ctx, list)
+	s.dropGoneHats(ctx, nil, list)
 	if list[0].Hat == nil || list[1].Hat != nil {
 		t.Fatalf("%+v", list)
 	}

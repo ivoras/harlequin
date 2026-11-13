@@ -76,12 +76,24 @@ Skills are resolved by name across the same scopes, deepest first:
 **project → shared → personal**. A skill in the active project wins over an
 organisation skill of the same name, which wins over your own.
 
-A **hat** sits on top of all of that. Hats are organisation-wide (stored in
-`shared.db`, edited by owners/admins) and any user can wear one per session.
-While a hat is worn, its own copies of skills win outright over every scope, its
-optional skill list restricts which skills are visible, and it may replace the
-system prompt. Hats and projects are independent: you can wear any hat in any
-project.
+A **hat** sits on top of all of that. Hats come in two scopes:
+
+- **Shared** hats are organisation-wide (stored in `shared.db`) and edited by
+  owners/admins.
+- **Personal** hats are your own (stored in your `user.db`), created and edited
+  by you; nobody else sees them. `/hat create` makes a personal hat unless you
+  add `--shared` (owners/admins).
+
+If a shared and a personal hat have the same name, the **shared one wins**. A
+personal hat can't be created with a name a shared hat already has.
+
+You wear one hat per session. While a hat is worn, its own copies of skills win
+outright over every scope, its optional skill list restricts which skills are
+visible, and its prompt is added to the default system prompt (or replaces it,
+with `replace_prompt: true`). Hats and projects are independent — with one
+exception: a **project session is shared**, so only shared hats can be worn
+there (other members' turns can't read your personal ones). A personal hat on a
+session is dropped when you assign the session to a project.
 
 ## Projects
 

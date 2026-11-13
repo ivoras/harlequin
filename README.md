@@ -67,9 +67,13 @@ It's perfectly capable of playing nicely with specific requirements such as EU-b
   project-qualified references (`p3.17`) that stay valid anywhere, or they can
   be limited to per-project only. See [docs/PROJECTS.md](docs/PROJECTS.md).
 - **Skills & hats** — reusable instruction/script bundles resolved across
-  scopes, and org-defined skill overlays ("hats") with optional custom system
-  prompts. The idea is that someone wearing a "hat" of certain skills can
-  participate in multiple projects with those highly specific skills.
+  scopes, and **hats**: working modes (for example *analyst* for comparing
+  documents, *researcher* for the outside world) that add a role to the system
+  prompt and can overlay their own variants of skills. Organisations define
+  shared hats, users can make personal ones; the hat you last wore stays on for
+  new sessions, scheduled jobs can wear one, and you can just ask the agent to
+  put one on. Someone wearing a hat of certain skills can participate in
+  multiple projects with those highly specific skills.
 - **LLM Tools** — WebFetch/WebFetchDOM/WebFetchGrep (page analysis, structural
   extraction, raw-HTML grep), MarkdownFetch (full, unsummarised URL or document → Markdown via
   Docling), file editing (`edit_file`, `edit_doc`), WebSearch (Brave Search API), sandboxed

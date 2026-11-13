@@ -27,7 +27,7 @@ func TestSetSessionHat(t *testing.T) {
 	}
 	defer mgr.Close()
 	sk := skills.NewManager(mgr.Shared, fstest.MapFS{}, jsrun.New(jsrun.Options{}), nil)
-	if err := sk.CreateHat(ctx, "analyst", "d", 1); err != nil {
+	if err := sk.CreateHat(ctx, nil, types.HatScopeShared, "analyst", "d", 1); err != nil {
 		t.Fatal(err)
 	}
 	bus := docevents.New()
@@ -75,8 +75,8 @@ func TestWearHatTool(t *testing.T) {
 	}
 	defer mgr.Close()
 	sk := skills.NewManager(mgr.Shared, fstest.MapFS{}, jsrun.New(jsrun.Options{}), nil)
-	_ = sk.CreateHat(ctx, "analyst", "compares documents", 1)
-	_ = sk.CreateHat(ctx, "researcher", "looks things up", 1)
+	_ = sk.CreateHat(ctx, nil, types.HatScopeShared, "analyst", "compares documents", 1)
+	_ = sk.CreateHat(ctx, nil, types.HatScopeShared, "researcher", "looks things up", 1)
 	a := &Agent{Storage: mgr, Sessions: session.NewStore(), Skills: sk, DocEvents: docevents.New(), Runner: jsrun.New(jsrun.Options{})}
 	_ = mgr.WithUser(ctx, 1, func(udb *sql.DB) error {
 		sess, _ := a.Sessions.Create(ctx, udb, 1, "t", "", types.APIREST, types.InterfaceWeb)

@@ -42,7 +42,7 @@ func TestCronJobRunsWearingItsHat(t *testing.T) {
 	}
 	defer mgr.Close()
 	sk := skills.NewManager(mgr.Shared, fstest.MapFS{}, jsrun.New(jsrun.Options{}), nil)
-	if err := sk.CreateHat(ctx, "analyst", "d", 1); err != nil {
+	if err := sk.CreateHat(ctx, nil, types.HatScopeShared, "analyst", "d", 1); err != nil {
 		t.Fatal(err)
 	}
 	var sys string
@@ -57,7 +57,7 @@ func TestCronJobRunsWearingItsHat(t *testing.T) {
 			t.Fatalf("hat not worn; system prompt: %.200s", sys)
 		}
 		// Deleted hat: the run fails loudly instead of running hatless.
-		if err := sk.DeleteHat(ctx, "analyst"); err != nil {
+		if err := sk.DeleteHat(ctx, mgr.Shared, "analyst"); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := a.RunCronSkill(ctx, 1, "u@x", types.RoleUser, udb, job); err == nil || !strings.Contains(err.Error(), "no longer exists") {

@@ -4,11 +4,12 @@
   import { onMount } from "svelte";
   import { api } from "./api";
   import { session, wornHat, toast } from "./stores";
+  import { wearableHats } from "./hats";
   import type { Hat } from "./types";
 
   let hats = $state<Hat[]>([]);
   onMount(() => {
-    api.listHats().then((l) => (hats = l)).catch(() => {});
+    api.listHats().then((l) => (hats = wearableHats(l))).catch(() => {});
   });
 
   async function pick(h: Hat) {
@@ -30,7 +31,7 @@
     <div class="cards">
       {#each hats as h (h.name)}
         <button class="hatcard" class:worn={$wornHat === h.name} aria-pressed={$wornHat === h.name} onclick={() => pick(h)} title={h.description}>
-          <strong>🎩 {h.name}</strong>
+          <strong>🎩 {h.name}{#if h.scope === "personal"} <span class="pill">personal</span>{/if}</strong>
           <span class="muted small">{h.description}</span>
         </button>
       {/each}

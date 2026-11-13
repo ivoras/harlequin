@@ -153,7 +153,16 @@ type Hat struct {
 	// ReplacePrompt: the body replaces the default system prompt; otherwise it
 	// is appended to it.
 	ReplacePrompt bool `json:"replace_prompt,omitempty"`
+	// Scope is where the hat lives: HatScopeShared (organisation-wide, owners
+	// and admins edit it) or HatScopePersonal (the user's own).
+	Scope string `json:"scope,omitempty"`
 }
+
+// Hat scopes.
+const (
+	HatScopeShared   = "shared"
+	HatScopePersonal = "personal"
+)
 
 // SetHatPromptRequest is the body of POST /hats/{name}/prompt.
 type SetHatPromptRequest struct {
@@ -164,6 +173,7 @@ type SetHatPromptRequest struct {
 type CreateHatRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
+	Scope       string `json:"scope,omitempty"` // personal (default) or shared (owners/admins)
 }
 
 // AddHatSkillRequest is the body of POST /hats/{name}/skills.

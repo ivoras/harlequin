@@ -9,19 +9,22 @@
   let hats = $state<Hat[]>([]);
   let skills = $state<SkillInfo[]>([]);
   let editing = $state<{ name: string; path: string; initial?: string; readonly?: boolean } | null>(null);
-  let filesOf = $state<{ name: string; files: string[] } | null>(null);
+  let filesOf = $state<{ name: string; files: string[]; editable: boolean } | null>(null);
   let addSel = $state<Record<string, string>>({}); // hat -> skill picked in its add-select
 
-  // New-hat form (admins).
+  // New-hat form: personal by default, shared for owners/admins.
   let newName = $state("");
   let newDesc = $state("");
+  let newScope = $state<"personal" | "shared">("personal");
 
   let admin = $derived(isElevated($user?.role));
+  // Personal hats are their owner's to edit; shared ones need an owner/admin.
+  const canEdit = (h: Hat) => h.scope === "personal" || admin;
 
   async function load() {
     try {
       hats = await api.listHats();
-      if (admin) skills = await api.listSkills();
+      skills = await api.listSkills();
     } catch (e) {
       toast((e as Error).message, "error");
     }
@@ -51,7 +54,7 @@
   async function create() {
     if (!newName.trim()) return;
     try {
-      await api.createHat(newName.trim(), newDesc.trim());
+      await api.createHat(newName.trim(), newDesc.trim(), newScope);
       toast(`created hat ${newName}`);
       const name = newName.trim();
       newName = "";
@@ -96,7 +99,7 @@
   async function showFiles(h: Hat) {
     try {
       const f = await api.getHatFiles(h.name);
-      filesOf = { name: h.name, files: Object.keys(f.files).sort() };
+      filesOf = { name: h.name, files: Object.keys(f.files).sort(), editable: canEdit(h) };
     } catch (e) {
       toast((e as Error).message, "error");
     }
@@ -141,22 +144,27 @@
       sees. It can also add to (or, with replace_prompt, replace) the system prompt.
     </div>
 
-    {#if admin}
-      <div class="card col">
-        <strong>New hat</strong>
-        <div class="row" style="gap:6px; flex-wrap:wrap;">
-          <input placeholder="name" bind:value={newName} style="max-width:180px;" />
-          <input placeholder="description" bind:value={newDesc} style="flex:1; min-width:160px;" />
-          <button class="primary" onclick={create}>Create</button>
-        </div>
+    <div class="card col">
+      <strong>New hat</strong>
+      <div class="row" style="gap:6px; flex-wrap:wrap;">
+        <input placeholder="name" bind:value={newName} style="max-width:180px;" />
+        <input placeholder="description" bind:value={newDesc} style="flex:1; min-width:160px;" />
+        {#if admin}
+          <select bind:value={newScope} aria-label="Scope" title="Personal hats are only yours; shared hats are for the whole organisation">
+            <option value="personal">personal</option>
+            <option value="shared">shared</option>
+          </select>
+        {/if}
+        <button class="primary" onclick={create}>Create</button>
       </div>
-    {/if}
+    </div>
 
     <div class="list">
       {#each hats as h}
         <div class="card col">
           <div class="row">
             <strong>{h.name}</strong>
+            <span class="pill" title={h.scope === "personal" ? "Only you can see and wear this hat" : "Organisation-wide hat"}>{h.scope ?? "shared"}</span>
             {#if $wornHat === h.name}<span class="pill" style="color: var(--accent);">worn</span>{/if}
             <span class="spacer"></span>
             {#if $wornHat === h.name}
@@ -182,7 +190,7 @@
               {#each h.overlay_skills as sk}
                 <span class="pill">
                   {sk}
-                  {#if admin}
+                  {#if canEdit(h)}
                     <button class="ovbtn" title="edit overlay" onclick={() => editFile(h.name, `skills/${sk}/SKILL.md`)}>✎</button>
                     <button class="ovbtn" title="remove overlay" onclick={() => rmSkill(h, sk)}>✕</button>
                   {:else}
@@ -192,7 +200,7 @@
               {/each}
             </div>
           {/if}
-          {#if admin}
+          {#if canEdit(h)}
             <div class="row small" style="gap:6px; flex-wrap:wrap;">
               <button class="small" onclick={() => editPrompt(h)} title="The hat's system_prompt.md: frontmatter (description, visible skills) + optional body that is added to the default system prompt while worn (replace_prompt: true replaces it).">{h.has_custom_prompt ? "Edit system prompt" : "Create system prompt"}</button>
               {#if h.has_custom_prompt}
@@ -211,7 +219,7 @@
             </div>
           {:else}
             <div class="row small" style="gap:6px;">
-              <button class="small" onclick={() => showFiles(h)} title="Read the hat's prompt and skill copies (only owners and admins can edit hats)">Files</button>
+              <button class="small" onclick={() => showFiles(h)} title="Read the hat's prompt and skill copies (only owners and admins can edit shared hats)">Files</button>
             </div>
           {/if}
         </div>
@@ -234,7 +242,7 @@
         <div class="row">
           <span class="mono small">{path}</span>
           <span class="spacer"></span>
-          {#if admin}<button class="small" onclick={() => editFile(filesOf!.name, path)}>Edit</button>
+          {#if filesOf.editable}<button class="small" onclick={() => editFile(filesOf!.name, path)}>Edit</button>
           {:else}<button class="small" onclick={() => viewFile(filesOf!.name, path)}>View</button>{/if}
         </div>
       {/each}

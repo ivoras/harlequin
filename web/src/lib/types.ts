@@ -180,6 +180,7 @@ export interface Hat {
   has_custom_prompt?: boolean; // system_prompt.md body is non-empty
   replace_prompt?: boolean; // body replaces the default prompt (else it is added)
   prompt_disabled?: boolean; // body kept but inactive (use_prompt: false)
+  scope?: "shared" | "personal"; // personal hats are the user's own
 }
 
 export interface SkillInfo {

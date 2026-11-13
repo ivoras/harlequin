@@ -27,18 +27,18 @@ const helpText = `Commands:
   /skill upload <name> [file]          upload a skill (or one file); scope flag as above
   /skill del <name>                    delete the skill from its scope (scope flag as above)
   /skill diff <name>                   show local edits vs the server version
-  /hat                  list hats (a hat = overlay skills + system prompt)
+  /hat                  list hats (a hat = a working mode: role + overlay skills)
   /hat show <name>      show a hat's details (visible + overlay skills)
-  /hat wear <name>      wear a hat in this session
+  /hat wear <name>      wear a hat in this session (remembered for new ones)
   /hat off              remove the hat (use the default)
-  /hat create <name> [description]     (admin) create a hat
-  /hat edit <name> [file]              (admin) edit a hat file (default system_prompt.md)
+  /hat create <name> [--shared] [description]   create a personal hat (--shared: owner/admin, org-wide)
+  /hat edit <name> [file]              edit a hat file you may edit (default system_prompt.md)
   /hat files <name>     list a hat's files (prompt + skill overlays)
   /hat view <name> [file]              show a hat file read-only (default system_prompt.md)
-  /hat addskill <hat> <skill>          (admin) copy the resolved skill into the hat's overlay
-  /hat prompt <name> on|off            (admin) toggle the hat's custom prompt (content is kept)
-  /hat rmskill <hat> <skill>           (admin) remove a skill overlay from the hat
-  /hat del <name>       (admin) delete a hat
+  /hat addskill <hat> <skill>          copy the resolved skill into the hat's overlay
+  /hat prompt <name> on|off            toggle the hat's custom prompt (content is kept)
+  /hat rmskill <hat> <skill>           remove a skill overlay from the hat
+  /hat del <name>       delete a hat (shared ones: owner/admin)
   /mcp                  list MCP servers (organisation + your personal ones) and status
   /mcp show <s/name>    show one MCP server (scope = organisation|personal)
   /mcp add <s/name> <url> [header Name:"Value" [Name2:"Value2" ...] | oauth]  register an MCP server
@@ -300,23 +300,29 @@ func (m *Model) handleHatSub(args []string) tea.Cmd {
 			return infoMsg{"hat removed; using the default prompt and skills"}
 		}
 	case "create":
-		if !m.canManageShared() {
-			return infoCmd("/hat create is owner/admin only")
+		// Personal by default; --shared (owners/admins) makes it organisation-wide.
+		scope, rest := types.HatScopePersonal, []string{}
+		for _, a := range args[1:] {
+			if a == "--shared" {
+				scope = types.HatScopeShared
+			} else {
+				rest = append(rest, a)
+			}
 		}
-		if len(args) < 2 {
-			return infoCmd("usage: /hat create <name> [description…]")
+		if len(rest) < 1 {
+			return infoCmd("usage: /hat create <name> [--shared] [description…]")
 		}
-		name, desc := args[1], strings.Join(args[2:], " ")
+		if scope == types.HatScopeShared && !m.canManageShared() {
+			return infoCmd("/hat create --shared is owner/admin only; without --shared it creates a personal hat")
+		}
+		name, desc := rest[0], strings.Join(rest[1:], " ")
 		return func() tea.Msg {
-			if err := m.client.CreateHat(context.Background(), name, desc); err != nil {
+			if err := m.client.CreateHat(context.Background(), name, desc, scope); err != nil {
 				return errMsg{err}
 			}
-			return infoMsg{"created hat " + name + " — /hat edit " + name + " to set its prompt, /hat addskill " + name + " <skill> to overlay skills"}
+			return infoMsg{"created " + scope + " hat " + name + " — /hat edit " + name + " to set its prompt, /hat addskill " + name + " <skill> to overlay skills"}
 		}
 	case "edit":
-		if !m.canManageShared() {
-			return infoCmd("/hat edit is owner/admin only — /hat view <name> [file] shows a hat's files")
-		}
 		if len(args) < 2 {
 			return infoCmd("usage: /hat edit <name> [file]  (default file: system_prompt.md; overlay files are skills/<skill>/…)")
 		}
@@ -359,9 +365,6 @@ func (m *Model) handleHatSub(args []string) tea.Cmd {
 			return infoMsg{"Files of hat " + name + " (read one with /hat view " + name + " <file>):\n  " + strings.Join(rels, "\n  ")}
 		}
 	case "addskill":
-		if !m.canManageShared() {
-			return infoCmd("/hat addskill is owner/admin only")
-		}
 		if len(args) < 3 {
 			return infoCmd("usage: /hat addskill <hat> <skill>  (copies the resolved skill into the hat's overlay)")
 		}
@@ -373,9 +376,6 @@ func (m *Model) handleHatSub(args []string) tea.Cmd {
 			return infoMsg{"copied " + skill + " into hat " + hat + " — edit it with /hat edit " + hat + " skills/" + skill + "/SKILL.md"}
 		}
 	case "rmskill":
-		if !m.canManageShared() {
-			return infoCmd("/hat rmskill is owner/admin only")
-		}
 		if len(args) < 3 {
 			return infoCmd("usage: /hat rmskill <hat> <skill>")
 		}
@@ -387,9 +387,6 @@ func (m *Model) handleHatSub(args []string) tea.Cmd {
 			return infoMsg{"removed the " + skill + " overlay from hat " + hat}
 		}
 	case "prompt":
-		if !m.canManageShared() {
-			return infoCmd("/hat prompt is owner/admin only")
-		}
 		if len(args) < 3 || (args[2] != "on" && args[2] != "off") {
 			return infoCmd("usage: /hat prompt <name> on|off  (off keeps the custom prompt's content but uses the default)")
 		}
@@ -404,9 +401,6 @@ func (m *Model) handleHatSub(args []string) tea.Cmd {
 			return infoMsg{"hat " + name + ": custom system prompt disabled (content kept; default prompt in use)"}
 		}
 	case "del":
-		if !m.canManageShared() {
-			return infoCmd("/hat del is owner/admin only")
-		}
 		if len(args) < 2 {
 			return infoCmd("usage: /hat del <name>")
 		}
@@ -674,7 +668,11 @@ func renderHatList(hats []types.Hat, current string) string {
 		if h.Name == current {
 			mark = "*"
 		}
-		fmt.Fprintf(&sb, " %s%-16s %s\n", mark, h.Name, h.Description)
+		scope := ""
+		if h.Scope == types.HatScopePersonal {
+			scope = " (personal)"
+		}
+		fmt.Fprintf(&sb, " %s%-16s %s%s\n", mark, h.Name, h.Description, scope)
 	}
 	return strings.TrimRight(sb.String(), "\n")
 }
@@ -682,6 +680,9 @@ func renderHatList(hats []types.Hat, current string) string {
 func renderHatDetail(h types.Hat) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "Hat %s\n", h.Name)
+	if h.Scope != "" {
+		fmt.Fprintf(&sb, "  scope:       %s\n", h.Scope)
+	}
 	if h.Description != "" {
 		fmt.Fprintf(&sb, "  description: %s\n", h.Description)
 	}

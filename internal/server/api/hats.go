@@ -14,9 +14,16 @@ import (
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
-// handleListHats returns the hats in the shared database (any authenticated user).
+// handleListHats returns the hats the caller can wear: shared ones plus their
+// own personal ones, each labelled with its scope.
 func (s *Server) handleListHats(w http.ResponseWriter, r *http.Request) {
-	list, err := s.Skills.ListHats(r.Context())
+	u, _ := auth.UserFromContext(r.Context())
+	var list []types.Hat
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		var e error
+		list, e = s.Skills.ListHats(r.Context(), udb)
+		return e
+	})
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -29,7 +36,13 @@ func (s *Server) handleListHats(w http.ResponseWriter, r *http.Request) {
 
 // handleGetHat returns one hat by name.
 func (s *Server) handleGetHat(w http.ResponseWriter, r *http.Request) {
-	h, err := s.Skills.GetHat(r.Context(), chi.URLParam(r, "name"))
+	u, _ := auth.UserFromContext(r.Context())
+	var h *types.Hat
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		var e error
+		h, e = s.Skills.GetHat(r.Context(), udb, chi.URLParam(r, "name"))
+		return e
+	})
 	if err != nil {
 		writeErr(w, http.StatusNotFound, "hat not found")
 		return
@@ -37,52 +50,99 @@ func (s *Server) handleGetHat(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h)
 }
 
-// handlePutHat writes a whole hat (all its files) into the shared database.
-// Hats are org-wide, so this requires an elevated account.
-func (s *Server) handlePutHat(w http.ResponseWriter, r *http.Request) {
-	u, ok := requireElevated(w, r)
+// editHat runs fn against the named hat's home database. Shared hats need an
+// elevated account; personal hats (the caller's own) do not. fn returns the
+// audit action and target logged in the caller's db; a nil error answers ok.
+// A status-carrying error from fn is passed through (see hatErr).
+func (s *Server) editHat(w http.ResponseWriter, r *http.Request, fn func(u *types.User, udb, home *sql.DB, name string) (action, target string, err error)) {
+	u, ok := auth.UserFromContext(r.Context())
 	if !ok {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	name := chi.URLParam(r, "name")
+	status, msg := http.StatusOK, ""
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		home, scope, err := s.Skills.HatHome(r.Context(), udb, name)
+		if errors.Is(err, skills.ErrHatNotFound) {
+			status, msg = http.StatusNotFound, "hat not found"
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if scope == types.HatScopeShared && !types.IsElevated(u.Role) {
+			status, msg = http.StatusForbidden, "shared hats can only be edited by owners and admins"
+			return nil
+		}
+		action, target, err := fn(u, udb, home, name)
+		if err != nil {
+			status, msg = http.StatusBadRequest, err.Error()
+			return nil
+		}
+		s.Audit.Log(r.Context(), udb, action, target, map[string]string{"scope": scope})
+		return nil
+	})
+	switch {
+	case err != nil:
+		writeErr(w, http.StatusInternalServerError, err.Error())
+	case status != http.StatusOK:
+		writeErr(w, status, msg)
+	default:
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}
+}
+
+// handlePutHat writes a whole hat (all its files): an existing one in its own
+// scope, or — for a new name — a shared one (owners/admins; personal hats are
+// made with POST /hats).
+func (s *Server) handlePutHat(w http.ResponseWriter, r *http.Request) {
 	var req types.HatFiles
 	if err := decode(r, &req); err != nil || len(req.Files) == 0 {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if err := s.Skills.SaveHat(r.Context(), name, u.ID, req.Files); err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
-		s.Audit.Log(r.Context(), udb, "hat_save", name, nil)
-		return nil
-	})
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-}
-
-// handleDeleteHat removes a hat from the shared database (elevated only).
-func (s *Server) handleDeleteHat(w http.ResponseWriter, r *http.Request) {
-	u, ok := requireElevated(w, r)
-	if !ok {
-		return
-	}
+	u, _ := auth.UserFromContext(r.Context())
 	name := chi.URLParam(r, "name")
-	if err := s.Skills.DeleteHat(r.Context(), name); err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
+	exists := false
 	_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
-		s.Audit.Log(r.Context(), udb, "hat_delete", name, nil)
+		_, _, err := s.Skills.HatHome(r.Context(), udb, name)
+		exists = err == nil
 		return nil
 	})
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	if !exists {
+		if _, ok := requireElevated(w, r); !ok {
+			return
+		}
+		if err := s.Skills.SaveHat(r.Context(), s.Storage.Shared, name, u.ID, req.Files); err != nil {
+			writeErr(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+			s.Audit.Log(r.Context(), udb, "hat_save", name, map[string]string{"scope": types.HatScopeShared})
+			return nil
+		})
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		return
+	}
+	s.editHat(w, r, func(u *types.User, _, home *sql.DB, name string) (string, string, error) {
+		return "hat_save", name, s.Skills.SaveHat(r.Context(), home, name, u.ID, req.Files)
+	})
 }
 
-// handleCreateHat scaffolds a new hat (elevated only).
+// handleDeleteHat removes a hat from its home database.
+func (s *Server) handleDeleteHat(w http.ResponseWriter, r *http.Request) {
+	s.editHat(w, r, func(_ *types.User, _, home *sql.DB, name string) (string, string, error) {
+		return "hat_delete", name, s.Skills.DeleteHat(r.Context(), home, name)
+	})
+}
+
+// handleCreateHat scaffolds a new hat. The default scope is personal; shared
+// hats are for owners and admins (scope "shared").
 func (s *Server) handleCreateHat(w http.ResponseWriter, r *http.Request) {
-	u, ok := requireElevated(w, r)
+	u, ok := auth.UserFromContext(r.Context())
 	if !ok {
+		writeErr(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
 	var req types.CreateHatRequest
@@ -90,21 +150,50 @@ func (s *Server) handleCreateHat(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "name is required")
 		return
 	}
-	if err := s.Skills.CreateHat(r.Context(), req.Name, req.Description, u.ID); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+	if req.Scope == "" {
+		req.Scope = types.HatScopePersonal
+	}
+	if req.Scope == types.HatScopeShared && !types.IsElevated(u.Role) {
+		writeErr(w, http.StatusForbidden, "shared hats can only be created by owners and admins")
 		return
 	}
-	_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
-		s.Audit.Log(r.Context(), udb, "hat_create", req.Name, nil)
+	var cerr error
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		if cerr = s.Skills.CreateHat(r.Context(), udb, req.Scope, req.Name, req.Description, u.ID); cerr != nil {
+			return nil
+		}
+		s.Audit.Log(r.Context(), udb, "hat_create", req.Name, map[string]string{"scope": req.Scope})
 		return nil
 	})
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	switch {
+	case err != nil:
+		writeErr(w, http.StatusInternalServerError, err.Error())
+	case cerr != nil:
+		writeErr(w, http.StatusBadRequest, cerr.Error())
+	default:
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}
+}
+
+// hatFiles reads a hat's files wherever it lives (any authenticated user).
+func (s *Server) hatFiles(r *http.Request, name string) (map[string]string, error) {
+	u, _ := auth.UserFromContext(r.Context())
+	var files map[string]string
+	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
+		home, _, err := s.Skills.HatHome(r.Context(), udb, name)
+		if err != nil {
+			return err
+		}
+		files, err = s.Skills.GetHatFiles(r.Context(), home, name)
+		return err
+	})
+	return files, err
 }
 
 // handleGetHatFiles returns a hat's raw files (any authenticated user).
 func (s *Server) handleGetHatFiles(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	files, err := s.Skills.GetHatFiles(r.Context(), name)
+	files, err := s.hatFiles(r, name)
 	if err != nil {
 		writeErr(w, http.StatusNotFound, "hat not found")
 		return
@@ -116,7 +205,7 @@ func (s *Server) handleGetHatFiles(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetHatFile(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	relpath := chi.URLParam(r, "*")
-	files, err := s.Skills.GetHatFiles(r.Context(), name)
+	files, err := s.hatFiles(r, name)
 	if err != nil {
 		writeErr(w, http.StatusNotFound, "hat not found")
 		return
@@ -129,13 +218,8 @@ func (s *Server) handleGetHatFile(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"name": name, "path": relpath, "content": content})
 }
 
-// handlePutHatFile writes one file of a hat (elevated only).
+// handlePutHatFile writes one file of a hat.
 func (s *Server) handlePutHatFile(w http.ResponseWriter, r *http.Request) {
-	u, ok := requireElevated(w, r)
-	if !ok {
-		return
-	}
-	name := chi.URLParam(r, "name")
 	relpath := chi.URLParam(r, "*")
 	var req struct {
 		Content string `json:"content"`
@@ -144,85 +228,53 @@ func (s *Server) handlePutHatFile(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if err := s.Skills.PutHatFile(r.Context(), name, relpath, req.Content, u.ID); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
-		s.Audit.Log(r.Context(), udb, "hat_save", name+"/"+relpath, nil)
-		return nil
+	s.editHat(w, r, func(u *types.User, _, home *sql.DB, name string) (string, string, error) {
+		return "hat_save", name + "/" + relpath, s.Skills.PutHatFile(r.Context(), home, name, relpath, req.Content, u.ID)
 	})
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// handleAddHatSkill copies the currently-resolved skill into the hat's overlay
-// (elevated only). The overlay copy then shadows normal resolution while worn.
+// handleAddHatSkill copies the currently-resolved skill into the hat's overlay.
+// The overlay copy then shadows normal resolution while worn.
 func (s *Server) handleAddHatSkill(w http.ResponseWriter, r *http.Request) {
-	u, ok := requireElevated(w, r)
-	if !ok {
-		return
-	}
-	name := chi.URLParam(r, "name")
 	var req types.AddHatSkillRequest
 	if err := decode(r, &req); err != nil || strings.TrimSpace(req.Skill) == "" {
 		writeErr(w, http.StatusBadRequest, "skill is required")
 		return
 	}
-	err := s.withSkillScopes(r, u.ID, func(udb, pdb *sql.DB) error {
-		return s.Skills.AddHatSkill(r.Context(), udb, pdb, name, req.Skill, u.ID)
+	u, _ := auth.UserFromContext(r.Context())
+	s.editHat(w, r, func(_ *types.User, udb, home *sql.DB, name string) (string, string, error) {
+		// The project scope (?project=) is optional: it only decides which copy is overlaid.
+		var pdb *sql.DB
+		if pid, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64); pid > 0 {
+			if member, _ := s.Projects.IsMember(r.Context(), pid, u.ID); member {
+				return "hat_add_skill", name + "/" + req.Skill, s.Storage.WithProject(r.Context(), pid, func(p *sql.DB) error {
+					return s.Skills.AddHatSkill(r.Context(), home, udb, p, name, req.Skill, u.ID)
+				})
+			}
+		}
+		return "hat_add_skill", name + "/" + req.Skill, s.Skills.AddHatSkill(r.Context(), home, udb, pdb, name, req.Skill, u.ID)
 	})
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
-		s.Audit.Log(r.Context(), udb, "hat_add_skill", name+"/"+req.Skill, nil)
-		return nil
-	})
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// handleRemoveHatSkill drops a skill's overlay from the hat (elevated only).
+// handleRemoveHatSkill drops a skill's overlay from the hat.
 func (s *Server) handleRemoveHatSkill(w http.ResponseWriter, r *http.Request) {
-	u, ok := requireElevated(w, r)
-	if !ok {
-		return
-	}
-	name := chi.URLParam(r, "name")
 	skill := chi.URLParam(r, "skill")
-	if err := s.Skills.RemoveHatSkill(r.Context(), name, skill); err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
-		s.Audit.Log(r.Context(), udb, "hat_remove_skill", name+"/"+skill, nil)
-		return nil
+	s.editHat(w, r, func(_ *types.User, _, home *sql.DB, name string) (string, string, error) {
+		return "hat_remove_skill", name + "/" + skill, s.Skills.RemoveHatSkill(r.Context(), home, name, skill)
 	})
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // handleSetHatPrompt enables/disables a hat's custom system prompt without
-// losing its content (elevated only).
+// losing its content.
 func (s *Server) handleSetHatPrompt(w http.ResponseWriter, r *http.Request) {
-	u, ok := requireElevated(w, r)
-	if !ok {
-		return
-	}
-	name := chi.URLParam(r, "name")
 	var req types.SetHatPromptRequest
 	if err := decode(r, &req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if err := s.Skills.SetHatPromptEnabled(r.Context(), name, req.Enabled, u.ID); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
-		s.Audit.Log(r.Context(), udb, "hat_prompt", name+" enabled="+strconv.FormatBool(req.Enabled), nil)
-		return nil
+	s.editHat(w, r, func(u *types.User, _, home *sql.DB, name string) (string, string, error) {
+		return "hat_prompt", name + " enabled=" + strconv.FormatBool(req.Enabled), s.Skills.SetHatPromptEnabled(r.Context(), home, name, req.Enabled, u.ID)
 	})
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // handleGetSystemPromptTemplate returns the raw default system prompt template
@@ -280,6 +332,8 @@ func (s *Server) setSessionHat(w http.ResponseWriter, r *http.Request, u *types.
 	switch {
 	case errors.Is(err, skills.ErrHatNotFound):
 		writeErr(w, http.StatusNotFound, "hat not found")
+	case errors.Is(err, skills.ErrPersonalHatInProject):
+		writeErr(w, http.StatusBadRequest, err.Error())
 	case err != nil:
 		writeErr(w, http.StatusNotFound, "not found")
 	default:
@@ -289,7 +343,7 @@ func (s *Server) setSessionHat(w http.ResponseWriter, r *http.Request, u *types.
 
 // dropGoneHats blanks the hat of sessions whose hat no longer exists (deleted,
 // or a removed baked-in one), so no client shows a chip for it.
-func (s *Server) dropGoneHats(ctx context.Context, sessions []types.Session) {
+func (s *Server) dropGoneHats(ctx context.Context, userDB *sql.DB, sessions []types.Session) {
 	var live map[string]bool
 	for i := range sessions {
 		if sessions[i].Hat == nil || *sessions[i].Hat == "" {
@@ -297,7 +351,7 @@ func (s *Server) dropGoneHats(ctx context.Context, sessions []types.Session) {
 		}
 		if live == nil {
 			live = map[string]bool{}
-			hats, _ := s.Skills.ListHats(ctx)
+			hats, _ := s.Skills.ListHats(ctx, userDB)
 			for _, h := range hats {
 				live[h.Name] = true
 			}

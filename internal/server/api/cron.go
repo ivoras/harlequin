@@ -48,8 +48,7 @@ func (s *Server) handleCreateCron(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if err := s.Agent.CheckHat(r.Context(), req.Hat); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
+	if !s.hatOK(w, r, u.ID, req.Hat) {
 		return
 	}
 	var job types.CronJob
@@ -107,11 +106,8 @@ func (s *Server) handleUpdateCron(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if req.Hat != nil {
-		if err := s.Agent.CheckHat(r.Context(), *req.Hat); err != nil {
-			writeErr(w, http.StatusBadRequest, err.Error())
-			return
-		}
+	if req.Hat != nil && !s.hatOK(w, r, u.ID, *req.Hat) {
+		return
 	}
 	var job types.CronJob
 	var updErr error
@@ -184,4 +180,21 @@ func (s *Server) cronReqID(w http.ResponseWriter, r *http.Request) (*types.User,
 		return nil, 0, false
 	}
 	return u, id, true
+}
+
+// hatOK answers 400 and returns false when hat is set but the user can't wear it.
+func (s *Server) hatOK(w http.ResponseWriter, r *http.Request, userID int64, hat string) bool {
+	var err error
+	if e := s.Storage.WithUser(r.Context(), userID, func(udb *sql.DB) error {
+		err = s.Agent.CheckHat(r.Context(), udb, hat)
+		return nil
+	}); e != nil {
+		writeErr(w, http.StatusInternalServerError, e.Error())
+		return false
+	}
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return false
+	}
+	return true
 }

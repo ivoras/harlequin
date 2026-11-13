@@ -180,7 +180,8 @@ export const api = {
   // hats
   listHats: () => reqList<Hat>("GET", "/hats"),
   getHat: (name: string) => req<Hat>("GET", `/hats/${q(name)}`),
-  createHat: (name: string, description: string) => req<void>("POST", "/hats", { name, description }),
+  createHat: (name: string, description: string, scope: "personal" | "shared" = "personal") =>
+    req<void>("POST", "/hats", { name, description, scope }),
   deleteHat: (name: string) => req<void>("DELETE", `/hats/${q(name)}`),
   getHatFiles: (name: string) => req<{ name: string; files: Record<string, string> }>("GET", `/hats/${q(name)}/files`),
   getHatFile: (name: string, path: string) =>
