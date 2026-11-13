@@ -748,28 +748,6 @@ func (s *Server) handleClearSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (s *Server) handleSessionLog(w http.ResponseWriter, r *http.Request) {
-	u, _ := auth.UserFromContext(r.Context())
-	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	// Owners and admins may read the log.
-	var ownErr error
-	_ = s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
-		_, ownErr = s.Sessions.Get(r.Context(), udb, id, u.ID)
-		return nil
-	})
-	if ownErr != nil && !types.IsElevated(u.Role) {
-		writeErr(w, http.StatusNotFound, "not found")
-		return
-	}
-	data, err := s.Session.ReadAll(u.ID, id)
-	if err != nil {
-		writeErr(w, http.StatusNotFound, "no log")
-		return
-	}
-	w.Header().Set("Content-Type", "application/jsonl")
-	_, _ = w.Write(s.markupLog(data))
-}
-
 func (s *Server) handleListMemory(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	var mems []types.Memory

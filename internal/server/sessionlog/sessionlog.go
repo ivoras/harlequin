@@ -152,11 +152,6 @@ func (l *Logger) Log(ctx context.Context, ev Event) {
 	_, _ = f.Write(append(line, '\n'))
 }
 
-// ReadAll returns the raw JSONL bytes for a session (for GET .../log).
-func (l *Logger) ReadAll(userID, sessionID int64) ([]byte, error) {
-	return os.ReadFile(l.path(userID, sessionID))
-}
-
 // SweepRetention deletes session files older than retentionDays (0 = keep all).
 func (l *Logger) SweepRetention(retentionDays int) {
 	if l == nil || retentionDays <= 0 {
