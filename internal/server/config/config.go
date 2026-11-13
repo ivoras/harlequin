@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -839,6 +840,35 @@ func (c *Config) resolveSecrets() {
 	if env := c.Telegram.BotTokenEnv; env != "" {
 		c.Telegram.BotToken = os.Getenv(env)
 	}
+}
+
+// UnpricedModels lists the hosted models this config calls that have no entry in
+// Prices. Their cost is recorded as 0 unless the provider reports one, so the
+// usage totals silently under-count; the server warns about them at startup.
+// Local models (no per-token cost) are skipped.
+func (c *Config) UnpricedModels() []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(model string, local bool) {
+		if model == "" || local || seen[model] {
+			return
+		}
+		seen[model] = true
+		if _, ok := c.Prices[model]; !ok {
+			out = append(out, model)
+		}
+	}
+	chatLocal := false
+	for _, p := range c.Providers {
+		add(p.Model, p.Local)
+		if p.Name == c.Routing.DefaultProvider {
+			chatLocal = p.Local
+		}
+	}
+	add(c.Routing.FallbackModel, chatLocal)
+	add(c.Embeddings.Model, c.Embeddings.Local)
+	sort.Strings(out)
+	return out
 }
 
 func (c *Config) validate() error {

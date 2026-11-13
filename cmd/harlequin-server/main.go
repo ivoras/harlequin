@@ -139,6 +139,9 @@ func main() {
 	for _, p := range cfg.Providers {
 		log.Printf("models: provider %q -> %s @ %s (local=%v)", p.Name, p.Model, p.BaseURL, p.Local)
 	}
+	for _, model := range cfg.UnpricedModels() {
+		log.Printf("WARNING: no price configured for model %q: calls whose cost the provider does not report are recorded as $0; add `price:` to its model_suites entry", model)
+	}
 	log.Printf("models: embeddings=%s (dim %d) web_fetch=%q", cfg.Embeddings.Model, cfg.Embeddings.Dim, cfg.Agent.WebFetch.Model)
 
 	embedder := embed.New(cfg.Embeddings.BaseURL, cfg.Embeddings.APIKey, cfg.Embeddings.Model, cfg.Embeddings.Dim, cfg.Embeddings.QueryPrefix, cfg.Embeddings.DocPrefix)
