@@ -766,7 +766,7 @@ func (s *Server) handleSessionLog(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "no log")
 		return
 	}
-	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Content-Type", "application/jsonl")
 	_, _ = w.Write(s.markupLog(data))
 }
 

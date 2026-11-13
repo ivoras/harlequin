@@ -26,7 +26,7 @@ func (s *Server) markupDays(days []types.UsageDay) {
 	}
 }
 
-// markupLog rewrites the cost_usd of every usage event in a session's NDJSON
+// markupLog rewrites the cost_usd of every usage event in a session's JSONL
 // trajectory; other lines pass through byte for byte.
 func (s *Server) markupLog(data []byte) []byte {
 	if s.markup(1) == 1 {
