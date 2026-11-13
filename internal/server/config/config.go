@@ -145,6 +145,10 @@ type ServerConfig struct {
 	// OrgLanguage is the organisation's main language as a BCP 47 / ISO 639
 	// code ("en", "hr", ...). Default "en".
 	OrgLanguage string `yaml:"org_language"`
+	// OrgLLMMarkupPercent raises every LLM cost the API shows to users by this
+	// percentage (5 = +5%). Applied only on the way out; recorded costs are
+	// untouched. Default 0; must not be negative.
+	OrgLLMMarkupPercent float64 `yaml:"org_llm_markup_percent"`
 	// Web optionally serves the static browser SPA at / (same origin as the API).
 	Web WebUIConfig `yaml:"web"`
 }
@@ -838,6 +842,9 @@ func (c *Config) resolveSecrets() {
 }
 
 func (c *Config) validate() error {
+	if m := c.Server.OrgLLMMarkupPercent; m < 0 || m > 1000 || m != m {
+		return fmt.Errorf("server.org_llm_markup_percent must be between 0 and 1000, got %v", m)
+	}
 	if c.JWTSecret == "" {
 		return fmt.Errorf("JWT_SECRET must be set (in .env or environment)")
 	}

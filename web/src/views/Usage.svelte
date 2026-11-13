@@ -142,7 +142,7 @@
       {/if}
       <UsageBars title="Weekly cost — last 52 weeks" buckets={byWeek} barWidth={16} />
       <UsageBars title="Monthly cost — all time" buckets={byMonth} barWidth={36} />
-      <div class="muted small">Costs are the provider-reported figure where available, otherwise estimated from configured model prices. Days follow your local time.</div>
+      <div class="muted small">Days follow your local time.</div>
     {/if}
   </div>
 </section>

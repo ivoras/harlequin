@@ -7,6 +7,9 @@ server:
   org_name: "Unnamed"
   # Main language of the organisation (ISO 639 code, e.g. "en", "hr"). Default "en".
   # org_language: "en"
+  # Percentage added to every LLM cost the API reports to users (5 = +5%). Recorded costs are
+  # unchanged. Default 0.
+  # org_llm_markup_percent: 0
   # org_description: "Short description of the organisation (any language)."   # context for vision OCR
   # Optionally serve the static browser UI at / (same origin as /api/v1, no CORS).
   # Web UI. Left empty, the server serves the UI embedded in the binary at

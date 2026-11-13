@@ -583,6 +583,7 @@ func (s *Server) sessionCost(r *http.Request, projectID, sessionID, userID int64
 			return nil
 		}
 	}
+	acc.USD = s.markup(acc.USD)
 	return &acc
 }
 
@@ -766,7 +767,7 @@ func (s *Server) handleSessionLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/x-ndjson")
-	_, _ = w.Write(data)
+	_, _ = w.Write(s.markupLog(data))
 }
 
 func (s *Server) handleListMemory(w http.ResponseWriter, r *http.Request) {
@@ -1906,6 +1907,7 @@ func (s *Server) handleUsageDaily(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.markupDays(days)
 	writeJSON(w, http.StatusOK, days)
 }
 
@@ -1930,6 +1932,7 @@ func (s *Server) handleUsageUsers(w http.ResponseWriter, r *http.Request) {
 	err := s.Storage.EachUser(r.Context(), func(id int64, udb *sql.DB) error {
 		days, e := s.Usage.Daily(r.Context(), udb, tz)
 		if e == nil && len(days) > 0 {
+			s.markupDays(days)
 			out = append(out, types.UsageUser{UserID: id, Email: emails[id], Days: days})
 		}
 		return e
@@ -1940,6 +1943,7 @@ func (s *Server) handleUsageUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	// Calls with no acting user (background work) still cost money.
 	if days, e := s.Usage.DailyUnattributed(r.Context(), s.Storage.System, tz); e == nil && len(days) > 0 {
+		s.markupDays(days)
 		out = append(out, types.UsageUser{Email: "(no user: background calls)", Days: days})
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -1979,6 +1983,9 @@ func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	for i := range rows {
+		rows[i].EstCostUSD = s.markup(rows[i].EstCostUSD)
 	}
 	writeJSON(w, http.StatusOK, rows)
 }
