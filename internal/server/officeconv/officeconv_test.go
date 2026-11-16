@@ -14,7 +14,7 @@ func TestUnavailableWithoutSoffice(t *testing.T) {
 	if _, _, err := ToModern(context.Background(), "a.xls", []byte("x")); !errors.Is(err, ErrUnavailable) {
 		t.Fatalf("got %v", err)
 	}
-	if Handles("a.docx") || !Handles("A.XLS") || !Handles("b.ods") {
+	if Handles("a.docx") || !Handles("A.XLS") || !Handles("b.ods") || !Handles("c.XLSB") {
 		t.Fatal("Handles")
 	}
 }

@@ -1449,10 +1449,11 @@ func (s *Server) documentFromUpload(w http.ResponseWriter, r *http.Request) (typ
 // error with its HTTP status.
 // legacyOfficeMime lists the upload types only the external converter can read.
 var legacyOfficeMime = map[string]string{
-	".doc": "application/msword",
-	".xls": "application/vnd.ms-excel",
-	".ppt": "application/vnd.ms-powerpoint",
-	".ods": "application/vnd.oasis.opendocument.spreadsheet",
+	".doc":  "application/msword",
+	".xls":  "application/vnd.ms-excel",
+	".xlsb": "application/vnd.ms-excel.sheet.binary.macroEnabled.12",
+	".ppt":  "application/vnd.ms-powerpoint",
+	".ods":  "application/vnd.oasis.opendocument.spreadsheet",
 }
 
 // attributeUpload charges LLM calls made while extracting an upload (vision OCR)

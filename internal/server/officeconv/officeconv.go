@@ -1,5 +1,5 @@
-// Package officeconv upgrades legacy/OpenDocument Office files (.doc .xls .ppt
-// .ods) to their modern OOXML equivalents by running LibreOffice headless on the
+// Package officeconv upgrades legacy/OpenDocument Office files (.doc .xls .xlsb
+// .ppt .ods) to their modern OOXML equivalents by running LibreOffice headless on the
 // host, so the regular DOCX/XLSX/PPTX paths (docling or the built-in readers)
 // can ingest them. docling-serve needs LibreOffice for these formats and its
 // container usually does not ship it.
@@ -21,7 +21,7 @@ import (
 var ErrUnavailable = errors.New("officeconv: soffice not installed")
 
 // modern maps a legacy extension to the OOXML extension to convert it to.
-var modern = map[string]string{".doc": "docx", ".xls": "xlsx", ".ppt": "pptx", ".ods": "xlsx"}
+var modern = map[string]string{".doc": "docx", ".xls": "xlsx", ".ppt": "pptx", ".ods": "xlsx", ".xlsb": "xlsx"}
 
 const (
 	timeout   = 2 * time.Minute

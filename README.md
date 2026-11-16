@@ -608,11 +608,11 @@ model_suites:
 If the vision model fails, docling's own OCR runs as the last fallback. Only the first 30
 pages are read, and only with docling as the converter.
 
-### Legacy Office files (.doc, .xls, .ppt, .ods)
+### Legacy Office files (.doc, .xls, .xlsb, .ppt, .ods)
 
 docling-serve needs LibreOffice to read these, and its container does not include it, so
 Harlequin converts them itself: if `soffice` is on the server's `PATH`, an uploaded
-`.doc`/`.xls`/`.ppt`/`.ods` is upgraded to `.docx`/`.xlsx`/`.pptx` by headless LibreOffice
+`.doc`/`.xls`/`.xlsb`/`.ppt`/`.ods` is upgraded to `.docx`/`.xlsx`/`.pptx` by headless LibreOffice
 and then ingested like any modern Office file (the original is kept as the downloadable
 file). On Debian/Ubuntu:
 

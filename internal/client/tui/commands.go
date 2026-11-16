@@ -1137,10 +1137,10 @@ func (m *Model) upload(args []string, attach bool) tea.Cmd {
 	}
 	path := strings.TrimSpace(strings.Join(rest, " "))
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".txt", ".md", ".markdown", ".html", ".htm", ".pdf", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls", ".ods", ".odt", ".rtf", ".epub", ".png", ".jpg", ".jpeg", ".gif", ".webp":
+	case ".txt", ".md", ".markdown", ".html", ".htm", ".pdf", ".docx", ".doc", ".pptx", ".ppt", ".xlsx", ".xls", ".xlsb", ".ods", ".odt", ".rtf", ".epub", ".png", ".jpg", ".jpeg", ".gif", ".webp":
 	default:
 		return func() tea.Msg {
-			return errMsg{fmt.Errorf("unsupported format %q (use .txt, .md, .html, .pdf, .docx, .doc, .pptx, .ppt, .xlsx, .xls, .ods, .odt, .rtf, .epub, or an image)", filepath.Ext(path))}
+			return errMsg{fmt.Errorf("unsupported format %q (use .txt, .md, .html, .pdf, .docx, .doc, .pptx, .ppt, .xlsx, .xls, .xlsb, .ods, .odt, .rtf, .epub, or an image)", filepath.Ext(path))}
 		}
 	}
 	var projectID int64
