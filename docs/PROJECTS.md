@@ -31,6 +31,12 @@ walkthrough (with every client's buttons and commands) is in the
 | Leave the project (depart) | yourself | "Depart project", TUI `/project depart` |
 | Delete the project | its creator, or any owner/admin (need not be a member) | "Delete project…" (type the name to confirm), TUI `/project delete <id-or-name> --yes` |
 
+**Owners and admins** are treated as members of every project (they see it in the
+project list and can open its sessions, documents, memories and chatroom) unless the
+server sets `server.admins_see_all_projects: false` (default `true`). They are not added
+to the member list, and other members are not notified. Ordinary users only ever see
+the projects they belong to.
+
 Invitations are by the exact email of an existing account. The invitee gets an
 in-app notification, and nothing is shared with them until they accept. The
 invite box suggests account emails from the server's user directory (unless

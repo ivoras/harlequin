@@ -256,6 +256,7 @@ func main() {
 	}
 
 	projectStore := project.NewStore(store.System)
+	projectStore.SetAdminsSeeAll(cfg.Server.AdminsSeeAllProjectsValue())
 	cronStore := cron.NewStore()
 	presenceTracker := presence.New()
 	userCfgStore := userconfig.NewStore()

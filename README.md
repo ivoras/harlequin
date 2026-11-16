@@ -65,7 +65,10 @@ It's perfectly capable of playing nicely with specific requirements such as EU-b
 - **Projects** — shared workspaces (members, sessions, documents, memories, live
   per-project chatroom). Search can span *all* projects a user belongs to, with
   project-qualified references (`p3.17`) that stay valid anywhere, or they can
-  be limited to per-project only. See [docs/PROJECTS.md](docs/PROJECTS.md).
+  be limited to per-project only. By default owners and admins see and can use
+  **every** project as if they were members (set `server.admins_see_all_projects: false`
+  in `server.yaml` to limit them to projects they have actually joined; ordinary users
+  are never affected). See [docs/PROJECTS.md](docs/PROJECTS.md).
 - **Skills & hats** — reusable instruction/script bundles resolved across
   scopes, and **hats**: working modes (for example *analyst* for comparing
   documents, *researcher* for the outside world) that add a role to the system

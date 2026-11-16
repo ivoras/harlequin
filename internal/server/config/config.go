@@ -151,8 +151,16 @@ type ServerConfig struct {
 	// percentage (5 = +5%). Applied only on the way out; recorded costs are
 	// untouched. Default 0; must not be negative.
 	OrgLLMMarkupPercent float64 `yaml:"org_llm_markup_percent"`
+	// AdminsSeeAllProjects lets owner and admin accounts see and use every
+	// project as if they were a member of it (nil = default true).
+	AdminsSeeAllProjects *bool `yaml:"admins_see_all_projects"`
 	// Web optionally serves the static browser SPA at / (same origin as the API).
 	Web WebUIConfig `yaml:"web"`
+}
+
+// AdminsSeeAllProjectsValue reports whether owners/admins see every project (default true).
+func (s ServerConfig) AdminsSeeAllProjectsValue() bool {
+	return s.AdminsSeeAllProjects == nil || *s.AdminsSeeAllProjects
 }
 
 // WebUIConfig controls serving the static web UI from the server.

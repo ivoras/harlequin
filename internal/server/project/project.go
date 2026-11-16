@@ -33,7 +33,18 @@ var (
 // Store manages the project registry (system DB) and chatroom (project DB).
 type Store struct {
 	system *sql.DB
+	// adminsSeeAll makes IsMember/List treat owner and admin accounts as members
+	// of every project (server.admins_see_all_projects). Membership rows are
+	// untouched, so Members() still lists only the real members.
+	adminsSeeAll bool
 }
+
+// SetAdminsSeeAll enables owner/admin access to every project (call at startup).
+func (s *Store) SetAdminsSeeAll(on bool) { s.adminsSeeAll = on }
+
+// elevatedSQL is true for an owner/admin user id bound to ?2 when the setting is
+// on (?3); shared by IsMember and List.
+const elevatedSQL = `(?3 AND EXISTS(SELECT 1 FROM users WHERE id = ?2 AND role IN ('owner','admin')))`
 
 // NewStore constructs a project Store bound to the system database.
 func NewStore(system *sql.DB) *Store { return &Store{system: system} }
@@ -80,13 +91,14 @@ func (s *Store) Get(ctx context.Context, projectID int64) (*types.Project, error
 	return &p, nil
 }
 
-// List returns the projects the user is a member of (most recent first).
+// List returns the projects the user is a member of (every project for an
+// owner/admin when adminsSeeAll), ordered by name.
 func (s *Store) List(ctx context.Context, userID int64) ([]types.Project, error) {
 	rows, err := s.system.QueryContext(ctx,
 		`SELECT p.id, p.name, p.created_by, p.created_at, COALESCE(u.email, '')
-		 FROM projects p JOIN project_members m ON m.project_id = p.id
-		 LEFT JOIN users u ON u.id = p.created_by
-		 WHERE m.user_id = ? ORDER BY LOWER(p.name), p.id`, userID)
+		 FROM projects p LEFT JOIN users u ON u.id = p.created_by
+		 WHERE EXISTS(SELECT 1 FROM project_members m WHERE m.project_id = p.id AND m.user_id = ?2)
+		    OR `+elevatedSQL+` ORDER BY LOWER(p.name), p.id`, nil /* ?1 unused: keeps ?2/?3 aligned with IsMember */, userID, s.adminsSeeAll)
 	if err != nil {
 		return nil, err
 	}
@@ -129,11 +141,14 @@ func (s *Store) ListAll(ctx context.Context) ([]types.Project, error) {
 	return out, nil
 }
 
-// IsMember reports whether the user belongs to the project.
+// IsMember reports whether the user belongs to the project — or, with
+// adminsSeeAll, is an owner/admin and the project exists.
 func (s *Store) IsMember(ctx context.Context, projectID, userID int64) (bool, error) {
 	var n int
 	err := s.system.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM project_members WHERE project_id = ? AND user_id = ?`, projectID, userID).Scan(&n)
+		`SELECT EXISTS(SELECT 1 FROM project_members WHERE project_id = ?1 AND user_id = ?2)
+		     OR (EXISTS(SELECT 1 FROM projects WHERE id = ?1) AND `+elevatedSQL+`)`,
+		projectID, userID, s.adminsSeeAll).Scan(&n)
 	return n > 0, err
 }
 
