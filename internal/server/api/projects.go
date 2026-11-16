@@ -75,7 +75,7 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
-	_, id, ok := s.projectMember(w, r)
+	u, id, ok := s.projectMember(w, r)
 	if !ok {
 		return
 	}
@@ -87,6 +87,12 @@ func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	p.AdminAccess = true
+	for _, m := range p.Members {
+		if m.UserID == u.ID {
+			p.AdminAccess = false
+		}
 	}
 	writeJSON(w, http.StatusOK, p)
 }

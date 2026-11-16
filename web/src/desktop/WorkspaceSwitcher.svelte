@@ -1,4 +1,5 @@
 <script lang="ts">
+  import AdminMark from "../views/AdminMark.svelte";
   import { api } from "../lib/api";
   import { activeProject, view, toast } from "../lib/stores";
   import { switchToProject, leaveActiveProject, projectBylines, respondToInvite } from "../lib/project";
@@ -52,7 +53,7 @@
     </span>
     <span class="ws-name">
       <span class="ws-kind">{$activeProject ? "Project" : "Workspace"}</span>
-      <span class="ellipsize">{$activeProject ? $activeProject.name : "Personal"}</span>
+      <span class="ellipsize">{$activeProject ? $activeProject.name : "Personal"}{#if $activeProject?.admin_access}<AdminMark />{/if}</span>
     </span>
     {#if ui.invites.length}<span class="badge" title="Pending invitations">{ui.invites.length}</span>{/if}
     <Icon name="chevronDown" size={14} />
@@ -69,7 +70,7 @@
       {#each ui.projects as p (p.id)}
         <button class="menu-item" onclick={() => pick(p)}>
           <Icon name="folder" />
-          <span class="grow">{p.name}{#if bylines.get(p.id)}<span class="faint small"> · {bylines.get(p.id)}</span>{/if}</span>
+          <span class="grow">{p.name}{#if p.admin_access}<AdminMark />{/if}{#if bylines.get(p.id)}<span class="faint small"> · {bylines.get(p.id)}</span>{/if}</span>
           {#if $activeProject?.id === p.id}<span class="check"><Icon name="check" /></span>{/if}
         </button>
       {/each}

@@ -42,6 +42,7 @@ export interface Project {
   created_by_email?: string; // for disambiguating duplicate names
   created_at: string;
   members?: ProjectMember[];
+  admin_access?: boolean; // seen only as owner/admin, not a member
 }
 export interface ProjectMember {
   user_id: number;

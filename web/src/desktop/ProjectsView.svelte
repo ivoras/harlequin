@@ -1,4 +1,5 @@
 <script lang="ts">
+  import AdminMark from "../views/AdminMark.svelte";
   import { onMount } from "svelte";
   import { api } from "../lib/api";
   import { activeProject, session, toast } from "../lib/stores";
@@ -142,7 +143,7 @@
       <button class="pitem" class:sel={p.id === selected} onclick={() => (selected = p.id)}>
         <Icon name="folder" size={15} />
         <span class="col" style="gap:0; min-width:0; flex:1; text-align:left;">
-          <span class="ellipsize">{p.name}</span>
+          <span class="ellipsize">{p.name}{#if p.admin_access}<AdminMark />{/if}</span>
           {#if bylines.get(p.id)}<span class="faint small ellipsize">{bylines.get(p.id)}</span>{/if}
         </span>
         {#if $activeProject?.id === p.id}<span class="pill scope-project">active</span>{/if}
@@ -160,7 +161,7 @@
       <div class="container col">
         <div class="row dhead">
           <div class="col" style="gap:0; min-width:0;">
-            <h2 class="ellipsize">{sel.name}</h2>
+            <h2 class="ellipsize">{sel.name}{#if sel.admin_access}<AdminMark />{/if}</h2>
             <span class="faint small">created {new Date(sel.created_at).toLocaleDateString()}{sel.created_by_email ? ` by ${sel.created_by_email}` : ""}</span>
           </div>
           <span class="spacer"></span>

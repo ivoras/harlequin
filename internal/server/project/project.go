@@ -95,7 +95,8 @@ func (s *Store) Get(ctx context.Context, projectID int64) (*types.Project, error
 // owner/admin when adminsSeeAll), ordered by name.
 func (s *Store) List(ctx context.Context, userID int64) ([]types.Project, error) {
 	rows, err := s.system.QueryContext(ctx,
-		`SELECT p.id, p.name, p.created_by, p.created_at, COALESCE(u.email, '')
+		`SELECT p.id, p.name, p.created_by, p.created_at, COALESCE(u.email, ''),
+		        NOT EXISTS(SELECT 1 FROM project_members m WHERE m.project_id = p.id AND m.user_id = ?2)
 		 FROM projects p LEFT JOIN users u ON u.id = p.created_by
 		 WHERE EXISTS(SELECT 1 FROM project_members m WHERE m.project_id = p.id AND m.user_id = ?2)
 		    OR `+elevatedSQL+` ORDER BY LOWER(p.name), p.id`, nil /* ?1 unused: keeps ?2/?3 aligned with IsMember */, userID, s.adminsSeeAll)
@@ -106,7 +107,7 @@ func (s *Store) List(ctx context.Context, userID int64) ([]types.Project, error)
 	var out []types.Project
 	for rows.Next() {
 		var p types.Project
-		if err := rows.Scan(&p.ID, &p.Name, &p.CreatedBy, &p.CreatedAt, &p.CreatedByEmail); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.CreatedBy, &p.CreatedAt, &p.CreatedByEmail, &p.AdminAccess); err != nil {
 			return nil, err
 		}
 		out = append(out, p)

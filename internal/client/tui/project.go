@@ -32,7 +32,11 @@ func (m *Model) runProject(args []string) tea.Cmd {
 			var sb strings.Builder
 			sb.WriteString("Projects (use /project switch <id-or-name>):\n")
 			for _, p := range ps {
-				fmt.Fprintf(&sb, "  #%d %s\n", p.ID, p.Name)
+				mark := ""
+				if p.AdminAccess {
+					mark = " ⚡ (admin access, not a member)"
+				}
+				fmt.Fprintf(&sb, "  #%d %s%s\n", p.ID, p.Name, mark)
 			}
 			if len(ps) == 0 {
 				sb.WriteString("  (none — /project new <name>)\n")

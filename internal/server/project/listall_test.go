@@ -57,6 +57,16 @@ func TestAdminsSeeAll(t *testing.T) {
 	check(true, 3, 2, true)  // admin
 	check(true, 4, 2, true)  // owner
 	check(false, 3, 0, false)
+	s.SetAdminsSeeAll(true)
+	l, _ := s.List(ctx, 3)
+	for _, p := range l {
+		if !p.AdminAccess {
+			t.Errorf("admin who is in no project: %q should be flagged AdminAccess", p.Name)
+		}
+	}
+	if l, _ := s.List(ctx, 1); len(l) != 1 || l[0].AdminAccess {
+		t.Errorf("a real member's own project must not be flagged: %+v", l)
+	}
 	if m, _ := s.IsMember(ctx, 99, 4); m {
 		t.Error("owner is not a member of a project that does not exist")
 	}

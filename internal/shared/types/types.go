@@ -292,6 +292,9 @@ type Project struct {
 	CreatedAt      time.Time `json:"created_at"`
 	// Members is populated on the single-project detail endpoint.
 	Members []ProjectMember `json:"members,omitempty"`
+	// AdminAccess marks a project the caller sees only as an owner/admin
+	// (server.admins_see_all_projects), not as a real member; clients flag it.
+	AdminAccess bool `json:"admin_access,omitempty"`
 }
 
 // ProjectMember is a user belonging to a project.

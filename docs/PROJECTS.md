@@ -34,7 +34,8 @@ walkthrough (with every client's buttons and commands) is in the
 **Owners and admins** are treated as members of every project (they see it in the
 project list and can open its sessions, documents, memories and chatroom) unless the
 server sets `server.admins_see_all_projects: false` (default `true`). They are not added
-to the member list, and other members are not notified. Ordinary users only ever see
+to the member list, and other members are not notified. Such projects are marked with a small ⚡ after the name (project list, workspace switcher,
+TUI `/project list`) so you can tell them from your own. Ordinary users only ever see
 the projects they belong to.
 
 Invitations are by the exact email of an existing account. The invitee gets an

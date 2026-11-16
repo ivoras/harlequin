@@ -410,7 +410,7 @@
           <select style="width:100%;" value={$activeProject?.id ?? 0} onchange={onSelectProject}>
             <option value={0}>Personal</option>
             {#each projects as p (p.id)}
-              <option value={p.id}>📁 {p.name}{bylines.get(p.id) ? ` (${bylines.get(p.id)})` : ""}</option>
+              <option value={p.id}>📁 {p.name}{p.admin_access ? " ⚡" : ""}{bylines.get(p.id) ? ` (${bylines.get(p.id)})` : ""}</option>
             {/each}
           </select>
         </label>
