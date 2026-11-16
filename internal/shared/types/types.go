@@ -319,6 +319,7 @@ type ChatMessage struct {
 	ID        int64     `json:"id"`
 	UserID    int64     `json:"user_id"`
 	Email     string    `json:"email"` // author's email (resolved for display)
+	Role      string    `json:"role"`  // author's account role (owner/admin/user), for display
 	Content   string    `json:"content"`
 	CreatedAt time.Time `json:"created_at"`
 }

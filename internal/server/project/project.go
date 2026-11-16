@@ -377,7 +377,7 @@ func (s *Store) AddChatMessage(ctx context.Context, projDB *sql.DB, userID int64
 	if err != nil {
 		return nil, err
 	}
-	m.Email = s.emailByID(ctx, m.UserID)
+	m.Email, m.Role = s.emailRoleByID(ctx, m.UserID)
 	return &m, nil
 }
 
@@ -398,7 +398,7 @@ func (s *Store) ChatMessages(ctx context.Context, projDB *sql.DB, limit int) ([]
 		if err := rows.Scan(&m.ID, &m.UserID, &m.Content, &m.CreatedAt); err != nil {
 			return nil, err
 		}
-		m.Email = s.emailByID(ctx, m.UserID)
+		m.Email, m.Role = s.emailRoleByID(ctx, m.UserID)
 		out = append(out, m)
 	}
 	if err := rows.Err(); err != nil {
@@ -409,6 +409,11 @@ func (s *Store) ChatMessages(ctx context.Context, projDB *sql.DB, limit int) ([]
 		out[i], out[j] = out[j], out[i]
 	}
 	return out, nil
+}
+
+func (s *Store) emailRoleByID(ctx context.Context, userID int64) (email, role string) {
+	_ = s.system.QueryRowContext(ctx, `SELECT email, role FROM users WHERE id = ?`, userID).Scan(&email, &role)
+	return email, role
 }
 
 func (s *Store) emailByID(ctx context.Context, userID int64) string {

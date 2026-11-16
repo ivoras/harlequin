@@ -68,6 +68,7 @@ export interface ChatMessage {
   id: number;
   user_id: number;
   email: string;
+  role?: string; // owner | admin | user
   content: string;
   created_at: string;
 }

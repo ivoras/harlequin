@@ -70,7 +70,7 @@
       <div class="team-msgs" bind:this={chatEl}>
         {#each pc.messages as m (m.id)}
           <div class="tmsg">
-            <div class="tmeta"><b>{m.email}</b> <span class="faint">{new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span></div>
+            <div class="tmeta"><b title={m.role ? `Role: ${m.role}` : undefined}>{m.email}</b> <span class="faint" title={new Date(m.created_at).toLocaleString([], { dateStyle: "full", timeStyle: "medium" })}>{new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span></div>
             <div class="wrap">{m.content}</div>
           </div>
         {/each}
