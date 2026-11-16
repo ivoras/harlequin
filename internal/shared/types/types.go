@@ -127,6 +127,19 @@ type Session struct {
 	OwnerEmail string `json:"owner_email,omitempty"`
 }
 
+// TelegramStatus is returned by GET /telegram/link.
+type TelegramStatus struct {
+	Enabled bool `json:"enabled"` // the server has a Telegram bot
+	Linked  bool `json:"linked"`  // the caller has a connected chat
+}
+
+// TelegramLinkResponse is returned by POST /telegram/link: a one-time link that,
+// opened in Telegram, connects that chat to the caller's account.
+type TelegramLinkResponse struct {
+	URL       string `json:"url"`
+	ExpiresIn int    `json:"expires_in"` // seconds
+}
+
 // SetConfigRequest is the body of PUT /config/{key}.
 type SetConfigRequest struct {
 	Value string `json:"value"`

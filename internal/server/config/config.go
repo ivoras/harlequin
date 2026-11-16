@@ -98,9 +98,10 @@ type WebSearchConfig struct {
 	APIKey string `yaml:"-"`
 }
 
-// TelegramConfig configures outbound Telegram notification delivery. The bot
-// token is read from the env var named by BotTokenEnv (like a provider api key);
-// empty disables Telegram delivery. APIBase overrides the Bot API host (tests).
+// TelegramConfig configures the Telegram bot: the chat surface and notification
+// delivery. The bot token is read from the env var named by BotTokenEnv (like a
+// provider api key); empty disables Telegram. APIBase overrides the Bot API
+// host (tests).
 type TelegramConfig struct {
 	BotTokenEnv string `yaml:"bot_token_env"`
 	APIBase     string `yaml:"api_base"`

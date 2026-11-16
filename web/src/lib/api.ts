@@ -297,6 +297,10 @@ export const api = {
   deleteCron: (id: number) => req<void>("DELETE", `/cron/${id}`),
   runCron: (id: number) => req<void>("POST", `/cron/${id}/run`),
 
+  // telegram
+  telegramStatus: () => req<{ enabled: boolean; linked: boolean }>("GET", "/telegram/link"),
+  telegramLink: () => req<{ url: string; expires_in: number }>("POST", "/telegram/link"),
+  telegramUnlink: () => req<void>("DELETE", "/telegram/link"),
   // config
   getConfig: async () => (await req<Record<string, string> | null>("GET", "/config")) ?? {},
   setConfig: (key: string, value: string) => req<void>("PUT", `/config/${q(key)}`, { value }),

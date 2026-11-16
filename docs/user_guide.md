@@ -234,6 +234,24 @@ available while a turn is running, and in a project session it changes the
 session for every member. Removed turns' effects outside the conversation
 (saved memories or documents, sent e-mail, usage cost) stay.
 
+## Telegram
+
+If your organisation has set up a Harlequin Telegram bot, you can talk to
+Harlequin from Telegram. Connect your chat once: choose
+**Connect Telegram** under Config in the web app (or type `/telegram` in the
+TUI), open the link it gives you in Telegram and press **Start**. The link
+works once and expires after 10 minutes. After that, just message the bot: it answers
+when it has finished working. The conversation is one of your normal personal
+sessions, so it also shows up in the web app and the TUI.
+
+- `/new` starts a fresh session.
+- `/stop` interrupts the reply in progress.
+
+To disconnect, use **Disconnect** in the same place (or `/telegram disconnect`).
+
+Telegram is text-only for now: files you send are not read, and files Harlequin
+creates are not sent to the chat (open them in the web app).
+
 ## Projects
 
 A project is a shared workspace. Its members see the same chat sessions with
@@ -507,6 +525,8 @@ See the [Projects](#projects-1) chapter below for the full workflow.
 
 | Command | What it does |
 |---------|--------------|
+| `/telegram` | Get a one-time link that connects your Telegram chat to your account (see [Telegram](#telegram)). |
+| `/telegram disconnect` | Disconnect your Telegram chat. |
 | `/cron` | List scheduled jobs. |
 | `/cron show <id>` | Show a job, including its last run output. |
 | `/cron add "<name>" "<spec>" js "<target>" ["<input-json>"]` | Schedule a JavaScript job. |

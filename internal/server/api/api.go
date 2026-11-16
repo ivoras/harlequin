@@ -34,6 +34,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 	"github.com/ivoras/harlequin/internal/server/skills"
 	"github.com/ivoras/harlequin/internal/server/storage"
+	"github.com/ivoras/harlequin/internal/server/telegrambot"
 	"github.com/ivoras/harlequin/internal/server/usage"
 	"github.com/ivoras/harlequin/internal/server/userconfig"
 	"github.com/ivoras/harlequin/internal/shared/types"
@@ -86,6 +87,7 @@ type Server struct {
 	DocEvents *docevents.Bus // document change notifications pushed to connected clients
 	Projects  *project.Store
 	ChatHub   *projectchat.Hub
+	Telegram  *telegrambot.Bot // nil when no bot token is configured
 
 	// ingest tracks asynchronous document ingestions (POST /documents/async).
 	ingest ingestJobs
@@ -241,6 +243,10 @@ func (s *Server) Router() http.Handler {
 				r.Put("/config/{key}", s.handleSetConfig)
 				r.Delete("/config/{key}", s.handleDeleteConfig)
 			}
+
+			r.Get("/telegram/link", s.handleTelegramStatus)
+			r.Post("/telegram/link", s.handleTelegramLink)
+			r.Delete("/telegram/link", s.handleTelegramUnlink)
 
 			if s.Cron != nil {
 				r.Get("/cron", s.handleListCron)

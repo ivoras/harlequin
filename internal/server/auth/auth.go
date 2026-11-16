@@ -155,6 +155,7 @@ func (s *Store) DeleteUserByID(ctx context.Context, id int64) error {
 		`DELETE FROM project_members WHERE user_id = ?`,
 		`DELETE FROM project_invites WHERE invited_user_id = ?`,
 		`DELETE FROM api_tokens WHERE user_id = ?`,
+		`DELETE FROM telegram_links WHERE user_id = ?`,
 		`DELETE FROM users WHERE id = ?`,
 	} {
 		if _, err := tx.ExecContext(ctx, q, id); err != nil {
@@ -192,6 +193,17 @@ func (s *Store) EmailByID(ctx context.Context, id int64) (string, error) {
 		return "", ErrUserNotFound
 	}
 	return email, err
+}
+
+// UserByID returns an account by id (ErrUserNotFound when it is gone).
+func (s *Store) UserByID(ctx context.Context, id int64) (*types.User, error) {
+	var u types.User
+	err := s.db.QueryRowContext(ctx, `SELECT id, email, role, created_at FROM users WHERE id = ?`, id).
+		Scan(&u.ID, &u.Email, &u.Role, &u.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrUserNotFound
+	}
+	return &u, err
 }
 
 // SetPassword sets an account's password by id and revokes its API tokens.

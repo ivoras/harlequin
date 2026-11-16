@@ -15,7 +15,8 @@ const (
 	KeyTelegramChatID    = "telegram.chat_id"  // the chat to deliver/receive on
 	KeyTelegramUsername  = "telegram.username" // the registered Telegram handle
 	KeyTelegramInterface = "telegram.interface"
-	KeyHatLast           = "hat.last" // hat worn most recently; new sessions start with it
+	KeyTelegramSession   = "telegram.session" // session the Telegram chat is talking in
+	KeyHatLast           = "hat.last"         // hat worn most recently; new sessions start with it
 )
 
 // Store is stateless CRUD over a user's config table.

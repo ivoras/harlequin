@@ -205,7 +205,7 @@ Optional:
 | `HARLEQUIN_DB_PATH` | Override SQLite database path (default: `<data_dir>/harlequin.db`) |
 | `BRAVE_API_KEY` | Enables the agent's `WebSearch` tool (Brave Search API); empty = tool disabled |
 | `ZYTE_API_KEY` | Zyte API: fallback for `WebFetch` on bot-protected sites, and the fetcher `MarkdownFetch` uses for web pages |
-| `TELEGRAM_BOT_TOKEN` | Outbound Telegram notification delivery |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot: chatting with Harlequin over Telegram and notification delivery (see [docs/telegram.md](docs/telegram.md)) |
 | `SMTP_PASSWORD` | SMTP auth for registration-code emails (see Self-registration) |
 | `HARLEQUIN_SECRET_KEY` | 32-byte AES key (hex or base64) encrypting MCP credentials at rest; see [docs/mcp.md](docs/mcp.md) |
 
@@ -352,7 +352,7 @@ together with its **API** — the transport the request arrived over:
 |-----------|-----|-------|
 | `TUI` | `REST` | the built-in text user interface (TUI) client |
 | `Web` | `REST` | the browser SPA (see Web UI below) |
-| `Telegram` | `Telegram` | planned: a Telegram chatbot bridge (outbound notifications already deliver via Telegram) |
+| `Telegram` | `Telegram` | a Telegram bot users chat with from a linked private chat; setup in [docs/telegram.md](docs/telegram.md) |
 | `Cron` | `Cron` | internal: scheduled jobs that start an agent turn |
 
 Because the REST + WebSocket API is shared by different clients, a REST client **announces
@@ -360,13 +360,13 @@ which interface it is** via the `X-Harlequin-Interface` header (the TUI sends
 `TUI`).
 
 Per-user settings a new interface needs live in a generic **`config`** table in
-each user's database (key/value). For example, a user registers a Telegram
-connection by storing `telegram.chat_id` (and optionally `telegram.username`).
-Manage it from the TUI:
+each user's database (key/value). For example, `telegram.chat_id` is the chat
+Telegram notifications go to (set automatically when the user links their chat
+to the bot). Manage it from the TUI:
 
 ```
 /config                              list your config
-/config set telegram.chat_id 12345   register a Telegram chat
+/config set telegram.chat_id 12345   send Telegram notifications to this chat
 /config del telegram.chat_id         remove it
 ```
 

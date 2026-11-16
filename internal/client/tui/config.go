@@ -70,6 +70,28 @@ func (m *Model) handleConfigSub(args []string) tea.Cmd {
 	}
 }
 
+func (m *Model) handleTelegramSub(args []string) tea.Cmd {
+	switch {
+	case len(args) == 0 || args[0] == "connect":
+		return func() tea.Msg {
+			l, err := m.client.TelegramLink(context.Background())
+			if err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{fmt.Sprintf("Open this link in Telegram and press Start (valid %d minutes, works once):\n  %s", l.ExpiresIn/60, l.URL)}
+		}
+	case args[0] == "disconnect":
+		return func() tea.Msg {
+			if err := m.client.TelegramUnlink(context.Background()); err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{"Telegram disconnected"}
+		}
+	default:
+		return infoCmd("usage: /telegram [disconnect]")
+	}
+}
+
 func renderConfig(cfg map[string]string) string {
 	if len(cfg) == 0 {
 		return "(no config set) — e.g. /config set telegram.chat_id 123456789"

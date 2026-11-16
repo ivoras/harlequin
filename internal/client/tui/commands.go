@@ -53,6 +53,8 @@ const helpText = `Commands:
   /cron on|off <id>     enable / disable a job
   /cron run <id>        run a job now
   /cron del <id>        delete a job
+  /telegram             get a one-time link that connects your Telegram chat
+  /telegram disconnect  disconnect your Telegram chat
   /config               list your per-user config
   /config set <k> <v>   set a config key (e.g. telegram.chat_id 12345)
   /config del <key>     delete a config key
@@ -171,6 +173,8 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 		return m.handleCronSub(args, line)
 	case "/config":
 		return m.handleConfigSub(args)
+	case "/telegram":
+		return m.handleTelegramSub(args)
 	case "/queue":
 		return m.handleQueueSub(args)
 	case "/skills":

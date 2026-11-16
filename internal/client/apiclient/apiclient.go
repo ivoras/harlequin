@@ -452,6 +452,17 @@ func (c *Client) RunCron(ctx context.Context, id int64) error {
 	return c.do(ctx, http.MethodPost, fmt.Sprintf("/cron/%d/run", id), nil, nil)
 }
 
+// TelegramLink requests a one-time link that connects a Telegram chat to the account.
+func (c *Client) TelegramLink(ctx context.Context) (*types.TelegramLinkResponse, error) {
+	var out types.TelegramLinkResponse
+	return &out, c.do(ctx, http.MethodPost, "/telegram/link", nil, &out)
+}
+
+// TelegramUnlink disconnects the account's Telegram chat.
+func (c *Client) TelegramUnlink(ctx context.Context) error {
+	return c.do(ctx, http.MethodDelete, "/telegram/link", nil, nil)
+}
+
 // GetConfig returns the user's per-user config (key -> value).
 func (c *Client) GetConfig(ctx context.Context) (map[string]string, error) {
 	var out map[string]string

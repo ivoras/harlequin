@@ -223,11 +223,12 @@ email:
   smtp_password_env: SMTP_PASSWORD  # env var holding the SMTP password (like api_key_env; never put the secret in YAML)
   from: ""                          # sender: "Name <addr>" or a bare address (defaults to smtp_username); the display name is shown in mail clients
 
-# Outbound Telegram notification delivery (a cron watch can deliver via telegram).
-# Active only when a bot token is set AND a user has registered their chat id
-# (per-user config key telegram.chat_id, e.g. via /config).
+# Telegram bot: users chat with Harlequin from a linked private chat, and
+# notifications can be delivered there. Active when a bot token is set; each
+# deployment needs its own bot (two servers must not share a token). Setup:
+# docs/telegram.md.
 telegram:
-  bot_token_env: TELEGRAM_BOT_TOKEN # env var holding the bot token (empty disables Telegram delivery)
+  bot_token_env: TELEGRAM_BOT_TOKEN # env var holding the bot token (empty disables Telegram)
   api_base: ""                      # override the Bot API host (default https://api.telegram.org; for self-host/testing)
 
 # Web search: the agent's WebSearch tool, backed by the Brave Search API

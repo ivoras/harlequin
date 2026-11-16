@@ -44,6 +44,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/skills"
 	"github.com/ivoras/harlequin/internal/server/storage"
 	"github.com/ivoras/harlequin/internal/server/telegram"
+	"github.com/ivoras/harlequin/internal/server/telegrambot"
 	"github.com/ivoras/harlequin/internal/server/usage"
 	"github.com/ivoras/harlequin/internal/server/userconfig"
 	"github.com/ivoras/harlequin/internal/server/webfetch"
@@ -355,6 +356,15 @@ func main() {
 		DocEvents:  docEvents,
 		Projects:   projectStore,
 		ChatHub:    projectchat.New(),
+	}
+
+	// Telegram chat surface: users talk to the bot from a linked private chat.
+	if tgClient.Configured() {
+		srv.Telegram = &telegrambot.Bot{
+			TG: tgClient, System: store.System, Storage: store, Auth: authStore, Sessions: sessStore,
+			UserConfig: userCfgStore, Hub: hub, Audit: auditStore, Hat: srv.StickyHat,
+		}
+		go srv.Telegram.Run(context.Background())
 	}
 
 	// PDF text extraction for document uploads (PDFium via wasm; best-effort).

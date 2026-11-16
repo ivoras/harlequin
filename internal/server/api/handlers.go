@@ -493,6 +493,12 @@ func (s *Server) stickyHat(ctx context.Context, udb *sql.DB, requested string) s
 	return ""
 }
 
+// StickyHat is the hat a new session of this user starts with (their last worn
+// one, if it still exists), for sessions created outside the REST API.
+func (s *Server) StickyHat(ctx context.Context, udb *sql.DB) string {
+	return s.stickyHat(ctx, udb, "")
+}
+
 func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	var req types.CreateSessionRequest

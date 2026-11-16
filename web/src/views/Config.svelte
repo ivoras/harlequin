@@ -7,7 +7,13 @@
   let key = $state("");
   let val = $state("");
 
+  let tg = $state({ enabled: false, linked: false });
+  let tgLink = $state("");
+
   async function load() {
+    // No card when the status is unavailable; the config list must still load.
+    tg = await api.telegramStatus().catch(() => ({ enabled: false, linked: false }));
+    if (tg.linked) tgLink = "";
     try {
       cfg = await api.getConfig();
     } catch (e) {
@@ -28,6 +34,22 @@
       toast((e as Error).message, "error");
     }
   }
+  async function tgConnect() {
+    try {
+      tgLink = (await api.telegramLink()).url;
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  }
+  async function tgDisconnect() {
+    try {
+      await api.telegramUnlink();
+      await load();
+      toast("Telegram disconnected");
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  }
   async function del(k: string) {
     try {
       await api.deleteConfig(k);
@@ -38,8 +60,28 @@
   }
 </script>
 
+<!-- Linking happens in Telegram; coming back to this tab shows the result. -->
+<svelte:window onfocus={load} />
+
 <section class="panel">
   <div class="container col">
+    {#if tg.enabled}
+      <h3>Telegram</h3>
+      <div class="card col">
+        {#if tg.linked}
+          <div class="row">
+            <span style="flex:1;">Your Telegram chat is connected.</span>
+            <button class="ghost danger small" onclick={tgDisconnect}>Disconnect</button>
+          </div>
+        {:else if tgLink}
+          <div>Open this link in Telegram and press <strong>Start</strong>. It works once and expires in 10 minutes.</div>
+          <a class="wrap" href={tgLink} target="_blank" rel="noopener">{tgLink}</a>
+        {:else}
+          <div class="muted small">Talk to Harlequin from Telegram and get notifications there.</div>
+          <button class="primary" onclick={tgConnect}>Connect Telegram</button>
+        {/if}
+      </div>
+    {/if}
     <h3>Config</h3>
     <div class="muted small">Per-user key/value — e.g. <code>telegram.chat_id</code>.</div>
     <div class="list">
