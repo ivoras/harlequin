@@ -80,7 +80,7 @@ Client-server AI agent system in Go. A REST + WebSocket **server** talks to LLMs
 - Comments should be terse and explain the non-obvious (the *why*, edge cases, gotchas); don't restate what the code plainly says.
 - Secrets only in `.env`, never in YAML or code.
 - URLs built with names in the path (skill name, hat name, file relpaths, config keys, …) must URL-encode those strings: Go `url.PathEscape` per segment (`apiclient.escapePathSegments` for relpaths), web `encodeURIComponent` (the `q()` helper in `web/src/lib/api.ts`).
-- `docs/user_guide.md` is the user-facing documentation. Its "Slash commands in the TUI" chapter must be kept in sync: whenever a TUI slash command is added, removed, or changes syntax (`internal/client/tui/slash.go`, `helpText` in `commands.go`), update that chapter in the same change.
+- `docs/user_guide.md` is the user-facing documentation. Keep it in sync with new features. Specifically, its "Slash commands in the TUI" chapter must be kept in sync: whenever a TUI slash command is added, removed, or changes syntax (`internal/client/tui/slash.go`, `helpText` in `commands.go`), update that chapter in the same change.
 - All JS (templating, `run_js`, skill tools) runs through the sandboxed `jsrun` runner: no file/network (except allow-listed `fetch`), hard `vm.Interrupt` timeout, output cap.
 - **Autonomous LLM judgments**: any server process that is *not* directly started by the user (background workers, post-turn hooks, scheduled jobs, etc.) and asks the LLM to *judge* whether to take an action must:
   1. **Request a confidence score** — instruct the model to attach an integer `confidence` field (1–10) to every judgment, meaning how sure it is the result is correct and safe to act on without user confirmation.
