@@ -298,7 +298,8 @@
         {/if}
         <AttachChips {c} />
         <textarea rows="1" placeholder={sc.loading ? "Message (will queue)…" : "Message Harlequin, or / for commands"}
-          bind:value={c.input} bind:this={c.el} onkeydown={c.onKey} oninput={c.onInput} disabled={sc.missing}></textarea>
+          bind:value={c.input} bind:this={c.el} onkeydown={c.onKey} oninput={c.onInput}
+          onpaste={(e) => c.onPaste(e, ui.defaultTarget(), () => ui.docsChanged())} disabled={sc.missing}></textarea>
         <div class="composer-bar">
           <button class="icon-btn" onclick={attach} disabled={sc.missing} title="Attach documents to this message (saved to {ui.defaultTarget().label})" aria-label="Attach files"><Icon name="paperclip" /></button>
           {#if sc.missing}<span class="small" style="color: var(--danger);">Session not found here (deleted or moved) — start a new one or pick another.</span>

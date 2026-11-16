@@ -91,6 +91,23 @@ export class Composer {
     }
   }
 
+  // onPaste attaches images on the clipboard (Ctrl-V of a screenshot or a
+  // copied image). A paste that also carries text (e.g. a copied spreadsheet
+  // range, which brings an image rendition) is left to paste as text.
+  onPaste = (e: ClipboardEvent, target: AttachTarget, onDone?: () => void): void => {
+    const cd = e.clipboardData;
+    const imgs = [...(cd?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+    if (!imgs.length || cd?.getData("text/plain")) return;
+    e.preventDefault();
+    const stamp = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
+    // Pasted images are all called "image.png"; give each a distinct name.
+    this.attach(
+      imgs.map((f, i) => new File([f], `pasted-${stamp}${imgs.length > 1 ? "-" + (i + 1) : ""}.${f.type.split("/")[1].replace("jpeg", "jpg").replace(/\+.*/, "")}`, { type: f.type })),
+      target,
+      onDone,
+    );
+  };
+
   removeAttachment(id: number): void {
     this.attachments = this.attachments.filter((a) => a.id !== id);
   }

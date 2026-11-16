@@ -195,7 +195,9 @@ enabled on the server (`mcp.enabled: true`), and OAuth and API-key servers also 
 default they go to the active project, otherwise to your personal files. On
 the Files page you can pick the destination (owners/admins can also add to
 the shared org corpus) and drops there go to it; on the Projects page, drops
-go to the project you have selected. Progress shows in the bottom-left
+go to the project you have selected. You can also paste an image
+(for example a screenshot) into the message box with Ctrl+V (⌘+V): it is attached
+to your message like a dropped file. Progress shows in the bottom-left
 corner; failed uploads stay there until you dismiss them. The Files page also
 filters by scope, searches inside documents, adds pasted text as a document,
 and compares two documents side by side. Each row's **…** menu has
