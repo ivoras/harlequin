@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -104,12 +105,7 @@ func fail(t *testing.T, data []byte, op Op, want string) {
 }
 
 func has(ts []string, s string) bool {
-	for _, x := range ts {
-		if x == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(ts, s)
 }
 
 func index(ts []string, s string) int {

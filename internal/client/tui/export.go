@@ -116,8 +116,8 @@ func formatExportTool(text string) string {
 		if line == "" {
 			continue
 		}
-		if strings.HasPrefix(line, "  ↳") {
-			result := strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(line, "  ↳"), "↳"))
+		if after, ok := strings.CutPrefix(line, "  ↳"); ok {
+			result := strings.TrimSpace(strings.TrimPrefix(after, "↳"))
 			fmt.Fprintf(&sb, "\n**Result:**\n\n> %s\n\n", strings.ReplaceAll(result, "\n", "\n> "))
 			continue
 		}

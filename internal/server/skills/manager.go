@@ -308,7 +308,7 @@ func validateRelpaths(files map[string]string) error {
 		if rel == "" || strings.HasPrefix(rel, "/") || strings.Contains(rel, `\`) {
 			return fmt.Errorf("invalid file path %q", rel)
 		}
-		for _, seg := range strings.Split(rel, "/") {
+		for seg := range strings.SplitSeq(rel, "/") {
 			if seg == "" || seg == "." || seg == ".." {
 				return fmt.Errorf("invalid file path %q", rel)
 			}

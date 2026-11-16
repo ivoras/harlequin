@@ -263,10 +263,10 @@ func wsToken(r *http.Request) string {
 		return t
 	}
 	for _, proto := range r.Header.Values("Sec-WebSocket-Protocol") {
-		for _, p := range strings.Split(proto, ",") {
+		for p := range strings.SplitSeq(proto, ",") {
 			p = strings.TrimSpace(p)
-			if strings.HasPrefix(p, "bearer.") {
-				return strings.TrimPrefix(p, "bearer.")
+			if after, ok := strings.CutPrefix(p, "bearer."); ok {
+				return after
 			}
 		}
 	}

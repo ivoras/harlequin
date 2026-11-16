@@ -172,8 +172,7 @@ func (e *statusError) Error() string { return fmt.Sprintf("embeddings: status %d
 // transient reports whether err is worth retrying: a network-level failure or
 // a 408/425/429/5xx response. Client errors (400, 401, 413, …) are not.
 func transient(err error) bool {
-	var se *statusError
-	if errors.As(err, &se) {
+	if se, ok := errors.AsType[*statusError](err); ok {
 		return se.code == 408 || se.code == 425 || se.code == 429 || se.code >= 500
 	}
 	return true // transport error (timeout, reset, EOF): the request never completed

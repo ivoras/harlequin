@@ -56,7 +56,7 @@ func TestParallelEmbedKeepsOrderAndBoundsConcurrency(t *testing.T) {
 	defer pdb.Close()
 	// ~150 chunks of distinct lengths => several 32-chunk batches.
 	var sb strings.Builder
-	for i := 0; i < 150; i++ {
+	for i := range 150 {
 		sb.WriteString(strings.Repeat("w", 300+i) + ". ")
 		sb.WriteString(strings.Repeat("v ", 300) + "\n\n")
 	}

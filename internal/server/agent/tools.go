@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1264,12 +1265,7 @@ func fnTool(name, desc string, params map[string]any) llm.Tool {
 
 // containsStr reports whether s is in xs.
 func containsStr(xs []string, s string) bool {
-	for _, x := range xs {
-		if x == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(xs, s)
 }
 
 // appendUnique appends s to xs only if not already present.
@@ -1451,8 +1447,8 @@ func docTypeLabel(d types.Document) string {
 	case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
 		return "DOCX"
 	}
-	if i := strings.LastIndex(d.Mime, "/"); i >= 0 {
-		return strings.ToUpper(d.Mime[i+1:])
+	if _, sub, ok := strings.CutLast(d.Mime, "/"); ok {
+		return strings.ToUpper(sub)
 	}
 	return strings.ToUpper(d.Mime)
 }

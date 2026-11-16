@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -45,11 +46,9 @@ func fakeGateway(t *testing.T, code int, failing ...string) (*httptest.Server, *
 		calls.Add(1)
 		var req struct{ Model string }
 		_ = json.NewDecoder(r.Body).Decode(&req)
-		for _, f := range failing {
-			if req.Model == f {
-				http.Error(w, "down", code)
-				return
-			}
+		if slices.Contains(failing, req.Model) {
+			http.Error(w, "down", code)
+			return
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		fmt.Fprintf(w, "data: {\"model\":%q,\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n", req.Model)

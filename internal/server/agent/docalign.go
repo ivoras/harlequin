@@ -106,10 +106,7 @@ Call it first WITHOUT view to get the summary: which sections changed (most-diff
 			if view == "summary" {
 				return header + renderUnitSummary(res), nil
 			}
-			cursor := argInt(args, "cursor", 1)
-			if cursor < 1 {
-				cursor = 1
-			}
+			cursor := max(argInt(args, "cursor", 1), 1)
 			pairsSpec := strings.TrimSpace(argString(args, "pairs"))
 			if pairsSpec != "" {
 				nums, err := parsePairSpec(pairsSpec, len(res.Pairs), alignMaxSelectable)
@@ -136,10 +133,7 @@ func (a *Agent) alignChunksFallback(docA, docB *docalign.Doc, mode string, minSi
 			return "error: " + err.Error(), nil
 		}
 	}
-	cursor := argInt(args, "cursor", 1)
-	if cursor < 1 {
-		cursor = 1
-	}
+	cursor := max(argInt(args, "cursor", 1), 1)
 	return renderAlignment(docA, docB, res, mode, minSim, cursor), nil
 }
 
@@ -431,7 +425,7 @@ func parsePairSpec(spec string, maxPair, maxSelectable int) ([]int, string) {
 		}
 		return ""
 	}
-	for _, part := range strings.Split(spec, ",") {
+	for part := range strings.SplitSeq(spec, ",") {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue

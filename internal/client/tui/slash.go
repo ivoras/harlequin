@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -68,12 +69,7 @@ func isExactSlashCommand(v string) bool {
 	if v == "/exit" {
 		return true
 	}
-	for _, c := range slashCommands {
-		if c == v {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(slashCommands, v)
 }
 
 // completeSlash replaces the input with the chosen command plus a trailing
@@ -130,11 +126,8 @@ func overlayBottomLines(view string, menu []string) string {
 		return view
 	}
 	lines := strings.Split(view, "\n")
-	start := len(lines) - len(menu)
-	if start < 0 {
-		start = 0
-	}
-	for i := 0; i < len(menu); i++ {
+	start := max(len(lines)-len(menu), 0)
+	for i := range menu {
 		idx := start + i
 		if idx >= 0 && idx < len(lines) {
 			lines[idx] = menu[i]

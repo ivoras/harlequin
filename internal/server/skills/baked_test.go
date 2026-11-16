@@ -83,7 +83,7 @@ func TestBakedHatsParse(t *testing.T) {
 	// The prompts name skills in backticks; those must exist too.
 	for _, hat := range []string{"analyst", "researcher"} {
 		md, _ := os.ReadFile(filepath.Join(hatsDir, hat, hatPromptFile))
-		for _, f := range strings.Fields(string(md)) {
+		for f := range strings.FieldsSeq(string(md)) {
 			if n := strings.Trim(f, "`,.;"); strings.HasPrefix(f, "`") && strings.ContainsAny(n, "-_") {
 				if _, err := os.Stat(filepath.Join("../../../skills", n, "SKILL.md")); err != nil {
 					t.Errorf("hat %s mentions missing skill %q", hat, n)

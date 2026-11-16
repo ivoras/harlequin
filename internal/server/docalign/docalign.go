@@ -16,6 +16,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -329,8 +330,8 @@ func alignGap(as, bs []Section, minSim float64) []Pair {
 		out = append(out, groupRun(runB, OnlyB)...)
 		runA, runB = nil, nil
 	}
-	for k := len(ops) - 1; k >= 0; k-- {
-		o := ops[k]
+	for _, o := range slices.Backward(ops) {
+
 		switch o.kind {
 		case Changed:
 			flush()
@@ -383,8 +384,8 @@ func patience(ak, bk []string, aLo, aHi, bLo, bHi int, out *[][2]int) {
 	}
 	// Suffix matches are emitted after everything inside the narrowed range.
 	defer func() {
-		for i := len(suffix) - 1; i >= 0; i-- {
-			*out = append(*out, suffix[i])
+		for _, s := range slices.Backward(suffix) {
+			*out = append(*out, s)
 		}
 	}()
 	if aLo >= aHi || bLo >= bHi {
@@ -500,8 +501,8 @@ func lcs(ak, bk []string, aLo, aHi, bLo, bHi int, out *[][2]int) {
 			j--
 		}
 	}
-	for i := len(rev) - 1; i >= 0; i-- {
-		*out = append(*out, rev[i])
+	for _, r := range slices.Backward(rev) {
+		*out = append(*out, r)
 	}
 }
 

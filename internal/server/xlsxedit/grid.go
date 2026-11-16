@@ -37,13 +37,14 @@ func Grid(data []byte) (string, error) {
 		}
 		last, _ := excelize.CoordinatesToCellName(maxCol, maxRow)
 		fmt.Fprintf(&sb, "## Sheet %q (A1:%s)\n\n|   |", sh, last)
-		sep := "|---|"
+		var sep strings.Builder
+		sep.WriteString("|---|")
 		for c := 1; c <= maxCol; c++ {
 			name, _ := excelize.ColumnNumberToName(c)
 			fmt.Fprintf(&sb, " %s |", name)
-			sep += "---|"
+			sep.WriteString("---|")
 		}
-		sb.WriteString("\n" + sep + "\n")
+		sb.WriteString("\n" + sep.String() + "\n")
 		for r := 1; r <= maxRow; r++ {
 			fmt.Fprintf(&sb, "| %d |", r)
 			for c := 1; c <= maxCol; c++ {

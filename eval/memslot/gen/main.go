@@ -93,7 +93,7 @@ func gen(prefix, name string, attrs []attr, mems *[]Memory, queryPool *[]Query, 
 	}
 	// emit a few sloppy queries for randomly chosen attributes of this entity
 	used := map[string]bool{}
-	for i := 0; i < qPerEntity; i++ {
+	for range qPerEntity {
 		a := attrs[rng.Intn(len(attrs))]
 		if used[a.name] {
 			continue
@@ -218,7 +218,7 @@ func main() {
 	}
 
 	// products: 80 entities x 8 attrs = 640
-	for i := 0; i < 80; i++ {
+	for i := range 80 {
 		name := productAdj[i/len(productNoun)] + " " + productNoun[i%len(productNoun)]
 		gen("product", name, productAttrs, &mems, &queries, 1)
 	}

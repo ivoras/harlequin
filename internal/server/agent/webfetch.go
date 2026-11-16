@@ -185,7 +185,7 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, label webDelegat
 	}
 
 	var lastText string
-	for step := 0; step < webFetchMaxSteps; step++ {
+	for step := range webFetchMaxSteps {
 		if ctx.Err() != nil {
 			return "", ctx.Err()
 		}
@@ -209,10 +209,7 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, label webDelegat
 			if total <= 0 {
 				return
 			}
-			done := pp.Processed - pp.Cache
-			if done < 0 {
-				done = 0
-			}
+			done := max(pp.Processed-pp.Cache, 0)
 			pct := done * 100 / total
 			if pct >= lastPPPct+5 || done >= total {
 				lastPPPct = pct
@@ -228,7 +225,7 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, label webDelegat
 			Model:           a.WebFetchModel,
 			Messages:        msgs,
 			Tools:           tools,
-			Temperature:     llm.Ptr(a.WebFetchTemperature),
+			Temperature:     new(a.WebFetchTemperature),
 			DisableThinking: true, // a tiny reasoning aux model must answer, not think
 		}, onProgress)
 		callDur := time.Since(callStart)
@@ -301,7 +298,7 @@ func (a *Agent) analyzeWeb(ctx context.Context, rc *runContext, label webDelegat
 	text, _, err := a.completeOnceProgress(ctx, llm.ChatRequest{
 		Model:           a.WebFetchModel,
 		Messages:        append(msgs, llm.Message{Role: llm.RoleUser, Content: "Answer the original question now from the information already gathered above. Do not call any more tools."}),
-		Temperature:     llm.Ptr(a.WebFetchTemperature),
+		Temperature:     new(a.WebFetchTemperature),
 		DisableThinking: true,
 	}, nil)
 	if err != nil {
@@ -378,7 +375,7 @@ func (a *Agent) completeOnceProgress(ctx context.Context, req llm.ChatRequest, o
 	if err != nil {
 		return "", nil, err
 	}
-	var text string
+	var text strings.Builder
 	var toolCalls []llm.ToolCall
 	for chunk := range stream {
 		if chunk.Err != nil {
@@ -390,10 +387,10 @@ func (a *Agent) completeOnceProgress(ctx context.Context, req llm.ChatRequest, o
 			}
 			continue
 		}
-		text += chunk.TextDelta
+		text.WriteString(chunk.TextDelta)
 		if chunk.Done {
 			toolCalls = chunk.ToolCalls
 		}
 	}
-	return text, toolCalls, nil
+	return text.String(), toolCalls, nil
 }

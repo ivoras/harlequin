@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,9 +29,7 @@ func editArgsSchema(target map[string]any) map[string]any {
 		"before":        map[string]any{"type": "string", "description": "Insert: like after, but the new text goes before that paragraph, row or item."},
 		"append_source": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": `Append from: documents and/or sandbox files whose whole text is added at the end, in order, e.g. ["u.18", "tmp://annex.md"]. The text is read on the server and does not pass through you.`},
 	}
-	for k, v := range target {
-		props[k] = v
-	}
+	maps.Copy(props, target)
 	return map[string]any{"type": "object", "properties": props}
 }
 

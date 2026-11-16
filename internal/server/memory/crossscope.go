@@ -105,19 +105,19 @@ func (s *Store) sameAttributeJudge(ctx context.Context, newKey string, cands []s
 			{Role: llm.RoleSystem, Content: sys},
 			{Role: llm.RoleUser, Content: sb.String()},
 		},
-		Temperature: llm.Ptr(0.0),
+		Temperature: new(0.0),
 	})
 	if err != nil {
 		return -1, 0, false
 	}
-	var text string
+	var text strings.Builder
 	for chunk := range stream {
 		if chunk.Err != nil {
 			return -1, 0, false
 		}
-		text += chunk.TextDelta
+		text.WriteString(chunk.TextDelta)
 	}
-	raw, ok := judge.ParseJSONObject(text)
+	raw, ok := judge.ParseJSONObject(text.String())
 	if !ok {
 		return -1, 0, false
 	}

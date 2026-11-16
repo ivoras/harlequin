@@ -33,16 +33,14 @@ func IsTransient(err error) bool {
 	if err == nil || errors.Is(err, context.Canceled) {
 		return false
 	}
-	var se *HTTPStatusError
-	if errors.As(err, &se) {
+	if se, ok := errors.AsType[*HTTPStatusError](err); ok {
 		switch se.Code {
 		case 408, 425, 429:
 			return true
 		}
 		return se.Code >= 500
 	}
-	var ne net.Error
-	if errors.As(err, &ne) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) || errors.Is(err, context.DeadlineExceeded) {
+	if _, isNet := errors.AsType[net.Error](err); isNet || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) || errors.Is(err, context.DeadlineExceeded) {
 		return true
 	}
 	s := strings.ToLower(err.Error())

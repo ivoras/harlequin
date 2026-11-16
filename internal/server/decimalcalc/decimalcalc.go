@@ -418,10 +418,7 @@ func format(v val) string {
 		fives++
 	}
 	if den.Cmp(big.NewInt(1)) == 0 {
-		n := twos
-		if fives > n {
-			n = fives
-		}
+		n := max(fives, twos)
 		return v.r.FloatString(n)
 	}
 	return fmt.Sprintf("%s (rounded to %d decimals; exact value %s)", v.r.FloatString(divDigits), divDigits, v.r.RatString())

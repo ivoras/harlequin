@@ -184,7 +184,7 @@ func (a *Agent) distillAndStoreHoldingSlot(ctx context.Context, t memTarget, sys
 			{Role: llm.RoleSystem, Content: systemPrompt},
 			{Role: llm.RoleUser, Content: input},
 		},
-		Temperature: llm.Ptr(0.0),
+		Temperature: new(0.0),
 	})
 	cancelLLM()
 	if err != nil {

@@ -59,7 +59,7 @@ func TestNaturalTextAndShortOutputPass(t *testing.T) {
 
 func TestWindowStaysBounded(t *testing.T) {
 	var d Detector
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		d.Feed(natural(5000))
 	}
 	if len(d.buf) > maxBuf {
@@ -72,7 +72,7 @@ func TestWindowStaysBounded(t *testing.T) {
 func TestRepeatedQuoteIsNotALoop(t *testing.T) {
 	quote := "(3) Oštećenik ima, po odredbama ovoga odsjeka, pravo na naknadu štete prouzročenu uništenjem ili oštećenjem stvari različite od neispravnog proizvoda, ako se radi o takvoj vrsti stvari koja je uobičajeno namijenjena za osobnu uporabu te"
 	var sb strings.Builder
-	for i := 0; i < 6; i++ {
+	for range 6 {
 		sb.WriteString(natural(3000))
 		sb.WriteString("\nLet me re-check what the page says: \"" + quote + "\" — so the amount is as stated.\n")
 	}

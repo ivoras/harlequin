@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -173,10 +174,8 @@ func grepCandidateFiles(root *sandboxfs.Root, rel, glob, ftype string) ([]string
 	// rel naming an exact file → just that file (List is the source of truth, so
 	// this never mistakes a directory for a file).
 	if rel != "" {
-		for _, f := range all {
-			if f == rel {
-				return []string{rel}, nil
-			}
+		if slices.Contains(all, rel) {
+			return []string{rel}, nil
 		}
 	}
 	exts := typeExtensions(ftype)
@@ -224,7 +223,7 @@ func grepContentLines(uri, content string, re *regexp.Regexp, before, after int,
 	}
 	var out []string
 	prev := -2
-	for i := 0; i < len(lines); i++ {
+	for i := range lines {
 		if !keep[i] {
 			continue
 		}

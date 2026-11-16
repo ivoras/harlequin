@@ -66,8 +66,7 @@ func TestLinkAndChat(t *testing.T) {
 	}
 	defer store.Close()
 	authStore := auth.NewStore(store.System)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	user, err := authStore.CreateUser(ctx, "ana@example.com", "correct horse battery", "user")
 	if err != nil {
 		t.Fatal(err)

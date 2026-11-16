@@ -261,8 +261,8 @@ func (p *persistingTokenSource) Token() (*oauth2.Token, error) {
 // OAuth error code/description, and a short body excerpt (error bodies carry
 // no credentials). Without this a dead sign-in is undiagnosable.
 func describeTokenErr(err error) string {
-	var re *oauth2.RetrieveError
-	if !errors.As(err, &re) {
+	re, ok := errors.AsType[*oauth2.RetrieveError](err)
+	if !ok {
 		return err.Error()
 	}
 	status := 0
@@ -279,8 +279,8 @@ func describeTokenErr(err error) string {
 // grantLost reports whether a token-refresh failure means the sign-in is dead
 // (revoked/expired refresh token) rather than a transient outage.
 func grantLost(err error) bool {
-	var re *oauth2.RetrieveError
-	if !errors.As(err, &re) {
+	re, ok := errors.AsType[*oauth2.RetrieveError](err)
+	if !ok {
 		return false
 	}
 	return re.ErrorCode == "invalid_grant" || (re.Response != nil && re.Response.StatusCode == http.StatusUnauthorized)

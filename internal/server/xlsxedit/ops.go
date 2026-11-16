@@ -227,7 +227,7 @@ func (e *editor) setCells(op Op) ([]change, string, error) {
 // tableRows reads Markdown table rows; anything else is an error.
 func tableRows(text string) ([][]string, error) {
 	var rows [][]string
-	for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
 		t := strings.TrimSpace(line)
 		switch {
 		case t == "":
@@ -340,7 +340,7 @@ func (e *editor) anchorRow(sheet, anchor, name string) (int, error) {
 		return n, nil
 	}
 	var parts []string
-	for _, l := range strings.Split(anchor, "\n") {
+	for l := range strings.SplitSeq(anchor, "\n") {
 		if t := strings.TrimSpace(l); strings.HasPrefix(t, "|") {
 			for _, c := range mdxlsx.SplitRow(t) {
 				if c != "" && !mdxlsx.IsSeparator([]string{c}) {

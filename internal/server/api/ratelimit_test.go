@@ -8,7 +8,7 @@ import (
 
 func TestRateLimiter(t *testing.T) {
 	var l rateLimiter
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if !l.allow("k", 3) {
 			t.Fatalf("attempt %d should pass", i+1)
 		}
@@ -51,14 +51,14 @@ func TestLoginCountsOnlyFailures(t *testing.T) {
 	blocked := func(ip, email string) bool { return s.loginBlocked(httptest.NewRecorder(), req(ip), email) }
 
 	// Many successful logins from one office IP / one email never block.
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		if blocked("203.0.113.7", "a@x.com") {
 			t.Fatalf("blocked after %d successes", i)
 		}
 		s.loginSucceeded(req("203.0.113.7"), "a@x.com")
 	}
 	// Failures block that email, only for that email and only on that IP's budget.
-	for i := 0; i < loginMax; i++ {
+	for range loginMax {
 		s.loginFailed(req("203.0.113.7"), "a@x.com")
 	}
 	w := httptest.NewRecorder()

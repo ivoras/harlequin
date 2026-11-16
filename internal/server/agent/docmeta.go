@@ -73,7 +73,7 @@ func (a *Agent) describeOnce(ctx context.Context, title, text string, timeout ti
 			// otherwise pulls the description into that language.
 			{Role: llm.RoleUser, Content: "Title: " + title + "\n\nOpening text:\n" + text + "\n\nWrite the description in " + languageName(a.OrgLanguage) + "."},
 		},
-		Temperature: llm.Ptr(0.0),
+		Temperature: new(0.0),
 	})
 	if err != nil {
 		log.Printf("documents: describe %q failed: %v", title, err)

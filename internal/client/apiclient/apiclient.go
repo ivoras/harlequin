@@ -965,11 +965,11 @@ func (p *ProjectChat) Close() error {
 
 // wsScheme rewrites an http(s) base URL to its ws(s) equivalent.
 func wsScheme(base string) string {
-	if strings.HasPrefix(base, "https://") {
-		return "wss://" + strings.TrimPrefix(base, "https://")
+	if after, ok := strings.CutPrefix(base, "https://"); ok {
+		return "wss://" + after
 	}
-	if strings.HasPrefix(base, "http://") {
-		return "ws://" + strings.TrimPrefix(base, "http://")
+	if after, ok := strings.CutPrefix(base, "http://"); ok {
+		return "ws://" + after
 	}
 	return base
 }

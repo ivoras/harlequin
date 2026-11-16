@@ -139,19 +139,19 @@ func (s *Store) judgeChat(ctx context.Context, userPrompt string) (string, error
 			{Role: llm.RoleSystem, Content: conflictparse.Prompt},
 			{Role: llm.RoleUser, Content: userPrompt},
 		},
-		Temperature: llm.Ptr(0.0),
+		Temperature: new(0.0),
 	})
 	if err != nil {
 		return "", err
 	}
-	var text string
+	var text strings.Builder
 	for chunk := range stream {
 		if chunk.Err != nil {
 			return "", chunk.Err
 		}
-		text += chunk.TextDelta
+		text.WriteString(chunk.TextDelta)
 	}
-	return text, nil
+	return text.String(), nil
 }
 
 // conflictHome selects the database that stores a conflict pair: the user

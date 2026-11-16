@@ -151,7 +151,7 @@ func grepHTML(body string, re *regexp.Regexp) []string {
 		seen[s] = true
 		out = append(out, s)
 	}
-	for _, line := range strings.Split(body, "\n") {
+	for line := range strings.SplitSeq(body, "\n") {
 		line = strings.TrimRight(line, "\r")
 		locs := re.FindAllStringIndex(line, -1)
 		if len(locs) == 0 {
@@ -178,14 +178,8 @@ func grepHTML(body string, re *regexp.Regexp) []string {
 // match [s,e) in line, aligned to UTF-8 and trimmed so neither edge cuts a word
 // in half (the match itself is never trimmed). Ellipses mark truncation.
 func contextSnippet(line string, s, e int) string {
-	lo := s - webFetchGrepContext
-	if lo < 0 {
-		lo = 0
-	}
-	hi := e + webFetchGrepContext
-	if hi > len(line) {
-		hi = len(line)
-	}
+	lo := max(s-webFetchGrepContext, 0)
+	hi := min(e+webFetchGrepContext, len(line))
 	// Align window edges to rune boundaries.
 	for lo > 0 && !utf8.RuneStart(line[lo]) {
 		lo--

@@ -203,8 +203,8 @@ func isNoResult(output string) bool {
 		return true
 	}
 	first := t
-	if i := strings.IndexByte(t, '\n'); i >= 0 {
-		first = strings.TrimSpace(t[:i])
+	if before, _, ok := strings.Cut(t, "\n"); ok {
+		first = strings.TrimSpace(before)
 	}
 	return strings.EqualFold(first, types.CronNoUpdateSentinel)
 }

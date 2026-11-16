@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"reflect"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 
@@ -39,7 +39,7 @@ func replSetup(t *testing.T) (*Store, *countEmbedder, *sql.DB) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { d.Close() })
-	e := &countEmbedder{fakeEmbedder: fakeEmbedder{dim: 4}}
+	e := &countEmbedder{dim: 4}
 	return NewStore(nil, e), e, d
 }
 
@@ -79,7 +79,7 @@ func ids(t *testing.T, d *sql.DB, q string, args ...any) []int64 {
 		rs.Scan(&id)
 		out = append(out, id)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	slices.Sort(out)
 	return out
 }
 
@@ -94,7 +94,7 @@ func checkConsistent(t *testing.T, d *sql.DB, docID int64) []chunkRow {
 		}
 		want = append(want, r.id)
 	}
-	sort.Slice(want, func(i, j int) bool { return want[i] < want[j] })
+	slices.Sort(want)
 	for _, tbl := range []string{"doc_chunks_fts", "doc_chunks_vec"} {
 		got := ids(t, d, `SELECT rowid FROM `+tbl+` WHERE rowid IN (SELECT id FROM doc_chunks WHERE document_id = ?)`, docID)
 		if !reflect.DeepEqual(got, want) {
@@ -146,7 +146,7 @@ func TestReplaceContentIncremental(t *testing.T) {
 	if e.texts != len(after)-2 {
 		t.Fatalf("embedded %d, want %d", e.texts, len(after)-2)
 	}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		if after[i].id != before[i].id {
 			t.Fatalf("chunk %d id changed", i)
 		}
@@ -236,7 +236,7 @@ func TestReplaceContentPages(t *testing.T) {
 		t.Fatal(err)
 	}
 	after := checkConsistent(t, d, doc.ID)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if after[i].id != before[i].id || after[i].page != before[i].page {
 			t.Fatalf("chunk %d: %+v vs %+v", i, after[i], before[i])
 		}

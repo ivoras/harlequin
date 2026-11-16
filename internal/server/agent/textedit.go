@@ -60,7 +60,7 @@ type diffHunk struct {
 func parseUnifiedDiff(diff string) ([]diffHunk, error) {
 	var hunks []diffHunk
 	var cur *diffHunk
-	for _, line := range strings.Split(strings.ReplaceAll(diff, "\r\n", "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.ReplaceAll(diff, "\r\n", "\n"), "\n") {
 		if strings.HasPrefix(line, "@@") {
 			h := diffHunk{oldStart: -1}
 			if m := hunkHeaderRE.FindStringSubmatch(line); m != nil {

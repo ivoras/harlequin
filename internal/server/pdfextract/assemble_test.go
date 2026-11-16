@@ -17,7 +17,7 @@ func testPDF(label string, n int) []byte {
 	}
 	b.WriteString("%PDF-1.4\n")
 	kids := ""
-	for i := 0; i < n; i++ {
+	for i := range n {
 		kids += fmt.Sprintf("%d 0 R ", 4+2*i)
 	}
 	obj("<< /Type /Catalog /Pages 2 0 R >>")

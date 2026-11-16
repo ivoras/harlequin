@@ -12,7 +12,7 @@ func runPrintTrajectory(args []string) {
 	verbose := false
 	color := true
 	var path string
-	for i := 0; i < len(args); i++ {
+	for i := range args {
 		switch args[i] {
 		case "--verbose", "-v":
 			verbose = true

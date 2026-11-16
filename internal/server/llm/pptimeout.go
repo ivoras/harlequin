@@ -68,10 +68,7 @@ func (p *OpenAICompatible) requestTimeout(estTokens int) time.Duration {
 		return defaultRequestTimeout
 	}
 	predicted := float64(estTokens) / avg // seconds of predicted prompt processing
-	timeout := time.Duration(ppTimeoutMultiplier * predicted * float64(time.Second))
-	if timeout < minRequestTimeout {
-		timeout = minRequestTimeout
-	}
+	timeout := max(time.Duration(ppTimeoutMultiplier*predicted*float64(time.Second)), minRequestTimeout)
 	if timeout > maxRequestTimeout {
 		timeout = maxRequestTimeout
 	}

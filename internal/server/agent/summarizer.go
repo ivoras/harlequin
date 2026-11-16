@@ -157,7 +157,7 @@ func (a *Agent) generateTitle(ctx context.Context, msgs []types.Message) (string
 				{Role: llm.RoleSystem, Content: sys},
 				{Role: llm.RoleUser, Content: "Session:\n" + transcript + languageHint(msgs) + "\n\nTitle:"},
 			},
-			Temperature: llm.Ptr(0.2),
+			Temperature: new(0.2),
 		})
 	}) {
 		return "", errors.New("no background LLM slot")

@@ -50,8 +50,8 @@ func ContextMax(model string, overrides map[string]int) int {
 		return n
 	}
 	// OpenRouter-style ids: try the segment after the last slash.
-	if i := strings.LastIndex(model, "/"); i >= 0 {
-		if n, ok := defaultContextWindows[model[i+1:]]; ok {
+	if _, seg, found := strings.CutLast(model, "/"); found {
+		if n, ok := defaultContextWindows[seg]; ok {
 			return n
 		}
 	}
@@ -61,8 +61,9 @@ func ContextMax(model string, overrides map[string]int) int {
 // lastSegment returns the part of a model id after the final "/" (the id
 // itself when there is no vendor prefix).
 func lastSegment(model string) string {
-	if i := strings.LastIndex(model, "/"); i >= 0 {
-		return model[i+1:]
+	_, seg, found := strings.CutLast(model, "/")
+	if !found {
+		return model
 	}
-	return model
+	return seg
 }

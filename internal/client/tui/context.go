@@ -48,20 +48,14 @@ func (m *Model) renderHeaderLine() string {
 		}
 	}
 	leftW := lipgloss.Width(left)
-	zoneW := m.width - leftW
-	if zoneW < 1 {
-		zoneW = 1
-	}
+	zoneW := max(m.width-leftW, 1)
 	// The meter is right-aligned; truncate (rather than clamp the gap) so the line
 	// never exceeds zoneW and wraps onto a second row.
 	right := m.renderContextMeter(bg)
 	if rightW := lipgloss.Width(right); rightW > zoneW {
 		right = ansi.Truncate(right, zoneW, "")
 	}
-	gap := zoneW - lipgloss.Width(right)
-	if gap < 0 {
-		gap = 0
-	}
+	gap := max(zoneW-lipgloss.Width(right), 0)
 	gapFill := lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", gap))
 	return left + gapFill + right
 }
@@ -74,10 +68,7 @@ func (m *Model) renderContextMeter(bg color.Color) string {
 	max := formatTokenCount(m.ctxMeter.max)
 	pct := 0
 	if m.ctxMeter.max > 0 {
-		pct = m.ctxMeter.used * 100 / m.ctxMeter.max
-		if pct > 100 {
-			pct = 100
-		}
+		pct = min(m.ctxMeter.used*100/m.ctxMeter.max, 100)
 	}
 	style := m.styles.ContextOK
 	switch {
@@ -101,14 +92,11 @@ func (m *Model) renderContextMeter(bg color.Color) string {
 
 func renderContextBar(pct int, bg color.Color) string {
 	const slots = 8
-	filled := pct * slots / 100
-	if filled > slots {
-		filled = slots
-	}
+	filled := min(pct*slots/100, slots)
 	var sb strings.Builder
 	fg := lipgloss.NewStyle().Foreground(colorAccent).Background(bg)
 	dim := lipgloss.NewStyle().Foreground(colorBorder).Background(bg)
-	for i := 0; i < slots; i++ {
+	for i := range slots {
 		if i < filled {
 			sb.WriteString(fg.Render("▮"))
 		} else {
@@ -148,10 +136,7 @@ func formatContextBreakdown(bd *types.ContextBreakdown) string {
 	if bd.ContextMax > 0 {
 		pct := float64(bd.Total) * 100 / float64(bd.ContextMax)
 		fmt.Fprintf(&sb, "  %-18s %8s tokens (%.1f%%)\n", "Total", formatTokenCount(bd.Total), pct)
-		free := bd.ContextMax - bd.Total
-		if free < 0 {
-			free = 0
-		}
+		free := max(bd.ContextMax-bd.Total, 0)
 		fmt.Fprintf(&sb, "  Context window: %s used, %s free of %s\n",
 			formatTokenCount(bd.Total), formatTokenCount(free), formatTokenCount(bd.ContextMax))
 	} else {
@@ -194,8 +179,8 @@ func truncateModelName(model string) string {
 	if model == "" {
 		return ""
 	}
-	if i := strings.LastIndex(model, "/"); i >= 0 {
-		model = model[i+1:]
+	if _, seg, ok := strings.CutLast(model, "/"); ok {
+		model = seg
 	}
 	if len(model) > 18 {
 		return model[:15] + "…"

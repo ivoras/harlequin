@@ -12,31 +12,19 @@ func (m *Model) layout() {
 	if m.width <= 0 {
 		return
 	}
-	inputHeight := m.input.Height()
-	if inputHeight < 1 {
-		inputHeight = 1
-	}
+	inputHeight := max(m.input.Height(), 1)
 	// header(1) + alert box + input box(inputHeight+2 border) + help(1)
 	chrome := 1 + m.alertLineCount() + inputHeight + 2 + 1
-	vpHeight := m.height - chrome
-	if vpHeight < 3 {
-		vpHeight = 3
-	}
+	vpHeight := max(m.height-chrome, 3)
 	vpWidth := m.width
 	if m.activeProjectID > 0 {
 		// Reserve a right-hand column for the project chatroom side-pane.
-		vpWidth = m.width - chatPaneWidth - 1
-		if vpWidth < 20 {
-			vpWidth = 20
-		}
+		vpWidth = max(m.width-chatPaneWidth-1, 20)
 	}
 	m.vp.SetWidth(vpWidth)
 	m.vp.SetHeight(vpHeight)
 	inputFrame := m.styles.InputBox.GetHorizontalFrameSize()
-	inputW := m.width - inputFrame
-	if inputW < 1 {
-		inputW = 1
-	}
+	inputW := max(m.width-inputFrame, 1)
 	m.input.SetWidth(inputW)
 }
 

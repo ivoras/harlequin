@@ -120,7 +120,7 @@ func TestPhaseLogRelabel(t *testing.T) {
 }
 
 func firstLineWith(out, want string) string {
-	for _, ln := range strings.Split(out, "\n") {
+	for ln := range strings.SplitSeq(out, "\n") {
 		if strings.Contains(ln, want) {
 			return ln
 		}
@@ -130,13 +130,13 @@ func firstLineWith(out, want string) string {
 
 // fieldValue reads a "key=value" field, where value runs to the next space.
 func fieldValue(line, key string) string {
-	i := strings.Index(line, key)
-	if i < 0 {
+	_, after, ok := strings.Cut(line, key)
+	if !ok {
 		return ""
 	}
-	rest := line[i+len(key):]
-	if j := strings.IndexByte(rest, ' '); j >= 0 {
-		return rest[:j]
+	rest := after
+	if before, _, ok := strings.Cut(rest, " "); ok {
+		return before
 	}
 	return rest
 }

@@ -171,7 +171,7 @@ func (p *printer) printToolResultDetails(data map[string]any, name string) {
 
 func (p *printer) printSkillListOutput(output string) {
 	p.println("  %sskills:%s", p.yell, p.reset)
-	for _, line := range strings.Split(output, "\n") {
+	for line := range strings.SplitSeq(output, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -254,7 +254,7 @@ func (p *printer) printIndentedBlock(label, text string, max int) {
 		text = text[:max] + "…"
 	}
 	p.println("  %s:", label)
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		p.println("    %s", line)
 	}
 }

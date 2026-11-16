@@ -193,7 +193,7 @@ func TestBuildMarkdownMessageWithAttachments(t *testing.T) {
 	if len(names) != 2 || names[0] != "Platna lista Đurđica.pdf" || strings.ContainsAny(names[1], "/\r\n") {
 		t.Errorf("attachment names %q", names)
 	}
-	for _, line := range strings.Split(string(raw), "\r\n") {
+	for line := range strings.SplitSeq(string(raw), "\r\n") {
 		if len(line) > 998 {
 			t.Fatalf("a line of %d bytes exceeds the SMTP limit", len(line))
 		}

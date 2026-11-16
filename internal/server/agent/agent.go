@@ -429,7 +429,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 		stream, err := a.Provider.Chat(callCtx, llm.ChatRequest{
 			Messages:    reqMsgs,
 			Tools:       reqTools,
-			Temperature: llm.Ptr(a.Temperature),
+			Temperature: new(a.Temperature),
 			UseFallback: streamRetries > maxStreamRetries,
 		})
 		if err != nil {
@@ -455,10 +455,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 				// prefix, so subtract cache from both sides to measure real work 0→100%.
 				pp := chunk.PromptProgress
 				total := pp.Total - pp.Cache
-				done := pp.Processed - pp.Cache
-				if done < 0 {
-					done = 0
-				}
+				done := max(pp.Processed-pp.Cache, 0)
 				if total > 0 {
 					pct := done * 100 / total
 					if pct >= lastPPPct+5 || done >= total {
@@ -539,10 +536,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 				}
 				if chunk.Usage != nil {
 					// Discount cached prefill: count only tokens actually processed.
-					processed := chunk.Usage.PromptTokens - chunk.Usage.CachedPromptTokens()
-					if processed < 0 {
-						processed = 0
-					}
+					processed := max(chunk.Usage.PromptTokens-chunk.Usage.CachedPromptTokens(), 0)
 					timePromptTokens += processed
 					timeCompletionTokens += chunk.Usage.CompletionTokens
 				}
@@ -841,17 +835,18 @@ func logToolCalls(calls []llm.ToolCall) []map[string]any {
 
 // composeSystemPrompt builds the system prompt including the skill catalogue.
 func (a *Agent) composeSystemPrompt(ctx context.Context, rc *runContext) string {
-	prompt := a.hatPrompt(ctx, rc)
+	var prompt strings.Builder
+	prompt.WriteString(a.hatPrompt(ctx, rc))
 	if len(rc.skillInfos) > 0 {
-		prompt += "\n\nAvailable skills (use load_skill to read full instructions):\n"
+		prompt.WriteString("\n\nAvailable skills (use load_skill to read full instructions):\n")
 		for _, i := range rc.skillInfos {
-			prompt += fmt.Sprintf("- %s: %s\n", i.Name, i.Description)
+			prompt.WriteString(fmt.Sprintf("- %s: %s\n", i.Name, i.Description))
 		}
 	}
 	if len(rc.mcpNeedAuth) > 0 {
-		prompt += "\n\n" + mcpNeedAuthNote(rc.mcpNeedAuth)
+		prompt.WriteString("\n\n" + mcpNeedAuthNote(rc.mcpNeedAuth))
 	}
-	return prompt
+	return prompt.String()
 }
 
 // hatPrompt is the base prompt plus the worn hat's line and (unless it

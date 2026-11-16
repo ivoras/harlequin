@@ -18,7 +18,7 @@ type query struct {
 func prepareQuery(q, name string) (query, error) {
 	var lines []string
 	pipes := 0
-	for _, l := range strings.Split(strings.ReplaceAll(q, "\r\n", "\n"), "\n") {
+	for l := range strings.SplitSeq(strings.ReplaceAll(q, "\r\n", "\n"), "\n") {
 		if t := strings.TrimSpace(l); t != "" {
 			lines = append(lines, t)
 			if strings.HasPrefix(t, "|") {

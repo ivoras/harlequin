@@ -203,8 +203,7 @@ func (r *Runner) Run(code string, rc RunContext) (res Result, err error) {
 	wrapped := "(function(){\n" + code + "\n})()"
 	val, runErr := vm.RunString(wrapped)
 	if runErr != nil {
-		var ie *goja.InterruptedError
-		if errors.As(runErr, &ie) {
+		if _, ok := errors.AsType[*goja.InterruptedError](runErr); ok {
 			return Result{Output: sb.String()}, ErrTimeout
 		}
 		return Result{Output: sb.String()}, runErr

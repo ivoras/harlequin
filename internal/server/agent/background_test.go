@@ -49,10 +49,8 @@ func TestRunBackgroundLLMSerializes(t *testing.T) {
 	a := &Agent{}
 	var running atomic.Int64
 	var wg sync.WaitGroup
-	for i := 0; i < 4; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 4 {
+		wg.Go(func() {
 			if !a.RunBackgroundLLM(context.Background(), func(context.Context) {
 				if n := running.Add(1); n > 1 {
 					t.Errorf("%d background jobs running concurrently", n)
@@ -62,7 +60,7 @@ func TestRunBackgroundLLMSerializes(t *testing.T) {
 			}) {
 				t.Error("background job was skipped")
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }

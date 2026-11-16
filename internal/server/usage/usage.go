@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ivoras/harlequin/internal/server/config"
@@ -125,8 +126,9 @@ func (s *Store) AddSessionCost(ctx context.Context, db *sql.DB, projectID, sessi
 // Query returns usage rows for the user (the owner of db) within a time window
 // (zero times = unbounded).
 func (s *Store) Query(ctx context.Context, db *sql.DB, userID int64, from, to time.Time) ([]types.UsageRecord, error) {
-	q := `SELECT id, session_id, provider, model, prompt_tokens, completion_tokens, est_cost_usd, created_at
-		FROM usage`
+	var q strings.Builder
+	q.WriteString(`SELECT id, session_id, provider, model, prompt_tokens, completion_tokens, est_cost_usd, created_at
+		FROM usage`)
 	var args []any
 	var conds []string
 	if !from.IsZero() {
@@ -139,13 +141,13 @@ func (s *Store) Query(ctx context.Context, db *sql.DB, userID int64, from, to ti
 	}
 	for i, c := range conds {
 		if i == 0 {
-			q += ` WHERE ` + c
+			q.WriteString(` WHERE ` + c)
 		} else {
-			q += ` AND ` + c
+			q.WriteString(` AND ` + c)
 		}
 	}
-	q += ` ORDER BY created_at DESC LIMIT 1000`
-	rows, err := db.QueryContext(ctx, q, args...)
+	q.WriteString(` ORDER BY created_at DESC LIMIT 1000`)
+	rows, err := db.QueryContext(ctx, q.String(), args...)
 	if err != nil {
 		return nil, err
 	}

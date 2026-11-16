@@ -41,10 +41,7 @@ func (m *Model) tryRecallHistory(delta int) bool {
 		m.historyDraft = m.input.Value()
 	}
 
-	next := m.historyIndex + delta
-	if next < 0 {
-		next = 0
-	}
+	next := max(m.historyIndex+delta, 0)
 	if next > len(m.inputHistory) {
 		next = len(m.inputHistory)
 	}

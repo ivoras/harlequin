@@ -407,12 +407,12 @@ func splitHatFrontmatter(content string) (hatFrontmatter, string) {
 		return fm, content
 	}
 	rest := trimmed[3:]
-	idx := strings.Index(rest, "\n---")
-	if idx < 0 {
+	before, after, ok := strings.Cut(rest, "\n---")
+	if !ok {
 		return fm, content
 	}
-	header := rest[:idx]
-	body := strings.TrimPrefix(rest[idx+len("\n---"):], "\n")
+	header := before
+	body := strings.TrimPrefix(after, "\n")
 	_ = yaml.Unmarshal([]byte(header), &fm)
 	return fm, body
 }

@@ -36,19 +36,19 @@ func (s *Store) extractSlot(ctx context.Context, userDB *sql.DB, content string,
 			{Role: llm.RoleSystem, Content: slotextract.Prompt},
 			{Role: llm.RoleUser, Content: slotextract.BuildUserPrompt(keys, content)},
 		},
-		Temperature: llm.Ptr(0.0),
+		Temperature: new(0.0),
 	})
 	if err != nil {
 		return slotextract.Slot{}, false
 	}
-	var text string
+	var text strings.Builder
 	for chunk := range stream {
 		if chunk.Err != nil {
 			return slotextract.Slot{}, false
 		}
-		text += chunk.TextDelta
+		text.WriteString(chunk.TextDelta)
 	}
-	return slotextract.Parse(text)
+	return slotextract.Parse(text.String())
 }
 
 // candidateKeys gathers the existing slot keys most similar to the new memory

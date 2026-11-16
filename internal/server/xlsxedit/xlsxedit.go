@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"maps"
 	"regexp"
 	"strconv"
 	"strings"
@@ -180,9 +181,7 @@ func (s snap) clone() snap {
 	out := snap{}
 	for sh, m := range s {
 		c := make(map[string]cell, len(m))
-		for k, v := range m {
-			c[k] = v
-		}
+		maps.Copy(c, m)
 		out[sh] = c
 	}
 	return out

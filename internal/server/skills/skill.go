@@ -53,12 +53,12 @@ func parseFrontmatter(content string) (Frontmatter, string, error) {
 	}
 	rest := trimmed[3:]
 	// Find the closing delimiter at the start of a line.
-	idx := strings.Index(rest, "\n---")
-	if idx < 0 {
+	before, after, ok := strings.Cut(rest, "\n---")
+	if !ok {
 		return fm, content, fmt.Errorf("unterminated frontmatter")
 	}
-	header := rest[:idx]
-	body := rest[idx+len("\n---"):]
+	header := before
+	body := after
 	body = strings.TrimPrefix(body, "\n")
 	if i := strings.IndexByte(body, '\n'); strings.HasPrefix(body, "-") {
 		// handle case where closing line had extra dashes/newline

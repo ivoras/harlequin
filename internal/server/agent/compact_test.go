@@ -21,7 +21,7 @@ import (
 // history builds user, then n (assistant tool call, tool result of size chars) pairs.
 func history(n, size int) []llm.Message {
 	msgs := []llm.Message{{Role: llm.RoleSystem, Content: "sys"}, {Role: llm.RoleUser, Content: "go"}}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		id := fmt.Sprintf("c%d", i)
 		msgs = append(msgs,
 			llm.Message{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{{ID: id}}},
@@ -113,7 +113,7 @@ func TestCompactHistoryKeepsUnreadResults(t *testing.T) {
 	msgs := []llm.Message{{Role: llm.RoleSystem, Content: "sys"}, {Role: llm.RoleUser, Content: "go"}}
 	step := func() {
 		var calls []llm.ToolCall
-		for i := 0; i < 12; i++ {
+		for i := range 12 {
 			calls = append(calls, llm.ToolCall{ID: fmt.Sprintf("c%d-%d", len(msgs), i)})
 		}
 		msgs = append(msgs, llm.Message{Role: llm.RoleAssistant, ToolCalls: calls})

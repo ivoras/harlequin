@@ -17,16 +17,14 @@ func TestConcurrentFirstOpen(t *testing.T) {
 	var wg sync.WaitGroup
 	errs := make(chan error, workers)
 	for range workers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			db, err := Open(path, Project, 8)
 			if err != nil {
 				errs <- err
 				return
 			}
 			db.Close()
-		}()
+		})
 	}
 	wg.Wait()
 	close(errs)

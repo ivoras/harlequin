@@ -360,7 +360,7 @@ func (s *Store) embedTexts(ctx context.Context, texts []string, progress func(do
 	doneChunks := 0
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(max(s.embedPar, 1))
-	for b := 0; b < nb; b++ {
+	for b := range nb {
 		start := b * embedBatch
 		end := min(start+embedBatch, len(texts))
 		g.Go(func() error {
@@ -1149,10 +1149,7 @@ func gateTop(hits []scoredHit, pct int) []scoredHit {
 	if len(hits) == 0 {
 		return hits
 	}
-	keep := int(math.Ceil(float64(len(hits)) * float64(100-pct) / 100.0))
-	if keep < 1 {
-		keep = 1
-	}
+	keep := max(int(math.Ceil(float64(len(hits))*float64(100-pct)/100.0)), 1)
 	if keep > len(hits) {
 		keep = len(hits)
 	}
@@ -1398,10 +1395,7 @@ func chunkText(text string, base int) []chunkRec {
 	}
 	var chunks []chunkRec
 	for start := 0; start < len(runes); start += chunkRunes - chunkOverlap {
-		end := start + chunkRunes
-		if end > len(runes) {
-			end = len(runes)
-		}
+		end := min(start+chunkRunes, len(runes))
 		chunks = append(chunks, chunkRec{text: string(runes[start:end]), start: base + start})
 		if end == len(runes) {
 			break

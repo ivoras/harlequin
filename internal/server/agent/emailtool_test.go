@@ -8,7 +8,7 @@ import (
 func TestEmailLimiter(t *testing.T) {
 	var l emailLimiter
 	now := time.Now()
-	for i := 0; i < emailPerHour; i++ {
+	for i := range emailPerHour {
 		if !l.allow(1, now) {
 			t.Fatalf("send %d refused", i+1)
 		}

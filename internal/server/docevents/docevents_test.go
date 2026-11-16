@@ -62,7 +62,7 @@ func TestNilBusAndUnsubscribe(t *testing.T) {
 func TestPublishNeverBlocks(t *testing.T) {
 	b := New()
 	b.Subscribe(1, nil)
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		b.Publish(Event{Scope: "shared"})
 	}
 }

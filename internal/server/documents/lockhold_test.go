@@ -94,7 +94,7 @@ func TestIngestDoesNotHoldWriteLockWhileEmbedding(t *testing.T) {
 
 func bigText(n int) string {
 	var sb strings.Builder
-	for i := 0; i < n; i++ {
+	for i := range n {
 		fmt.Fprintf(&sb, "Paragraph %d states a distinct obligation of the tenant number %d. It continues for a while with more words to fill a chunk. ", i, i*7)
 		if i%3 == 0 {
 			sb.WriteString("\n\n")

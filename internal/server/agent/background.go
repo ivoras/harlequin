@@ -74,7 +74,7 @@ func (a *Agent) RunBackgroundLLM(ctx context.Context, job func(ctx context.Conte
 		return false
 	}
 	defer func() { <-a.bgSlot }()
-	for attempt := 0; attempt < bgMaxAttempts; attempt++ {
+	for attempt := range bgMaxAttempts {
 		// Stay off the model until no live turn is using it.
 		for !a.llmFree() {
 			select {

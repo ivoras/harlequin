@@ -106,7 +106,9 @@ type ChatRequest struct {
 }
 
 // Ptr returns a pointer to v (for optional request fields).
-func Ptr(v float64) *float64 { return &v }
+//
+//go:fix inline
+func Ptr(v float64) *float64 { return new(v) }
 
 // Usage holds token accounting from a completion.
 type Usage struct {

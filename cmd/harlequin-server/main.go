@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"log"
+	"maps"
 	"net/http"
 	"os"
 	"time"
@@ -95,9 +96,7 @@ func main() {
 	// Usage is recorded in the agent loop where the user/session are known,
 	// so the routing provider's recorder is left nil to avoid double-counting.
 	ctxWindows := make(map[string]int, len(cfg.ContextWindows))
-	for model, n := range cfg.ContextWindows {
-		ctxWindows[model] = n
-	}
+	maps.Copy(ctxWindows, cfg.ContextWindows)
 	// Models the config actually references: each provider's model plus the
 	// model_rules keys. Discovery against a hosted catalog (OpenRouter) returns
 	// hundreds of models we never route to — only these are worth keeping.

@@ -80,9 +80,9 @@ func (c *Config) ExpandedSkillsDir() string {
 }
 
 func expandHome(p string) string {
-	if strings.HasPrefix(p, "~") {
+	if after, ok := strings.CutPrefix(p, "~"); ok {
 		if home, err := os.UserHomeDir(); err == nil {
-			return filepath.Join(home, strings.TrimPrefix(p, "~"))
+			return filepath.Join(home, after)
 		}
 	}
 	return p

@@ -53,10 +53,7 @@ func (m *Model) renderAlerts() string {
 			label += fmt.Sprintf("  · /run %d", i+1)
 		}
 		line := fmt.Sprintf("🔔 [%d] %s · /dismiss %d", i+1, label, i+1)
-		width := m.width - 2
-		if width < 8 {
-			width = 8
-		}
+		width := max(m.width-2, 8)
 		sb.WriteString(m.styles.Alert.Render(truncate(line, width)))
 		sb.WriteString("\n")
 	}

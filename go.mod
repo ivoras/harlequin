@@ -1,6 +1,6 @@
 module github.com/ivoras/harlequin
 
-go 1.26.3
+go 1.27
 
 require (
 	charm.land/bubbles/v2 v2.1.0

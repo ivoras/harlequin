@@ -265,11 +265,12 @@ func collect(events <-chan types.StreamEvent, skip bool, typing func()) (string,
 				}
 				stepStart = buf.Len()
 			case types.SSEAskUser:
-				q := ev.Text
+				var q strings.Builder
+				q.WriteString(ev.Text)
 				for i, o := range ev.Options {
-					q += fmt.Sprintf("\n%d. %s", i+1, o)
+					q.WriteString(fmt.Sprintf("\n%d. %s", i+1, o))
 				}
-				para(q)
+				para(q.String())
 			case types.SSEError:
 				para("⚠ " + ev.Error)
 			case types.SSEDone:

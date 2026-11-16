@@ -130,14 +130,14 @@ func (m *Model) handleMemoryEditorKey(msg tea.KeyPressMsg, key string) (tea.Mode
 // parseMemoryEditorBuffer splits the buffer at memorySlotsMarker into content
 // and, if the marker is present, the parsed "key: value" slot lines.
 func parseMemoryEditorBuffer(buf string) (content string, slots []types.MemorySlot, hasSlots bool) {
-	idx := strings.Index(buf, memorySlotsMarker)
-	if idx < 0 {
+	before, after, ok := strings.Cut(buf, memorySlotsMarker)
+	if !ok {
 		return strings.TrimSpace(buf), nil, false
 	}
-	content = strings.TrimSpace(buf[:idx])
-	rest := buf[idx+len(memorySlotsMarker):]
+	content = strings.TrimSpace(before)
+	rest := after
 	slots = []types.MemorySlot{}
-	for _, line := range strings.Split(rest, "\n") {
+	for line := range strings.SplitSeq(rest, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -195,10 +195,7 @@ func (m *Model) memoryEditorView() string {
 	}
 	footer := m.styles.Help.Render(hint)
 
-	bodyH := m.height - 4
-	if bodyH < 3 {
-		bodyH = 3
-	}
+	bodyH := max(m.height-4, 3)
 	ed.ta.SetWidth(m.width)
 	ed.ta.SetHeight(bodyH)
 	return header + "\n" + ed.ta.View() + "\n" + footer

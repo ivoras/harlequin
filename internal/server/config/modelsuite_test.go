@@ -6,7 +6,8 @@ import (
 	"testing"
 )
 
-func fl(v float64) *float64 { return &v }
+//go:fix inline
+func fl(v float64) *float64 { return new(v) }
 
 // A suite with a distinct aux endpoint expands into two providers (chat default
 // + aux), a model rule routing the WebFetch model to aux, and the embed settings.
@@ -15,8 +16,8 @@ func TestResolveModelSuiteDistinctAux(t *testing.T) {
 		ModelSuite: "local",
 		ModelSuites: map[string]ModelSuite{
 			"local": {
-				Chat:  ModelSpec{BaseURL: "http://x:2234/v1", Model: "chat-m", ReturnProgress: true, ContextWindow: 100000, Temperature: fl(0.5)},
-				Aux:   ModelSpec{BaseURL: "http://x:2236/v1", Model: "aux-m", ReturnProgress: true, Temperature: fl(0.1)},
+				Chat:  ModelSpec{BaseURL: "http://x:2234/v1", Model: "chat-m", ReturnProgress: true, ContextWindow: 100000, Temperature: new(0.5)},
+				Aux:   ModelSpec{BaseURL: "http://x:2236/v1", Model: "aux-m", ReturnProgress: true, Temperature: new(0.1)},
 				Embed: ModelSpec{BaseURL: "http://x:2235/v1", Model: "embed-m", Dim: 1024, QueryPrefix: "query: "},
 			},
 		},

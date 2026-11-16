@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 
 	"github.com/ivoras/harlequin/internal/server/llm"
 	"github.com/ivoras/harlequin/internal/shared/types"
@@ -40,11 +41,12 @@ func (a *Agent) ContextBreakdown(ctx context.Context, projectID, sessionID, user
 
 		var skillsTokens int
 		if len(rc.skillInfos) > 0 {
-			skillsText := "\n\nAvailable skills (use load_skill to read full instructions):\n"
+			var skillsText strings.Builder
+			skillsText.WriteString("\n\nAvailable skills (use load_skill to read full instructions):\n")
 			for _, i := range rc.skillInfos {
-				skillsText += fmt.Sprintf("- %s: %s\n", i.Name, i.Description)
+				skillsText.WriteString(fmt.Sprintf("- %s: %s\n", i.Name, i.Description))
 			}
-			skillsTokens = llm.EstimateTextTokens(skillsText)
+			skillsTokens = llm.EstimateTextTokens(skillsText.String())
 		}
 
 		history, err := a.Sessions.Messages(ctx, rc.sessDB, sessionID)

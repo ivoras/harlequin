@@ -432,12 +432,12 @@ func mcpScopeLabel(scope string) string {
 // parseMCPRef parses "scope/name" or bare "name" (default: personal). Scope is
 // personal|user or organisation|organization|shared.
 func parseMCPRef(s string) (scope, name string) {
-	if i := strings.Index(s, "/"); i >= 0 {
-		switch sc := strings.ToLower(s[:i]); sc {
+	if before, after, ok := strings.Cut(s, "/"); ok {
+		switch sc := strings.ToLower(before); sc {
 		case "shared", "organisation", "organization":
-			return "shared", s[i+1:]
+			return "shared", after
 		case "user", "personal":
-			return "user", s[i+1:]
+			return "user", after
 		}
 	}
 	return "user", s
@@ -559,7 +559,7 @@ func (m *Model) handleMCPAdd(args []string, raw string) tea.Cmd {
 // afterNFields returns the remainder of s after skipping n whitespace-separated
 // fields, preserving the original spacing/quoting of that remainder.
 func afterNFields(s string, n int) string {
-	for i := 0; i < n; i++ {
+	for range n {
 		s = strings.TrimLeft(s, " \t")
 		j := strings.IndexAny(s, " \t")
 		if j < 0 {
@@ -653,7 +653,7 @@ func renderMCPDetail(s types.MCPServer) string {
 // firstLine returns the first non-empty line of a (possibly multi-line) tool
 // description, trimmed, so the /mcp show listing stays compact.
 func firstLine(s string) string {
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		if line = strings.TrimSpace(line); line != "" {
 			return line
 		}

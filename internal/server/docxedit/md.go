@@ -55,7 +55,7 @@ func parseBlocks(s string) (blocks []block, row []string, err error) {
 		}
 	}
 	var rows [][]string
-	for _, line := range strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.ReplaceAll(s, "\r\n", "\n"), "\n") {
 		t := strings.TrimSpace(line)
 		switch {
 		case t == "":

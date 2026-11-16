@@ -126,7 +126,7 @@ func collectTerms(words []string) (terms []string, widened bool) {
 
 func words(query string) []string {
 	var out []string
-	for _, f := range strings.Fields(query) {
+	for f := range strings.FieldsSeq(query) {
 		f = strings.Trim(f, `"'`)
 		if f != "" {
 			out = append(out, f)

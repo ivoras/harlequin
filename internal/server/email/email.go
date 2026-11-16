@@ -196,8 +196,8 @@ func writeHeaders(b *strings.Builder, from, to, replyTo, subject string) {
 	_, _ = rand.Read(id[:])
 	domain := "localhost"
 	if a, err := mail.ParseAddress(from); err == nil {
-		if at := strings.LastIndex(a.Address, "@"); at >= 0 {
-			domain = a.Address[at+1:]
+		if _, d, ok := strings.CutLast(a.Address, "@"); ok {
+			domain = d
 		}
 	}
 	fmt.Fprintf(b, "From: %s\r\n", hdr(from))

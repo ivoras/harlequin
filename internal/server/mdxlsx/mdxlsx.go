@@ -78,7 +78,7 @@ func Parse(md string) ([]Sheet, Stats) {
 			table = nil
 		}
 	}
-	for _, line := range strings.Split(strings.ReplaceAll(md, "\r\n", "\n"), "\n") {
+	for line := range strings.SplitSeq(strings.ReplaceAll(md, "\r\n", "\n"), "\n") {
 		t := strings.TrimSpace(line)
 		switch {
 		case strings.HasPrefix(t, "|"):
