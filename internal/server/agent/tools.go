@@ -1058,6 +1058,8 @@ Example (watch a saved web-monitor check every 30 min): cron_create(name="fzoeu"
 		}
 	}
 
+	a.registerSkillWriteTools(reg)
+
 	// External MCP server tools (shared + user), namespaced mcp__<server>__<tool>.
 	if a.MCP != nil {
 		a.registerMCPTools(ctx, rc, reg)

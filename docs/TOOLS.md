@@ -105,6 +105,24 @@ An unknown name returns an error listing the valid hats.
 demand, so they don't bloat every prompt.
 **Example:** `load_skill({"name": "web-monitor"})`
 
+### `write_skill`
+**Why:** create a skill, or replace its main file (`SKILL.md`), when the user asks.
+Other files of an existing skill are kept. `scope` defaults to personal; `shared`
+is owner/admin only, `project` needs a project session. Writing into a scope that
+doesn't hold the skill yet copies the effective one first, so originals stay intact.
+**Example:** `write_skill({"name": "weekly-report", "content": "---\nname: weekly-report\ndescription: ...\n---\n..."})`
+
+### `write_skill_file`
+**Why:** add or replace one supporting file (script, template) of an existing
+skill; it is then reachable as `skill://<name>/<path>`. Same scope rules.
+**Example:** `write_skill_file({"name": "weekly-report", "path": "scripts/run.js", "content": "..."})`
+
+### `delete_skill`
+**Why:** delete a skill from one scope, only on explicit request. Defaults to the
+personal scope (never the project's); deleting a personal copy reveals the shared
+skill again.
+**Example:** `delete_skill({"name": "weekly-report"})`
+
 ---
 
 ## Compute & code

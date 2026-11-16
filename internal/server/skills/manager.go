@@ -119,6 +119,12 @@ func readSkillFiles(ctx context.Context, db *sql.DB, name string) (map[string]st
 	return readItemFiles(ctx, db, skillTables, name)
 }
 
+// Has reports whether the given scope database holds the named skill.
+func (m *Manager) Has(ctx context.Context, db *sql.DB, name string) bool {
+	files, _ := readSkillFiles(ctx, db, name)
+	return files != nil
+}
+
 // resolveRaw returns a skill's files and the scope it resolved from, honoring
 // project → shared → user precedence.
 func (m *Manager) resolveRaw(ctx context.Context, userDB, projDB *sql.DB, name string) (map[string]string, string, error) {
