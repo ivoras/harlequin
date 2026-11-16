@@ -12,7 +12,8 @@ export const activeProject = writable<Project | null>(null);
 // endpoints (skills) carry ?project=.
 activeProject.subscribe((p) => setActiveProject(p?.id ?? 0));
 
-// Whether the /project management sheet is open.
+// Set by /project: each UI opens its project management (desktop the
+// workspace switcher, mobile the Projects tab) and resets it.
 export const projectSheet = writable<boolean>(false);
 
 // Which top-level view is shown (chat + management panels). "files" is

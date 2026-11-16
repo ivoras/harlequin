@@ -92,11 +92,14 @@ you uploaded, and on PDF, Word and Excel files the agent made for you earlier.
 The browser app comes in two layouts over the same account and data:
 
 - **Desktop** (`/`) — for keyboard-and-mouse use.
-- **Mobile** (`/m/`) — touch-first: a tab bar, a ☰ sessions drawer, bottom sheets.
+- **Mobile** (`/m/`) — touch-first: tabs for Chat, Docs, Memory and Projects,
+  everything else (skills, hats, cron jobs, MCP servers, config, usage, your
+  account) under **More**, and a ☰ drawer with the workspace selector and its
+  sessions.
 
 Phones are sent to the mobile layout automatically. To switch by hand, use
 **Mobile version** in the desktop's account menu (bottom of the sidebar) or
-**🖥 Desktop version** in the mobile ⋮ menu; the choice is remembered in that
+**🖥 Desktop version** under the mobile **More** tab; the choice is remembered in that
 browser. The address bar keeps the session and project (`?s=…&p=…`), so a
 copied link opens the same session in either layout.
 
@@ -184,7 +187,7 @@ admin shares a new OAuth server, you get an alert with a **Sign in** button
 (TUI: `/mcp auth <scope/name>`), and the assistant tells you to sign in if you
 ask for something that server provides. Owners/admins can register a server for everyone in the
 organisation; each user still signs in to it with their own account. On the
-mobile UI the same page is under the menu's **MCP servers**. MCP must be
+mobile UI the same page is under **More → MCP servers**. MCP must be
 enabled on the server (`mcp.enabled: true`), and OAuth and API-key servers also need
 `HARLEQUIN_SECRET_KEY` set so credentials can be encrypted at rest.
 
@@ -241,8 +244,8 @@ sessions, documents, and memories — stays private to you.
 **Creating and switching.** Anyone can create a project. In the desktop web
 app, use the workspace switcher at the top of the sidebar to create one and
 switch to it; the Projects page manages a project's members and files (mobile:
-the project selector in the header, the **Manage…** sheet, and the Projects
-tab). In the TUI, `/project new <name>` and `/project switch <name>`.
+create and manage projects in the Projects tab; switch with its **Work in this
+project** button or the Workspace selector in the ☰ drawer). In the TUI, `/project new <name>` and `/project switch <name>`.
 While a project is active, chatting talks to the project's shared session —
 every member sees the same live conversation, including a turn already in
 progress — and the project chatroom appears (desktop: the side panel's Team
@@ -275,13 +278,12 @@ no longer resolve.
 
 **Inviting members.** Any member can invite others. In the browser, the
 Projects page (mobile: Projects tab) shows the picked project's members and an
-"Invite by email" box (mobile's Manage… sheet has the same box for the active
-project); as you type, the
+"Invite by email" box; as you type, the
 field suggests account emails from the server's user directory — current
 members are left out of the suggestions. In the TUI, use `/project invite
 <email>`. The invitee gets an alert with **Accept** and **Decline** buttons,
 and the invitation also appears in their Invitations list (desktop: the
-workspace switcher or the Projects page; mobile: the Manage… sheet; TUI:
+workspace switcher or the Projects page; mobile: the Projects tab; TUI:
 `/project invites`, then `/project accept <id>` or `/project decline <id>`).
 Answering in any of those places clears it everywhere; nothing is shared with
 them until they accept. Invites are
@@ -306,7 +308,8 @@ Project content is members-only throughout: another user's search never sees
 projects you belong to unless they are members too.
 
 **Leaving.** `/project leave` (web: "Leave workspace" on the desktop Projects
-page or picking Personal in the workspace switcher; mobile: "Leave project")
+page or picking Personal in the workspace switcher; mobile: "Back to personal"
+in the Projects tab or Personal in the ☰ drawer's Workspace selector)
 just returns you to your
 personal workspace — you stay a member. `/project depart` (web: "Depart
 project") removes your membership; the project and its content remain for the

@@ -381,7 +381,7 @@ produces two layouts over shared code:
   middle, and a resizable right panel (project team chat, document viewer, session and
   context details). Command palette (`Ctrl/⌘+K`), drag-and-drop file upload anywhere in
   the window, and a light/dark theme that follows the OS.
-- **Mobile** at `/m/` — the touch-first layout (tab bar, drawers, bottom sheets).
+- **Mobile** at `/m/` — the touch-first layout (four main tabs plus **More**, a sessions drawer with the workspace selector, bottom sheets).
 
 Phones opening `/` are redirected to `/m/` automatically; either UI has a link to the
 other, and an explicit choice is remembered per browser. Both keep the session and

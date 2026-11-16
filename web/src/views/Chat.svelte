@@ -139,7 +139,7 @@
         <div class="muted small ppline">{sc.ppLabel}</div>
       {/if}
       {#if sc.items.length === 0}
-        <div class="muted" style="text-align:center; margin-top:18vh;">Start the session.</div>
+        <div class="muted" style="text-align:center; margin-top:8vh;">Start the session.</div>
         <HatPicker />
       {/if}
     </div>
@@ -153,18 +153,18 @@
       <div class="body list">
         {#each availableCommands(admin) as cmd}
           <div class="row" style="gap:8px; align-items:baseline;">
-            <code>{cmd.name}{#if cmd.args} {cmd.args}{/if}</code>
+            <code>{cmd.name}{cmd.args ? " " + cmd.args : ""}</code>
             <span class="muted small">{cmd.desc}</span>
           </div>
         {/each}
-        <div class="muted small">Other actions are in the tabs and the ☰ sessions drawer.</div>
+        <div class="muted small">Everything else is in the tabs, under More, and in the ☰ sessions drawer.</div>
       </div>
     </aside>
   {/if}
 
   <div class="composer">
     {#if sc.queue.length}
-      <div class="container col" style="gap:4px; padding-bottom:6px;">
+      <div class="container col" style="gap:4px;">
         <div class="muted small">Queued ({sc.queue.length}) — sent in order as the agent frees up:</div>
         {#each sc.queue as q, i}
           <div class="row queued" style="gap:6px; align-items:center;">
@@ -175,11 +175,11 @@
       </div>
     {/if}
     {#if c.suggestions.length}
-      <div class="container col slashmenu" style="gap:2px; padding-bottom:6px;">
+      <div class="container col slashmenu" style="gap:2px;">
         {#each c.suggestions as cmd, i}
           <button class="slashitem row" class:sel={i === c.slashSel}
             onmouseenter={() => (c.slashSel = i)} onclick={c.completeSlash}>
-            <code>{cmd.name}{#if cmd.args} {cmd.args}{/if}</code>
+            <code>{cmd.name}{cmd.args ? " " + cmd.args : ""}</code>
             <span class="muted small">{cmd.desc}</span>
           </button>
         {/each}
@@ -196,9 +196,9 @@
       {/if}
     </div>
     {#if sc.missing}
-      <div class="container small" style="padding-top:2px; color: var(--danger, #f66);">This session wasn't found here (deleted or moved) — start a new one or pick another.</div>
+      <div class="container small" style="color: var(--danger, #f66);">This session wasn't found here (deleted or moved) — start a new one or pick another.</div>
     {:else if sc.reconnecting}
-      <div class="container muted small" style="padding-top:2px;">Reconnecting…</div>
+      <div class="container muted small">Reconnecting…</div>
     {/if}
   </div>
 </div>
@@ -216,6 +216,8 @@
   .msg.assistant .md { max-width: 100%; word-break: break-word; }
   .md :global(p) { margin: 0.4em 0; }
   .md :global(pre) { white-space: pre; }
+  /* Cells keep whole words; a wide table scrolls sideways (markdown.css). */
+  .md :global(table) { word-break: normal; }
   /* Per-code-block copy button (markup injected by renderMarkdown). */
   .md :global(.codewrap) { position: relative; }
   .md :global(.codecopy) { position: absolute; top: 4px; right: 4px; padding: 1px 8px;
@@ -235,11 +237,17 @@
   .tool-out { white-space: pre-wrap; width: 100%; max-height: 9em; overflow-y: auto; }
   .composer { border-top: 1px solid var(--border); background: var(--surface);
     box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.25); position: relative; z-index: 5;
-    padding: 8px 0 max(8px, env(safe-area-inset-bottom)); }
+    padding: 8px 0 max(8px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 6px; }
+  /* Rows supply only side gutters, so an empty row (no attachments) adds no height. */
+  .composer > :global(.container) { padding-top: 0; padding-bottom: 0; }
+  .composer > :global(.container:empty) { display: none; }
   textarea { resize: none; max-height: 40dvh; }
+  /* One-line hint: a wrapped placeholder is clipped by the single-row box. */
+  textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .slashmenu { max-height: 40dvh; overflow-y: auto; }
   .slashitem { width: 100%; justify-content: flex-start; gap: 10px; text-align: left;
     background: var(--surface-2); border: 1px solid transparent; box-shadow: none; }
+  .slashitem code { flex: none; white-space: nowrap; }
   .slashitem.sel { border-color: var(--accent-dim); background: var(--surface-3);
     box-shadow: var(--hl), var(--shadow-1); }
 </style>

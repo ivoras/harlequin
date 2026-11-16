@@ -2,12 +2,13 @@
   import { api, getToken, setToken } from "./lib/api";
   import { user, view, session, wornHat, toasts, toast, activeProject, projectSheet, orgName, loadOrgName, invitesVersion, type View } from "./lib/stores";
   import { sc } from "./lib/session.svelte";
-  import { switchToProject as libSwitchToProject, leaveActiveProject, cleanTitle, projectBylines, canDeleteProject, deleteProjectFlow, inviteIDFromKind, respondToInvite, moveSessionToProject } from "./lib/project";
+  import { switchToProject as libSwitchToProject, leaveActiveProject, cleanTitle, projectBylines, inviteIDFromKind, respondToInvite, moveSessionToProject } from "./lib/project";
   import { initSession, ensureSession, setURLParams, consumeMCPOAuthResult, authorizeMCP, mcpSignInTarget } from "./lib/workspace";
   import { switchUI } from "./lib/uipref";
   import DocViewer from "./lib/DocViewer.svelte";
   import { pc } from "./lib/projectchat.svelte";
-  import type { Session, Project, ProjectInvite } from "./lib/types";
+  import { unread } from "./desktop/unread.svelte";
+  import type { Session, Project } from "./lib/types";
   import Login from "./views/Login.svelte";
   loadOrgName();
   import Chat from "./views/Chat.svelte";
@@ -39,18 +40,21 @@
   let menu = $state(false);
   let sessions = $state<Session[]>([]);
   let sessionFilter = $state("");
-  // Project management (the /project sheet) + chatroom pane.
+  // Workspace selector (sessions drawer) + chatroom pane. Project management
+  // itself lives in the Projects tab.
   let projects = $state<Project[]>([]);
   // "by <email>" suffixes for projects with duplicate names.
   let bylines = $derived(projectBylines(projects));
-  // Account directory for invite autocomplete, loaded when the sheet opens.
-  let directory = $state<{ id: number; email: string }[]>([]);
-  let invites = $state<ProjectInvite[]>([]);
-  let newProjectName = $state("");
-  let inviteEmail = $state("");
   let chatInput = $state("");
-  // On phones the pane is a bottom sheet covering half the chat, so it starts closed there.
+  // On phones the pane is a sheet over the chat, so it starts closed there.
   let showChatPane = $state(typeof matchMedia === "function" ? !matchMedia("(max-width: 640px)").matches : true);
+  // Unread team-chat messages in the active project (badge on the 💬 toggle).
+  const chatUnread = $derived(unread.projects.find((u) => u.project_id === $activeProject?.id)?.count ?? 0);
+  $effect(() => {
+    const p = $activeProject;
+    const last = pc.messages.at(-1)?.id;
+    if (p && last && pc.roomID === p.id && showChatPane && unread.visible) unread.markRead(p.id, last);
+  });
 
   let started = false;
 
@@ -77,9 +81,11 @@
       started = true;
       initSession();
       loadProjects();
+      unread.start();
       if (consumeMCPOAuthResult()) view.set("mcp");
     } else if (!u && started) {
       started = false;
+      unread.stop();
       sc.detach();
       session.set({ id: 0, title: "" });
       wornHat.set("");
@@ -109,7 +115,7 @@
     else pc.close();
   });
 
-  // A project invitation arrived (or was answered): refresh the invitation list.
+  // An invitation was answered (membership may have changed): refresh the selector.
   let seenInvitesVersion = $invitesVersion;
   $effect(() => {
     const v = $invitesVersion;
@@ -118,11 +124,11 @@
     if ($user) loadProjects();
   });
 
-  // Load projects + invites whenever the management sheet opens.
+  // /project: project management is the Projects tab here (no separate sheet).
   $effect(() => {
     if ($projectSheet) {
-      loadProjects();
-      if (directory.length === 0) api.userDirectory().then((d) => (directory = d)).catch(() => {});
+      projectSheet.set(false);
+      view.set("projects");
     }
   });
 
@@ -151,6 +157,11 @@
   async function openSessions() {
     sessionDrawer = true;
     sessionFilter = "";
+    moveFor = null;
+    loadProjects();
+    await loadSessions();
+  }
+  async function loadSessions() {
     try {
       // In a project, the drawer lists the project's (shared) sessions.
       sessions = $activeProject ? await api.listProjectSessions($activeProject.id) : await api.listSessions();
@@ -162,75 +173,19 @@
   // --- projects ---
   async function loadProjects() {
     try {
-      [projects, invites] = await Promise.all([api.listProjects(), api.listProjectInvites()]);
+      projects = await api.listProjects();
     } catch (e) {
       toast((e as Error).message, "error");
     }
   }
-  async function createProject() {
-    const name = newProjectName.trim();
-    if (!name) return;
-    try {
-      const p = await api.createProject(name);
-      newProjectName = "";
-      await loadProjects();
-      switchToProject(p);
-    } catch (e) {
-      toast((e as Error).message, "error");
-    }
-  }
-  async function acceptInvite(inv: ProjectInvite) {
-    if ((await respondToInvite(inv.id, true, inv.project_name)) === null) return;
-    await loadProjects();
-    const p = projects.find((x) => x.id === inv.project_id);
-    if (p) switchToProject(p);
-  }
-  async function switchToProject(p: Project) {
-    projectSheet.set(false);
-    sessionDrawer = false;
-    await libSwitchToProject(p);
-  }
+  // Workspace selector in the sessions drawer: the drawer stays open and
+  // re-lists, so the user sees the sessions of the workspace they just picked.
   async function onSelectProject(e: Event) {
     const id = parseInt((e.target as HTMLSelectElement).value, 10);
-    if (!id) {
-      await leaveActiveProject();
-      return;
-    }
     const p = projects.find((x) => x.id === id);
-    if (p) await switchToProject(p);
-  }
-  async function leaveProject() {
-    await leaveActiveProject();
-  }
-  async function departProject() {
-    const p = $activeProject;
-    if (!p) return;
-    if (!confirm(`Depart "${p.name}"? This removes your membership.`)) return;
-    try {
-      await api.departProject(p.id);
-      toast("departed " + p.name);
-      projects = projects.filter((x) => x.id !== p.id);
-      await leaveProject();
-    } catch (e) {
-      toast((e as Error).message, "error");
-    }
-  }
-  async function deleteActiveProject() {
-    const p = $activeProject;
-    if (!p) return;
-    if (await deleteProjectFlow(p)) projects = projects.filter((x) => x.id !== p.id);
-  }
-  async function inviteMember() {
-    const p = $activeProject;
-    const email = inviteEmail.trim();
-    if (!p || !email) return;
-    try {
-      await api.inviteToProject(p.id, email);
-      inviteEmail = "";
-      toast("invited " + email);
-    } catch (e) {
-      toast((e as Error).message, "error");
-    }
+    if (p) await libSwitchToProject(p);
+    else await leaveActiveProject();
+    await loadSessions();
   }
   // The personal session whose "move to project" picker is open in the drawer.
   let moveFor = $state<number | null>(null);
@@ -300,21 +255,23 @@
     menu = false;
   }
 
+  // Four primary tabs + "More" (a sheet with every other page and the account).
   const nav: { id: View; label: string; ic: string }[] = [
     { id: "chat", label: "Chat", ic: icChat },
-    { id: "skills", label: "Skills", ic: icSkills },
-    { id: "hats", label: "Hats", ic: icHats },
+    { id: "documents", label: "Docs", ic: icDocs },
     { id: "memory", label: "Memory", ic: icMemory },
     { id: "projects", label: "Projects", ic: icProjects },
-    { id: "documents", label: "Docs", ic: icDocs },
-    { id: "cron", label: "Cron", ic: icCron },
   ];
   const moreViews: { id: View; label: string; ic: string }[] = [
+    { id: "skills", label: "Skills", ic: icSkills },
+    { id: "hats", label: "Hats", ic: icHats },
+    { id: "cron", label: "Cron jobs", ic: icCron },
     { id: "mcp", label: "MCP servers", ic: icMcp },
     { id: "config", label: "Config", ic: icConfig },
     { id: "usage", label: "Usage", ic: icUsage },
     { id: "context", label: "Context", ic: icUsage },
   ];
+  const inMore = $derived(moreViews.find((v) => v.id === $view));
 </script>
 
 {#if !ready}
@@ -324,33 +281,37 @@
 {:else}
   <header class="app-header">
     <button class="iconbtn" onclick={openSessions} aria-label="Sessions">☰</button>
-    <span class="brand">Harlequin</span>
-    {#if $orgName}<span class="org" title={$orgName}>{$orgName}</span>{/if}
-    <select class="chip projectselect" value={$activeProject?.id ?? 0} onchange={onSelectProject} title="Project">
-      <option value={0}>&lt;no project selected&gt;</option>
-      {#each projects as p (p.id)}
-        <option value={p.id}>{p.name}{bylines.get(p.id) ? ` (${bylines.get(p.id)})` : ""}</option>
-      {/each}
-    </select>
-    <span class="title">{$session.title || "New session"}</span>
-    {#if $wornHat}
-      <span class="chip hatchip" title="This session wears the {$wornHat} hat">
-        🎩 {$wornHat}
-        <button class="offbtn" onclick={takeOffHat} aria-label="Take off the hat">✕</button>
-      </span>
-    {/if}
+    <!-- Session title over a context line: project and hat when set, else the brand. -->
+    <div class="heading">
+      <div class="title">{$session.title || "New session"}</div>
+      <div class="context">
+        {#if $activeProject}<span class="ellipsize">📁 {$activeProject.name}</span>{/if}
+        {#if $wornHat}
+          <span class="hatchip" title="This session wears the {$wornHat} hat">
+            <span class="ellipsize">🎩 {$wornHat}</span>
+            <button class="offbtn" onclick={takeOffHat} aria-label="Take off the hat">✕</button>
+          </span>
+        {/if}
+        {#if !$activeProject && !$wornHat}<span class="ellipsize">Harlequin{$orgName ? " · " + $orgName : ""}</span>{/if}
+      </div>
+    </div>
     {#if $activeProject}
-      <button class="iconbtn" onclick={() => (showChatPane = !showChatPane)} aria-label="Toggle chatroom">💬</button>
+      <button class="iconbtn chatbtn" onclick={() => (showChatPane = !showChatPane)} aria-label="Team chat" aria-pressed={showChatPane}>
+        💬{#if chatUnread && !showChatPane}<span class="badge">{chatUnread > 99 ? "99+" : chatUnread}</span>{/if}
+      </button>
     {/if}
-    <button class="iconbtn" onclick={() => (menu = true)} aria-label="Menu">⋮</button>
   </header>
 
   <nav class="tabbar">
     {#each nav as p}
-      <button class:active={$view === p.id} onclick={() => view.set(p.id)} title={p.label}>
+      <button class:active={$view === p.id} onclick={() => view.set(p.id)}>
         <img class="ic" src={p.ic} alt="" /><span class="lbl">{p.label}</span>
       </button>
     {/each}
+    <button class:active={!!inMore} onclick={() => (menu = true)} aria-haspopup="dialog">
+      {#if inMore}<img class="ic" src={inMore.ic} alt="" />{:else}<span class="ic dots">⋯</span>{/if}
+      <span class="lbl">{inMore?.label.split(" ")[0] ?? "More"}</span>
+    </button>
   </nav>
 
   <!-- Persistent alert box: server-pushed notifications, visible on every view,
@@ -412,8 +373,12 @@
 
     <!-- Project chatroom side-pane: shown only while a project is active. -->
     {#if $activeProject && showChatPane}
+      <div class="scrim chatscrim" role="presentation" onclick={() => (showChatPane = false)}></div>
       <aside class="chatpane">
-        <header class="chatpane-head">💬 {$activeProject.name}</header>
+        <header class="chatpane-head">
+          <span class="ellipsize" style="flex:1;">💬 {$activeProject.name}</span>
+          <button class="ghost small" onclick={() => (showChatPane = false)} aria-label="Close team chat">✕</button>
+        </header>
         <div class="chatpane-msgs">
           {#each pc.messages as m (m.id)}
             <div class="chatmsg">
@@ -440,19 +405,28 @@
         <button class="primary small" onclick={newSession}>+ New</button>
       </header>
       <div class="body list">
+        <label class="col" style="gap:4px;">
+          <span class="muted small">Workspace</span>
+          <select style="width:100%;" value={$activeProject?.id ?? 0} onchange={onSelectProject}>
+            <option value={0}>Personal</option>
+            {#each projects as p (p.id)}
+              <option value={p.id}>📁 {p.name}{bylines.get(p.id) ? ` (${bylines.get(p.id)})` : ""}</option>
+            {/each}
+          </select>
+        </label>
         <input placeholder="Filter sessions…" bind:value={sessionFilter} use:focusOnDesktop />
-        {#each filteredSessions as c}
-          <div class="card row" role="button" tabindex="0" onclick={() => switchSession(c)}
-            onkeydown={(e) => e.key === "Enter" && switchSession(c)} style="cursor:pointer;">
-            <div class="col" style="gap:2px; min-width:0; flex:1;">
-              <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{c.title}</div>
-              <div class="muted small">#{c.id} · {c.interface} · {relTime(c.updated_at)}</div>
+        {#each filteredSessions as c (c.id)}
+          <div class="card sessrow" class:current={c.id === $session.id} role="button" tabindex="0" onclick={() => switchSession(c)}
+            onkeydown={(e) => e.key === "Enter" && switchSession(c)}>
+            <div class="sesstitle">{cleanTitle(c.title) || "New session"}</div>
+            <div class="row" style="gap:2px;">
+              <span class="muted small" style="flex:1;">#{c.id} · {c.interface} · {relTime(c.updated_at)}</span>
+              {#if !$activeProject}
+                <button class="ghost small" onclick={(e) => renameSession(c, e)} aria-label="Rename">✏️</button>
+                <button class="ghost small" onclick={(e) => toggleMove(c, e)} aria-label="Move to project" aria-expanded={moveFor === c.id}>📁</button>
+                <button class="ghost danger small" onclick={(e) => deleteSession(c, e)} aria-label="Delete">✕</button>
+              {/if}
             </div>
-            {#if !$activeProject}
-              <button class="ghost small" onclick={(e) => renameSession(c, e)} aria-label="Rename">✏️</button>
-              <button class="ghost small" onclick={(e) => toggleMove(c, e)} aria-label="Move to project" aria-expanded={moveFor === c.id}>📁</button>
-              <button class="ghost danger small" onclick={(e) => deleteSession(c, e)} aria-label="Delete">✕</button>
-            {/if}
           </div>
           {#if moveFor === c.id}
             <div class="card col" style="gap:6px;">
@@ -460,7 +434,7 @@
               {#each projects as p (p.id)}
                 <button class="small" onclick={() => moveTo(c, p)}>📁 {p.name}</button>
               {:else}
-                <div class="muted small">No projects yet — create one from the project selector.</div>
+                <div class="muted small">No projects yet — create one in the Projects tab.</div>
               {/each}
             </div>
           {/if}
@@ -473,80 +447,20 @@
   {#if menu}
     <div class="scrim" role="presentation" onclick={() => (menu = false)}></div>
     <aside class="sheet bottom">
-      <header><strong>Menu</strong><span class="spacer"></span>
+      <header><strong>More</strong><span class="spacer"></span>
         <button class="ghost" onclick={() => (menu = false)}>Close</button></header>
       <div class="body list">
-        <div class="muted small">Signed in as {$user.email} ({$user.role})</div>
-        <div class="row" style="flex-wrap:wrap; gap:8px;">
+        <div class="moregrid">
           {#each moreViews as v}
-            <button class="menuitem" onclick={() => { view.set(v.id); menu = false; }}>
+            <button class="menuitem" class:active={$view === v.id} onclick={() => { view.set(v.id); menu = false; }}>
               <img class="ic" src={v.ic} alt="" /> {v.label}
             </button>
           {/each}
         </div>
+        <hr style="width:100%;" />
+        <div class="muted small wrap">Signed in as {$user.email} ({$user.role}){$orgName ? " · " + $orgName : ""}</div>
         <button onclick={() => switchUI("desktop")}>🖥 Desktop version</button>
         <button class="danger" onclick={logout}>Log out</button>
-      </div>
-    </aside>
-  {/if}
-
-  {#if $projectSheet}
-    <div class="scrim" role="presentation" onclick={() => projectSheet.set(false)}></div>
-    <aside class="sheet bottom">
-      <header><strong>Projects</strong><span class="spacer"></span>
-        <button class="ghost" onclick={() => projectSheet.set(false)}>Close</button></header>
-      <div class="body list">
-        {#if invites.length}
-          <div class="muted small">Invitations</div>
-          {#each invites as inv (inv.id)}
-            <div class="card row">
-              <div class="col" style="flex:1; min-width:0;">
-                <div>{inv.project_name}</div>
-                <div class="muted small">from {inv.invited_by}</div>
-              </div>
-              <button class="primary small" onclick={() => acceptInvite(inv)}>Accept</button>
-              <button class="ghost small" onclick={() => respondToInvite(inv.id, false, inv.project_name)}>Decline</button>
-            </div>
-          {/each}
-        {/if}
-
-        <div class="muted small">Your projects</div>
-        {#each projects as p (p.id)}
-          <div class="card row" role="button" tabindex="0" onclick={() => switchToProject(p)}
-            onkeydown={(e) => e.key === "Enter" && switchToProject(p)} style="cursor:pointer;">
-            <div class="row" style="flex:1; min-width:0; gap:6px; align-items:baseline;">
-              <span class="ellipsize">📁 {p.name}</span>
-              {#if bylines.get(p.id)}<span class="muted small ellipsize" style="flex-shrink:1;">{bylines.get(p.id)}</span>{/if}
-            </div>
-            {#if $activeProject?.id === p.id}<span class="muted small">active</span>{/if}
-          </div>
-        {/each}
-        {#if projects.length === 0}<div class="muted small">No projects yet.</div>{/if}
-
-        <div class="row" style="gap:6px;">
-          <input placeholder="New project name" bind:value={newProjectName}
-            onkeydown={(e) => e.key === "Enter" && createProject()} />
-          <button class="primary small" onclick={createProject} disabled={!newProjectName.trim()}>Create</button>
-        </div>
-
-        {#if $activeProject}
-          <div class="muted small">Active: {$activeProject.name}</div>
-          <div class="row" style="gap:6px;">
-            <input placeholder="Invite by email" list="sheet-invite-directory" bind:value={inviteEmail}
-              onkeydown={(e) => e.key === "Enter" && inviteMember()} />
-            <datalist id="sheet-invite-directory">
-              {#each directory as u (u.id)}<option value={u.email}></option>{/each}
-            </datalist>
-            <button class="small" onclick={inviteMember} disabled={!inviteEmail.trim()}>Invite</button>
-          </div>
-          <div class="row" style="flex-wrap:wrap; gap:8px;">
-            <button class="ghost small" onclick={leaveProject}>Leave project (back to personal)</button>
-            <button class="ghost small" onclick={departProject}>Depart project (remove membership)</button>
-            {#if canDeleteProject($activeProject)}
-              <button class="ghost danger small" onclick={deleteActiveProject}>Delete project…</button>
-            {/if}
-          </div>
-        {/if}
       </div>
     </aside>
   {/if}

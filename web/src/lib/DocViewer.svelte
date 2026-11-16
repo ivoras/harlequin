@@ -33,5 +33,6 @@
   .docview .body { word-break: break-word; }
   .docview .body :global(p) { margin: 0.4em 0; }
   .docview .body :global(pre) { white-space: pre; overflow-x: auto; }
+  .docview .body :global(table) { word-break: normal; }
   .docview .body :global(.codewrap) { position: relative; }
 </style>

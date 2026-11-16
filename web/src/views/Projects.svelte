@@ -1,11 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api } from "../lib/api";
-  import { activeProject, projectSheet, toast } from "../lib/stores";
-  import { switchToProject, leaveActiveProject, projectBylines, canDeleteProject, deleteProjectFlow, canRemoveMember, removeMemberFlow } from "../lib/project";
+  import { activeProject, invitesVersion, toast } from "../lib/stores";
+  import { switchToProject, leaveActiveProject, projectBylines, canDeleteProject, deleteProjectFlow, canRemoveMember, removeMemberFlow, respondToInvite } from "../lib/project";
   import { uploadWithProgress, ingestLabel } from "../lib/ingest";
   import { viewDocument } from "../lib/docview.svelte";
-  import type { Project, ProjectMember, Document } from "../lib/types";
+  import type { Project, ProjectInvite, ProjectMember, Document } from "../lib/types";
 
   // Project picker + a document file manager for the picked project. The pick
   // is local to this tab (browsing a project's documents does not switch the
@@ -27,15 +27,59 @@
   // datalist suggestions: everyone except current members of the picked project
   let suggestions = $derived(directory.filter((u) => !members.some((m) => m.user_id === u.id)));
 
-  onMount(async () => {
+  let invites = $state<ProjectInvite[]>([]);
+  let newName = $state("");
+  const sel = $derived(projects.find((p) => p.id === selected));
+
+  // Projects + pending invitations; keeps the pick when it still exists, else
+  // falls back to the active project, then the first.
+  async function loadProjects() {
     try {
-      projects = await api.listProjects();
+      [projects, invites] = await Promise.all([api.listProjects(), api.listProjectInvites()]);
+      if (projects.some((p) => p.id === selected)) return;
       const active = $activeProject?.id;
-      if (active && projects.some((p) => p.id === active)) selected = active;
-      else if (projects.length) selected = projects[0].id;
+      selected = active && projects.some((p) => p.id === active) ? active : (projects[0]?.id ?? 0);
     } catch (e) {
       toast((e as Error).message, "error");
     }
+  }
+  // An invitation arrived or was answered (here, in an alert, or elsewhere).
+  $effect(() => {
+    void $invitesVersion;
+    loadProjects();
+  });
+
+  async function createProject() {
+    const name = newName.trim();
+    if (!name) return;
+    try {
+      const p = await api.createProject(name);
+      newName = "";
+      await loadProjects();
+      selected = p.id;
+      toast(`created "${p.name}"`);
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  }
+  async function accept(inv: ProjectInvite) {
+    const pid = await respondToInvite(inv.id, true, inv.project_name);
+    if (pid) selected = pid; // the invitesVersion effect reloads the list
+  }
+  async function depart() {
+    const p = sel;
+    if (!p || !confirm(`Depart "${p.name}"? This removes your membership.`)) return;
+    try {
+      await api.departProject(p.id);
+      toast("departed " + p.name);
+      if ($activeProject?.id === p.id) await leaveActiveProject();
+      await loadProjects();
+    } catch (e) {
+      toast((e as Error).message, "error");
+    }
+  }
+
+  onMount(async () => {
     try {
       directory = await api.userDirectory();
     } catch {
@@ -119,7 +163,7 @@
   }
 
   async function deleteSelectedProject() {
-    const p = projects.find((x) => x.id === selected);
+    const p = sel;
     if (!p || !(await deleteProjectFlow(p))) return;
     projects = projects.filter((x) => x.id !== p.id);
     selected = projects[0]?.id ?? 0;
@@ -137,27 +181,23 @@
 
 <section class="panel">
   <div class="container col">
-    <div class="row">
-      <h3>Projects</h3>
-      <span class="spacer"></span>
-      {#if selected && selected !== $activeProject?.id}
-        <button class="primary small" onclick={() => {
-          const p = projects.find((x) => x.id === selected);
-          if (p) switchToProject(p);
-        }}>Switch to {projects.find((x) => x.id === selected)?.name}</button>
-      {:else if selected && selected === $activeProject?.id}
-        <button class="small" onclick={leaveActiveProject}>Leave project</button>
-      {/if}
-      {#if selected && canDeleteProject(projects.find((x) => x.id === selected)!)}
-        <button class="ghost danger small" onclick={deleteSelectedProject}>Delete project…</button>
-      {/if}
-      <button class="small" onclick={() => projectSheet.set(true)}>Manage…</button>
-    </div>
+    <h3>Projects</h3>
+
+    {#each invites as inv (inv.id)}
+      <div class="card row">
+        <div class="col" style="flex:1; min-width:0; gap:0;">
+          <div>Invitation: {inv.project_name}</div>
+          <div class="muted small">from {inv.invited_by}</div>
+        </div>
+        <button class="primary small" onclick={() => accept(inv)}>Accept</button>
+        <button class="ghost small" onclick={() => respondToInvite(inv.id, false, inv.project_name)}>Decline</button>
+      </div>
+    {/each}
 
     {#if projects.length === 0}
       <div class="card muted small">
-        You are not a member of any project yet. Use <b>Manage…</b> to create one
-        or accept an invite.
+        You are not a member of any project yet. Create one below, or accept an
+        invitation when you get one.
       </div>
     {:else}
       <div class="picker row" style="flex-wrap:wrap; gap:6px;">
@@ -174,10 +214,20 @@
         {/each}
       </div>
 
+      {#if sel}
+        <div class="row" style="flex-wrap:wrap; gap:6px;">
+          {#if sel.id === $activeProject?.id}
+            <span class="muted small">You are working in this project.</span>
+            <button class="small" onclick={leaveActiveProject}>Back to personal</button>
+          {:else}
+            <button class="primary small" onclick={() => switchToProject(sel)}>Work in this project</button>
+          {/if}
+        </div>
+      {/if}
+
       <h3 class="muted small">Members</h3>
       <div class="row" style="flex-wrap:wrap; gap:6px; align-items:center;">
         {#each members as m (m.user_id)}
-          {@const sel = projects.find((p) => p.id === selected)}
           <span class="pill ellipsize" style="max-width:100%;">{m.email}{#if sel && canRemoveMember(sel, m.user_id)}
               <button class="ghost small" style="padding:0 0 0 6px; min-height:0;" aria-label="Remove {m.email}"
                 onclick={async () => { if (await removeMemberFlow(sel, m)) members = members.filter((x) => x.user_id !== m.user_id); }}>✕</button>{/if}</span>
@@ -229,7 +279,23 @@
         <textarea rows="3" placeholder="…or paste text to ingest" bind:value={content}></textarea>
         <button class="primary" onclick={addText} disabled={!content.trim()}>Ingest text</button>
       </div>
+
+      {#if sel}
+        <div class="row" style="flex-wrap:wrap; gap:6px;">
+          <button class="ghost small" onclick={depart}>Depart project (remove membership)…</button>
+          {#if canDeleteProject(sel)}
+            <button class="ghost danger small" onclick={deleteSelectedProject}>Delete project…</button>
+          {/if}
+        </div>
+      {/if}
     {/if}
+
+    <h3 class="muted small">New project</h3>
+    <div class="row" style="gap:6px;">
+      <input placeholder="Project name" bind:value={newName} style="flex:1; min-width:0;"
+        onkeydown={(e) => e.key === "Enter" && createProject()} />
+      <button class="primary small" onclick={createProject} disabled={!newName.trim()}>Create</button>
+    </div>
   </div>
 </section>
 
