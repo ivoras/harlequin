@@ -612,11 +612,23 @@ func (s *Server) handleListMessages(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, msgs)
 }
 
+// withSessionDB runs fn on the db holding the session: the project's when the
+// request has ?project=<id> (members only), else the caller's own.
+func (s *Server) withSessionDB(r *http.Request, userID int64, fn func(*sql.DB) error) error {
+	if pid, _ := strconv.ParseInt(r.URL.Query().Get("project"), 10, 64); pid > 0 {
+		if member, _ := s.Projects.IsMember(r.Context(), pid, userID); !member {
+			return errors.New("not a member of this project")
+		}
+		return s.Storage.WithProject(r.Context(), pid, fn)
+	}
+	return s.Storage.WithUser(r.Context(), userID, fn)
+}
+
 func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 	u, _ := auth.UserFromContext(r.Context())
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
-		return s.Sessions.Delete(r.Context(), udb, id, u.ID)
+	err := s.withSessionDB(r, u.ID, func(db *sql.DB) error {
+		return s.Sessions.Delete(r.Context(), db, id, u.ID)
 	})
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
@@ -637,11 +649,11 @@ func (s *Server) handleRenameSession(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	err := s.Storage.WithUser(r.Context(), u.ID, func(udb *sql.DB) error {
-		if _, e := s.Sessions.Get(r.Context(), udb, id, u.ID); e != nil {
+	err := s.withSessionDB(r, u.ID, func(db *sql.DB) error {
+		if _, e := s.Sessions.Get(r.Context(), db, id, u.ID); e != nil {
 			return e
 		}
-		return s.Sessions.Rename(r.Context(), udb, id, strings.TrimSpace(req.Title))
+		return s.Sessions.Rename(r.Context(), db, id, strings.TrimSpace(req.Title))
 	})
 	if err != nil {
 		writeErr(w, http.StatusNotFound, "not found")

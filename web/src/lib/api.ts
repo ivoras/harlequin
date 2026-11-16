@@ -157,9 +157,9 @@ export const api = {
   createSession: (title: string, hat = "") =>
     req<Session>("POST", "/sessions", { title, hat }),
   getMessages: (id: number) => reqList<Message>("GET", `/sessions/${id}/messages`),
-  deleteSession: (id: number) => req<void>("DELETE", `/sessions/${id}`),
+  deleteSession: (id: number) => req<void>("DELETE", withProject(`/sessions/${id}`)),
   renameSession: (id: number, title: string) =>
-    req<void>("PATCH", `/sessions/${id}`, { title }),
+    req<void>("PATCH", withProject(`/sessions/${id}`), { title }),
   // A project session lives in the project db, so it has its own route.
   setSessionHat: (id: number, hat: string) =>
     req<void>("POST", activeProjectId ? `/projects/${activeProjectId}/sessions/${id}/hat` : `/sessions/${id}/hat`, { hat }),

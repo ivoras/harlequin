@@ -199,20 +199,20 @@
     {@const c = sessMenu.c}
     <div class="menu-click-away" role="presentation" onclick={() => (sessMenu = null)}></div>
     <div class="popover" role="menu" style="position:fixed; left:{sessMenu.x}px; top:{sessMenu.y}px; min-width:190px; max-height:60vh; overflow-y:auto;">
-      <button class="menu-item" role="menuitem" onclick={(e) => { sessMenu = null; rename(c, e); }}>
+      <button class="menu-item" role="menuitem" onclick={(e) => { rename(c, e); sessMenu = null; }}>
         <Icon name="pencil" size={14} /><span class="grow">Rename…</span>
       </button>
       <div class="menu-label">Move to project…</div>
       {#each ui.projects as p (p.id)}
         <button class="menu-item" role="menuitem" title="Move this session and its history into {p.name}; every member will see it"
-          onclick={() => { sessMenu = null; moveToProject(c, p); }}>
+          onclick={() => { moveToProject(c, p); sessMenu = null; }}>
           <Icon name="folder" size={14} /><span class="grow">{p.name}</span>
         </button>
       {:else}
         <div class="sb-empty">No projects yet — create one in the workspace switcher.</div>
       {/each}
       <div class="menu-sep"></div>
-      <button class="menu-item del" role="menuitem" onclick={(e) => { sessMenu = null; del(c, e); }}>
+      <button class="menu-item del" role="menuitem" onclick={(e) => { del(c, e); sessMenu = null; }}>
         <Icon name="trash" size={14} /><span class="grow">Delete…</span>
       </button>
     </div>
