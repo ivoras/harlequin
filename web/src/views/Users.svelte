@@ -33,6 +33,10 @@
     filter.trim() ? users.filter((u) => u.email.includes(filter.trim().toLowerCase())) : users,
   );
   const owners = $derived(users.filter((u) => u.role === "owner").length);
+  // Per-role totals over all accounts (not the filtered list), owner first.
+  const counts = $derived(
+    [...roles].reverse().map((r) => ({ role: r, n: users.filter((u) => u.role === r).length })),
+  );
 
   async function load() {
     try {
@@ -132,7 +136,13 @@
 <section class="panel">
   <div class="container col">
     <div class="row">
-      <h3>Users</h3><span class="spacer"></span>
+      <h3>Users</h3>
+      {#if !loading}
+        <span class="muted small" title="Accounts per role">
+          {users.length} total · {#each counts as c, i}{i ? " · " : ""}{c.n} {c.role}{/each}
+        </span>
+      {/if}
+      <span class="spacer"></span>
       <button class="primary small" onclick={() => (showAdd = !showAdd)}>+ Add user</button>
     </div>
 
