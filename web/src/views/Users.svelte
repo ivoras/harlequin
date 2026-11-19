@@ -136,7 +136,7 @@
 <section class="panel">
   <div class="container col">
     <div class="row">
-      <h3>Users</h3>
+      <h3 style="margin:0;">Users</h3>
       {#if !loading}
         <span class="muted small" title="Accounts per role">
           {users.length} total · {#each counts as c, i}{i ? " · " : ""}{c.n} {c.role}{/each}
