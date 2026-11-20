@@ -1394,7 +1394,12 @@ type uploadInput struct {
 func readUploadInput(w http.ResponseWriter, r *http.Request) (uploadInput, error) {
 	var in uploadInput
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
+	uid := int64(0)
+	if u, ok := auth.UserFromContext(r.Context()); ok {
+		uid = u.ID
+	}
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
+		log.Printf("documents: upload from user %d rejected before processing: %v", uid, err)
 		return in, fmt.Errorf("invalid upload: %w", err)
 	}
 	file, header, err := r.FormFile("file")
@@ -1422,6 +1427,8 @@ func readUploadInput(w http.ResponseWriter, r *http.Request) (uploadInput, error
 	}
 	in.scope = r.FormValue("scope")
 	in.projectID, _ = strconv.ParseInt(r.FormValue("project_id"), 10, 64)
+	log.Printf("documents: upload received %q from user %d (%d bytes, type %q, scope %q, project %d)",
+		in.filename, uid, len(in.data), in.contentType, in.scope, in.projectID)
 	return in, nil
 }
 
