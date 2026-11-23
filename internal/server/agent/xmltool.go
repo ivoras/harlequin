@@ -141,6 +141,14 @@ func (a *Agent) loadXML(ctx context.Context, rc *runContext, ref string) (*xmlq.
 	return root, label, ""
 }
 
+// docJSGlobals are the document helpers of run_js and skill-defined tools:
+// read_doc, sheets.*, xml.*.
+func (a *Agent) docJSGlobals(ctx context.Context, rc *runContext) map[string]any {
+	g := a.sheetJSGlobals(ctx, rc)
+	g["xml"] = a.xmlJSGlobals(ctx, rc)
+	return g
+}
+
 // xmlJSGlobals is run_js's xml.query(doc, path) / xml.outline(doc).
 func (a *Agent) xmlJSGlobals(ctx context.Context, rc *runContext) map[string]any {
 	load := func(ref string) (*xmlq.Node, error) {
@@ -166,7 +174,7 @@ func (a *Agent) xmlJSGlobals(ctx context.Context, rc *runContext) map[string]any
 				for k, v := range m.Attrs {
 					attrs[k] = v
 				}
-				out[i] = map[string]any{"path": m.Path, "value": m.Value, "attrs": attrs}
+				out[i] = map[string]any{"path": m.Path, "value": m.Value, "attrs": attrs, "children": len(m.Node.Children)}
 			}
 			return out, nil
 		},

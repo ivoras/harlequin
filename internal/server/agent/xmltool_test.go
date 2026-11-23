@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/ivoras/harlequin/internal/server/skills"
 )
 
 const testInvoiceXML = `<?xml version="1.0" encoding="UTF-8"?>
@@ -42,5 +44,12 @@ func TestQueryXML(t *testing.T) {
 	res, err := a.Runner.Run(`var s = 0; xml.query("tmp://racun.xml", "//cbc:LineExtensionAmount").forEach(function(m){ s += parseFloat(m.value); }); println(s, xml.query("tmp://racun.xml", "//cbc:LineExtensionAmount")[0].attrs.currencyID);`, rcx)
 	if err != nil || strings.TrimSpace(res.Output) != "150 EUR" {
 		t.Fatalf("run_js xml: %v %q", err, res.Output)
+	}
+	// Skill-defined tools get the same helpers.
+	reg := map[string]toolEntry{}
+	a.registerSkillTool(reg, "e-test", skills.ToolDefinition{Name: "lines", Run: `return xml.query(args.doc, "//cac:InvoiceLine").length + "/" + xml.query(args.doc, "//cac:InvoiceLine")[0].children;`})
+	out, err = reg["e-test.lines"].handler(context.Background(), rc, map[string]any{"doc": "tmp://racun.xml"})
+	if err != nil || out != `"2/2"` {
+		t.Fatalf("skill tool: %v %q", err, out)
 	}
 }

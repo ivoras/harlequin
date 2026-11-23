@@ -418,8 +418,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 			code, _ := args["code"].(string)
 			script, _ := args["script"].(string)
 			rcx := a.jsRunContext(ctx, rc)
-			rcx.Globals = a.sheetJSGlobals(ctx, rc)
-			rcx.Globals["xml"] = a.xmlJSGlobals(ctx, rc)
+			rcx.Globals = a.docJSGlobals(ctx, rc)
 			if jsArgs, ok := args["args"].(map[string]any); ok {
 				rcx.Globals["args"] = jsArgs
 			}
@@ -1157,7 +1156,8 @@ func (a *Agent) registerSkillTool(reg map[string]toolEntry, skillName string, td
 		def: fnTool(full, td.Description, params),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 			rcx := a.jsRunContext(ctx, rc)
-			rcx.Globals = map[string]any{"args": args}
+			rcx.Globals = a.docJSGlobals(ctx, rc) // the same helpers as run_js
+			rcx.Globals["args"] = args
 			res, err := a.Runner.Run(run, rcx)
 			if err != nil {
 				return fmt.Sprintf("error: %v\noutput: %s", err, res.Output), nil

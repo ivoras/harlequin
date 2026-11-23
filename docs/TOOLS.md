@@ -9,7 +9,7 @@ The Documents section is grouped by what the user is trying to do.
 
 Beyond these built-ins, two families of tools appear dynamically:
 - **Skill tools** — namespaced `<skill>.<tool>`, declared by a skill's frontmatter
-  and backed by sandboxed JS. Visible per the active hat/skill set.
+  and backed by sandboxed JS. Visible per the active hat/skill set. Their `run` JavaScript has the same helpers as `run_js` (`read_doc`, `sheets.*`, `xml.*`, `tmp`/`storage`, `load`/`include`), with the call's arguments as `args`.
 - **MCP tools** — namespaced `mcp__<server>__<tool>`, proxied from external MCP
   servers (only when `mcp.enabled`). Enabled servers whose OAuth sign-in is
   missing are skipped, and the system prompt tells the model which ones so it can
