@@ -147,9 +147,7 @@ func main() {
 	embedder := embed.New(cfg.Embeddings.BaseURL, cfg.Embeddings.APIKey, cfg.Embeddings.Model, cfg.Embeddings.Dim, cfg.Embeddings.QueryPrefix, cfg.Embeddings.DocPrefix)
 	// Embeddings are billed like completions (prompt tokens only), so they go
 	// through the same recorder, attributed to whoever's request caused them.
-	embedder.SetUsageFunc(func(ctx context.Context, model string, tokens int, cost *float64, _ bool) {
-		recorder(ctx, "embed", model, llm.Usage{PromptTokens: tokens, TotalTokens: tokens, Cost: cost})
-	})
+	embedder.SetUsageFunc(embedderUsage(recorder))
 
 	skillRunner := jsrun.New(jsrun.Options{
 		Timeout:        cfg.Agent.SkillRenderTimeout.D(),

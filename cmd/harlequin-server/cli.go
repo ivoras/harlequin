@@ -335,6 +335,7 @@ func runBackfillSlotKeys(args []string) {
 	}
 	defer store.Close()
 	embedder := embed.New(cfg.Embeddings.BaseURL, cfg.Embeddings.APIKey, cfg.Embeddings.Model, cfg.Embeddings.Dim, cfg.Embeddings.QueryPrefix, cfg.Embeddings.DocPrefix)
+	embedder.SetUsageFunc(embedderUsage(cliRecorder(cfg, store))) // the run is billed to the provider key: record it
 	mem := memory.NewStore(store.Shared, embedder)
 
 	ctx := context.Background()
@@ -398,6 +399,7 @@ func runReindexVectors(args []string) {
 	}
 	defer store.Close()
 	embedder := embed.New(cfg.Embeddings.BaseURL, cfg.Embeddings.APIKey, cfg.Embeddings.Model, cfg.Embeddings.Dim, cfg.Embeddings.QueryPrefix, cfg.Embeddings.DocPrefix)
+	embedder.SetUsageFunc(embedderUsage(cliRecorder(cfg, store))) // the run is billed to the provider key: record it
 	mem := memory.NewStore(store.Shared, embedder)
 	docs := documents.NewStore(store.Shared, embedder)
 	ctx := context.Background()

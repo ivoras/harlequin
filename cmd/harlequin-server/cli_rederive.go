@@ -50,13 +50,13 @@ func runRederiveDocMemories(args []string) {
 	}
 	defer store.Close()
 	embedder := embed.New(cfg.Embeddings.BaseURL, cfg.Embeddings.APIKey, cfg.Embeddings.Model, cfg.Embeddings.Dim, cfg.Embeddings.QueryPrefix, cfg.Embeddings.DocPrefix)
+	rec := cliRecorder(cfg, store) // embeddings and LLM calls are billed to the provider key: record them
+	embedder.SetUsageFunc(embedderUsage(rec))
 	providers := map[string]*llm.OpenAICompatible{}
 	for _, p := range cfg.Providers {
 		providers[p.Name] = llm.NewOpenAICompatible(p.Name, p.BaseURL, p.APIKey, p.Model)
 	}
-	// shortcut: this run's LLM calls are not recorded in the usage tables (the
-	// recorder is wired in the server proper); add it if that ever matters.
-	router := llm.NewRoutingProvider(providers, cfg.Routing.DefaultProvider, cfg.Routing.FallbackOrder, cfg.Routing.ModelRules, nil, nil)
+	router := llm.NewRoutingProvider(providers, cfg.Routing.DefaultProvider, cfg.Routing.FallbackOrder, cfg.Routing.ModelRules, nil, rec)
 	router.SetFallbackModel(cfg.Routing.FallbackModel)
 	mem := memory.NewStore(store.Shared, embedder)
 	if cfg.Memory.ConflictCheckEnabled() {
