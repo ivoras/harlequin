@@ -511,3 +511,16 @@ func TestGrid(t *testing.T) {
 		}
 	}
 }
+
+func TestSnapshotIgnoresBloatedDimension(t *testing.T) {
+	f := excelize.NewFile()
+	for r := 1; r <= 50; r++ {
+		a, _ := excelize.CoordinatesToCellName(1, r)
+		f.SetCellValue("Sheet1", a, "x")
+	}
+	f.SetSheetDimension("Sheet1", "A1:I1048576") // formatted-empty-rows leftover
+	s, err := snapshot(f)
+	if err != nil || len(s["Sheet1"]) != 50 {
+		t.Fatalf("snapshot: %d cells, err %v", len(s["Sheet1"]), err)
+	}
+}

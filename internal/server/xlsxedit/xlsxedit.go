@@ -205,7 +205,10 @@ func dims(f *excelize.File, sheet string, rows [][]string) (maxRow, maxCol int) 
 	}
 	if d, err := f.GetSheetDimension(sheet); err == nil && d != "" {
 		parts := strings.Split(d, ":")
-		if c, r, err := excelize.CellNameToCoordinates(parts[len(parts)-1]); err == nil {
+		// A declared range is only trusted when sane: Excel leaves e.g. A1:I1048576
+		// behind whole-row/column formatting, which says nothing about the data.
+		// shortcut: empty-valued formula cells past the data then go unchecked.
+		if c, r, err := excelize.CellNameToCoordinates(parts[len(parts)-1]); err == nil && r*c <= maxCells {
 			maxRow, maxCol = max(maxRow, r), max(maxCol, c)
 		}
 	}
