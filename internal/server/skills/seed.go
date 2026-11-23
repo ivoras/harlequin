@@ -8,6 +8,7 @@ import (
 	"log"
 	"sort"
 	"strings"
+	"time"
 )
 
 // seedSpec parametrizes the baked-asset seeder over the skills and hats table
@@ -265,6 +266,15 @@ func descriptionOf(md string) string {
 // writeItemFile upserts a single file row (used only by the seed reconciler;
 // regular writes replace the whole item via writeItem).
 func writeItemFile(ctx context.Context, db *sql.DB, t itemTables, name, relpath, content string) error {
+	if t.audited { // seeding is a system change: updated_by 0
+		_, err := db.ExecContext(ctx,
+			fmt.Sprintf(`INSERT INTO %s(%s, relpath, content, updated_at, updated_by) VALUES (?, ?, ?, ?, 0)
+			 ON CONFLICT(%s, relpath) DO UPDATE SET content = excluded.content,
+			   updated_at = excluded.updated_at, updated_by = 0`,
+				t.files, t.key, t.key),
+			name, relpath, []byte(content), time.Now())
+		return err
+	}
 	_, err := db.ExecContext(ctx,
 		fmt.Sprintf(`INSERT INTO %s(%s, relpath, content) VALUES (?, ?, ?)
 		 ON CONFLICT(%s, relpath) DO UPDATE SET content = excluded.content`,

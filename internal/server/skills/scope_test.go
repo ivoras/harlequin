@@ -18,7 +18,7 @@ func openSkillDB(t *testing.T) *sql.DB {
 	t.Cleanup(func() { db.Close() })
 	if _, err := db.Exec(`
 		CREATE TABLE skills (name TEXT PRIMARY KEY, description TEXT NOT NULL DEFAULT '', updated_by INTEGER, updated_at TIMESTAMP);
-		CREATE TABLE skill_files (skill_name TEXT NOT NULL, relpath TEXT NOT NULL, content BLOB NOT NULL, PRIMARY KEY(skill_name, relpath));
+		CREATE TABLE skill_files (skill_name TEXT NOT NULL, relpath TEXT NOT NULL, content BLOB NOT NULL, updated_at TIMESTAMP, updated_by INTEGER, PRIMARY KEY(skill_name, relpath));
 	`); err != nil {
 		t.Fatalf("schema: %v", err)
 	}
@@ -90,5 +90,39 @@ func TestScopeDBForDefaults(t *testing.T) {
 	}
 	if _, _, err := m.ScopeDBFor("project", user, nil); err == nil {
 		t.Fatal("project scope without a project should error")
+	}
+}
+
+// TestSkillFileAudit: a save stamps only the files whose content changed.
+func TestSkillFileAudit(t *testing.T) {
+	ctx := context.Background()
+	db := openSkillDB(t)
+	stamp := func(rel string) (by int64, at string) {
+		db.QueryRow(`SELECT updated_by, CAST(updated_at AS TEXT) FROM skill_files WHERE skill_name='foo' AND relpath=?`, rel).Scan(&by, &at)
+		return
+	}
+	save := func(uid int64, files map[string]string) {
+		t.Helper()
+		if err := writeItem(ctx, db, skillTables, "foo", "d", uid, files); err != nil {
+			t.Fatal(err)
+		}
+	}
+	save(1, map[string]string{"SKILL.md": skillMD("a"), "lib/x.js": "x"})
+	_, at1 := stamp("lib/x.js")
+	save(2, map[string]string{"SKILL.md": skillMD("b"), "lib/x.js": "x", "n.md": "new"})
+	if by, at := stamp("lib/x.js"); by != 1 || at != at1 {
+		t.Errorf("unchanged file restamped: by=%d at=%s (was %s)", by, at, at1)
+	}
+	if by, _ := stamp("SKILL.md"); by != 2 {
+		t.Errorf("changed SKILL.md updated_by=%d, want 2", by)
+	}
+	if by, _ := stamp("n.md"); by != 2 {
+		t.Errorf("new file updated_by=%d, want 2", by)
+	}
+	save(3, map[string]string{"SKILL.md": skillMD("b")}) // x.js and n.md removed
+	var n int
+	db.QueryRow(`SELECT COUNT(*) FROM skill_files WHERE skill_name='foo'`).Scan(&n)
+	if n != 1 {
+		t.Errorf("files after delete = %d, want 1", n)
 	}
 }

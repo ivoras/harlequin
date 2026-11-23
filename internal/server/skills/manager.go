@@ -72,10 +72,12 @@ type itemTables struct {
 	item  string // skills / hats
 	files string // skill_files / hat_files
 	key   string // skill_name / hat_name
+	// audited: files carry updated_at/updated_by, set only when their content changes.
+	audited bool
 }
 
 var (
-	skillTables = itemTables{item: "skills", files: "skill_files", key: "skill_name"}
+	skillTables = itemTables{item: "skills", files: "skill_files", key: "skill_name", audited: true}
 	hatTables   = itemTables{item: "hats", files: "hat_files", key: "hat_name"}
 )
 
@@ -333,6 +335,49 @@ func writeItem(ctx context.Context, db *sql.DB, t itemTables, name, description 
 		   updated_by = excluded.updated_by, updated_at = excluded.updated_at`, t.item),
 		name, description, userID, time.Now()); err != nil {
 		return err
+	}
+	if t.audited {
+		// Touch only what changed, so each file's updated_at/updated_by say who last
+		// changed *it*.
+		old := map[string][]byte{}
+		rows, err := tx.QueryContext(ctx, fmt.Sprintf(`SELECT relpath, content FROM %s WHERE %s = ?`, t.files, t.key), name)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var rel string
+			var c []byte
+			if err := rows.Scan(&rel, &c); err != nil {
+				rows.Close()
+				return err
+			}
+			old[rel] = c
+		}
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		rows.Close()
+		for rel := range old {
+			if _, keep := files[rel]; !keep {
+				if _, err := tx.ExecContext(ctx, fmt.Sprintf(`DELETE FROM %s WHERE %s = ? AND relpath = ?`, t.files, t.key), name, rel); err != nil {
+					return err
+				}
+			}
+		}
+		now := time.Now()
+		for rel, content := range files {
+			if prev, ok := old[rel]; ok && string(prev) == content {
+				continue
+			}
+			if _, err := tx.ExecContext(ctx,
+				fmt.Sprintf(`INSERT INTO %s(%s, relpath, content, updated_at, updated_by) VALUES (?, ?, ?, ?, ?)
+				 ON CONFLICT(%s, relpath) DO UPDATE SET content = excluded.content,
+				   updated_at = excluded.updated_at, updated_by = excluded.updated_by`, t.files, t.key, t.key),
+				name, rel, []byte(content), now, userID); err != nil {
+				return err
+			}
+		}
+		return tx.Commit()
 	}
 	if _, err := tx.ExecContext(ctx,
 		fmt.Sprintf(`DELETE FROM %s WHERE %s = ?`, t.files, t.key), name); err != nil {
