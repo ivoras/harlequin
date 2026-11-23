@@ -175,7 +175,7 @@ func (p recordingProvider) Chat(_ context.Context, req llm.ChatRequest) (<-chan 
 	ch := make(chan llm.Chunk, 2)
 	if len(*p.reqs) <= p.calls {
 		ch <- llm.Chunk{Done: true, Model: "fake", ToolCalls: []llm.ToolCall{{
-			ID: fmt.Sprintf("c%d", len(*p.reqs)), Function: llm.FunctionCall{Name: "run_js", Arguments: `{"code":"println('y'.repeat(6000))"}`},
+			ID: fmt.Sprintf("c%d", len(*p.reqs)), Function: llm.FunctionCall{Name: "run_js", Arguments: fmt.Sprintf(`{"code":"println('y'.repeat(6000)) // %d"}`, len(*p.reqs))}, // distinct, or the repeat guard stops the turn
 		}}}
 	} else {
 		ch <- llm.Chunk{TextDelta: "done"}

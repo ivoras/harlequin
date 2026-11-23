@@ -43,6 +43,7 @@ import (
 // Agent runs the tool-calling loop.
 type Agent struct {
 	Provider llm.Provider
+	sheets   sheetCache // query_sheet's loaded workbooks
 	Storage  *storage.Manager
 	// Email, when SMTP is configured, enables the send_email tool.
 	Email      *email.Sender
@@ -384,6 +385,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	loopRetries := 0
 	streamRetries := 0 // consecutive transient mid-stream failures of the current step
 	answered := false  // the loop ended with a reply (or an ask_user), not by running out of steps
+	repeats := repeatGuard{}
 	for step := 1; step <= a.MaxSteps; step++ {
 		rc.step = step
 		if ctx.Err() != nil {
@@ -634,8 +636,14 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 
 		// Dispatch each tool call.
 		askedUser := false
+		repeatStop := ""
 		for _, tc := range toolCalls {
 			result := a.dispatch(ctx, rc, tools, tc, emit)
+			if note, stop := repeats.check(tc.Function.Name, tc.Function.Arguments, result); stop {
+				repeatStop = tc.Function.Name
+			} else {
+				result += note
+			}
 			msgs = append(msgs, llm.Message{
 				Role:       llm.RoleTool,
 				Content:    result,
@@ -646,6 +654,13 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 			if tc.Function.Name == "ask_user" {
 				askedUser = true
 			}
+		}
+
+		if repeatStop != "" {
+			err := fmt.Errorf("the assistant kept repeating the same %s call with the same result and was stopped; ask again, or ask it to try a different approach", repeatStop)
+			emit(types.StreamEvent{Type: types.SSEError, Error: err.Error()})
+			a.logEvent(ctx, rc, sessionlog.TypeError, map[string]any{"error": err.Error(), "reason": "repeated_tool_call"})
+			return "", err
 		}
 
 		// Tell the model its remaining budget at 60% and 85% of the step limit,
