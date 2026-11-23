@@ -78,6 +78,7 @@ const helpText = `Commands:
   /alert <message>      (owner/admin) broadcast an alert to all users
   /usage                show your token/cost usage
   /context              show context window usage breakdown
+  /download <tmp://file> [dest]  save a temporary file the assistant made (it names it as tmp://…) to cwd or dest
   /export [raw]         save transcript to session_YYYYMMDD_HHMM.md (cwd); raw includes thinking/tools, else User+Assistant only
   /quit                 exit`
 
@@ -114,6 +115,29 @@ func (m *Model) handleSlash(line string) tea.Cmd {
 				return errMsg{err}
 			}
 			return infoMsg{"alert sent to all users"}
+		}
+	case "/download":
+		if len(args) == 0 {
+			return infoCmd("usage: /download <tmp://file> [dest]   (the assistant names temporary files as tmp://name)")
+		}
+		return func() tea.Msg {
+			data, name, err := m.client.DownloadTmpFile(context.Background(), args[0])
+			if err != nil {
+				return errMsg{err}
+			}
+			dest := name
+			if len(args) > 1 {
+				dest = strings.Join(args[1:], " ")
+				if st, err := os.Stat(dest); err == nil && st.IsDir() {
+					dest = filepath.Join(dest, name)
+				}
+			} else if _, err := os.Stat(dest); err == nil {
+				return errMsg{fmt.Errorf("%s already exists here; give another name: /download %s <dest>", dest, args[0])}
+			}
+			if err := os.WriteFile(dest, data, 0o600); err != nil {
+				return errMsg{err}
+			}
+			return infoMsg{fmt.Sprintf("saved %s (%d bytes)", dest, len(data))}
 		}
 	case "/export":
 		raw := len(args) > 0 && strings.EqualFold(args[0], "raw")

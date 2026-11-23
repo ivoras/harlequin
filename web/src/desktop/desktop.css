@@ -276,12 +276,12 @@ kbd { font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--fa
 .sheet .body { overflow-y: auto; padding: 14px; }
 
 /* document citations / whole-document references (renderMarkdown output) */
-.cite, .docref { color: var(--accent-text); background: var(--accent-soft); border-bottom: 1px dotted var(--accent-dim);
+.cite, .docref, .tmpref { color: var(--accent-text); background: var(--accent-soft); border-bottom: 1px dotted var(--accent-dim);
   border-radius: 4px; padding: 0 3px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85em;
   white-space: nowrap; }
 .cite { cursor: help; }
-.cite.openable, .docref { cursor: pointer; }
-.cite:hover, .docref:hover { filter: brightness(1.1); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.cite.openable, .docref, .tmpref { cursor: pointer; }
+.cite:hover, .docref:hover, .tmpref:hover { filter: brightness(1.1); background: color-mix(in srgb, var(--accent) 18%, transparent); }
 
 /* rendered markdown (chat + document viewer) */
 .md { word-break: break-word; }

@@ -79,6 +79,46 @@ function wrapDocRefs(html: string): string {
   return tpl.innerHTML;
 }
 
+// Sandbox files the agent hands to the user ("tmp://marked.pdf"): a click
+// downloads them (see onTmpRefClick). Only tmp:// is served; a markdown link
+// [label](tmp://x.pdf) would lose its href in the sanitizer, so it is rewritten
+// to the same span first.
+const TMPREF_RE = /tmp:\/\/[^\s<>"'`()[\]]*[^\s<>"'`()[\].,;:!?]/g;
+const TMPLINK_RE = /\[([^\]]*)\]\((tmp:\/\/[^)\s]+)\)/g;
+
+function esc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function wrapTmpRefs(html: string): string {
+  const tpl = document.createElement("template");
+  tpl.innerHTML = html;
+  const walker = document.createTreeWalker(tpl.content, NodeFilter.SHOW_TEXT);
+  const targets: Text[] = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const t = n as Text;
+    if (t.parentElement?.closest("code, pre, a, .cite, .docref, .tmpref")) continue;
+    if (t.data.includes("tmp://")) targets.push(t);
+  }
+  for (const t of targets) {
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    for (const m of t.data.matchAll(TMPREF_RE)) {
+      frag.append(t.data.slice(last, m.index));
+      const span = document.createElement("span");
+      span.className = "tmpref";
+      span.dataset.tmpref = m[0];
+      span.title = "Download";
+      span.textContent = "⬇ " + m[0];
+      frag.append(span);
+      last = (m.index ?? 0) + m[0].length;
+    }
+    frag.append(t.data.slice(last));
+    t.replaceWith(frag);
+  }
+  return tpl.innerHTML;
+}
+
 // wrapCodeBlocks wraps each <pre> in a positioned container with a copy
 // button so the chat view can offer copy-to-clipboard via its existing
 // delegated click handler (closest(".codecopy")). Runs after sanitization —
@@ -102,7 +142,9 @@ function wrapCodeBlocks(html: string): string {
 
 // Render assistant markdown to sanitized HTML. Links open in a new tab.
 export function renderMarkdown(src: string): string {
-  const html = marked.parse(src ?? "", { async: false }) as string;
-  const clean = DOMPurify.sanitize(html, { ADD_ATTR: ["target", "rel"] });
-  return wrapCodeBlocks(wrapDocRefs(wrapCitations(clean)));
+  const linked = (src ?? "").replace(TMPLINK_RE, (_m, label: string, ref: string) =>
+    `<span class="tmpref" data-tmpref="${esc(ref)}" title="Download">⬇ ${esc(label || ref)}</span>`);
+  const html = marked.parse(linked, { async: false }) as string;
+  const clean = DOMPurify.sanitize(html, { ADD_ATTR: ["target", "rel", "data-tmpref"] });
+  return wrapCodeBlocks(wrapTmpRefs(wrapDocRefs(wrapCitations(clean))));
 }

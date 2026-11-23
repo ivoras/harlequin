@@ -9,6 +9,8 @@ description: Cut, split, merge or reorder the pages of existing PDF documents â€
 copied exactly as they are â€” nothing is re-typed, the layout stays. You only
 decide **which pages** go into **which file**.
 
+To highlight, underline or comment on passages instead of cutting pages, use `edit_pdf` (load_skill "edit-pdf").
+
 Do not try to read the PDF and write it again, and do not use `create_pdf` for
 this: `create_pdf` makes a new document from text you write; `pdf_pages` copies
 existing pages.

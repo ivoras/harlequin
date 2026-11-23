@@ -5,10 +5,36 @@ description: Change an existing document in place — fix or replace words, add 
 
 # Edit an existing document
 
-`edit_doc` changes a saved document **where it is**. The document keeps its id,
-title and place. You never save a copy unless the user asks for one.
+`edit_doc` changes a saved document **where it is** (the document keeps its id,
+title and place), or, if you give `save_as`, leaves the original alone and puts
+the edited result in a **new document**.
 
-Do the steps in order. Do not skip step 2.
+Do the steps in order. Do not skip step 0 or step 2.
+
+## Step 0 — where should the result go?
+
+There are three possible places:
+
+1. **Replace the original** — the default: `edit_doc` without `save_as`. The
+   user's document changes; one step back is kept (`undo`).
+2. **A new document** — `save_as: "<title>"`. The original stays exactly as it
+   was and the user gets a second document in their files.
+3. **A temporary copy** — only for text/Markdown documents: `copy_doc` the
+   document to `tmp://name.md` (`target`), change that file with `edit_file`,
+   then write its path `tmp://name.md` in your reply: the user gets a download
+   link. It is removed after a while and never touches their files. For Word,
+   Excel and PDF documents there is no temporary copy; offer a new document.
+
+**If the user did not say which, ask before you edit**, with `ask_user`, in one
+short question that names the options, e.g. "Should I change the document
+itself, save the result as a new document, or give you a temporary copy to
+download?" Say what each does in a few words (replacing can be taken back one
+step). Do **not** ask when the request already says: "save as", "new version",
+"keep the original", "make a copy" mean a new document; "replace", "overwrite",
+"update the document itself", "in the file" mean in place; "just give me a
+copy to download" means temporary. Also do not ask for a document you created
+yourself earlier in this conversation (it is your own draft), or again once the
+user has told you their preference in this conversation: use the same answer.
 
 ## Step 1 — find the document
 
@@ -72,9 +98,11 @@ the workbook has several sheets.
   Fonts, styles, headers, formulas, other sheets and page setup stay. Use
   replace, insert or append (Word), or `cells`, append, insert, replace (Excel).
   A unified `diff` does not work on them.
-- **PDF files the user uploaded:** they cannot be edited. Say so. Offer a new
-  document made from the PDF's text (`create_pdf` or `create_word` with
-  `source`), or cutting pages with `pdf_pages`.
+- **PDF files the user uploaded:** their text cannot be edited. To highlight,
+  underline or comment on passages use `edit_pdf` (load_skill "edit-pdf"); to
+  change the wording say so and offer a new document made from the PDF's text
+  (`create_pdf` or `create_word` with `source`), or cutting pages with
+  `pdf_pages`.
 
 ## Rules
 
@@ -92,5 +120,8 @@ the workbook has several sheets.
 ## Step 4 — tell the user
 
 Say what you changed, in which document (id and title), in one or two sentences.
-Add that you can take the last change back if they ask (you do it with
-`edit_doc` and `undo: true`), and that only one step back is kept.
+After an in-place edit, add that you can take the last change back if they ask
+(you do it with `edit_doc` and `undo: true`), and that only one step back is
+kept. After `save_as`, give the new document's id and title and say the original
+is unchanged. For a temporary copy, give the `tmp://` path (it becomes a download
+link) and say it is removed after a while.

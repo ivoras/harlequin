@@ -274,6 +274,7 @@ files (`tmp://…` scratch space, `storage://…` kept per user; a bare path suc
 | `send_email` (`doc`, `attachments`) | yes | yes |
 | `search_docs`, `align_docs`, `list_documents` | yes | no — they work on the search index; `save_doc` a file first, or use `Grep` on it |
 | `pdf_pages` | yes (PDF documents) | no |
+| `edit_pdf` (`doc`; `save_to` is a sandbox file) | yes (PDF documents) | yes (`.pdf` files) |
 | `query_sheet` (`doc`, `more_docs`; `save_to` is a sandbox file) | yes (spreadsheets; PDF/Word tables) | yes (`.xlsx`, `.csv`, `.md` …) |
 | `query_xml` | yes | yes (`.xml`) |
 | `move_doc`, `delete_doc` | yes | no |
@@ -530,7 +531,7 @@ valid. **Undo:** before replacing the stored file the previous version is kept
 "u.12", "undo": true})` restores it, once — one level, overwritten by each edit,
 not available for sandbox files, not combinable with an operation. Deleting the
 document removes the file, the sidecar and the `.prev` copies; `copy_doc` copies
-the sidecar so a copy stays editable. Shared documents: owner/admin only. Given a
+the sidecar so a copy stays editable. Shared documents: owner/admin only. **Out of place:** `save_as` (a title, optional `scope`) leaves the document unchanged and saves the edited result as a new document — the document is copied (file and source sidecar) and the edit runs on the copy, which is removed again if the edit fails, so a failed call creates nothing; `undo` cannot be combined with it. `undo` also restores a PDF marked in place by `edit_pdf`. Given a
 sandbox file as `doc` it behaves as `edit_file`.
 **Examples:**
 - `edit_doc({"doc": "p.7", "append": "## Addendum\nNew section…"})`
@@ -570,7 +571,7 @@ sandbox file, or a saved document such as `u.12`), in one of two formats:
   `<style>` rules are kept (after the house stylesheet); `<div class="pagebreak">`
   starts a new page.
 
-Pages are A4 with page numbers; `landscape: true` turns them for wide tables.
+Pages are A4 with page numbers; `landscape: true` turns them for wide tables. `save_to` (a sandbox path) writes a temporary file instead of a document (downloadable, see "Downloading sandbox files"), e.g. for chaining into `edit_pdf`.
 Images are printed only when inline (`data:`); others are replaced by their alt
 text and reported in the result. Saved like `save_doc` (project in a project
 session, else personal; shared for owners/admins), with the Markdown (HTML is
@@ -589,6 +590,28 @@ kept, so the result can be changed later with `edit_doc` (the PDF is rebuilt).
 **Examples:**
 - `create_pdf({"title": "Q1 report", "source": "tmp://report.md"})`
 - `create_pdf({"title": "Offer letter", "source": "tmp://letter.html", "landscape": false})`
+
+#### `create_html`
+**Why:** produce a downloadable, self-contained HTML page — a report, summary or
+page of notes "as HTML". Same text-to-file pipeline as `create_pdf`/`create_word`
+(`createFile` in `agent/createfile.go`): the text is Markdown (default) or HTML
+(`format: "html"`), from `content` or `source`; `mdpdf.Page` sanitises it (scripts,
+forms, external images/fonts/stylesheets removed, a Content-Security-Policy added)
+and wraps it in the house stylesheet, and that page is the file — no renderer is
+needed. Saved as a `text/html` document with a source sidecar, so `edit_doc` can
+change it (the page is rebuilt) and `undo` works. No `landscape`. The `create-html`
+skill teaches the model.
+**Example:** `create_html({"title": "Q1 report", "content": "# Q1\n\nRevenue grew **12%**."})`
+
+**Shared parameters.** All `create_*` tools (`create_pdf`, `create_word`,
+`create_excel`, `create_html`) take the same parameters with the same meaning:
+`title` (the extension is added), `content` or `source` (a sandbox file or saved
+document), `scope`, and `save_to` + `overwrite`. `save_to` (a sandbox path such as
+`tmp://report.pdf`) writes a **temporary file** instead of a saved document, which
+the model offers to the user as a download link (see "Downloading sandbox files");
+without it the result is a new saved document. `format` (markdown|html) exists
+where HTML input makes sense (all but `create_excel`, which takes Markdown
+tables), and `landscape` where there are pages (`create_pdf`, `create_word`).
 
 #### `create_word`
 **Why:** produce a downloadable, editable Word document (`.docx`) written from
@@ -624,6 +647,49 @@ workflow.
 **Examples:**
 - `pdf_pages({"doc": "u.12", "outputs": [{"title": "Payslip Ana Horvat", "pages": "14,15"}, {"title": "Payslip Ivan Kovač", "pages": "31"}]})`
 - `pdf_pages({"outputs": [{"title": "Contract with annexes", "parts": [{"doc": "u.20"}, {"doc": "u.21", "pages": "2-5"}]}]})`
+
+#### `edit_pdf`
+**Why:** annotate a PDF — highlight, underline, strike out, squiggle or box
+passages and attach comments or sticky notes — without touching its pages or
+text. The marks are standard PDF annotations (PDFium, `pdfextract.Annotate`)
+that any viewer shows, edits and prints. `marks` is a list (up to 200 per call);
+each has a `kind` (`highlight`, `underline`, `strikeout`, `squiggly`, `box`,
+`note`) and usually `text`, the phrase to mark: case-insensitive, matched within
+one line, and **every** occurrence is marked unless `page` and/or `nth` narrow it.
+Optional per mark: `comment` (the text shown on hover/click), `color` (a name or
+`#RRGGBB`), and for a note without `text` a `page` plus `x`, `y` in points from
+the page's top-left corner. The result lists, per mark, how many annotations were
+made and where, and which phrases were not found; if nothing could be marked,
+nothing is changed or saved. The `edit-pdf` skill teaches the model.
+**Where the result goes** (like `edit_doc`): **in place by default** — a saved PDF
+document keeps its id, title and scope, its stored file gets the marks, the
+previous file is kept as `.prev` and `edit_doc` with `undo: true` restores it;
+the indexed text is unchanged, so nothing is re-indexed. A sandbox PDF (`doc` is
+`tmp://a.pdf`) is changed where it is. Optional out-of-place modes: `save_as` (a
+title) saves a **new saved document** and leaves the original alone (project in a
+project session, else personal; `scope` as in `create_pdf`); `save_to` (a sandbox
+path such as `tmp://marked.pdf`, `overwrite` to replace) writes a **temporary
+file** (see "Downloading sandbox files" below). A PDF made by `create_pdf` is
+refused in place — it is rebuilt from its source text on every `edit_doc`, which
+would drop the marks — so it needs `save_as` or `save_to`. Shared documents
+follow `edit_doc`'s rule (owner/admin).
+Scanned PDFs have no text to find; positioned notes work on them.
+**Examples:**
+- `edit_pdf({"doc": "u.12", "marks": [{"kind": "highlight", "text": "total amount", "comment": "check against the invoice"}, {"kind": "strikeout", "text": "draft", "page": 1}]})`
+- `edit_pdf({"doc": "u.12", "save_as": "Contract (reviewed)", "marks": [...]})`
+- `edit_pdf({"doc": "tmp://report.pdf", "save_to": "tmp://marked.pdf", "marks": [{"kind": "note", "page": 2, "x": 72, "y": 90, "comment": "Needs a source"}]})`
+
+#### Downloading sandbox files
+**Why:** the agent can hand the user a file it made in the sandbox. It writes the
+path (`tmp://marked.pdf`) in its reply and the client shows a **download link**:
+the web UIs turn `tmp://…` text, or a Markdown link to one, into a clickable
+chip that downloads through `GET /api/v1/files/tmp/<path>`; the TUI saves it with
+`/download tmp://marked.pdf [dest]`. Only the caller's own `tmp://` sandbox is
+served (never `storage://` or other users' files), always as an attachment, and
+types such as HTML are sent as opaque downloads. The files are temporary — the
+retention sweep (`data_retention_days`) removes them — so anything the user should
+keep belongs in a saved document (`copy_doc` without a target). File names
+without spaces link best.
 
 ### Copy, move and delete
 

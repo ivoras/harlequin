@@ -128,6 +128,15 @@ The browser app comes in two layouts over the same account and data:
   account) under **More**, and a ☰ drawer with the workspace selector and its
   sessions.
 
+**Files the assistant makes for you.** When the assistant produces a file you
+should take away (a marked-up PDF, an export), it either saves it as a document in
+your files, or gives you a temporary file, shown in the chat as a green
+**⬇ tmp://name.pdf** chip: click it to download. Temporary files are removed after
+a while, so save anything you want to keep (ask the assistant to save it as a
+document). When you ask the assistant to change a document or PDF and don't say
+where the result should go, it asks whether to change the original (the previous
+version can be restored once), save a new document, or give you a temporary copy.
+
 Phones are sent to the mobile layout automatically. To switch by hand, use
 **Mobile version** in the desktop's account menu (bottom of the sidebar) or
 **🖥 Desktop version** under the mobile **More** tab; the choice is remembered in that
@@ -499,6 +508,7 @@ typing to filter it, and pick a command with the arrow keys and Enter.
 | `/resume <query>` | Filter the session picker by title. |
 | `/queue` | List messages you typed while the agent was busy (they are queued, not lost). |
 | `/queue del <n>` / `/queue clear` | Remove one queued message / all of them. |
+| `/download <tmp://file> [dest]` | Save a temporary file the assistant made (it writes its name as `tmp://…`) into the current directory or `dest`. In the web apps such names are download links in the chat. Temporary files are removed after a while. |
 | `/export [raw]` | Save the transcript to `session_YYYYMMDD_HHMM.md` in the current directory. Plain form keeps User+Assistant messages; `raw` includes thinking and tool calls. |
 | `/context` | Show what fills the context window (system prompt, skills, messages, tool results) and the session's LLM cost so far. |
 | `/quit` (or `/exit`) | Leave the TUI. The session keeps living on the server. |

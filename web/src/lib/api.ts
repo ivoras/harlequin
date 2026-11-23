@@ -266,6 +266,18 @@ export const api = {
     const filename = /filename="([^"]*)"/.exec(res.headers.get("Content-Disposition") || "")?.[1] || "";
     return { blob: await res.blob(), filename };
   },
+  // fetchTmpFile downloads a file from the user's tmp sandbox ("tmp://name.pdf").
+  fetchTmpFile: async (ref: string): Promise<{ blob: Blob; filename: string }> => {
+    const rel = ref.replace(/^tmp:\/\//, "");
+    const res = await fetch(apiUrl(`/files/tmp/${rel.split("/").map(encodeURIComponent).join("/")}`), { headers: authHeaders() });
+    if (!res.ok) {
+      let msg = `${res.status} ${res.statusText}`;
+      try { const e = await res.json(); if (e?.error) msg = e.error; } catch { /* keep status */ }
+      throw new Error(msg);
+    }
+    const filename = /filename="?([^";]*)"?/.exec(res.headers.get("Content-Disposition") || "")?.[1] || rel.split("/").pop() || "download";
+    return { blob: await res.blob(), filename };
+  },
   // getDocumentContent returns a document's full indexed text (the Markdown
   // extracted from an upload, or a text document itself); fetchDocumentFile
   // returns the stored original.

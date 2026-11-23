@@ -121,3 +121,10 @@ func (a *Agent) makeResolver(ctx context.Context, rc *runContext, tmp, store *sa
 		}
 	}
 }
+
+// ReadTmp reads a file from the user's tmp sandbox (tmp://<rel>) for the
+// download route. Only that user's own tmp files are reachable; the sandbox
+// root rejects paths that escape it.
+func (a *Agent) ReadTmp(userID int64, rel string) ([]byte, error) {
+	return a.tmpRoot(userID).Read(strings.TrimPrefix(strings.TrimSpace(rel), "/"))
+}

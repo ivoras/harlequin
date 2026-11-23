@@ -7,7 +7,7 @@
   import { availableCommands } from "../lib/slash";
   import { Composer } from "../lib/composer.svelte";
   import AttachChips from "../lib/AttachChips.svelte";
-  import { onCiteHover, onCiteClick, onDocrefClick, onCodeCopy } from "../lib/docview.svelte";
+  import { onCiteHover, onCiteClick, onDocrefClick, onTmpRefClick, onCodeCopy } from "../lib/docview.svelte";
 
   // Chat is a thin view over the app-scoped session controller (sc), which owns
   // the WebSocket and chat state so it survives view switches. Composer
@@ -84,7 +84,7 @@
 <div class="chat">
   <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events, a11y_mouse_events_have_key_events -->
   <div class="messages" bind:this={scrollEl} onscroll={onScroll}
-    onclick={(e) => { onCiteClick(e); onDocrefClick(e); onCodeCopy(e); }} onmouseover={onCiteHover}>
+    onclick={(e) => { onCiteClick(e); onDocrefClick(e); onTmpRefClick(e); onCodeCopy(e); }} onmouseover={onCiteHover}>
     <div class="container col" style="gap:12px;">
       {#each sc.items as it, i}
         {#if it.kind === "msg"}

@@ -23,6 +23,7 @@ const (
 	genExcel = "excel"
 	genPDF   = "pdf"
 	genWord  = "word"
+	genHTML  = "html"
 
 	pdfNotSetUp  = "error: PDF creation is not set up on this server (an administrator has to install headless Chrome; see the README). Tell the user, and offer to save the text as a Markdown document with save_doc instead."
 	wordNotSetUp = "error: Word document creation is not set up on this server (an administrator has to install LibreOffice and bubblewrap; see the README). Tell the user, and offer to save the text as a Markdown document with save_doc instead."
@@ -30,7 +31,7 @@ const (
 
 // genSource is the sidecar's content.
 type genSource struct {
-	Kind      string `json:"kind"`   // excel | pdf | word
+	Kind      string `json:"kind"`   // excel | pdf | word | html
 	Format    string `json:"format"` // markdown | html
 	Landscape bool   `json:"landscape"`
 	Source    string `json:"source"` // exactly as given
@@ -95,6 +96,20 @@ func (a *Agent) generate(ctx context.Context, title string, s genSource, render 
 		}
 		if st.Removed > 0 {
 			out.notes += fmt.Sprintf(" Note: %d script, form, embedded or external item(s) were removed from the HTML (a PDF is static and self-contained).", st.Removed)
+		}
+	case genHTML:
+		// A self-contained page: the same sanitised, house-styled document the PDF
+		// is printed from, saved as-is (no renderer needed).
+		page, text, st, err := mdpdf.Page(strings.TrimSuffix(title, ".html"), s.Source, html, false)
+		if err != nil {
+			return out, convertError{err}
+		}
+		out.data, out.text = []byte(page), text
+		if st.ImagesDropped > 0 {
+			out.notes += fmt.Sprintf(" Note: %d image(s) were left out (only inline data: images are kept); tell the user.", st.ImagesDropped)
+		}
+		if st.Removed > 0 {
+			out.notes += fmt.Sprintf(" Note: %d script, form, embedded or external item(s) were removed from the HTML (the page is static and self-contained).", st.Removed)
 		}
 	case genWord:
 		page, text, st, err := mdword.Page(strings.TrimSuffix(title, ".docx"), s.Source, html)

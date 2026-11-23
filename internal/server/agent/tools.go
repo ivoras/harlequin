@@ -816,8 +816,10 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 		reg["create_excel"] = a.createExcelEntry()
 		reg["create_pdf"] = a.createPDFEntry()
 		reg["create_word"] = a.createWordEntry()
+		reg["create_html"] = a.createHTMLEntry()
 		reg["copy_doc"] = a.copyDocEntry()
 		reg["pdf_pages"] = a.pdfPagesEntry()
+		reg["edit_pdf"] = a.editPDFEntry()
 		a.registerProjectTools(reg, rc)
 
 		reg["delete_doc"] = toolEntry{

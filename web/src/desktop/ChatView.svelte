@@ -8,7 +8,7 @@
   import { wearableHats } from "../lib/hats";
   import AttachChips from "../lib/AttachChips.svelte";
   import HatPicker from "../lib/HatPicker.svelte";
-  import { onCiteHover, onCiteClick, onDocrefClick, onCodeCopy } from "../lib/docview.svelte";
+  import { onCiteHover, onCiteClick, onDocrefClick, onTmpRefClick, onCodeCopy } from "../lib/docview.svelte";
   import { isElevated, type Hat } from "../lib/types";
   import Icon from "./Icon.svelte";
   import TopBar from "./TopBar.svelte";
@@ -188,7 +188,7 @@
 <div class="chat">
   <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events, a11y_mouse_events_have_key_events -->
   <div class="transcript" bind:this={scrollEl} onscroll={onScroll}
-    onclick={(e) => { onCiteClick(e); onDocrefClick(e); onCodeCopy(e); }} onmouseover={onCiteHover}>
+    onclick={(e) => { onCiteClick(e); onDocrefClick(e); onTmpRefClick(e); onCodeCopy(e); }} onmouseover={onCiteHover}>
     <div class="column">
       {#each sc.items as it, i}
         {#if it.kind === "msg"}

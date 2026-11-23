@@ -8,7 +8,7 @@ import (
 
 // slashCommands are the top-level commands offered by the autocomplete menu.
 var slashCommands = []string{
-	"/alert", "/attach", "/clear", "/config", "/context", "/cron", "/dismiss", "/docs", "/export", "/hat", "/help", "/mcp",
+	"/alert", "/attach", "/clear", "/config", "/context", "/cron", "/dismiss", "/docs", "/download", "/export", "/hat", "/help", "/mcp",
 	"/memory", "/new", "/project", "/queue", "/quit", "/resume", "/run", "/say",
 	"/skill", "/skills", "/telegram", "/upload", "/usage",
 }
@@ -22,6 +22,7 @@ var slashHelp = map[string]string{
 	"/dismiss":  "dismiss alert(s) by number (e.g. /dismiss 1 3), or all",
 	"/run":      "run the prompt carried by alert n",
 	"/docs":     "documents: /docs search <q> | list | del <scope> <id> | view <scope> <id>|<p|u|s>.<id> [text|file] | add [scope] <path>",
+	"/download": "download a temporary file the assistant made: /download tmp://name.pdf [dest]",
 	"/export":   "save transcript (User+Assistant; add 'raw' for everything)",
 	"/hat":      "list / wear / manage hats (overlay skill sets)",
 	"/help":     "show help",

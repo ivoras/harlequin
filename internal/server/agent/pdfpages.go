@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/ivoras/harlequin/internal/server/docalign"
 	"github.com/ivoras/harlequin/internal/server/docevents"
@@ -226,22 +225,7 @@ func (a *Agent) pdfPages(ctx context.Context, rc *runContext, args map[string]an
 		// Index the new file's own page text (as an upload would), so it is
 		// searchable and its citations carry page numbers.
 		pages, _ := a.PDFPages.Pages(pdf)
-		var text strings.Builder
-		var starts []int
-		off := 0
-		for j, pg := range pages {
-			if j > 0 {
-				text.WriteString("\n\n")
-				off += 2
-			}
-			starts = append(starts, off)
-			text.WriteString(pg)
-			off += utf8.RuneCountInString(pg)
-		}
-		content := text.String()
-		if strings.TrimSpace(content) == "" { // scanned pages: nothing to index
-			content, starts = strings.TrimSuffix(titles[i], ".pdf")+" (pages without extractable text)", nil
-		}
+		content, starts := pdfIndexText(titles[i], pages)
 		doc, err := a.Docs.IngestInto(ctx, db, types.CreateDocumentRequest{
 			Title: titles[i], URI: "agent://pdf_pages", Mime: pdfMime, Content: content, PageStarts: starts, OriginalName: titles[i],
 		}, rc.userID)

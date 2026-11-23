@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"maps"
 	"os"
 	"path/filepath"
@@ -116,19 +117,24 @@ var editOpArgs = []string{"old_string", "new_string", "diff", "append", "append_
 // editDocEntry registers edit_doc: apply an edit to a saved corpus document.
 func (a *Agent) editDocEntry() toolEntry {
 	schema := editArgsSchema(map[string]any{
-		"doc":   map[string]any{"type": "string", "description": "Scoped document id, e.g. \"u.12\", \"s.3\" or \"p.7\" (resolve with list_documents); or a sandbox file such as tmp://notes.md"},
-		"cells": map[string]any{"type": "object", "description": `Uploaded Excel only: set cells. An object from cell address to value, e.g. {"October!B2": 1700, "C2": "=B2*0.73", "D2": "paid"}. A number sets a number, text starting with = a formula, other text text; null clears the cell.`},
-		"sheet": map[string]any{"type": "string", "description": "Uploaded Excel only: the sheet for cells addresses without a sheet name, and for append, insert and replace. Not needed when the workbook has one sheet."},
-		"undo":  map[string]any{"type": "boolean", "description": "Set true (with doc only, no other argument) to restore the version before the last edit. Only one step back is kept."},
+		"doc":     map[string]any{"type": "string", "description": "Scoped document id, e.g. \"u.12\", \"s.3\" or \"p.7\" (resolve with list_documents); or a sandbox file such as tmp://notes.md"},
+		"cells":   map[string]any{"type": "object", "description": `Uploaded Excel only: set cells. An object from cell address to value, e.g. {"October!B2": 1700, "C2": "=B2*0.73", "D2": "paid"}. A number sets a number, text starting with = a formula, other text text; null clears the cell.`},
+		"sheet":   map[string]any{"type": "string", "description": "Uploaded Excel only: the sheet for cells addresses without a sheet name, and for append, insert and replace. Not needed when the workbook has one sheet."},
+		"undo":    map[string]any{"type": "boolean", "description": "Set true (with doc only, no other argument) to restore the version before the last edit. Only one step back is kept."},
+		"save_as": map[string]any{"type": "string", "description": "Leave the document unchanged and save the edited result as a NEW document with this title. Omit to edit in place."},
+		"scope":   map[string]any{"type": "string", "enum": []string{"personal", "project", "shared"}, "description": "With save_as: where the new document goes. Default: the project in a project session, else personal."},
 	})
 	schema["required"] = []string{"doc"}
 	return toolEntry{
-		def: fnTool("edit_doc", `Edit a saved document in place, keeping its id, title and scope. Use it when the user asks to change a document: fix a passage, add a paragraph, add text at the end, or append other documents. Works on: text/Markdown documents (save_doc, or uploaded .md/.txt); documents made with create_pdf, create_word or create_excel (their file is rebuilt from the edited Markdown); and uploaded Word (.docx) files, which are edited inside the original file so fonts, styles, headers and layout stay (replace, insert, append and append_source work; diff does not). For a Word file quote passages as read_doc shows them. A passage must lie in one paragraph. insert next to a table cell adds a paragraph in that cell; insert "| a | b |" next to a table row adds a row. Uploaded Excel (.xlsx) files are edited in place too, keeping formatting and formulas: FIRST call read_doc with cells true to see sheet names and cell addresses, then use cells (set cells, e.g. {"October!B2": 1700}), append (table rows "| a | b |" after the last row), insert (table rows after or before "row 5" or a quoted row) or replace (text and formulas only); diff does not work. Use the sheet argument when the workbook has several sheets. Uploaded PDF files cannot be edited. `+editOpsHelp+` To go back one step: edit_doc with doc and undo true. Given a sandbox file (tmp://notes.md) as doc it edits that file, like edit_file. The document is re-indexed afterwards, so search_docs sees the new text. Unchanged passages keep their chunk ids, so citations to them stay valid. Edit only when the user asked you to change that document.`, schema),
+		def: fnTool("edit_doc", `Edit a saved document in place, keeping its id, title and scope. Use it when the user asks to change a document: fix a passage, add a paragraph, add text at the end, or append other documents. Works on: text/Markdown documents (save_doc, or uploaded .md/.txt); documents made with create_pdf, create_word or create_excel (their file is rebuilt from the edited Markdown); and uploaded Word (.docx) files, which are edited inside the original file so fonts, styles, headers and layout stay (replace, insert, append and append_source work; diff does not). For a Word file quote passages as read_doc shows them. A passage must lie in one paragraph. insert next to a table cell adds a paragraph in that cell; insert "| a | b |" next to a table row adds a row. Uploaded Excel (.xlsx) files are edited in place too, keeping formatting and formulas: FIRST call read_doc with cells true to see sheet names and cell addresses, then use cells (set cells, e.g. {"October!B2": 1700}), append (table rows "| a | b |" after the last row), insert (table rows after or before "row 5" or a quoted row) or replace (text and formulas only); diff does not work. Use the sheet argument when the workbook has several sheets. Uploaded PDF files cannot be edited as text (their pages are fixed); to mark one up use edit_pdf. `+editOpsHelp+` To go back one step: edit_doc with doc and undo true (this also undoes an edit_pdf). To keep the original and get the edited result as a NEW document, give save_as (a title); the original is then not changed. Given a sandbox file (tmp://notes.md) as doc it edits that file, like edit_file. The document is re-indexed afterwards, so search_docs sees the new text. Unchanged passages keep their chunk ids, so citations to them stay valid. Edit only when the user asked you to change that document.`, schema),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 			undo := argBool(args, "undo", false)
 			if p := argString(args, "doc"); isSandboxPath(p) { // a sandbox file: edit_file's job
 				if undo {
 					return "error: undo is not available for sandbox files (it restores saved documents)", nil
+				}
+				if argString(args, "save_as") != "" {
+					return "error: save_as works on saved documents. To edit a copy of a sandbox file, copy_doc it to a new sandbox file first and edit that.", nil
 				}
 				return a.editFileEntry().handler(ctx, rc, withArg(args, "path", strings.TrimSpace(p)))
 			}
@@ -154,10 +160,16 @@ func (a *Agent) editDocEntry() toolEntry {
 			if errMsg != "" {
 				return errMsg, nil
 			}
+			if saveAs := strings.TrimSpace(argString(args, "save_as")); saveAs != "" {
+				if undo {
+					return "error: undo restores the document itself; it cannot be combined with save_as", nil
+				}
+				return a.editDocAsCopy(ctx, rc, doc, saveAs, args)
+			}
 			switch doc.Scope {
 			case documents.ScopeShared:
 				if !rc.canShareMemory {
-					return "error: only owner or admin users can edit shared documents; ask an owner/admin, or save an edited personal copy with save_doc.", nil
+					return "error: only owner or admin users can edit shared documents; ask an owner/admin, or give save_as to save the edited result as a copy of your own.", nil
 				}
 			case documents.ScopePersonal, documents.ScopeProject:
 			default:
@@ -198,7 +210,7 @@ func (a *Agent) editDocEntry() toolEntry {
 			case strings.HasPrefix(mime, "text/"):
 				return a.editTextDoc(ctx, e)
 			case mime == pdfMime:
-				return fmt.Sprintf("error: document %s is an uploaded PDF, so it cannot be edited: its pages are fixed. To change it, make a new document from its text with create_pdf or create_word (source %q), or cut pages out with pdf_pages.", e.ref, e.ref), nil
+				return fmt.Sprintf("error: document %s is an uploaded PDF, so its text cannot be edited: its pages are fixed. To add highlights, underlines or comments use edit_pdf; to change the wording, make a new document from its text with create_pdf or create_word (source %q); to cut pages out use pdf_pages.", e.ref, e.ref), nil
 			case mime == docxMime:
 				return a.editWordDoc(ctx, e)
 			case mime == xlsxMime:
@@ -331,6 +343,7 @@ func (a *Agent) undoDocEdit(ctx context.Context, e *docEdit) (string, error) {
 	}
 	side := e.path + sidecarExt
 	var text string
+	skipIndex := false
 	sidePrev, serr := os.ReadFile(side + prevExt)
 	if serr == nil {
 		src, err := readSidecar(sidePrev)
@@ -342,6 +355,8 @@ func (a *Agent) undoDocEdit(ctx context.Context, e *docEdit) (string, error) {
 			return fmt.Sprintf("error: cannot restore %s: %v", e.ref, err), nil
 		}
 		text = g.text
+	} else if e.mime == pdfMime { // marked by edit_pdf: annotations do not change the text, so the index stays
+		skipIndex = true
 	} else if e.mime == xlsxMime { // an uploaded workbook: text comes from the restored file, as at upload
 		if text, err = a.xlsxText(ctx, e.path, prev); err != nil {
 			return fmt.Sprintf("error: cannot restore %s: %v", e.ref, err), nil
@@ -355,8 +370,10 @@ func (a *Agent) undoDocEdit(ctx context.Context, e *docEdit) (string, error) {
 	} else {
 		text = string(prev)
 	}
-	if _, err := a.Docs.ReplaceContent(ctx, e.db, e.doc.ID, text); err != nil {
-		return "", err
+	if !skipIndex {
+		if _, err := a.Docs.ReplaceContent(ctx, e.db, e.doc.ID, text); err != nil {
+			return "", err
+		}
 	}
 	a.publishDocChange(docevents.Updated, e.doc.Scope, e.rc, e.doc.ID)
 	for _, p := range []string{e.path, side} {
@@ -381,4 +398,46 @@ func withArg(args map[string]any, key string, val any) map[string]any {
 	}
 	out[key] = val
 	return out
+}
+
+// editDocAsCopy is edit_doc's out-of-place mode: copy the document (file,
+// source sidecar and all) into a new document titled saveAs, then run the same
+// edit on the copy. The original is never touched, and if the edit fails the
+// copy is removed again, so a failed call creates nothing.
+func (a *Agent) editDocAsCopy(ctx context.Context, rc *runContext, doc *docalign.Doc, saveAs string, args map[string]any) (string, error) {
+	srcDB, errMsg := a.docDBForScope(ctx, rc, doc.Scope)
+	if errMsg != "" {
+		return errMsg, nil
+	}
+	scope, dstDB, errMsg := a.saveScope(rc, args)
+	if errMsg != "" {
+		return errMsg, nil
+	}
+	dstDir := a.docFilesDir(rc, scope)
+	newID, err := a.Docs.CopyInto(ctx, srcDB, dstDB, a.docFilesDir(rc, doc.Scope), dstDir, doc.ID)
+	if err != nil {
+		return "", err
+	}
+	discard := func() {
+		if derr := a.Docs.DeleteFrom(context.WithoutCancel(ctx), dstDB, dstDir, newID); derr != nil {
+			log.Printf("edit_doc save_as: removing the unused copy %s.%d: %v", scopeLetter(scope), newID, derr)
+		}
+	}
+	if err := a.Docs.SetTitle(ctx, dstDB, newID, saveAs); err != nil {
+		discard()
+		return "", err
+	}
+	ref := fmt.Sprintf("%s.%d", scopeLetter(scope), newID)
+	inner := withArg(args, "doc", ref)
+	delete(inner, "save_as")
+	out, err := a.editDocEntry().handler(ctx, rc, inner)
+	if err != nil || strings.HasPrefix(out, "error:") {
+		discard()
+		if err != nil {
+			return "", err
+		}
+		return out + " Nothing was created: the original is unchanged.", nil
+	}
+	a.publishDocChange(docevents.Created, scope, rc, newID)
+	return out + fmt.Sprintf(" This is a new document %s (%q), a copy of %s; the original is unchanged.", ref, saveAs, docRef(doc)), nil
 }

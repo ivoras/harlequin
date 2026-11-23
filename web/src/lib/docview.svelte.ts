@@ -230,6 +230,27 @@ export async function onDocrefClick(e: Event) {
   }
 }
 
+// Sandbox-file links (tmp://… spans from renderMarkdown): fetch with the bearer
+// token and hand the result to the browser as a download.
+export async function onTmpRefClick(e: Event) {
+  const el = (e.target as HTMLElement)?.closest?.(".tmpref");
+  const ref = el instanceof HTMLElement ? el.dataset.tmpref : "";
+  if (!ref) return;
+  try {
+    const { blob, filename } = await api.fetchTmpFile(ref);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+  } catch (err) {
+    toast((err as Error).message || `couldn't download ${ref}`, "error");
+  }
+}
+
 // Per-code-block copy: .codecopy buttons injected by renderMarkdown, handled
 // via the same event delegation as citations/docrefs. Feedback is a brief ✓
 // swap directly on the button (it lives in {@html} output, not the template).

@@ -2,77 +2,20 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"strings"
-
-	"github.com/ivoras/harlequin/internal/server/docevents"
-	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
-const createPDFPrompt = `Create a PDF document and save it as a file the user can download — for a report, letter, summary, table or any text the user wants "as a PDF". Normally you write ordinary Markdown (headings, paragraphs, **bold**, lists, pipe tables, > quotes, code blocks) and the server typesets it on A4 pages with page numbers; a line containing only \newpage starts a new page. Use format "html" only when the user needs a layout Markdown cannot express (colours, columns, a letterhead, precise spacing): then you write HTML with your own CSS in a <style> element; scripts, forms, and every external image, font or stylesheet are removed (only inline data: images stay). Give the text in ONE of three ways: content (the text itself, for up to about two pages), or source naming a sandbox file ("tmp://report.md", "storage://report.html" — build long documents with edit_file append), or source naming a saved text document ("u.12") to turn that document into a PDF. Set landscape to true for wide tables. load_skill "create-pdf" for the details. The PDF lands in the project in a project session, else in the user's personal files; scope "shared" is owner/admin only. This tool writes NEW documents: to copy, extract, split or merge pages of existing PDFs use pdf_pages.`
+const createPDFPrompt = `Create a PDF document and save it as a file the user can download — for a report, letter, summary, table or any text the user wants "as a PDF". Normally you write ordinary Markdown (headings, paragraphs, **bold**, lists, pipe tables, > quotes, code blocks) and the server typesets it on A4 pages with page numbers; a line containing only \newpage starts a new page. Use format "html" only when the user needs a layout Markdown cannot express (colours, columns, a letterhead, precise spacing): then you write HTML with your own CSS in a <style> element; scripts, forms, and every external image, font or stylesheet are removed (only inline data: images stay). Give the text in ONE of three ways: content (the text itself, for up to about two pages), or source naming a sandbox file ("tmp://report.md", "storage://report.html" — build long documents with edit_file append), or source naming a saved text document ("u.12") to turn that document into a PDF. Set landscape to true for wide tables. load_skill "create-pdf" for the details. To copy, extract, split or merge pages of existing PDFs use pdf_pages.`
 
 func (a *Agent) createPDFEntry() toolEntry {
 	return toolEntry{
-		def: fnTool("create_pdf", createPDFPrompt, map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"title":     map[string]any{"type": "string", "description": `File name for the PDF, e.g. "Q1 report" (".pdf" is added). It is not printed: start the Markdown with a "# Heading" for the visible title.`},
-				"content":   map[string]any{"type": "string", "description": "The text itself (Markdown, or HTML with format \"html\"). Omit when source is given."},
-				"source":    map[string]any{"type": "string", "description": "Where to read the text from instead: a sandbox file (tmp://report.md, storage://report.html) or a saved text document (u.12). Omit when content is given."},
-				"format":    map[string]any{"type": "string", "enum": []string{"markdown", "html"}, "description": "What the text is. Default markdown (html when source ends in .html or the text starts with <!DOCTYPE or <html)."},
-				"landscape": map[string]any{"type": "boolean", "description": "Landscape A4 pages (for wide tables). Default false: portrait."},
-				"scope":     map[string]any{"type": "string", "enum": []string{"personal", "project", "shared"}},
-			},
-			"required": []string{"title"},
-		}),
-		handler: a.createPDF,
+		def: fnTool("create_pdf", createPDFPrompt+createDestHelp(pdfSpec), createSchema(pdfSpec,
+			`File name for the PDF, e.g. "Q1 report" (".pdf" is added). It is not printed: start the Markdown with a "# Heading" for the visible title.`,
+			"The text itself (Markdown, or HTML with format \"html\").")),
+		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+			return a.createFile(ctx, rc, args, pdfSpec)
+		},
 	}
-}
-
-func (a *Agent) createPDF(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
-	if a.PDF == nil {
-		// The tool is offered regardless, so the user hears why instead of "I can't".
-		return pdfNotSetUp, nil
-	}
-	title := strings.TrimSpace(argString(args, "title"))
-	if title == "" {
-		return "error: title is required", nil
-	}
-	if !strings.HasSuffix(strings.ToLower(title), ".pdf") {
-		title += ".pdf"
-	}
-	src, errMsg := a.markdownArg(ctx, rc, args)
-	if errMsg != "" {
-		return errMsg, nil
-	}
-	isHTML, errMsg := sourceIsHTML(args, src)
-	if errMsg != "" {
-		return errMsg, nil
-	}
-	landscape, _ := args["landscape"].(bool)
-	scope, db, errMsg := a.saveScope(rc, args)
-	if errMsg != "" {
-		return errMsg, nil
-	}
-	gs := genSource{Kind: genPDF, Format: formatName(isHTML), Landscape: landscape, Source: src}
-	g, err := a.generate(ctx, title, gs, true)
-	if err != nil {
-		if _, conv := err.(convertError); conv {
-			return "error: " + err.Error() + " — pass the text as content, or as source (a sandbox file or a saved document)", nil
-		}
-		return "error: " + err.Error(), nil
-	}
-	// The searchable text is the Markdown the PDF was typeset from (HTML input
-	// converted to it), so search_docs and read_doc work on it at once.
-	doc, err := a.Docs.IngestInto(ctx, db, types.CreateDocumentRequest{
-		Title: title, URI: "agent://create_pdf", Mime: "application/pdf", Content: g.text,
-	}, rc.userID)
-	if err != nil {
-		return "", err
-	}
-	a.storeGenerated(ctx, db, scope, rc, doc, g.data, ".pdf", gs)
-	a.publishDocChange(docevents.Created, scope, rc, doc.ID)
-	return fmt.Sprintf("Created PDF %s.%d %q%s. The user can open or download it from their files.%s", scopeLetter(scope), doc.ID, title, g.detail, g.notes), nil
 }
 
 // sourceIsHTML decides whether a create_pdf/create_word text is HTML: the

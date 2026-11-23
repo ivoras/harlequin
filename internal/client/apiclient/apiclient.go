@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -698,6 +699,37 @@ func (c *Client) DownloadDocumentFile(ctx context.Context, id int64, scope strin
 	}
 	data, err = io.ReadAll(resp.Body)
 	return data, resp.Header.Get("Content-Type"), err
+}
+
+// DownloadTmpFile fetches a file from the user's server-side tmp sandbox
+// (ref is "tmp://name.pdf" or just the name) as raw bytes plus a file name.
+func (c *Client) DownloadTmpFile(ctx context.Context, ref string) (data []byte, filename string, err error) {
+	rel := strings.TrimPrefix(strings.TrimSpace(ref), "tmp://")
+	if rel == "" {
+		return nil, "", fmt.Errorf("no file given")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/files/tmp/"+escapePathSegments(rel), nil)
+	if err != nil {
+		return nil, "", err
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	resp, err := (&http.Client{Timeout: 60 * time.Second}).Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		var er types.ErrorResponse
+		_ = json.NewDecoder(resp.Body).Decode(&er)
+		if er.Error == "" {
+			er.Error = resp.Status
+		}
+		return nil, "", fmt.Errorf("%s", er.Error)
+	}
+	data, err = io.ReadAll(resp.Body)
+	return data, path.Base(rel), err
 }
 
 // postUpload multipart-POSTs a local file to endpoint and decodes the JSON
