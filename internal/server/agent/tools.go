@@ -392,11 +392,7 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 			a.logEvent(ctx, rc, sessionlog.TypeSkillLoaded, map[string]any{
 				"name": sk.Name, "source": sk.Source, "files": len(sk.Files),
 			})
-			var sb strings.Builder
-			for rel, content := range sk.Files {
-				fmt.Fprintf(&sb, "=== %s ===\n%s\n", rel, content)
-			}
-			return sb.String(), nil
+			return skillLoadText(sk), nil
 		},
 	}
 
@@ -533,10 +529,10 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 			},
 		}
 		reg["read_doc"] = toolEntry{
-			def: fnTool("read_doc", `Read a document's text (its Markdown rendering) by reference. Use this for documents the user attached to their message — listed at its end as @"u.18/report.pdf" — pass the reference as written (or just the id, u.18). It also reads a text file in your sandbox: pass its path (tmp://combined.md, storage://notes.md; a bare path means tmp://). Returns up to limit characters from offset; when truncated, the result says where to continue. To find something in a long document prefer search_docs with docs=[id] or check_text. For an Excel workbook you want to edit, pass cells true: it shows every sheet as a grid with its name, column letters and row numbers, so you can name the cell to change.`, map[string]any{
+			def: fnTool("read_doc", `Read a document's text (its Markdown rendering) by reference. Use this for documents the user attached to their message — listed at its end as @"u.18/report.pdf" — pass the reference as written (or just the id, u.18). It also reads a text file in your sandbox: pass its path (tmp://combined.md, storage://notes.md; a bare path means tmp://), and a file of a skill by its skill:// path (skill://e-racun/reference/codes.md). Returns up to limit characters from offset; when truncated, the result says where to continue. To find something in a long document prefer search_docs with docs=[id] or check_text. For an Excel workbook you want to edit, pass cells true: it shows every sheet as a grid with its name, column letters and row numbers, so you can name the cell to change.`, map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"doc":    map[string]any{"type": "string", "description": `Document reference: u.N / s.N / p.N, optionally as written in the prompt, e.g. @"u.18/report.pdf"; or a sandbox file, e.g. tmp://combined.md`},
+					"doc":    map[string]any{"type": "string", "description": `Document reference: u.N / s.N / p.N, optionally as written in the prompt, e.g. @"u.18/report.pdf"; a sandbox file, e.g. tmp://combined.md; or a skill file, e.g. skill://e-racun/reference/codes.md`},
 					"offset": map[string]any{"type": "integer", "description": "Character offset to start from (default 0)"},
 					"limit":  map[string]any{"type": "integer", "description": "Maximum characters to return (default 30000)"},
 					"cells":  map[string]any{"type": "boolean", "description": "Excel files only: show each sheet as a grid with its name, column letters and row numbers (formulas as text), to find cell addresses for edit_doc"},
@@ -560,6 +556,16 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 					return out
 				}
 				wantGrid := argBool(args, "cells", false)
+				if p := strings.TrimSpace(argString(args, "doc")); strings.HasPrefix(p, "skill://") {
+					if wantGrid {
+						return gridOnlyExcel, nil
+					}
+					text, errMsg := a.skillFileText(ctx, rc, p)
+					if errMsg != "" {
+						return errMsg, nil
+					}
+					return window(p[strings.LastIndexByte(p, '/')+1:], "skill file "+p, "", text), nil
+				}
 				if p := strings.TrimSpace(argString(args, "doc")); isSandboxPath(p) {
 					if wantGrid {
 						return gridOnlyExcel, nil

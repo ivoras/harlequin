@@ -102,7 +102,10 @@ An unknown name returns an error listing the valid hats.
 
 ### `load_skill`
 **Why:** pull a skill's full instructions and resource files into context, on
-demand, so they don't bloat every prompt.
+demand, so they don't bloat every prompt. `SKILL.md` comes first, then the
+other files in path order; scripts (`.js`) are only listed with their
+`skill://` path and size — they run through the skill's tools, `run_js`
+(`script:` / `include()`) and cron jobs — and `read_doc` reads one if needed.
 **Example:** `load_skill({"name": "web-monitor"})`
 
 ### `write_skill`
@@ -297,7 +300,8 @@ every project the user belongs to.
 #### `read_doc`
 **Why:** read a document's text (its Markdown rendering) by reference — mainly
 for files the user attached to their message, listed at its end as
-`@"u.18/report.pdf"` — or a text file in the sandbox (`tmp://combined.md`). Returns up to `limit` characters (default 30,000) from
+`@"u.18/report.pdf"` — or a text file in the sandbox (`tmp://combined.md`), or a
+file of a skill by its `skill://<skill>/<path>` (resolved like `load_skill`). Returns up to `limit` characters (default 30,000) from
 `offset`, and says where to continue when truncated. For an image document it
 notes whether the model can see the picture (vision) or only its OCR text. To find
 something in a long document, `search_docs` with `docs` or `check_text` is better.
