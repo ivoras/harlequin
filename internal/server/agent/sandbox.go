@@ -60,11 +60,12 @@ func (a *Agent) userStorageDir(userID int64) string {
 	return filepath.Join(storage.UserDir(a.DataDir, userID), ".storage")
 }
 
-// tmpRoot is sized generously to hold a fetched page dump (webfetch caps bodies
-// at 5 MiB).
+// tmpRoot is sized to hold a fetched page dump (webfetch caps bodies at 5 MiB)
+// or the text of the largest real spreadsheets (~9 MB). Not higher: run_js
+// reading a file into goja costs ~24 bytes of RAM per byte (16 MiB ≈ 400 MB).
 func (a *Agent) tmpRoot(userID int64) *sandboxfs.Root {
 	return sandboxfs.New(a.userTmpDir(userID), sandboxfs.Options{
-		MaxFileBytes: 8 << 20, MaxFiles: 512, MaxTotalBytes: 64 << 20,
+		MaxFileBytes: 16 << 20, MaxFiles: 512, MaxTotalBytes: 128 << 20,
 	})
 }
 
