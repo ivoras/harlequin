@@ -699,14 +699,18 @@ Organise documents across files, scopes and projects.
 **Why:** copy a document or a sandbox file server-side, so the content never
 passes through the model. `source` is a document id or a sandbox file. With
 `target` (a sandbox path) the copy is a working file: a document is copied as its
-text (for a PDF/DOCX/XLSX, its Markdown text), a file byte for byte; an existing
-target is refused unless `overwrite: true`. Without `target` the copy is a new
+text (for a PDF/DOCX/XLSX, its Markdown text) unless the target has the
+original's extension (`tmp://a.pdf` for a PDF), which copies the original file
+byte for byte; a binary extension that does not match (text into `.pdf`) is
+refused. A file is copied byte for byte; an existing target is refused unless
+`overwrite: true`. Without `target` the copy is a new
 saved document: a document is duplicated exactly, original file and index
 included (a PDF stays a PDF; no re-embedding), and a sandbox text file is saved
 like `save_doc`. `title` names it (default "Copy of …" / the file name); `scope`
 as for `save_doc`. The source is never changed.
 **Examples:**
 - `copy_doc({"source": "u.12", "target": "tmp://work.md"})`
+- `copy_doc({"source": "u.12", "target": "tmp://contract.pdf"})` (the PDF itself)
 - `copy_doc({"source": "u.12", "title": "Contract — draft 2"})`
 
 #### `move_doc` (owner/admin only)

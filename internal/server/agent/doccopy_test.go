@@ -159,6 +159,19 @@ func testAppendAndCopy(t *testing.T, ctx context.Context, dir string, mgr *stora
 	if data, _ := a.tmpRoot(1).Read("sken.md"); !strings.Contains(string(data), "Tekst iz PDF-a.") || strings.Contains(string(data), "%PDF") {
 		t.Fatalf("PDF copied as text: %q", data)
 	}
+	// A target named like the original gets the original file; another file
+	// format is refused rather than filled with text.
+	if out := call("copy_doc", map[string]any{"source": pdf, "target": "tmp://sken.pdf"}); !strings.Contains(out, "(original file)") {
+		t.Fatalf("PDF to .pdf: %q", out)
+	}
+	if data, _ := a.tmpRoot(1).Read("sken.pdf"); !strings.HasPrefix(string(data), "%PDF") {
+		t.Fatalf("PDF to .pdf is not the PDF: %q", data)
+	}
+	for src, target := range map[string]string{pdf: "tmp://sken.docx", second: "tmp://drugi.pdf"} {
+		if out := call("copy_doc", map[string]any{"source": src, "target": target}); !strings.HasPrefix(out, "error:") || !strings.Contains(out, "cannot be copied to a") {
+			t.Errorf("%s to %s: %q", src, target, out)
+		}
+	}
 	if out := call("copy_doc", map[string]any{"source": first, "target": "tmp://rad.md"}); !strings.Contains(out, "already exists") {
 		t.Fatalf("overwrite must be refused: %q", out)
 	}

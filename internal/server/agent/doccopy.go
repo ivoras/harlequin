@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
@@ -163,9 +164,39 @@ func (a *Agent) appendSourceArg(ctx context.Context, rc *runContext, args map[st
 	return strings.Join(parts, "\n\n") + "\n", strings.Join(labels, ", "), true, ""
 }
 
+// binaryExts are target names that promise a file format, never plain text.
+var binaryExts = map[string]bool{
+	".pdf": true, ".docx": true, ".doc": true, ".xlsx": true, ".xls": true, ".pptx": true,
+	".odt": true, ".ods": true, ".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true, ".zip": true,
+}
+
+// docOriginal returns a document's stored original file and its extension when
+// that is not text (a PDF, DOCX, XLSX …); data is nil for text documents and
+// those without a stored file. label names the document for tool results.
+func (a *Agent) docOriginal(ctx context.Context, rc *runContext, ref string) (data []byte, ext, label, errMsg string) {
+	doc, errMsg := a.loadDocRef(ctx, rc, ref)
+	if errMsg != "" {
+		return nil, "", "", errMsg
+	}
+	label = fmt.Sprintf("document %s (%q)", docRef(doc), doc.Title)
+	db, errMsg := a.docDBForScope(ctx, rc, doc.Scope)
+	if errMsg != "" {
+		return nil, "", "", errMsg
+	}
+	stored, mime, _, err := a.Docs.StoredFile(ctx, db, doc.ID)
+	dir := a.docFilesDir(rc, doc.Scope)
+	if err != nil || stored == "" || strings.HasPrefix(mime, "text/") || dir == "" {
+		return nil, "", label, ""
+	}
+	if data, err = os.ReadFile(filepath.Join(dir, filepath.Base(stored))); err != nil {
+		return nil, "", "", fmt.Sprintf("error: cannot read the original file of %s: %v", label, err)
+	}
+	return data, strings.ToLower(filepath.Ext(stored)), label, ""
+}
+
 func (a *Agent) copyDocEntry() toolEntry {
 	return toolEntry{
-		def: fnTool("copy_doc", `Copy a document or a sandbox file, on the server (the content does not pass through you). source is a saved document (u.12, s.3, p.7) or a sandbox file (tmp://a.md, storage://a.md; a bare path such as a.md means tmp://). Where the copy goes: (1) give target, a sandbox file path (tmp://work.md), to get a working file you can then change with edit_file or Grep — a document is copied as its text (for a PDF, Word or Excel document: its Markdown text, not the original file); (2) omit target to make a new saved document — a document is duplicated exactly, original file included (a PDF stays a PDF), and a sandbox text file becomes a new text document like save_doc. title names the new document (default: "Copy of …" or the file name); it lands in the project in a project session, else in the user's personal files, or where scope says (shared: owner/admin only). The source is never changed. To add one document to the end of another use edit_doc (or edit_file) with append_source.`, map[string]any{
+		def: fnTool("copy_doc", `Copy a document or a sandbox file, on the server (the content does not pass through you). source is a saved document (u.12, s.3, p.7) or a sandbox file (tmp://a.md, storage://a.md; a bare path such as a.md means tmp://). Where the copy goes: (1) give target, a sandbox file path (tmp://work.md), to get a working file you can then change with edit_file or Grep — a document is copied as its text (for a PDF, Word or Excel document: its Markdown text), unless target has the original file's extension (tmp://a.pdf for a PDF, .docx for a Word document, .xlsx …): then the original file is copied byte for byte; (2) omit target to make a new saved document — a document is duplicated exactly, original file included (a PDF stays a PDF), and a sandbox text file becomes a new text document like save_doc. title names the new document (default: "Copy of …" or the file name); it lands in the project in a project session, else in the user's personal files, or where scope says (shared: owner/admin only). The source is never changed. To add one document to the end of another use edit_doc (or edit_file) with append_source.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"source":    map[string]any{"type": "string", "description": `What to copy: a document id ("u.12") or a sandbox file ("tmp://a.md")`},
@@ -207,11 +238,27 @@ func (a *Agent) copyDoc(ctx context.Context, rc *runContext, args map[string]any
 		var data []byte
 		var label string
 		if srcIsDoc {
-			text, l, errMsg := a.sourceText(ctx, rc, src)
+			orig, origExt, l, errMsg := a.docOriginal(ctx, rc, src)
 			if errMsg != "" {
 				return errMsg, nil
 			}
-			data, label = []byte(text), l+" as text"
+			ext := strings.ToLower(path.Ext(rel))
+			switch {
+			case orig != nil && ext == origExt:
+				data, label = orig, l+" (original file)"
+			case binaryExts[ext]:
+				what := "no original file, only text"
+				if orig != nil {
+					what = "a " + origExt + " original"
+				}
+				return fmt.Sprintf("error: %s has %s, so it cannot be copied to a %s file. Name the target %s to get the original file, or .md / .txt to get its text.", l, what, ext, cmp.Or(origExt, ".md")), nil
+			default:
+				text, l, errMsg := a.sourceText(ctx, rc, src)
+				if errMsg != "" {
+					return errMsg, nil
+				}
+				data, label = []byte(text), l+" as text"
+			}
 		} else { // file to file: any content, byte for byte
 			sroot, _, srel, err := a.resolveNamespaceRoot(rc, src)
 			if err != nil {

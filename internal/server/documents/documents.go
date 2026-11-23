@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	"github.com/ivoras/harlequin/internal/server/documents/searchquery"
@@ -174,21 +175,8 @@ func (s *Store) MissingDescriptions(ctx context.Context, db *sql.DB) ([]types.Do
 // OpeningText returns the concatenated content of a document's first chunks —
 // enough context to describe or identify it without loading the whole text.
 func (s *Store) OpeningText(ctx context.Context, db *sql.DB, docID int64, maxChunks int) (string, error) {
-	rows, err := db.QueryContext(ctx,
-		`SELECT content FROM doc_chunks WHERE document_id = ? ORDER BY ord LIMIT ?`, docID, maxChunks)
-	if err != nil {
-		return "", err
-	}
-	defer rows.Close()
-	var parts []string
-	for rows.Next() {
-		var c string
-		if err := rows.Scan(&c); err != nil {
-			return "", err
-		}
-		parts = append(parts, c)
-	}
-	return strings.Join(parts, "\n"), rows.Err()
+	return joinChunks(db.QueryContext(ctx,
+		`SELECT content FROM doc_chunks WHERE document_id = ? ORDER BY ord LIMIT ?`, docID, maxChunks))
 }
 
 // ChunkContent returns one chunk's raw text by its local (scope-relative) id.
@@ -203,21 +191,46 @@ func (s *Store) ChunkContent(ctx context.Context, db *sql.DB, chunkID int64) (st
 // ingests, including save_doc reports) — its only representation is the
 // chunk table.
 func (s *Store) FullText(ctx context.Context, db *sql.DB, docID int64) (string, error) {
-	rows, err := db.QueryContext(ctx,
-		`SELECT content FROM doc_chunks WHERE document_id = ? ORDER BY ord`, docID)
+	return joinChunks(db.QueryContext(ctx,
+		`SELECT content FROM doc_chunks WHERE document_id = ? ORDER BY ord`, docID))
+}
+
+// joinChunks concatenates chunk contents in order. Consecutive windows cut by
+// chunkText share chunkOverlap runes (across page boundaries too): those are
+// glued without repeating the overlap; other chunks are separated by a blank line.
+func joinChunks(rows *sql.Rows, err error) (string, error) {
 	if err != nil {
 		return "", err
 	}
 	defer rows.Close()
-	var parts []string
+	var b strings.Builder
+	prev, first := "", true
 	for rows.Next() {
 		var c string
 		if err := rows.Scan(&c); err != nil {
 			return "", err
 		}
-		parts = append(parts, c)
+		switch {
+		case first:
+			b.WriteString(c)
+		case hasChunkOverlap(prev, c):
+			b.WriteString(string([]rune(c)[chunkOverlap:]))
+		default:
+			b.WriteString("\n\n" + c)
+		}
+		prev, first = c, false
 	}
-	return strings.Join(parts, "\n\n"), rows.Err()
+	return b.String(), rows.Err()
+}
+
+// hasChunkOverlap reports whether next starts with the chunkOverlap runes that
+// end prev, as consecutive windows cut by chunkText do (semantic chunks don't).
+func hasChunkOverlap(prev, next string) bool {
+	nr := []rune(next)
+	if len(nr) <= chunkOverlap || utf8.RuneCountInString(prev) < chunkOverlap {
+		return false
+	}
+	return strings.HasSuffix(prev, string(nr[:chunkOverlap]))
 }
 
 // FindText scans every chunk of a document for a literal, case-insensitive

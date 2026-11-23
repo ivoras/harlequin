@@ -275,3 +275,30 @@ func TestReplaceContentInsertAtStart(t *testing.T) {
 		t.Fatal("FullText differs from a fresh ingest")
 	}
 }
+
+// Overlapping chunk windows are glued back without repeating the overlap, so
+// read_doc / copy_doc show the text once — also where a window crosses a page.
+func TestFullTextDropsWindowOverlap(t *testing.T) {
+	ctx := context.Background()
+	s, _, d := replSetup(t)
+	text := strings.ReplaceAll(filler("x", 2500), "x", "č") // windows at 0, 700, 1400, 2100; multi-byte runes
+	doc, err := s.IngestInto(ctx, d, types.CreateDocumentRequest{Title: "t", Content: text}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(rows(t, d, doc.ID)); n < 3 {
+		t.Fatalf("only %d chunks; the test needs overlapping windows", n)
+	}
+	if got, _ := s.FullText(ctx, d, doc.ID); got != strings.TrimSpace(text) {
+		t.Fatalf("FullText differs from the text (len %d vs %d)", len(got), len(strings.TrimSpace(text)))
+	}
+
+	paged := filler("p", 1200)
+	if _, err := s.ReplaceContentPaged(ctx, d, doc.ID, paged, []int{0, 600}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.FullText(ctx, d, doc.ID)
+	if got != strings.TrimSpace(paged) {
+		t.Fatalf("paged FullText: %q", got)
+	}
+}
