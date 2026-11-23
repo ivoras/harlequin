@@ -76,11 +76,17 @@ func TestQuerySheetTool(t *testing.T) {
 	if !strings.Contains(string(md), "# po_kontu\n") || !strings.Contains(string(md), "| 01270000 | 14850 |") {
 		t.Fatalf("saved file:\n%s", md)
 	}
-	if out := run(map[string]any{"doc": "tmp://po_kontu.md"}); !strings.Contains(out, "is not a spreadsheet") {
+	// A Markdown file with a table (like the result saved above) is queryable;
+	// a text file without one says so.
+	if out := run(map[string]any{"doc": "tmp://po_kontu.md", "sql": "SELECT konto FROM po_kontu ORDER BY konto LIMIT 1"}); !strings.Contains(out, "| 01270000 |") {
+		t.Fatalf("markdown table: %s", out)
+	}
+	_ = a.tmpRoot(1).Write("notes.txt", []byte("just text"))
+	if out := run(map[string]any{"doc": "tmp://notes.txt"}); !strings.Contains(out, "is not a spreadsheet") {
 		t.Fatalf("non-spreadsheet: %s", out)
 	}
-	if len(a.sheets.entries) != 1 {
-		t.Fatalf("%d cache entries, want 1 (same file reused)", len(a.sheets.entries))
+	if len(a.sheets.entries) != 2 {
+		t.Fatalf("%d cache entries, want 2 (the workbook, reused, and the Markdown table)", len(a.sheets.entries))
 	}
 }
 

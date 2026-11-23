@@ -1202,6 +1202,9 @@ func (s *Server) ingestToScope(ctx context.Context, u *types.User, req types.Cre
 		}
 		if serr := s.Docs.SetStoredPath(ctx, db, doc.ID, name); serr == nil {
 			doc.StoredPath = name
+			if s.Agent != nil && documents.IsSpreadsheetMime(req.Mime) {
+				go s.Agent.PrebuildSheetCache(filepath.Join(filesDir, name), req.Mime) // the first question then skips the load
+			}
 		}
 		return doc, err
 	}
@@ -1630,7 +1633,11 @@ func (s *Server) extractDocument(ctx context.Context, in uploadInput) (req types
 		}
 		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: mime, Content: string(sheetdb.DecodeText(data))}
 	case utf8.Valid(data):
-		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: "text/plain", Content: string(data)}
+		mime := "text/plain"
+		if strings.HasSuffix(lowName, ".xml") {
+			mime = "text/xml" // e-invoices, bank statements: query_xml reads them
+		}
+		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: mime, Content: string(data)}
 	default:
 		return req, http.StatusUnsupportedMediaType, "unsupported file type (supported: PDF, Word, Excel, PowerPoint, OpenDocument, RTF, EPUB, HTML, images and text)"
 	}

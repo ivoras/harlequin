@@ -22,7 +22,7 @@ type isoDate string
 // row() for each row with at least one value (rowNum is the 1-based
 // spreadsheet row; cells[i] is column i, nil when empty). Values are float64,
 // int64, string, isoDate or nil. The sheet XML is never held in memory whole.
-func readXLSX(data []byte, sheet func(name string, hidden bool) error, row func(rowNum int, cells []any) error) error {
+func readXLSX(data []byte, sheet func(name string, hidden bool) error, row func(rowNum int, cells []any, fills []string) error) error {
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return fmt.Errorf("not an Excel (.xlsx) file: %w", err)
@@ -42,7 +42,11 @@ func readXLSX(data []byte, sheet func(name string, hidden bool) error, row func(
 	}
 	styles := map[int]cellFmt{}
 	if f := parts["xl/styles.xml"]; f != nil {
-		styles, _ = readStyles(f) // unreadable styles: dates and padded codes stay plain numbers
+		var theme []string
+		if tf := parts["xl/theme/theme1.xml"]; tf != nil {
+			theme = readTheme(tf)
+		}
+		styles, _ = readStyles(f, theme) // unreadable styles: dates and padded codes stay plain numbers
 	}
 	wb, err := readAll(parts["xl/workbook.xml"])
 	if err != nil {
@@ -102,6 +106,30 @@ func readXLSX(data []byte, sheet func(name string, hidden bool) error, row func(
 		}
 	}
 	return nil
+}
+
+// xlsxSheetCount counts a workbook's sheets (0 when it can't tell).
+func xlsxSheetCount(data []byte) int {
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return 0
+	}
+	for _, f := range zr.File {
+		if f.Name == "xl/workbook.xml" {
+			b, err := readAll(f)
+			if err != nil {
+				return 0
+			}
+			var wd struct {
+				Sheets []struct{} `xml:"sheets>sheet"`
+			}
+			if xml.Unmarshal(b, &wd) != nil {
+				return 0
+			}
+			return len(wd.Sheets)
+		}
+	}
+	return 0
 }
 
 func readAll(f *zip.File) ([]byte, error) {
@@ -169,13 +197,14 @@ func readShared(f *zip.File) ([]string, error) {
 
 // cellFmt is what a cell style's number format means for its value.
 type cellFmt struct {
-	date bool // shows a date or time
-	pad  int  // shows a whole number zero-padded to this many digits ("00000000"), 0 = no
+	date bool   // shows a date or time
+	pad  int    // shows a whole number zero-padded to this many digits ("00000000"), 0 = no
+	fill string // the cell's background colour in words ("light blue #BDD7EE"), "" = none or white
 }
 
 // readStyles maps cell-style indexes (the s attribute of a cell) to the
 // number-format facts that change how a value reads.
-func readStyles(f *zip.File) (map[int]cellFmt, error) {
+func readStyles(f *zip.File, theme []string) (map[int]cellFmt, error) {
 	b, err := readAll(f)
 	if err != nil {
 		return nil, err
@@ -187,7 +216,19 @@ func readStyles(f *zip.File) (map[int]cellFmt, error) {
 		} `xml:"numFmts>numFmt"`
 		Xfs []struct {
 			NumFmtID int `xml:"numFmtId,attr"`
+			FillID   int `xml:"fillId,attr"`
 		} `xml:"cellXfs>xf"`
+		Fills []struct {
+			Pattern struct {
+				Type string `xml:"patternType,attr"`
+				Fg   struct {
+					RGB     string  `xml:"rgb,attr"`
+					Theme   *int    `xml:"theme,attr"`
+					Indexed *int    `xml:"indexed,attr"`
+					Tint    float64 `xml:"tint,attr"`
+				} `xml:"fgColor"`
+			} `xml:"patternFill"`
+		} `xml:"fills>fill"`
 	}
 	if err := xml.Unmarshal(b, &st); err != nil {
 		return nil, err
@@ -196,13 +237,35 @@ func readStyles(f *zip.File) (map[int]cellFmt, error) {
 	for _, n := range st.NumFmts {
 		custom[n.ID] = n.Code
 	}
+	fills := make([]string, len(st.Fills))
+	for i, fl := range st.Fills {
+		p := fl.Pattern
+		if p.Type == "" || p.Type == "none" {
+			continue
+		}
+		hex := ""
+		switch {
+		case len(p.Fg.RGB) >= 6:
+			hex = p.Fg.RGB[len(p.Fg.RGB)-6:]
+		case p.Fg.Theme != nil && *p.Fg.Theme < len(theme):
+			hex = theme[*p.Fg.Theme]
+		case p.Fg.Indexed != nil && *p.Fg.Indexed < len(indexedColors):
+			hex = indexedColors[*p.Fg.Indexed]
+		}
+		fills[i] = colorWords(hex, p.Fg.Tint)
+	}
 	out := map[int]cellFmt{}
 	for i, x := range st.Xfs {
+		var cf cellFmt
 		if code, ok := custom[x.NumFmtID]; ok {
-			out[i] = cellFmt{date: isDateFormat(code), pad: zeroPad(code)}
+			cf = cellFmt{date: isDateFormat(code), pad: zeroPad(code)}
 		} else {
-			out[i] = cellFmt{date: builtinDate(x.NumFmtID)}
+			cf = cellFmt{date: builtinDate(x.NumFmtID)}
 		}
+		if x.FillID >= 0 && x.FillID < len(fills) {
+			cf.fill = fills[x.FillID]
+		}
+		out[i] = cf
 	}
 	return out, nil
 }
@@ -271,13 +334,14 @@ func serialDate(v float64, epoch time.Time) isoDate {
 	return isoDate(d.Format("2006-01-02 15:04:05"))
 }
 
-func streamSheet(f *zip.File, shared []string, styles map[int]cellFmt, epoch time.Time, row func(int, []any) error) error {
+func streamSheet(f *zip.File, shared []string, styles map[int]cellFmt, epoch time.Time, row func(int, []any, []string) error) error {
 	dec, c, err := decoder(f)
 	if err != nil {
 		return err
 	}
 	defer c.Close()
 	var cells []any
+	var fills []string
 	rowNum, lastRow := 0, 0
 	col, nextCol := 0, 0
 	var typ string
@@ -297,7 +361,7 @@ func streamSheet(f *zip.File, shared []string, styles map[int]cellFmt, epoch tim
 		case xml.StartElement:
 			switch t.Name.Local {
 			case "row":
-				cells, has, nextCol = cells[:0], false, 0
+				cells, fills, has, nextCol = cells[:0], fills[:0], false, 0
 				rowNum = lastRow + 1 // r is optional; rows then follow one another
 				for _, a := range t.Attr {
 					if a.Name.Local == "r" {
@@ -334,6 +398,12 @@ func streamSheet(f *zip.File, shared []string, styles map[int]cellFmt, epoch tim
 				inT = false
 			case "c":
 				inCell = false
+				if fl := styles[style].fill; fl != "" {
+					for len(fills) <= col {
+						fills = append(fills, "")
+					}
+					fills[col] = fl
+				}
 				v := cellValue(typ, text.String(), shared, styles[style], epoch)
 				if v == nil {
 					continue
@@ -344,7 +414,7 @@ func streamSheet(f *zip.File, shared []string, styles map[int]cellFmt, epoch tim
 				cells[col], has = v, true
 			case "row":
 				if has {
-					if err := row(rowNum, cells); err != nil {
+					if err := row(rowNum, cells, fills); err != nil {
 						return err
 					}
 				}

@@ -481,6 +481,7 @@ func maintenance(authStore *auth.Store, store *storage.Manager, mem *memory.Stor
 		})
 		sessionLog.SweepRetention(dataRetentionDays)
 		ag.SweepTmp(dataRetentionDays)
+		ag.SweepSheetCaches()
 		authStore.PruneTokens(ctx)
 	}
 	sweep() // run once at startup, then every hour

@@ -15,6 +15,7 @@ func TestCSVUploads(t *testing.T) {
 		{"izvoz.csv", cp, "text/csv", "Konto;Naziv\n01270000;Licenca čžš\n"},
 		{"izvoz.TSV", "a\tb\n", "text/tab-separated-values", "a\tb\n"},
 		{"notes.txt", "hello", "text/plain", "hello"},
+		{"un2026-020.XML", "<Invoice/>", "text/xml", "<Invoice/>"},
 	} {
 		in := uploadInput{data: []byte(c.data), filename: c.name, title: c.name, scope: "personal"}
 		req, status, msg := (&Server{}).extractDocument(context.Background(), in)

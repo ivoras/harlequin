@@ -42,6 +42,9 @@ func register() {
 		sql.Register(driverName, &sqlite3.SQLiteDriver{ConnectHook: func(c *sqlite3.SQLiteConn) error {
 			c.SetLimit(sqlite3.SQLITE_LIMIT_ATTACHED, 0)
 			c.SetLimit(sqlite3.SQLITE_LIMIT_LENGTH, 16<<20) // no gigabyte zeroblob()/printf()
+			if err := c.RegisterFunc("key", sqlKey, true); err != nil {
+				return err
+			}
 			return c.RegisterFunc("num", sqlNum, true)
 		}})
 	})
@@ -70,12 +73,69 @@ func sqlNum(v any, dec ...string) any {
 	return nil
 }
 
-// Source is one spreadsheet to load: Label names it in the schema (e.g.
-// `u.12 "Sales.xlsx"`); Format is "xlsx", "csv" or "tsv" ("" = Detect).
-type Source struct {
-	Label, Name, Format string
-	Data                []byte
+// sqlKey is the key() SQL function: a value normalised for matching the same
+// identifier written differently by two systems — upper case, no spaces, any
+// of - / . _ \ as one "-", leading zeros dropped from each group of digits.
+// '01270000' and 1270000 give "1270000"; '1/11/01' and '1-11-1' give "1-11-1".
+func sqlKey(v any) any {
+	var s string
+	switch x := v.(type) {
+	case nil:
+		return nil
+	case int64:
+		return strconv.FormatInt(x, 10)
+	case float64:
+		s = Cell(x)
+	case []byte:
+		s = string(x)
+	case string:
+		s = x
+	default:
+		s = fmt.Sprint(x)
+	}
+	var out strings.Builder
+	sep, zeros := false, true // zeros: still at the start of a digit group
+	for _, r := range strings.ToUpper(strings.TrimSpace(s)) {
+		switch {
+		case r == ' ' || r == '\u00a0':
+		case strings.ContainsRune("-/._\\", r):
+			sep = out.Len() > 0
+			zeros = true
+		default:
+			if sep {
+				out.WriteByte('-')
+				sep = false
+			}
+			isDigit := r >= '0' && r <= '9'
+			if !isDigit {
+				zeros = true
+			} else if r == '0' && zeros {
+				continue
+			} else {
+				zeros = false
+			}
+			out.WriteRune(r)
+		}
+	}
+	// A group that was all zeros ("0", "00") is kept as one zero.
+	if out.Len() == 0 && strings.ContainsRune(s, '0') {
+		return "0"
+	}
+	return out.String()
 }
+
+// Source is one spreadsheet to load. Label names it in the schema (e.g.
+// `u.12 "Sales.xlsx"`), Short is the file's own name (for table names when
+// several files load together, and the _file column of combined views).
+// Format is "xlsx", "csv", "tsv", or "md" (the pipe tables of a document's
+// Markdown Text, e.g. a PDF's); "" = Detect.
+type Source struct {
+	Label, Name, Short, Format string
+	Data                       []byte
+	Text                       string
+}
+
+var errNoTables = errors.New("the document contains no tables")
 
 // Detect tells a spreadsheet's format from its content first and its name or
 // MIME type second: "xlsx"; "xls", "xlsb", "ods" (which need converting to
@@ -126,19 +186,24 @@ type Options struct {
 	HeaderRow int
 }
 
-// Column describes one table column.
+// Column describes one table column. The counts are kept in a cache file's
+// metadata, so they are exported.
 type Column struct {
 	Name, Letter, Header string
-	nonEmpty, nums, ints int
-	dates, numText       int
-	codes                int // pure-digit text: account numbers, ids
-	decComma, decDot     int // amounts written as text that show which decimal separator they use
-	samples              []string
+	NonEmpty, Nums, Ints int
+	Dates, NumText       int
+	Codes                int // pure-digit text: account numbers, ids
+	DecComma, DecDot     int // amounts written as text that show which decimal separator they use
+	Samples              []string
+	// FillOf is the name of the column whose cell fill colours this column
+	// holds ("" for a data column).
+	FillOf string `json:",omitempty"`
 }
 
 // Table is one loaded sheet.
 type Table struct {
 	Name, Sheet, Source string
+	File                string // Source.Short
 	Hidden              bool
 	Rows                int
 	HeaderRow           int      // 0 = none
@@ -153,6 +218,7 @@ type DB struct {
 	db     *sql.DB
 	conn   *sql.Conn
 	Tables []*Table
+	Views  []*View
 	Cells  int
 }
 
@@ -169,6 +235,22 @@ func (d *DB) Close() error {
 
 // Load reads the sources into a new in-memory database.
 func Load(ctx context.Context, srcs []Source, opt Options) (*DB, error) {
+	d, err := newMem(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := d.load(ctx, srcs, opt); err != nil {
+		d.Close()
+		return nil, err
+	}
+	if err := d.seal(); err != nil {
+		d.Close()
+		return nil, err
+	}
+	return d, nil
+}
+
+func newMem(ctx context.Context) (*DB, error) {
 	register()
 	db, err := sql.Open(driverName, ":memory:")
 	if err != nil {
@@ -180,21 +262,18 @@ func Load(ctx context.Context, srcs []Source, opt Options) (*DB, error) {
 		db.Close()
 		return nil, err
 	}
-	d := &DB{db: db, conn: conn}
-	if err := d.load(ctx, srcs, opt); err != nil {
-		d.Close()
-		return nil, err
-	}
-	// From here on the connection only reads.
-	err = conn.Raw(func(dc any) error {
-		dc.(*sqlite3.SQLiteConn).RegisterAuthorizer(authorize)
+	return &DB{db: db, conn: conn}, nil
+}
+
+// seal makes the connection read-only for good: from here on only the
+// model's queries run on it.
+func (d *DB) seal() error {
+	return d.conn.Raw(func(dc any) error {
+		c := dc.(*sqlite3.SQLiteConn)
+		c.SetLimit(sqlite3.SQLITE_LIMIT_ATTACHED, 0)
+		c.RegisterAuthorizer(authorize)
 		return nil
 	})
-	if err != nil {
-		d.Close()
-		return nil, err
-	}
-	return d, nil
 }
 
 // Action codes from sqlite3.h (go-sqlite3 does not export RECURSIVE).
@@ -240,8 +319,18 @@ func (d *DB) load(ctx context.Context, srcs []Source, opt Options) error {
 	}
 	want := strings.ToLower(strings.TrimSpace(opt.Sheet))
 	sheetsSeen := []string{}
+	multi := len(srcs) > 1
 	for _, src := range srcs {
+		if src.Format == "" {
+			src.Format = Detect(src.Name, "", src.Data)
+		}
 		skip := false
+		short := src.Short
+		if short == "" {
+			base := path.Base(src.Name)
+			short = strings.TrimSuffix(base, path.Ext(base))
+		}
+		total := sheetCount(src)
 		begin := func(name string, hidden bool) error {
 			if err := finish(); err != nil {
 				return err
@@ -249,24 +338,31 @@ func (d *DB) load(ctx context.Context, srcs []Source, opt Options) error {
 			sheetsSeen = append(sheetsSeen, name)
 			skip = want != "" && strings.ToLower(name) != want
 			if !skip {
-				cur = &builder{ctx: ctx, tx: tx, used: used, opt: opt, sheet: name, source: src.Label, hidden: hidden, cells: &d.Cells}
+				cur = &builder{ctx: ctx, tx: tx, used: used, opt: opt, sheet: name, source: src.Label, file: short, hidden: hidden, cells: &d.Cells,
+					tname: tableName(multi, short, name, total)}
 			}
 			return nil
 		}
-		row := func(n int, cells []any) error {
+		row := func(n int, cells []any, fills []string) error {
 			if skip || cur == nil {
 				return nil
 			}
-			return cur.add(n, cells)
+			return cur.add(n, cells, fills)
 		}
 		format := src.Format
-		if format == "" {
-			format = Detect(src.Name, "", src.Data)
-		}
 		switch format {
+		case "md":
+			err = readMDTables(src.Text, func(name string, hidden bool) error {
+				if err := begin(name, hidden); err != nil {
+					return err
+				}
+				if cur != nil {
+					cur.csv, cur.delim, cur.headerFirst = true, ',', true
+				}
+				return nil
+			}, row)
 		case "csv", "tsv":
-			base := path.Base(src.Name)
-			if err := begin(strings.TrimSuffix(base, path.Ext(base)), false); err != nil {
+			if err := begin(short, false); err != nil {
 				return err
 			}
 			if cur != nil {
@@ -294,7 +390,37 @@ func (d *DB) load(ctx context.Context, srcs []Source, opt Options) error {
 	if want != "" && len(d.Tables) == 0 {
 		return fmt.Errorf("no sheet named %q; the sheets are: %s", opt.Sheet, strings.Join(sheetsSeen, ", "))
 	}
+	views, err := createViews(ctx, tx, d.Tables, used)
+	if err != nil {
+		return err
+	}
+	d.Views = views
 	return tx.Commit()
+}
+
+// tableName: one file's tables are named after their sheets; when several
+// files load together they are named after the file (plus the sheet when the
+// file has more than one), so "sheet1, sheet1_2, …" never hides which file a
+// table is.
+func tableName(multi bool, file, sheet string, sheets int) string {
+	switch {
+	case !multi:
+		return ident(sheet, "sheet")
+	case sheets == 1:
+		return ident(file, "t")
+	}
+	return ident(file+" "+sheet, "t")
+}
+
+// sheetCount is how many sheets (tables) a source has, for tableName.
+func sheetCount(src Source) int {
+	switch src.Format {
+	case "md":
+		return len(parseMDTables(src.Text))
+	case "csv", "tsv":
+		return 1
+	}
+	return xlsxSheetCount(src.Data)
 }
 
 var (
@@ -305,36 +431,41 @@ var (
 // builder turns one sheet's rows into a table: it buffers the first rows to
 // find the header, then streams the rest straight into SQLite.
 type builder struct {
-	ctx           context.Context
-	tx            *sql.Tx
-	used          map[string]bool
-	opt           Options
-	sheet, source string
-	hidden        bool
-	cells         *int
+	ctx                        context.Context
+	tx                         *sql.Tx
+	used                       map[string]bool
+	opt                        Options
+	sheet, source, file, tname string
+	hidden                     bool
+	cells                      *int
+	headerFirst                bool // the first row is the header (a document's table)
 
-	buf   [][]any
-	nums  []int
-	t     *Table
-	stage string // the untyped table rows load into; finish() types it
-	ins   *sql.Stmt
-	csv   bool // values came from a CSV/TSV: finish() turns written amounts into numbers
-	delim rune
+	buf      [][]any
+	bufFills [][]string
+	rowNums  []int
+	dataIdx  []int       // Columns index of data column i
+	fillIdx  map[int]int // data column i -> Columns index of its _color column
+	t        *Table
+	stage    string // the untyped table rows load into; finish() types it
+	ins      *sql.Stmt
+	csv      bool // values came from a CSV/TSV: finish() turns written amounts into numbers
+	delim    rune
 }
 
-func (b *builder) add(n int, cells []any) error {
+func (b *builder) add(n int, cells []any, fills []string) error {
 	if *b.cells += len(cells); *b.cells > MaxCells {
 		return fmt.Errorf("%w: more than %d cells; load one sheet at a time (sheet argument)", errTooBig, MaxCells)
 	}
 	if b.t == nil {
 		b.buf = append(b.buf, append([]any(nil), cells...))
-		b.nums = append(b.nums, n)
+		b.bufFills = append(b.bufFills, append([]string(nil), fills...))
+		b.rowNums = append(b.rowNums, n)
 		if len(b.buf) < headerScan {
 			return nil
 		}
 		return b.start()
 	}
-	return b.insert(n, cells)
+	return b.insert(n, cells, fills)
 }
 
 // finish copies the loaded rows into the final table, each column declared
@@ -357,12 +488,8 @@ func (b *builder) finish() error {
 			return err
 		}
 	}
-	cols := []string{`"_row" INTEGER`}
-	for _, c := range b.t.Columns {
-		cols = append(cols, strings.TrimSpace(quote(c.Name)+" "+affinity[c.Type()]))
-	}
 	for _, q := range []string{
-		fmt.Sprintf("CREATE TABLE %s (%s)", quote(b.t.Name), strings.Join(cols, ", ")),
+		createTyped(b.t.Name, b.t.Columns),
 		fmt.Sprintf("INSERT INTO %s SELECT * FROM %s", quote(b.t.Name), quote(b.stage)),
 		"DROP TABLE " + quote(b.stage),
 	} {
@@ -381,11 +508,11 @@ func (b *builder) finish() error {
 // A column with anything that is not an amount is left as it is.
 func (b *builder) csvAmounts() error {
 	for _, c := range b.t.Columns {
-		if c.numText == 0 || c.nonEmpty != c.nums+c.numText || c.dates > 0 || c.codes > 0 {
+		if c.NumText == 0 || c.NonEmpty != c.Nums+c.NumText || c.Dates > 0 || c.Codes > 0 {
 			continue
 		}
 		dec := "."
-		if c.decComma > c.decDot || (c.decComma == c.decDot && b.delim == ';') {
+		if c.DecComma > c.DecDot || (c.DecComma == c.DecDot && b.delim == ';') {
 			dec = ","
 		}
 		col, tab := quote(c.Name), quote(b.stage)
@@ -396,8 +523,8 @@ func (b *builder) csvAmounts() error {
 		if err := b.tx.QueryRowContext(b.ctx, fmt.Sprintf("SELECT count(*) FROM %s WHERE typeof(%s) = 'integer'", tab, col)).Scan(&ints); err != nil {
 			return err
 		}
-		c.nums, c.ints, c.numText = c.nonEmpty, ints, 0
-		c.samples = nil
+		c.Nums, c.Ints, c.NumText = c.NonEmpty, ints, 0
+		c.Samples = nil
 		rows, err := b.tx.QueryContext(b.ctx, fmt.Sprintf("SELECT DISTINCT %s FROM %s WHERE %s IS NOT NULL LIMIT 3", col, tab, col))
 		if err != nil {
 			return err
@@ -405,7 +532,7 @@ func (b *builder) csvAmounts() error {
 		for rows.Next() {
 			var v any
 			if rows.Scan(&v) == nil {
-				c.samples = append(c.samples, truncate(Cell(v), 40))
+				c.Samples = append(c.Samples, truncate(Cell(v), 40))
 			}
 		}
 		rows.Close()
@@ -413,9 +540,19 @@ func (b *builder) csvAmounts() error {
 	return nil
 }
 
+// createTyped is the CREATE TABLE of a final table: _row, then each column
+// with its declared type.
+func createTyped(name string, columns []*Column) string {
+	cols := []string{`"_row" INTEGER`}
+	for _, c := range columns {
+		cols = append(cols, strings.TrimSpace(quote(c.Name)+" "+affinity[c.Type()]))
+	}
+	return fmt.Sprintf("CREATE TABLE %s (%s)", quote(name), strings.Join(cols, ", "))
+}
+
 // affinity is the SQLite column type declared for each column kind.
 var affinity = map[string]string{
-	"integer": "INTEGER", "number": "NUMERIC", "date": "TEXT", "code": "TEXT", "text": "TEXT", "text-number": "TEXT",
+	"color": "TEXT", "integer": "INTEGER", "number": "NUMERIC", "date": "TEXT", "code": "TEXT", "text": "TEXT", "text-number": "TEXT",
 }
 
 // start picks the header, creates the table and inserts the buffered rows.
@@ -423,23 +560,25 @@ func (b *builder) start() error {
 	h := -1 // index into buf
 	switch {
 	case b.opt.HeaderRow > 0:
-		for i, n := range b.nums {
+		for i, n := range b.rowNums {
 			if n == b.opt.HeaderRow {
 				h = i
 			}
 		}
+	case b.headerFirst && len(b.buf) > 0:
+		h = 0
 	case b.opt.HeaderRow == 0:
 		h = detectHeader(b.buf)
 	}
 	if b.opt.HeaderRow > 0 && h < 0 && len(b.buf) > 0 {
-		return fmt.Errorf("header_row %d is not among the first %d rows with values of sheet %q (they are rows %d–%d)", b.opt.HeaderRow, headerScan, b.sheet, b.nums[0], b.nums[len(b.nums)-1])
+		return fmt.Errorf("header_row %d is not among the first %d rows with values of sheet %q (they are rows %d–%d)", b.opt.HeaderRow, headerScan, b.sheet, b.rowNums[0], b.rowNums[len(b.rowNums)-1])
 	}
-	t := &Table{Sheet: b.sheet, Source: b.source, Hidden: b.hidden}
-	t.Name = uniqueName(ident(b.sheet, "sheet"), b.used)
+	t := &Table{Sheet: b.sheet, Source: b.source, File: b.file, Hidden: b.hidden}
+	t.Name = uniqueName(b.tname, b.used)
 	b.stage = "_load_" + t.Name // idents never start with "_"
 	var hdr []any
 	if h >= 0 {
-		hdr, t.HeaderRow = b.buf[h], b.nums[h]
+		hdr, t.HeaderRow = b.buf[h], b.rowNums[h]
 		for _, r := range b.buf[:h] {
 			if len(t.Above) < aboveKeep {
 				t.Above = append(t.Above, rowText(r))
@@ -458,11 +597,11 @@ func (b *builder) start() error {
 		if i <= h {
 			continue // the header and the rows above it are not data
 		}
-		if err := b.insert(b.nums[i], r); err != nil {
+		if err := b.insert(b.rowNums[i], r, b.bufFills[i]); err != nil {
 			return err
 		}
 	}
-	b.buf, b.nums = nil, nil
+	b.buf, b.bufFills, b.rowNums = nil, nil, nil
 	return nil
 }
 
@@ -475,7 +614,7 @@ func (b *builder) widen(width int, hdr []any) error {
 		colUsed[c.Name] = true
 	}
 	var adds []string
-	for i := len(t.Columns); i < width; i++ {
+	for i := len(b.dataIdx); i < width; i++ {
 		c := &Column{Letter: colName(i)}
 		if i < len(hdr) && hdr[i] != nil {
 			c.Header = strings.TrimSpace(fmt.Sprint(hdr[i]))
@@ -485,9 +624,31 @@ func (b *builder) widen(width int, hdr []any) error {
 			base = strings.ToLower(c.Letter)
 		}
 		c.Name = uniqueName(base, colUsed)
+		b.dataIdx = append(b.dataIdx, len(t.Columns))
 		t.Columns = append(t.Columns, c)
 		adds = append(adds, c.Name)
 	}
+	return b.addColumns(first, adds)
+}
+
+// addFill adds the _color column of data column i.
+func (b *builder) addFill(i int) error {
+	base := b.t.Columns[b.dataIdx[i]]
+	used := map[string]bool{"_row": true}
+	for _, c := range b.t.Columns {
+		used[c.Name] = true
+	}
+	c := &Column{Letter: base.Letter, Header: base.Header, FillOf: base.Name, Name: uniqueName(base.Name+"_color", used)}
+	if b.fillIdx == nil {
+		b.fillIdx = map[int]int{}
+	}
+	b.fillIdx[i] = len(b.t.Columns)
+	b.t.Columns = append(b.t.Columns, c)
+	return b.addColumns(false, []string{c.Name})
+}
+
+func (b *builder) addColumns(first bool, adds []string) error {
+	t := b.t
 	if first {
 		cols := []string{`"_row" INTEGER`}
 		for _, n := range adds {
@@ -512,50 +673,67 @@ func (b *builder) widen(width int, hdr []any) error {
 	return err
 }
 
-func (b *builder) insert(n int, cells []any) error {
-	if len(cells) > len(b.t.Columns) {
-		if err := b.widen(len(cells), nil); err != nil {
+func (b *builder) insert(n int, cells []any, fills []string) error {
+	if len(cells) > len(b.dataIdx) || len(fills) > len(b.dataIdx) {
+		if err := b.widen(max(len(cells), len(fills)), nil); err != nil {
 			return err
+		}
+	}
+	for i, f := range fills {
+		if _, ok := b.fillIdx[i]; f != "" && !ok {
+			if err := b.addFill(i); err != nil {
+				return err
+			}
 		}
 	}
 	args := make([]any, len(b.t.Columns)+1)
 	args[0] = n
+	for i, f := range fills {
+		if f != "" {
+			c := b.t.Columns[b.fillIdx[i]]
+			c.NonEmpty++
+			if len(c.Samples) < 3 && !contains(c.Samples, f) {
+				c.Samples = append(c.Samples, f)
+			}
+			args[b.fillIdx[i]+1] = f
+		}
+	}
 	for i, v := range cells {
 		if v == nil {
 			continue
 		}
-		c := b.t.Columns[i]
-		c.nonEmpty++
+		c := b.t.Columns[b.dataIdx[i]]
+		c.NonEmpty++
 		switch x := v.(type) {
 		case int64:
-			c.nums++
-			c.ints++
+			c.Nums++
+			c.Ints++
 		case float64:
-			c.nums++
+			c.Nums++
 		case isoDate:
-			c.dates++
+			c.Dates++
 			v = string(x)
 		case string:
 			// Pure digits are codes (accounts, ids), not amounts.
 			if digitsRE.MatchString(x) {
-				c.codes++
+				c.Codes++
 			} else if _, ok := parseNum(x); ok {
-				c.numText++
+				c.NumText++
 				switch sepVote(x) {
 				case ',':
-					c.decComma++
+					c.DecComma++
 				case '.':
-					c.decDot++
+					c.DecDot++
 				}
 			}
 		}
-		if len(c.samples) < 3 {
+		if len(c.Samples) < 3 {
 			s := truncate(fmt.Sprint(v), 40)
-			if !contains(c.samples, s) {
-				c.samples = append(c.samples, s)
+			if !contains(c.Samples, s) {
+				c.Samples = append(c.Samples, s)
 			}
 		}
-		args[i+1] = v
+		args[b.dataIdx[i]+1] = v
 	}
 	b.t.Rows++
 	_, err := b.ins.ExecContext(b.ctx, args...)
@@ -640,7 +818,9 @@ func ident(s, prefix string) string {
 	}
 	out := strings.TrimRight(sb.String(), "_")
 	if len(out) > 40 {
-		out = strings.TrimRight(out[:40], "_")
+		// Cut the middle: file names differ at the end ("…_06_2026") as often
+		// as at the start.
+		out = strings.TrimRight(out[:20], "_") + "_" + strings.TrimLeft(out[len(out)-19:], "_")
 	}
 	if out == "" {
 		return prefix
@@ -688,19 +868,21 @@ func contains(xs []string, s string) bool {
 // Type is the column's kind as the schema shows it.
 func (c *Column) Type() string {
 	switch {
-	case c.nonEmpty == 0:
+	case c.FillOf != "":
+		return "color"
+	case c.NonEmpty == 0:
 		return "empty"
-	case c.dates == c.nonEmpty:
+	case c.Dates == c.NonEmpty:
 		return "date"
-	case c.nums == c.nonEmpty && c.ints == c.nums:
+	case c.Nums == c.NonEmpty && c.Ints == c.Nums:
 		return "integer"
-	case c.nums == c.nonEmpty:
+	case c.Nums == c.NonEmpty:
 		return "number"
-	case c.codes > 0 && c.dates == 0 && c.nums == c.ints && c.codes+c.ints == c.nonEmpty:
+	case c.Codes > 0 && c.Dates == 0 && c.Nums == c.Ints && c.Codes+c.Ints == c.NonEmpty:
 		return "code"
-	case c.nums == 0 && c.dates == 0 && c.numText*10 >= c.nonEmpty*8:
+	case c.Nums == 0 && c.Dates == 0 && c.NumText*10 >= c.NonEmpty*8:
 		return "text-number"
-	case c.nums == 0 && c.dates == 0:
+	case c.Nums == 0 && c.Dates == 0:
 		return "text"
 	}
 	return "mixed"
@@ -774,9 +956,23 @@ func explain(err error) error {
 }
 
 // Schema describes the tables for a model: names, columns with types, the
-// header each came from and example values.
+// header each came from and example values. Combined views come first; a
+// table in a view after the view's first only says how it differs.
 func (d *DB) Schema() string {
 	var sb strings.Builder
+	firstOf := map[string]*Table{} // table -> the first table of its view
+	byName := map[string]*Table{}
+	for _, t := range d.Tables {
+		byName[t.Name] = t
+	}
+	for _, v := range d.Views {
+		fmt.Fprintf(&sb, "VIEW %s — the %d tables %s stacked into one (they have the same columns). Use it for questions over all of them; _file and _sheet say which file and sheet each row came from.\n", v.Name, len(v.Tables), strings.Join(v.Tables, ", "))
+		first := byName[v.Tables[0]]
+		fmt.Fprintf(&sb, "  _file, _sheet, _row, %s\n\n", strings.Join(v.Columns, ", "))
+		for _, n := range v.Tables[1:] {
+			firstOf[n] = first
+		}
+	}
 	for _, t := range d.Tables {
 		fmt.Fprintf(&sb, "TABLE %s — sheet %q of %s, %d data rows", t.Name, t.Sheet, t.Source, t.Rows)
 		if t.Hidden {
@@ -789,6 +985,20 @@ func (d *DB) Schema() string {
 			sb.WriteString("; no header row found, columns are named by letter")
 		}
 		sb.WriteString("\n")
+		if f := firstOf[t.Name]; f != nil {
+			var diff []string
+			for _, c := range t.Columns {
+				if fc := columnByName(f, c.Name); fc.Type() != c.Type() {
+					diff = append(diff, c.Name+" is "+c.Type()+" here")
+				}
+			}
+			note := ""
+			if len(diff) > 0 {
+				note = "; " + strings.Join(diff, ", ")
+			}
+			fmt.Fprintf(&sb, "  (same columns as %s%s)\n\n", f.Name, note)
+			continue
+		}
 		for _, a := range t.Above {
 			fmt.Fprintf(&sb, "  (row above the header: %s)\n", a)
 		}
@@ -802,17 +1012,20 @@ func (d *DB) Schema() string {
 			if c.Header != "" {
 				from = fmt.Sprintf("%q, column %s", truncate(c.Header, 60), c.Letter)
 			}
+			if c.FillOf != "" {
+				from = "background colour of the cells of " + c.FillOf + " (" + from + ")"
+			}
 			ex := ""
-			if len(c.samples) > 0 {
-				q := make([]string, len(c.samples))
-				for i, s := range c.samples {
+			if len(c.Samples) > 0 {
+				q := make([]string, len(c.Samples))
+				for i, s := range c.Samples {
 					q[i] = strconv.Quote(s)
 				}
 				ex = "  e.g. " + strings.Join(q, ", ")
 			}
 			fmt.Fprintf(&sb, "  %-*s  %-11s %s%s\n", w, c.Name, c.Type(), from, ex)
-			if c.Type() == "code" && c.ints > 0 {
-				fmt.Fprintf(&sb, "  %-*s  (%d of these codes were numbers in the sheet, so a leading zero may be missing: to match codes, compare ltrim(%s, '0'))\n", w, "", c.ints, c.Name)
+			if c.Type() == "code" && c.Ints > 0 {
+				fmt.Fprintf(&sb, "  %-*s  (%d of these codes were numbers in the sheet, so a leading zero may be missing: to match codes, compare key(%s))\n", w, "", c.Ints, c.Name)
 			}
 		}
 		sb.WriteString("\n")

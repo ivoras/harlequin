@@ -357,6 +357,11 @@ func IsSpreadsheetMime(m string) bool {
 	return false
 }
 
+// SheetCacheInfix marks query_sheet's cache files next to a stored file:
+// <stored>.sheetdb.<hash>.v<n>. They go with the document (DeleteFrom) and
+// are not copied with it (CopyInto): a copy rebuilds its own.
+const SheetCacheInfix = ".sheetdb."
+
 // IsSpreadsheetName tells a spreadsheet file by its extension.
 func IsSpreadsheetName(name string) bool {
 	switch strings.ToLower(filepath.Ext(name)) {
@@ -982,6 +987,10 @@ func (s *Store) DeleteFrom(ctx context.Context, db *sql.DB, filesDir string, id 
 				log.Printf("documents: delete %d: remove stored file %q: %v", id, stored+suffix, err)
 				return fmt.Errorf("document %d removed from the index, but deleting its stored file %q failed: %w", id, stored+suffix, err)
 			}
+		}
+		caches, _ := filepath.Glob(filepath.Join(filesDir, filepath.Base(stored)) + SheetCacheInfix + "*")
+		for _, c := range caches {
+			_ = os.Remove(c)
 		}
 	}
 	return nil

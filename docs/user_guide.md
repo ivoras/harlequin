@@ -69,6 +69,25 @@ exports in the older Windows encoding. Account numbers and other codes keep
 their leading zeros. To get the full result as a file, ask for it as an Excel
 workbook.
 
+### Comparing and combining files
+
+Attach all the files a question is about — "compare the twelve monthly exports
+with this open-items report", "which invoices from the PDF are not in the
+ledger", "put all the sales files into one table" — and the agent loads them
+together and answers with one query over all of them. Files with the same
+columns are treated as one combined table, invoice and account numbers that two
+systems write differently (`1/11/01` and `1-11-1`, `01270000` and `1270000`)
+are matched, and tables inside PDF and Word files can take part. If your sheet
+marks rows with a background colour (for example paid items in blue), you can
+ask about the colour. A file you have asked about before opens instantly the
+next time, for a week.
+
+### E-invoices and other XML files
+
+XML files such as e-invoices (e-Račun) and bank statements are read field by
+field: ask what an invoice contains, whether required data is present, or to
+total amounts across many XML files.
+
 ### PDF and Word files
 
 Ask for "a PDF of this report" or "a Word version of that letter" and the agent

@@ -404,7 +404,7 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 		def: fnTool("run_js", `Execute JavaScript in a sandbox and return its output. The engine (goja) is ES5.1-compatible, and also supports much of ES6: let/const, arrow functions, template literals, classes, destructuring, default/rest/spread, for…of, generators, Map/Set, Symbol, Promise, typed arrays, the ** (exponentiation) operator, and BigInt. Emit output with println()/print() or console.log() (console.log/info/warn/error/debug all print a line; objects print as JSON).
 BigInt follows the JS spec strictly: raise to a power with the ** operator (e.g. 10n ** 3n) — there is NO BigInt.pow()/.pow() method; and NEVER mix BigInt with Number in one expression (2n + 3, or BigInt added to Math.pow(...), throws "Cannot mix BigInt and other types") — convert explicitly with BigInt(x) / Number(x) first. Also: break/continue only inside a loop or switch, not in a forEach/map callback; toFixed(n) needs 0<=n<=100.
 Available helpers: fetch(url) -> {status, body, finalUrl, contentType}; dom.parse(html) -> handle, then dom.query(handle, cssSelector), dom.grep(handle, text), dom.json(handle). dom.query/dom.grep return node objects with fields .tag/.class/.attrs/.text and methods .getAttribute(name) and .textContent (full text); query results are themselves queryable (dom.query(node, sel)). Per-user file stores tmp.* and storage.* (read/write/list/remove/exists); load(uri)/include(uri) for skill://<skill>/<path>, storage://<path>, tmp://<path> scripts.
-Documents and spreadsheets: read_doc(ref) returns a document's full text (ref like "u.12", or a sandbox path). sheets.query(doc, sql[, {sheet, header_row, more_docs}]) runs a SQLite SELECT over a spreadsheet (same tables and column names as the query_sheet tool) and returns an array of row objects, e.g. sheets.query("u.12", "SELECT kupac, SUM(iznos) AS s FROM prodaja GROUP BY kupac").forEach(function(r){ println(r.kupac + ": " + r.s); }); sheets.tables(doc) lists the tables and columns. Do filtering, grouping and summing in the SQL and use JS only for logic SQL can't express. Never copy rows from a spreadsheet into your code as literals: read them with sheets.query (or read_doc), so the script works on the real data. The first use of a big workbook can take several seconds; call query_sheet first to see its tables.
+Documents and spreadsheets: read_doc(ref) returns a document's full text (ref like "u.12", or a sandbox path). sheets.query(doc, sql[, {sheet, header_row, more_docs}]) runs a SQLite SELECT over a spreadsheet (same tables and column names as the query_sheet tool) and returns an array of row objects, e.g. sheets.query("u.12", "SELECT kupac, SUM(iznos) AS s FROM prodaja GROUP BY kupac").forEach(function(r){ println(r.kupac + ": " + r.s); }); sheets.tables(doc) lists the tables and columns. Do filtering, grouping and summing in the SQL and use JS only for logic SQL can't express. Never copy rows from a spreadsheet into your code as literals: read them with sheets.query (or read_doc), so the script works on the real data. The first use of a big workbook can take several seconds; call query_sheet first to see its tables. XML (e-invoices, bank statements): xml.query(doc, path) returns [{path, value, attrs}] for a query_xml path (e.g. xml.query("u.7", "//cac:InvoiceLine/cbc:LineExtensionAmount")), xml.outline(doc) the structure as text — use them to check or sum values across many XML files in one script.
 Your code is the body of a function the runtime already wraps for you: write top-level statements (a bare top-level 'return' is allowed and its value is captured) — do NOT wrap your code in 'function(){...}' (an un-called function runs nothing, and 'function() {' parses as a nameless declaration -> "Unexpected token (").
 Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NOT both). To parse a saved HTML page (e.g. a WebFetchDOM tmp:// handle), that page is DATA, not a script: put JS in 'code' and read it with tmp.read('<handle>'), e.g. code: "var h = dom.parse(tmp.read('page-x.html')); println(dom.query(h, 'div.price').length);". An optional args object is exposed to the script as the global 'args'.`, map[string]any{
 			"type": "object",
@@ -419,6 +419,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 			script, _ := args["script"].(string)
 			rcx := a.jsRunContext(ctx, rc)
 			rcx.Globals = a.sheetJSGlobals(ctx, rc)
+			rcx.Globals["xml"] = a.xmlJSGlobals(ctx, rc)
 			if jsArgs, ok := args["args"].(map[string]any); ok {
 				rcx.Globals["args"] = jsArgs
 			}
@@ -458,6 +459,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 	}
 
 	reg["query_sheet"] = a.querySheetEntry()
+	reg["query_xml"] = a.queryXMLEntry()
 	reg["calculator"] = a.calculatorEntry()
 
 	if a.NotifyDispatch != nil {
@@ -603,6 +605,9 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 					if _, given := args["limit"]; !given {
 						args["limit"] = 4000
 					}
+				}
+				if mime == "text/xml" || strings.HasSuffix(strings.ToLower(stored), ".xml") {
+					note = fmt.Sprintf("[This is an XML document: read its values with query_xml (doc %q; first without path for the structure, then with paths), not by reading the raw XML.]\n\n", docRef(doc)) + note
 				}
 				if strings.HasPrefix(mime, "image/") {
 					note = "[This document is an image. "

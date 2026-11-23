@@ -59,7 +59,11 @@ It's perfectly capable of playing nicely with specific requirements such as EU-b
     (reports, letters, tables) typeset from Markdown or HTML.
   - *Spreadsheets of any size*: questions about Excel/CSV data are answered by
     SQL over every row on the server (`query_sheet`), not by the model reading
-    the file; account codes keep their leading zeros.
+    the file; account codes keep their leading zeros. Several files (and the
+    tables in PDF/Word files) are joined, reconciled and stacked in one query;
+    loaded files are cached on disk for a week.
+  - *XML*: e-invoices, bank statements and other XML files are read field by
+    field (`query_xml`).
   - *PDF pages*: cut, split and merge pages of existing PDFs.
   - *Sharing*: e-mail documents as attachments; copy and concatenate documents
     server-side (see [docs/TOOLS.md](docs/TOOLS.md)).

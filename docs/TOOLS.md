@@ -148,7 +148,8 @@ stores, and `load(uri)`/`include(uri)` for `skill://`/`storage://`/`tmp://` scri
 For documents: `read_doc(ref)` returns a document's (or sandbox file's) full text;
 `sheets.query(doc, sql[, {sheet, header_row, more_docs}])` runs a `query_sheet`
 SELECT and returns row objects (columns in SELECT order, at most 200,000 rows);
-`sheets.tables(doc)` lists the tables and columns. Scripts should read data this
+`sheets.tables(doc)` lists the tables and columns; `xml.query(doc, path)` /
+`xml.outline(doc)` read XML like `query_xml`. Scripts should read data this
 way, never as literals typed into the code.
 **Examples:**
 - inline: `run_js({"code": "var r = fetch('https://example.com'); println(r.status);"})`
@@ -270,7 +271,8 @@ files (`tmp://…` scratch space, `storage://…` kept per user; a bare path suc
 | `send_email` (`doc`, `attachments`) | yes | yes |
 | `search_docs`, `align_docs`, `list_documents` | yes | no — they work on the search index; `save_doc` a file first, or use `Grep` on it |
 | `pdf_pages` | yes (PDF documents) | no |
-| `query_sheet` (`doc`, `more_docs`; `save_to` is a sandbox file) | yes (spreadsheets) | yes (`.xlsx`, `.csv`) |
+| `query_sheet` (`doc`, `more_docs`; `save_to` is a sandbox file) | yes (spreadsheets; PDF/Word tables) | yes (`.xlsx`, `.csv`, `.md` …) |
+| `query_xml` | yes | yes (`.xml`) |
 | `move_doc`, `delete_doc` | yes | no |
 
 ### Find and read
@@ -308,7 +310,8 @@ pointing to `query_sheet` and, unless `limit` is given, shows only the first
 
 #### `query_sheet`
 **Why:** answer questions about a spreadsheet (Excel `.xlsx`/`.xls`/`.xlsb`,
-OpenDocument `.ods`, CSV, TSV) of any size with SQL, without the model reading its rows. The stored original
+OpenDocument `.ods`, CSV, TSV) of any size — or about the tables in a PDF or
+Word document — with SQL, without the model reading its rows. The stored original
 is streamed into a private, read-only, in-memory SQLite database: one table per
 sheet, column names derived from the headers (`"Iznos (EUR)"` → `iznos_eur`), a
 `_row` column with the spreadsheet row number. Without `sql` it returns the
@@ -319,6 +322,27 @@ spreadsheets beside the first for joins and comparisons; `sheet` loads one sheet
 `header_row` overrides header detection (-1 = no header); `save_to`
 (`tmp://x.md` / `.csv` / `.json`) writes all result rows (≤ 200,000) to a
 sandbox file instead — `.md` feeds `create_excel`'s `source`.
+- **Several files:** `more_docs` lists every other file of the question. Each
+  table is then named after its file (`"F2 Podaci 03-2026.xlsx"` →
+  `f2_podaci_03_2026`, plus the sheet when the file has several), and tables
+  with the same columns — across files or sheets — are combined in a view
+  `<common prefix>_all` with `_file` and `_sheet` columns; a column that is
+  numeric in one table and text in another is text in the view. The schema
+  lists views first and abbreviates their member tables to "same columns as …".
+- **Matching and reconciling:** `key(x)` normalises identifiers written
+  differently by two systems (case, spaces, `- / . _ \` separators, leading
+  zeros per digit group: `'1/11/01'` = `'1-11-1'`, `'01270000'` = `1270000`);
+  the tool description carries recipes for rows only in A or B, amount
+  differences and lookups (VLOOKUP-style joins). The schema shows each
+  column's Excel letter, so "column V" can be resolved.
+- **Cell colours:** a column whose cells have background fills gets a companion
+  `<column>_color` column (type `color`) holding the colour in words and hex
+  (`light blue #BDD7EE`; RGB, theme colours with tint and the indexed palette
+  are resolved, white counts as none), for sheets that mark rows by colour.
+- **PDF / Word / Markdown tables:** a document that is not a spreadsheet is read
+  from its converted text: each pipe table becomes a table named after the
+  heading above it, tables split across pages (same header) are joined, values
+  are typed like CSV values. A sandbox `.md` file with tables works the same.
 - **Formats:** the format is detected from the content (zip parts, the OLE
   signature of `.xls`), the name only for CSV/TSV. `.xls`, `.xlsb` and `.ods`
   are converted to `.xlsx` with LibreOffice once per load (the cache keys on
@@ -345,13 +369,38 @@ sandbox file instead — `.md` feeds `create_excel`'s `source`.
   reads `1.234,56`, `1,234.56`, `12,5 €`, `(123)`), `text`, `mixed`, `empty`.
   Declared column types make an `integer` account column join a `code` one
   (`1270000` = `'01270000'`); the schema flags code columns that held bare
-  numbers, whose leading zeros may be missing (`ltrim(col, '0')` matches them).
+  numbers, whose leading zeros may be missing (`key(col)` matches them).
 - **Safety:** an authorizer allows only reads (no writes, `ATTACH`, `PRAGMA`,
-  extensions); queries stop after 30 s. Loaded workbooks are cached (3 at most,
-  dropped after 15 idle minutes and at the latest a week after loading; a
-  changed file is loaded afresh). One load is capped at 20M cells.
+  extensions); queries stop after 30 s. One load is capped at 20M cells.
+- **Caching:** each document's tables are kept on disk next to its stored
+  original as `<stored>.sheetdb.<hash>.v<n>` (built right after upload for
+  spreadsheets, otherwise on first use), so a returning user's query opens the
+  file instead of reloading the workbook (3M cells: 0.2 s instead of ~11 s).
+  The name carries the content hash and the loader version, so an edited file
+  or a changed loader never reads an old cache; files are rebuilt after a week
+  and swept hourly when older, deleted with their document, and not copied
+  with it. Several documents are assembled from their cache files in memory
+  (12 files of 100k cells: ~0.2 s). Sandbox files and non-default
+  `sheet`/`header_row` loads are not cached on disk. Open databases are kept
+  in memory (6 at most, 15 idle minutes, a week at most).
 **Example:** `query_sheet({"doc": "u.12"})`, then
 `query_sheet({"doc": "u.12", "sql": "SELECT kupac, SUM(iznos) AS ukupno FROM prodaja GROUP BY kupac ORDER BY ukupno DESC LIMIT 10"})`
+
+#### `query_xml`
+**Why:** read an XML document — UBL e-invoices (e-Račun), bank statements,
+exports — without the model reading raw XML. Without `path` it returns an
+outline: every element path once, indented, with its count (`×N`), attributes
+and first value. With `path`, or `paths` for many fields in one call, it returns
+the values with their exact positions (`/Invoice/cac:InvoiceLine[2]/cbc:ID`).
+Paths are a small XPath: `/a/b` from the root, `//b` (or a bare `b`) anywhere,
+`*`, `..`, `[2]`, `[@attr]`, `[@attr='v']`, `[child]`, `[child='v']`, and a final
+`/@attr`; names match with or without their prefix. A path that matches nothing
+says `not found`, which is how required elements are checked. The stored
+original's exact bytes are read (declared encodings such as windows-1250 are
+honoured); malformed XML is reported. In `run_js`, `xml.query(doc, path)` and
+`xml.outline(doc)` do the same for scripts over many files. XML uploads are
+typed `text/xml`; `read_doc` on one points to `query_xml`.
+**Example:** `query_xml({"doc": "u.7", "paths": ["/Invoice/cbc:ID", "//cbc:PayableAmount", "//cac:AccountingSupplierParty//cbc:EndpointID"]})`
 
 #### `check_text`
 **Why:** authoritatively confirm or rule out that an exact phrase exists

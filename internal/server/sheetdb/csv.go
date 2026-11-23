@@ -89,7 +89,7 @@ func sniffDelim(data []byte) rune {
 // leading zero stay text (codes). Amounts with separators ("1.234,56") stay
 // text here; the builder converts whole columns of them once it knows which
 // separator the column uses. It returns the delimiter used.
-func readCSV(data []byte, tsv bool, row func(rowNum int, cells []any) error) (rune, error) {
+func readCSV(data []byte, tsv bool, row func(rowNum int, cells []any, fills []string) error) (rune, error) {
 	data = DecodeText(data)
 	delim := '\t'
 	if !tsv {
@@ -116,7 +116,7 @@ func readCSV(data []byte, tsv bool, row func(rowNum int, cells []any) error) (ru
 			cells[i] = csvValue(s)
 		}
 		if has {
-			if err := row(n, cells); err != nil {
+			if err := row(n, cells, nil); err != nil {
 				return delim, err
 			}
 		}
