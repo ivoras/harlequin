@@ -670,8 +670,9 @@ title) saves a **new saved document** and leaves the original alone (project in 
 project session, else personal; `scope` as in `create_pdf`); `save_to` (a sandbox
 path such as `tmp://marked.pdf`, `overwrite` to replace) writes a **temporary
 file** (see "Downloading sandbox files" below). A PDF made by `create_pdf` is
-refused in place — it is rebuilt from its source text on every `edit_doc`, which
-would drop the marks — so it needs `save_as` or `save_to`. Shared documents
+marked in place too: the applied marks are also recorded in its `.src.json`
+sidecar (`marks`), and every `edit_doc` rebuild re-applies them; a mark whose text
+the edit removed is dropped and named in the result. Shared documents
 follow `edit_doc`'s rule (owner/admin).
 Scanned PDFs have no text to find; positioned notes work on them.
 **Examples:**

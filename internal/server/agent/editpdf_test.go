@@ -95,11 +95,15 @@ func TestEditPDFAndSaveAs(t *testing.T) {
 		if out = call("edit_pdf", map[string]any{"doc": ref, "marks": []any{map[string]any{"kind": "highlight", "text": "absent"}}}); !strings.HasPrefix(out, "error: nothing was marked") || marked(path) {
 			t.Fatalf("nothing marked: %s", out)
 		}
-		// A create_pdf document (it has a source sidecar) is refused in place but fine as a copy.
+		// A create_pdf document (it has a source sidecar) is marked in place, and
+		// the applied marks are recorded in the sidecar for later rebuilds.
 		gref, gpath := add("made.pdf", pdfMime, "x", src, ".pdf")
 		os.WriteFile(gpath+sidecarExt, []byte(`{"kind":"pdf","format":"markdown","source":"# x"}`), 0o600)
-		if out = call("edit_pdf", map[string]any{"doc": gref, "marks": marks}); !strings.Contains(out, "made by create_pdf") || marked(gpath) {
+		if out = call("edit_pdf", map[string]any{"doc": gref, "marks": marks}); !strings.Contains(out, "kept with the document's source") || !marked(gpath) {
 			t.Fatalf("sidecar doc in place: %s", out)
+		}
+		if side, _ := os.ReadFile(gpath + sidecarExt); !strings.Contains(string(side), `"text":"total 120"`) || strings.Contains(string(side), "nowhere") {
+			t.Fatalf("sidecar marks: %s", side)
 		}
 		if out = call("edit_pdf", map[string]any{"doc": gref, "marks": marks, "save_as": "made marked"}); !strings.Contains(out, "new document u.") {
 			t.Fatalf("sidecar doc as copy: %s", out)

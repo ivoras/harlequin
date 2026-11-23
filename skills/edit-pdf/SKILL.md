@@ -102,9 +102,9 @@ There are three places, like `edit_doc`:
    changed where it is.
 2. **A new document** — `save_as: "<title>"`. The original is untouched and the
    user gets a second PDF in their files (in the project in a project session,
-   else personal; `scope: "shared"` for owners/admins). Use this too for a PDF
-   made by `create_pdf`: it is rebuilt from its text whenever it is edited, so
-   marks cannot go into it in place.
+   else personal; `scope: "shared"` for owners/admins). A PDF made by
+   `create_pdf` is marked in place like any other: its marks are put back when
+   its text is later edited with `edit_doc`.
 3. **A temporary copy** — `save_to: "tmp://marked.pdf"` (`overwrite: true` to
    replace an earlier one). Write that path in your reply and the user gets a
    **download link**; the file is removed after a while and is not in their

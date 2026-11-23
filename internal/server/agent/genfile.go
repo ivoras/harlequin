@@ -11,6 +11,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/mdpdf"
 	"github.com/ivoras/harlequin/internal/server/mdword"
 	"github.com/ivoras/harlequin/internal/server/mdxlsx"
+	"github.com/ivoras/harlequin/internal/server/pdfextract"
 )
 
 // Documents made by create_excel/create_pdf/create_word keep what they were
@@ -35,6 +36,9 @@ type genSource struct {
 	Format    string `json:"format"` // markdown | html
 	Landscape bool   `json:"landscape"`
 	Source    string `json:"source"` // exactly as given
+	// Marks are edit_pdf annotations on a generated PDF, re-applied whenever the
+	// file is rebuilt so they survive edit_doc.
+	Marks []pdfextract.Mark `json:"marks,omitempty"`
 }
 
 // genOut is what a converter produces from a genSource.

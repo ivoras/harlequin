@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -86,7 +87,7 @@ func (a *Agent) pdfInput(ctx context.Context, rc *runContext, ref string) (doc *
 	return doc, data, strings.TrimSuffix(doc.Title, ".pdf"), ""
 }
 
-const editPDFPrompt = `Annotate a PDF: highlight, underline, strike out or box passages, and attach comments or sticky notes. The marks are standard PDF annotations that every viewer shows, edits and prints; the pages and text are not changed. doc is a saved PDF document ("u.12") or a sandbox PDF ("tmp://a.pdf"). marks is a list; each mark has a kind (highlight, underline, strikeout, squiggly, box, note) and usually text, the exact phrase to mark (case-insensitive; EVERY occurrence is marked unless you give page and/or nth, so for one passage give page, or a longer phrase). Phrases are matched within a line: do not send text that spans a line break (mark the first words). A table row is one line: to mark a whole row, give the row's full text as read_doc or check_text shows it (cells separated by single spaces); the mark covers everything the phrase matched, so a box round a whole row frames the row. Add comment to attach a comment to the mark (what the user reads when they hover or click it); color is yellow, green, blue, pink, red, orange, purple or #RRGGBB. A note (kind "note") with text puts a sticky-note icon at the phrase; without text, give page and x, y (points from the page's top-left corner, A4 is about 595 x 842). load_skill "edit-pdf" for how to choose phrases, kinds, colours and comments. Find the pages first with check_text, or read_doc, and call this tool ONCE with all the marks. The result lists, per mark, how many annotations were made and on which pages, and what could not be found: tell the user about those. Like edit_doc, it edits IN PLACE by default: the saved document keeps its id, title and scope and the user's file now shows the marks (edit_doc with doc and undo true restores the version before the last edit, one step back); a sandbox PDF is changed where it is. Give save_as, a title, to leave the original untouched and save the result as a NEW document instead (in the project in a project session, else personal, or scope "shared" for owner/admin); give save_to, a sandbox path such as "tmp://marked.pdf", to write a new temporary file (write its tmp:// path in your reply: the user gets a download link, valid for a while). A PDF made by create_pdf cannot be marked in place (it is rebuilt from its text whenever it is edited, which would drop the marks): use save_as.`
+const editPDFPrompt = `Annotate a PDF: highlight, underline, strike out or box passages, and attach comments or sticky notes. The marks are standard PDF annotations that every viewer shows, edits and prints; the pages and text are not changed. doc is a saved PDF document ("u.12") or a sandbox PDF ("tmp://a.pdf"). marks is a list; each mark has a kind (highlight, underline, strikeout, squiggly, box, note) and usually text, the exact phrase to mark (case-insensitive; EVERY occurrence is marked unless you give page and/or nth, so for one passage give page, or a longer phrase). Phrases are matched within a line: do not send text that spans a line break (mark the first words). A table row is one line: to mark a whole row, give the row's full text as read_doc or check_text shows it (cells separated by single spaces); the mark covers everything the phrase matched, so a box round a whole row frames the row. Add comment to attach a comment to the mark (what the user reads when they hover or click it); color is yellow, green, blue, pink, red, orange, purple or #RRGGBB. A note (kind "note") with text puts a sticky-note icon at the phrase; without text, give page and x, y (points from the page's top-left corner, A4 is about 595 x 842). load_skill "edit-pdf" for how to choose phrases, kinds, colours and comments. Find the pages first with check_text, or read_doc, and call this tool ONCE with all the marks. The result lists, per mark, how many annotations were made and on which pages, and what could not be found: tell the user about those. Like edit_doc, it edits IN PLACE by default: the saved document keeps its id, title and scope and the user's file now shows the marks (edit_doc with doc and undo true restores the version before the last edit, one step back); a sandbox PDF is changed where it is. Give save_as, a title, to leave the original untouched and save the result as a NEW document instead (in the project in a project session, else personal, or scope "shared" for owner/admin); give save_to, a sandbox path such as "tmp://marked.pdf", to write a new temporary file (write its tmp:// path in your reply: the user gets a download link, valid for a while). A PDF made by create_pdf is marked in place too, and its marks are put back when edit_doc later changes its text.`
 
 func (a *Agent) editPDFEntry() toolEntry {
 	mark := map[string]any{
@@ -216,6 +217,7 @@ func (a *Agent) editPDF(ctx context.Context, rc *runContext, args map[string]any
 		sandbox  = isSandboxPath(ref)
 		sandRoot *sandboxfs.Root
 		sandRel  string
+		gen      *genSource // a create_pdf document's source, edited in place
 	)
 	switch {
 	case inPlace && !sandbox:
@@ -231,8 +233,12 @@ func (a *Agent) editPDF(ctx context.Context, rc *runContext, args map[string]any
 		if data, err = os.ReadFile(path); err != nil || (mime != pdfMime && !strings.HasPrefix(string(data), "%PDF-")) {
 			return fmt.Sprintf("error: document %s (%q) is not a PDF with a stored file; edit_pdf works on PDF files only.", docRef(doc), doc.Title), nil
 		}
-		if _, err := os.Stat(path + sidecarExt); err == nil {
-			return fmt.Sprintf("error: document %s was made by create_pdf and is rebuilt from its text whenever it is edited, which would drop the marks. Pass save_as (a title) to save a marked copy as a new document.", docRef(doc)), nil
+		if raw, err := os.ReadFile(path + sidecarExt); err == nil { // made by create_pdf: the marks go into its source too
+			src, err := readSidecar(raw)
+			if err != nil || src.Kind != genPDF {
+				return fmt.Sprintf("error: document %s cannot be marked in place: its generation record is unreadable. Pass save_as (a title) to save a marked copy.", docRef(doc)), nil
+			}
+			gen = &src
 		}
 		name = strings.TrimSuffix(doc.Title, ".pdf")
 	case inPlace && sandbox:
@@ -286,12 +292,31 @@ func (a *Agent) editPDF(ctx context.Context, rc *runContext, args map[string]any
 		return fmt.Sprintf("Marked %s in place (%d annotation(s)).\n%s", ref, total, sb.String()), nil
 
 	case inPlace:
+		kept := ""
+		if gen != nil {
+			for i, r := range results {
+				if r.Applied > 0 {
+					gen.Marks = append(gen.Marks, marks[i])
+				}
+			}
+			newSide, err := json.Marshal(gen)
+			if err == nil {
+				err = commitStoredFile(path+sidecarExt, newSide)
+			}
+			if err != nil {
+				return fmt.Sprintf("error: cannot write the document's source record (%v); nothing was changed.", err), nil
+			}
+			kept = " The marks are kept with the document's source, so edit_doc changes to its text keep them."
+		}
 		if err := commitStoredFile(path, out); err != nil {
+			if gen != nil { // the source record was already replaced: put it back
+				_ = os.Rename(path+sidecarExt+prevExt, path+sidecarExt)
+			}
 			return fmt.Sprintf("error: cannot write the stored file (%v); nothing was changed.", err), nil
 		}
 		a.publishDocChange(docevents.Updated, doc.Scope, rc, doc.ID)
-		return fmt.Sprintf("Marked document %s (%q) in place: %d annotation(s) added. The user's file now shows them (the text is unchanged, so search results are the same). edit_doc with doc and undo true restores the version before this edit.\n%s",
-			docRef(doc), doc.Title, total, sb.String()), nil
+		return fmt.Sprintf("Marked document %s (%q) in place: %d annotation(s) added. The user's file now shows them (the text is unchanged, so search results are the same).%s edit_doc with doc and undo true restores the version before this edit.\n%s",
+			docRef(doc), doc.Title, total, kept, sb.String()), nil
 	}
 
 	title := saveAs

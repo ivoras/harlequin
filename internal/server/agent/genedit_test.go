@@ -16,6 +16,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/documents"
 	"github.com/ivoras/harlequin/internal/server/mdpdf"
 	"github.com/ivoras/harlequin/internal/server/mdword"
+	"github.com/ivoras/harlequin/internal/server/pdfextract"
 	"github.com/ivoras/harlequin/internal/server/storage"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
@@ -264,6 +265,49 @@ func TestEditGeneratedDocuments(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// edit_pdf marks on a create_pdf document survive edit_doc rebuilds; a mark
+// whose text the edit removed is dropped and reported; undo brings both back.
+func TestMarksSurviveRebuild(t *testing.T) {
+	h := newGenHarness(t)
+	var err error
+	if h.a.PDF, err = mdpdf.New(""); err != nil {
+		t.Skip(err)
+	}
+	if h.a.PDFPages, err = pdfextract.New(); err != nil {
+		t.Skip(err)
+	}
+	defer h.a.PDFPages.Close()
+	id, stored := h.create("create_pdf", "Bill", "# Bill\n\nInvoice total 120 EUR.\n\nPayment due in 30 days.\n")
+	marks := func() int {
+		s, err := readSidecar(readFile(t, stored+sidecarExt))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(s.Marks)
+	}
+	annots := func() int { return bytes.Count(readFile(t, stored), []byte("/Annot")) }
+
+	out := h.call("edit_pdf", map[string]any{"doc": ref(id), "marks": []any{
+		map[string]any{"kind": "highlight", "text": "total 120"},
+		map[string]any{"kind": "box", "text": "Payment due"},
+	}})
+	if !strings.Contains(out, "in place") || marks() != 2 || annots() == 0 {
+		t.Fatalf("mark in place: %s (marks %d)", out, marks())
+	}
+
+	out = h.call("edit_doc", map[string]any{"doc": ref(id), "old_string": "Payment due in 30 days.", "new_string": "Pay soon."})
+	if !strings.Contains(out, "1 mark(s) were removed") || !strings.Contains(out, `box "Payment due"`) || marks() != 1 || annots() == 0 {
+		t.Fatalf("rebuild: %s (marks %d)", out, marks())
+	}
+	if !strings.Contains(h.text(id), "Pay soon") {
+		t.Fatal("text not edited")
+	}
+
+	if out = h.call("edit_doc", map[string]any{"doc": ref(id), "undo": true}); !strings.Contains(out, "Restored") || marks() != 2 {
+		t.Fatalf("undo: %s (marks %d)", out, marks())
 	}
 }
 

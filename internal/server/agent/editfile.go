@@ -15,6 +15,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/docalign"
 	"github.com/ivoras/harlequin/internal/server/docevents"
 	"github.com/ivoras/harlequin/internal/server/documents"
+	"github.com/ivoras/harlequin/internal/server/pdfextract"
 )
 
 // editArgsSchema is the operation part shared by edit_file and edit_doc.
@@ -273,6 +274,7 @@ func (a *Agent) editGeneratedDoc(ctx context.Context, e *docEdit, side []byte) (
 		}
 		return "error: " + err.Error() + ". Nothing was changed.", nil
 	}
+	a.reapplyMarks(&src, &g)
 	newSide, err := json.Marshal(src)
 	if err != nil {
 		return "", err
@@ -286,6 +288,37 @@ func (a *Agent) editGeneratedDoc(ctx context.Context, e *docEdit, side []byte) (
 	}
 	return fmt.Sprintf("Edited %s document %s (%q): %s%s; the file was rebuilt%s and re-indexed for search_docs (%d sections). The user's downloadable file now has the change.%s",
 		src.Kind, e.ref, e.doc.Title, what, e.from, g.detail, chunks, g.notes), nil
+}
+
+// reapplyMarks puts a generated PDF's edit_pdf marks back on the rebuilt file.
+// Marks whose text the edit removed are dropped from the source and named in
+// g.notes; if annotating fails the marks are kept for the next rebuild.
+func (a *Agent) reapplyMarks(src *genSource, g *genOut) {
+	if src.Kind != genPDF || len(src.Marks) == 0 || g.data == nil {
+		return
+	}
+	if a.PDFPages == nil {
+		g.notes += fmt.Sprintf(" Note: the document's %d mark(s) could not be put back (PDF tools are not set up); tell the user.", len(src.Marks))
+		return
+	}
+	marked, res, err := a.PDFPages.Annotate(g.data, src.Marks)
+	if err != nil {
+		g.notes += fmt.Sprintf(" Note: the document's %d mark(s) could not be put back (%v); tell the user.", len(src.Marks), err)
+		return
+	}
+	var kept []pdfextract.Mark
+	var lost []string
+	for i, r := range res {
+		if r.Applied > 0 {
+			kept = append(kept, src.Marks[i])
+		} else {
+			lost = append(lost, fmt.Sprintf("%s %q", src.Marks[i].Kind, src.Marks[i].Text))
+		}
+	}
+	g.data, src.Marks = marked, kept
+	if len(lost) > 0 {
+		g.notes += fmt.Sprintf(" Note: %d mark(s) were removed because the edit took away the text they were on: %s; tell the user.", len(lost), strings.Join(lost, ", "))
+	}
 }
 
 // commitDocEdit replaces a document's indexed text and stored file (and, for a

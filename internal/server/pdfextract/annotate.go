@@ -13,14 +13,15 @@ import (
 
 // Mark is one annotation request for Annotate.
 type Mark struct {
-	Kind    string  // highlight | underline | strikeout | squiggly | box | note
-	Text    string  // phrase to mark (every match, case-insensitive); empty for a note at X/Y
-	Page    int     // 1-based; 0 = search every page (a note without Text needs a page)
-	Nth     int     // 0 = every match; n = only the nth match in page order
-	Comment string  // text of the comment attached to the mark
-	Color   string  // name (yellow, green, blue, pink, red, orange, purple) or #RRGGBB
-	X, Y    float64 // note without Text: position in points from the page's top-left corner
-	Author  string
+	Kind    string  `json:"kind"`              // highlight | underline | strikeout | squiggly | box | note
+	Text    string  `json:"text,omitempty"`    // phrase to mark (every match, case-insensitive); empty for a note at X/Y
+	Page    int     `json:"page,omitempty"`    // 1-based; 0 = search every page (a note without Text needs a page)
+	Nth     int     `json:"nth,omitempty"`     // 0 = every match; n = only the nth match in page order
+	Comment string  `json:"comment,omitempty"` // text of the comment attached to the mark
+	Color   string  `json:"color,omitempty"`   // name (yellow, green, blue, pink, red, orange, purple) or #RRGGBB
+	X       float64 `json:"x,omitempty"`       // note without Text: position in points from the page's top-left corner
+	Y       float64 `json:"y,omitempty"`
+	Author  string  `json:"author,omitempty"`
 }
 
 // MarkResult is what became of one Mark.
