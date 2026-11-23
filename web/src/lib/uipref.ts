@@ -14,3 +14,8 @@ export function switchUI(to: UIKind): void {
   // Carry ?s=&p= so the same session opens in the other UI.
   location.assign((to === "mobile" ? "/m/" : "/") + location.search);
 }
+
+// currentUI is the UI this page is: the mobile one lives under /m/.
+export function currentUI(): UIKind {
+  return location.pathname.startsWith("/m/") || location.pathname === "/m" ? "mobile" : "desktop";
+}

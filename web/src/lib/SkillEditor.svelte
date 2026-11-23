@@ -1,10 +1,12 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { api } from "./api";
   import { toast, user, activeProject, wornHat } from "./stores";
   import { isElevated } from "./types";
   import { hatOverlays, hatOverrideNote } from "./hats";
   import { scopeLabel } from "./scope";
+  import { currentUI } from "./uipref";
+  import SkillFileBar from "./SkillFileBar.svelte";
 
   // A small text editor: line-number gutter, active-line highlight, and the
   // usual textarea editing operations. Loads one skill file and saves it back
@@ -21,6 +23,13 @@
 
   // Set when the worn hat overrides this skill, so edits here are invisible.
   let overriddenBy = $state("");
+
+  // The desktop UI shows a file bar for skills: the open file can change.
+  // Read once: the editor is mounted per opening and then tracks the file itself.
+  const withFiles = untrack(() => !hat) && currentUI() === "desktop";
+  let curPath = $state(untrack(() => path));
+  let loaded = $state(""); // content as last loaded or saved, for the unsaved-changes check
+  let bar = $state<SkillFileBar>();
 
   let content = $state("");
   let scope = $state("user"); // save target; defaults to the resolved scope once loaded
@@ -47,29 +56,45 @@
   onMount(async () => {
     const worn = $wornHat;
     if (!hat && worn) hatOverlays(worn).then((ov) => (overriddenBy = ov.includes(name) ? worn : ""));
+    if (initial !== undefined) {
+      // Caller-provided starting content (e.g. a hat prompt seeded from the
+      // default system prompt template); saves still go to the real file.
+      content = loaded = initial;
+      fromScope = hat ? "shared" : fromScope;
+      loading = false;
+      return;
+    }
+    await loadFile(path);
+  });
+
+  async function loadFile(p: string) {
+    loading = true;
     try {
-      if (initial !== undefined) {
-        // Caller-provided starting content (e.g. a hat prompt seeded from the
-        // default system prompt template); saves still go to the real file.
-        content = initial;
-        fromScope = hat ? "shared" : fromScope;
-        return;
-      }
       if (hat) {
-        content = (await api.getHatFile(name, path)).content;
+        content = (await api.getHatFile(name, p)).content;
         fromScope = "shared"; // hats are shared-only
       } else {
-        const f = await api.getSkillFile(name, path);
+        const f = await api.getSkillFile(name, p);
         content = f.content;
         fromScope = f.scope;
         if (writable.includes(f.scope)) scope = f.scope;
       }
+      loaded = content;
+      curPath = p;
+      activeLine = 0;
+      scrollTop = 0;
     } catch (e) {
       toast((e as Error).message, "error");
     } finally {
       loading = false;
     }
-  });
+  }
+
+  // From the file bar: switch files, asking before unsaved edits are lost.
+  async function openFile(p: string) {
+    if (p !== curPath && content !== loaded && !confirm(`Discard unsaved changes to ${curPath}?`)) return;
+    await loadFile(p);
+  }
 
   function caretLine() {
     const pos = ta?.selectionStart ?? 0;
@@ -85,10 +110,15 @@
     if (readonly) return;
     saving = true;
     try {
-      if (hat) await api.putHatFile(name, path, content);
-      else await api.putSkillFile(name, path, scope, content);
-      toast(overriddenBy ? `saved ${name}/${path} — not used while you wear the “${overriddenBy}” hat` : `saved ${name}/${path}`, overriddenBy ? "error" : "info");
-      onClose();
+      if (hat) await api.putHatFile(name, curPath, content);
+      else await api.putSkillFile(name, curPath, scope, content);
+      toast(overriddenBy ? `saved ${name}/${curPath} — not used while you wear the “${overriddenBy}” hat` : `saved ${name}/${curPath}`, overriddenBy ? "error" : "info");
+      loaded = content;
+      // With the file bar the editor stays open to edit the skill's other files.
+      if (withFiles) {
+        fromScope = scope;
+        await bar?.refresh();
+      } else onClose();
     } catch (e) {
       toast((e as Error).message, "error");
     } finally {
@@ -108,8 +138,11 @@
 
 <div class="scrim" role="presentation" onclick={onClose}></div>
 <aside class="sheet right skill-editor">
+  {#if withFiles}
+    <SkillFileBar bind:this={bar} {name} current={curPath} {scope} {readonly} onOpen={openFile} />
+  {/if}
   <header>
-    <strong class="mono">{hat ? "hat" : "skill"}://{name}/{path}</strong>
+    <strong class="mono">{hat ? "hat" : "skill"}://{name}/{curPath}{content !== loaded ? " •" : ""}</strong>
     <span class="spacer"></span>
     {#if readonly}
       <span class="pill">read-only</span>

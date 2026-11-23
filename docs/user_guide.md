@@ -448,6 +448,14 @@ what a hat they can wear runs with
 overlay, or **Files** → **View**). To get a hat's skill changed
 for everyone, ask an admin.
 
+In the desktop web UI, the skill editor has a file bar at the top: the skill's
+files as tabs (`SKILL.md` first) to switch between them, plus **New file**,
+**Rename** and **Delete** for the open file (`SKILL.md` keeps its name and cannot
+be deleted). These changes, like a save, go into the scope chosen under "save
+to"; saving keeps the editor open so you can move on to the next file, and
+switching files with unsaved changes asks first. The mobile UI edits one file
+at a time.
+
 ### Hats
 
 A **hat** is a working mode for a session. Wear one and the agent gets a role
