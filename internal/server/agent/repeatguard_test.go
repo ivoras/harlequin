@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,26 +19,68 @@ import (
 
 func TestRepeatGuard(t *testing.T) {
 	g := repeatGuard{}
-	if note, stop := g.check("run_js", `{"code":"x"}`, "out"); note != "" || stop {
+	if note, stop := g.check("run_js", `{"code":"x"}`, "out"); note != "" || stop != "" {
 		t.Fatalf("first call flagged: %q %v", note, stop)
 	}
 	// Same call, keys reordered and spaced differently: still a repeat.
 	note, stop := g.check("run_js", `{ "code": "x" }`, "out")
-	if !strings.Contains(note, "exact run_js call") || stop {
+	if !strings.Contains(note, "exact run_js call") || stop != "" {
 		t.Fatalf("second call: %q %v", note, stop)
 	}
 	// Same args, different result (state changed): not a repeat.
 	if note, _ := g.check("run_js", `{"code":"x"}`, "other"); note != "" {
 		t.Fatalf("different result flagged: %q", note)
 	}
-	if _, stop := g.check("run_js", `{"code":"x"}`, "out"); stop {
+	if _, stop := g.check("run_js", `{"code":"x"}`, "out"); stop != "" {
 		t.Fatal("stopped at 3")
 	}
-	if _, stop := g.check("run_js", `{"code":"x"}`, "out"); !stop {
+	if _, stop := g.check("run_js", `{"code":"x"}`, "out"); stop == "" {
 		t.Fatalf("not stopped at %d", maxIdenticalCalls)
 	}
 	if note, _ := g.check("read_doc", `{"code":"x"}`, "out"); note != "" {
 		t.Fatal("other tool flagged")
+	}
+}
+
+// The loop seen in production: run_js printing slices of one text with the
+// offsets shifted by one each call. No two calls are identical, but every
+// output is text the model already has.
+func TestRepeatGuardStaleSlices(t *testing.T) {
+	var lines []string
+	for i := 1; i <= 20; i++ {
+		lines = append(lines, fmt.Sprintf("%d Component %d   some description of part %d   1   %d,99", i, i, i, i*10))
+	}
+	text := strings.Join(lines, "\n")
+	g := repeatGuard{}
+	if note, stop := g.check("run_js", `{"code":"print(all)"}`, text); note != "" || stop != "" {
+		t.Fatalf("first read flagged: %q %q", note, stop)
+	}
+	stoppedAt := 0
+	for i := 0; i < 20 && stoppedAt == 0; i++ {
+		a, b := 300-i, 700-i
+		out := text[:a] + "\n====\n" + text[a:b]
+		if _, stop := g.check("run_js", fmt.Sprintf(`{"code":"slice(0,%d)"}`, a), out); stop != "" {
+			stoppedAt = i + 1
+		}
+	}
+	if stoppedAt != maxStaleCalls {
+		t.Fatalf("stopped after %d slice calls, want %d", stoppedAt, maxStaleCalls)
+	}
+
+	// Paging through new text is progress, and resets the count.
+	g = repeatGuard{}
+	for i := 0; i < 30; i++ {
+		page := strings.Repeat(fmt.Sprintf("page %d line with fresh content\n", i), 10)
+		if _, stop := g.check("read_doc", fmt.Sprintf(`{"offset":%d}`, i), page); stop != "" {
+			t.Fatalf("paging stopped at %d", i)
+		}
+	}
+	// Re-reads interleaved with new material never stop the turn.
+	for i := 0; i < 30; i++ {
+		if _, stop := g.check("read_doc", fmt.Sprintf(`{"offset":0,"try":%d}`, i), strings.Repeat("page 0 line with fresh content\n", 10)); stop != "" {
+			t.Fatalf("re-read stopped at %d", i)
+		}
+		g.check("search_docs", fmt.Sprintf(`{"q":%d}`, i), strings.Repeat(fmt.Sprintf("new hit %d about something\n", i), 10))
 	}
 }
 

@@ -108,6 +108,10 @@ func (e *Extractor) Annotate(data []byte, marks []Mark) ([]byte, []MarkResult, e
 			box.Left, box.Right = min(box.Left, r.Left), max(box.Right, r.Right)
 			box.Top, box.Bottom = max(box.Top, r.Top), min(box.Bottom, r.Bottom)
 		}
+		if m.Kind == "box" { // glyph rects hug the letters; a frame drawn on them reads as a strike-through
+			const pad = 3
+			box.Left, box.Right, box.Top, box.Bottom = box.Left-pad, box.Right+pad, box.Top+pad, box.Bottom-pad
+		}
 		if _, err := inst.FPDFAnnot_SetRect(&requests.FPDFAnnot_SetRect{Annotation: a.Annotation, Rect: box}); err != nil {
 			return err
 		}

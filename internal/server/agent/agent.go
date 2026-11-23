@@ -639,8 +639,8 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 		repeatStop := ""
 		for _, tc := range toolCalls {
 			result := a.dispatch(ctx, rc, tools, tc, emit)
-			if note, stop := repeats.check(tc.Function.Name, tc.Function.Arguments, result); stop {
-				repeatStop = tc.Function.Name
+			if note, stop := repeats.check(tc.Function.Name, tc.Function.Arguments, result); stop != "" {
+				repeatStop = stop
 			} else {
 				result += note
 			}
@@ -657,7 +657,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 		}
 
 		if repeatStop != "" {
-			err := fmt.Errorf("the assistant kept repeating the same %s call with the same result and was stopped; ask again, or ask it to try a different approach", repeatStop)
+			err := errors.New(repeatStop)
 			emit(types.StreamEvent{Type: types.SSEError, Error: err.Error()})
 			a.logEvent(ctx, rc, sessionlog.TypeError, map[string]any{"error": err.Error(), "reason": "repeated_tool_call"})
 			return "", err

@@ -48,6 +48,11 @@ near-identical PDFs).
   document text.
 - It is matched **within one line**. If a sentence wraps, mark its first few
   words (or the part on one line) instead of the whole sentence.
+- A **table row is one line**. To mark a whole row ("box the Memory row"),
+  give the row's full text as `read_doc` shows it, cells separated by single
+  spaces, e.g. `"3 Memory 32 GB DDR5 1 219,00 219,00"`. The mark spans
+  everything the phrase matched, so marking only one cell's word marks only
+  that cell.
 - **Every** occurrence is marked unless you narrow it. "the", "EUR" or a name
   that appears on every page will bury the document, so: add `page`, add `nth`
   (the nth occurrence counting from page 1), or use a longer, more specific
