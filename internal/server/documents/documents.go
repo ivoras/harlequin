@@ -307,7 +307,11 @@ func (s *Store) IngestIntoProgress(ctx context.Context, db *sql.DB, req types.Cr
 	// Chunk + embed first, with no transaction open: embedding is slow network
 	// work, and holding SQLite's single write lock across it starves every other
 	// writer on this database (usage records, memories, parallel uploads).
-	chunks, err := s.prepareChunks(ctx, req.Content, req.PageStarts, progress)
+	embedMax := 0
+	if IsSpreadsheetMime(mime) {
+		embedMax = MaxSheetEmbedChunks
+	}
+	chunks, err := s.prepareChunks(ctx, req.Content, req.PageStarts, embedMax, progress)
 	if err != nil {
 		return nil, err
 	}
@@ -333,6 +337,24 @@ func (s *Store) IngestIntoProgress(ctx context.Context, db *sql.DB, req types.Cr
 	}
 	pl.Phase("db-write", fmt.Sprintf("%d chunks", n))
 	return &types.Document{ID: docID, Title: req.Title, URI: req.URI, Mime: mime, CreatedBy: userID, Chunks: n, OriginalName: req.OriginalName}, nil
+}
+
+// MaxSheetEmbedChunks caps how many chunks of a spreadsheet get a vector at
+// ingest (~480k characters: the sheet list, headers and first several
+// thousand rows). Rows past it stay searchable by keyword, which is how rows
+// are looked up (an invoice number, a name); semantic search over millions
+// of near-identical rows adds cost, not answers. query_sheet reads every row.
+const MaxSheetEmbedChunks = 300
+
+// IsSpreadsheetMime tells spreadsheet documents (Excel, ODS, CSV) apart.
+func IsSpreadsheetMime(m string) bool {
+	switch m {
+	case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel",
+		"application/vnd.ms-excel.sheet.binary.macroEnabled.12", "application/vnd.ms-excel.sheet.macroEnabled.12",
+		"application/vnd.oasis.opendocument.spreadsheet", "text/csv", "text/tab-separated-values":
+		return true
+	}
+	return false
 }
 
 // preparedChunk is one chunk ready to insert: text, page and serialized vector.
@@ -392,7 +414,9 @@ func (s *Store) embedTexts(ctx context.Context, texts []string, progress func(do
 // prepareChunks chunks content and embeds the chunks, entirely in memory (no
 // database access), so the caller can then insert the result in one short
 // transaction via writeChunks.
-func (s *Store) prepareChunks(ctx context.Context, content string, pageStarts []int, progress func(done, total int)) ([]preparedChunk, error) {
+// embedMax > 0 embeds only the first embedMax chunks; the rest are found by
+// keyword (FTS) search only.
+func (s *Store) prepareChunks(ctx context.Context, content string, pageStarts []int, embedMax int, progress func(done, total int)) ([]preparedChunk, error) {
 	chunks, err := s.chunkContent(ctx, content)
 	if err != nil {
 		return nil, fmt.Errorf("chunk document: %w", err)
@@ -404,7 +428,11 @@ func (s *Store) prepareChunks(ctx context.Context, content string, pageStarts []
 	for i, c := range chunks {
 		texts[i] = c.text
 	}
-	vecs, err := s.embedTexts(ctx, texts, progress)
+	toEmbed := texts
+	if embedMax > 0 && len(toEmbed) > embedMax {
+		toEmbed = toEmbed[:embedMax]
+	}
+	vecs, err := s.embedTexts(ctx, toEmbed, progress)
 	if err != nil {
 		return nil, err
 	}

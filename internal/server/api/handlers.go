@@ -1620,7 +1620,14 @@ func (s *Server) extractDocument(ctx context.Context, in uploadInput) (req types
 		}
 		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: mdconv.Mime(header.Filename), Content: md}
 	case utf8.Valid(data):
-		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: "text/plain", Content: string(data)}
+		mime := "text/plain"
+		switch strings.ToLower(filepath.Ext(header.Filename)) {
+		case ".csv":
+			mime = "text/csv" // a spreadsheet: query_sheet, read_doc's large-sheet hint, the embedding cap
+		case ".tsv":
+			mime = "text/tab-separated-values"
+		}
+		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: mime, Content: string(data)}
 	default:
 		return req, http.StatusUnsupportedMediaType, "unsupported file type (supported: PDF, Word, Excel, PowerPoint, OpenDocument, RTF, EPUB, HTML, images and text)"
 	}

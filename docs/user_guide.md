@@ -57,6 +57,16 @@ spreadsheet you uploaded, see "Changing a document" below: it is edited in place
 and keeps its formatting; ask for a *new* workbook if you want the original left
 unchanged.
 
+### Large spreadsheets
+
+Ask questions about a spreadsheet of any size — "total per customer", "which
+accounts changed between these two files", "list invoices over 10,000 € in
+March" — and the agent answers by running a query over every row on the
+server, rather than reading the file, so a workbook with millions of cells
+works as well as a small one and nothing is skipped. Account numbers and other
+codes keep their leading zeros. To get the full result as a file, ask for it as
+an Excel workbook.
+
 ### PDF and Word files
 
 Ask for "a PDF of this report" or "a Word version of that letter" and the agent

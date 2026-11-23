@@ -145,6 +145,11 @@ template literals, classes, destructuring, spread/rest, `for…of`, generators,
 Map/Set, Symbol, Promise, typed arrays, BigInt); emit output with `println()`/`print()`.
 Helpers: `fetch(url)`, `dom.parse/query/grep/json`, per-user `tmp.*`/`storage.*`
 stores, and `load(uri)`/`include(uri)` for `skill://`/`storage://`/`tmp://` scripts.
+For documents: `read_doc(ref)` returns a document's (or sandbox file's) full text;
+`sheets.query(doc, sql[, {sheet, header_row, more_docs}])` runs a `query_sheet`
+SELECT and returns row objects (columns in SELECT order, at most 200,000 rows);
+`sheets.tables(doc)` lists the tables and columns. Scripts should read data this
+way, never as literals typed into the code.
 **Examples:**
 - inline: `run_js({"code": "var r = fetch('https://example.com'); println(r.status);"})`
 - saved script + args: `run_js({"script": "skill://web-monitor/lib/check.js", "args": {"name": "fzoeu"}})`
@@ -265,6 +270,7 @@ files (`tmp://…` scratch space, `storage://…` kept per user; a bare path suc
 | `send_email` (`doc`, `attachments`) | yes | yes |
 | `search_docs`, `align_docs`, `list_documents` | yes | no — they work on the search index; `save_doc` a file first, or use `Grep` on it |
 | `pdf_pages` | yes (PDF documents) | no |
+| `query_sheet` (`doc`, `more_docs`; `save_to` is a sandbox file) | yes (spreadsheets) | yes (`.xlsx`, `.csv`) |
 | `move_doc`, `delete_doc` | yes | no |
 
 ### Find and read
@@ -295,6 +301,39 @@ notes whether the model can see the picture (vision) or only its OCR text. To fi
 something in a long document, `search_docs` with `docs` or `check_text` is better.
 **Example:** `read_doc({"doc": "u.18", "offset": 30000})`
 `cells: true` on an Excel file renders it from the file itself: one section per sheet (`## Sheet "October" (A1:C4)`), a table whose header row is the column letters and whose first column is the row number, formulas as `=…` text and a `Merged:` line; the usual `offset`/`limit` window applies. On any other document it says the grid view exists only for Excel files.
+
+On a spreadsheet longer than 30,000 characters `read_doc` prepends a notice
+pointing to `query_sheet` and, unless `limit` is given, shows only the first
+4,000 characters.
+
+#### `query_sheet`
+**Why:** answer questions about a spreadsheet (Excel `.xlsx`/`.xls`/`.ods`, CSV)
+of any size with SQL, without the model reading its rows. The stored original
+is streamed into a private, read-only, in-memory SQLite database: one table per
+sheet, column names derived from the headers (`"Iznos (EUR)"` → `iznos_eur`), a
+`_row` column with the spreadsheet row number. Without `sql` it returns the
+schema (column types, original headers, example values, rows above the header)
+plus example queries built from the real names; with `sql` it runs one SELECT
+over all rows and shows up to 200 result rows. `more_docs` loads more
+spreadsheets beside the first for joins and comparisons; `sheet` loads one sheet;
+`header_row` overrides header detection (-1 = no header); `save_to`
+(`tmp://x.md` / `.csv` / `.json`) writes all result rows (≤ 200,000) to a
+sandbox file instead — `.md` feeds `create_excel`'s `source`.
+- **Types:** `integer`, `number`, `date` (ISO text `YYYY-MM-DD`, from the cell's
+  date format), `code` (pure-digit identifiers such as account numbers, kept as
+  text with their leading zeros; numbers mixed into such a column become text;
+  a number shown with a zero-padding format such as `00000000` is read as the
+  padded text), `text-number` (amounts written as text — wrap in `num()`, which
+  reads `1.234,56`, `1,234.56`, `12,5 €`, `(123)`), `text`, `mixed`, `empty`.
+  Declared column types make an `integer` account column join a `code` one
+  (`1270000` = `'01270000'`); the schema flags code columns that held bare
+  numbers, whose leading zeros may be missing (`ltrim(col, '0')` matches them).
+- **Safety:** an authorizer allows only reads (no writes, `ATTACH`, `PRAGMA`,
+  extensions); queries stop after 30 s. Loaded workbooks are cached (3 at most,
+  dropped after 15 idle minutes and at the latest a week after loading; a
+  changed file is loaded afresh). One load is capped at 20M cells.
+**Example:** `query_sheet({"doc": "u.12"})`, then
+`query_sheet({"doc": "u.12", "sql": "SELECT kupac, SUM(iznos) AS ukupno FROM prodaja GROUP BY kupac ORDER BY ukupno DESC LIMIT 10"})`
 
 #### `check_text`
 **Why:** authoritatively confirm or rule out that an exact phrase exists

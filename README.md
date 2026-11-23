@@ -57,6 +57,9 @@ It's perfectly capable of playing nicely with specific requirements such as EU-b
     changed inside the original file, so their formatting and formulas are kept.
   - *New files*: Excel workbooks from tables, and PDF and Word documents
     (reports, letters, tables) typeset from Markdown or HTML.
+  - *Spreadsheets of any size*: questions about Excel/CSV data are answered by
+    SQL over every row on the server (`query_sheet`), not by the model reading
+    the file; account codes keep their leading zeros.
   - *PDF pages*: cut, split and merge pages of existing PDFs.
   - *Sharing*: e-mail documents as attachments; copy and concatenate documents
     server-side (see [docs/TOOLS.md](docs/TOOLS.md)).
