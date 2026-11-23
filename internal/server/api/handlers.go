@@ -33,6 +33,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/session"
 	"github.com/ivoras/harlequin/internal/server/sessionhub"
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
+	"github.com/ivoras/harlequin/internal/server/sheetdb"
 	"github.com/ivoras/harlequin/internal/server/userconfig"
 	"github.com/ivoras/harlequin/internal/shared/types"
 )
@@ -1619,15 +1620,17 @@ func (s *Server) extractDocument(ctx context.Context, in uploadInput) (req types
 			}
 		}
 		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: mdconv.Mime(header.Filename), Content: md}
-	case utf8.Valid(data):
-		mime := "text/plain"
-		switch strings.ToLower(filepath.Ext(header.Filename)) {
-		case ".csv":
-			mime = "text/csv" // a spreadsheet: query_sheet, read_doc's large-sheet hint, the embedding cap
-		case ".tsv":
+	case lowName != "" && (strings.HasSuffix(lowName, ".csv") || strings.HasSuffix(lowName, ".tsv") || strings.HasSuffix(lowName, ".tab")):
+		// A spreadsheet: query_sheet, read_doc's large-sheet hint, the embedding
+		// cap. Accounting exports are often not UTF-8; the text is decoded for the
+		// index and the original bytes are kept as uploaded.
+		mime := "text/csv"
+		if !strings.HasSuffix(lowName, ".csv") {
 			mime = "text/tab-separated-values"
 		}
-		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: mime, Content: string(data)}
+		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: mime, Content: string(sheetdb.DecodeText(data))}
+	case utf8.Valid(data):
+		req = types.CreateDocumentRequest{Title: title, URI: "upload://" + header.Filename, Mime: "text/plain", Content: string(data)}
 	default:
 		return req, http.StatusUnsupportedMediaType, "unsupported file type (supported: PDF, Word, Excel, PowerPoint, OpenDocument, RTF, EPUB, HTML, images and text)"
 	}

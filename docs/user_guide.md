@@ -61,11 +61,13 @@ unchanged.
 
 Ask questions about a spreadsheet of any size — "total per customer", "which
 accounts changed between these two files", "list invoices over 10,000 € in
-March" — and the agent answers by running a query over every row on the
-server, rather than reading the file, so a workbook with millions of cells
-works as well as a small one and nothing is skipped. Account numbers and other
-codes keep their leading zeros. To get the full result as a file, ask for it as
-an Excel workbook.
+March" — and the agent answers by running a query over every row on the server,
+rather than reading the file, so a workbook with millions of cells works as well
+as a small one and nothing is skipped. This works the same for Excel (`.xlsx`,
+`.xls`, `.xlsb`), OpenDocument (`.ods`), CSV and TSV files, including CSV
+exports in the older Windows encoding. Account numbers and other codes keep
+their leading zeros. To get the full result as a file, ask for it as an Excel
+workbook.
 
 ### PDF and Word files
 

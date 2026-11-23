@@ -593,8 +593,10 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 					return "", err
 				}
 				note := ""
-				_, mime, _, _ := a.Docs.StoredFile(ctx, db, doc.ID)
-				if n := utf8.RuneCountInString(text); documents.IsSpreadsheetMime(mime) && n > bigSheetChars {
+				stored, mime, _, _ := a.Docs.StoredFile(ctx, db, doc.ID)
+				// By name too: CSVs uploaded before they got a text/csv type are text/plain.
+				isSheet := documents.IsSpreadsheetMime(mime) || documents.IsSpreadsheetName(stored)
+				if n := utf8.RuneCountInString(text); isSheet && n > bigSheetChars {
 					// Paging a big sheet through context is what turns into 100-step
 					// turns; point at the tool that answers it with SQL.
 					note = fmt.Sprintf("[This spreadsheet is large (%d characters of table text): do NOT read it page by page. Answer questions about its data with query_sheet: first query_sheet with doc %q and no sql to see its tables and columns, then with an SQL query (filter, count, sum, group). Below is only the beginning, to show what it looks like.]\n\n", n, docRef(doc))

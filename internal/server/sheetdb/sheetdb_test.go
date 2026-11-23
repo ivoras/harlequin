@@ -272,3 +272,15 @@ func TestBigLoad(t *testing.T) {
 	r := q(t, d, `SELECT kupac, sum(iznos) FROM sheet1 GROUP BY kupac ORDER BY 2 DESC LIMIT 3`)
 	t.Logf("query %v: %v", time.Since(st), r.Rows)
 }
+
+func TestDecodeText(t *testing.T) {
+	cp, _ := charmap.Windows1250.NewEncoder().String("Licenca čžš;Đuro Šarić\n")
+	if got := string(DecodeText([]byte(cp))); got != "Licenca čžš;Đuro Šarić\n" {
+		t.Errorf("Windows-1250: %q", got)
+	}
+	for _, utf := range []string{"Licenca čžš;Đuro Šarić\n", "上海贸易有限公司;Ana\n", "\xef\xbb\xbfa;b\n"} {
+		if got := string(DecodeText([]byte(utf))); got != strings.TrimPrefix(utf, "\ufeff") {
+			t.Errorf("UTF-8 %q decoded as %q", utf, got)
+		}
+	}
+}

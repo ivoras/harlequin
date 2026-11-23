@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -30,7 +29,7 @@ const (
 // bigSheetChars: above this much table text read_doc steers to query_sheet.
 const bigSheetChars = 30000
 
-const querySheetPrompt = `Answer questions about a spreadsheet (Excel .xlsx/.xls/.ods or CSV) with SQL, without reading the rows yourself. The server loads every sheet into a read-only SQLite table and runs your query on all rows, so it works the same for 50 rows or 5 million. Use it for ANY question about a spreadsheet's data: totals, counts, averages, finding rows, comparing, top-N, checking a rule against every row. Never read a big spreadsheet with read_doc, and never type its numbers into run_js yourself.
+const querySheetPrompt = `Answer questions about a spreadsheet (Excel .xlsx/.xls/.xlsb, OpenDocument .ods, CSV or TSV) with SQL, without reading the rows yourself. The server loads every sheet into a read-only SQLite table and runs your query on all rows, so it works the same for 50 rows or 5 million. Use it for ANY question about a spreadsheet's data: totals, counts, averages, finding rows, comparing, top-N, checking a rule against every row. Never read a big spreadsheet with read_doc, and never type its numbers into run_js yourself.
 
 How to use it, in two steps:
 1. Call query_sheet with only doc (e.g. doc "u.12"). You get the tables and their columns: one table per sheet, with each column's name, type, the original header and example values. Column names are the headers made SQL-safe ("Iznos (EUR)" -> iznos_eur, "Šifra" -> sifra), so they never need quotes. Every table also has _row, the row number in the spreadsheet.
@@ -57,7 +56,7 @@ func (a *Agent) querySheetEntry() toolEntry {
 		def: fnTool("query_sheet", querySheetPrompt, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"doc":        map[string]any{"type": "string", "description": `The spreadsheet: a document reference (u.12, s.3, p.7, or as attached, e.g. @"u.18/sales.xlsx"), or a sandbox file (tmp://data.csv, tmp://report.xlsx)`},
+				"doc":        map[string]any{"type": "string", "description": `The spreadsheet (.xlsx, .xls, .xlsb, .ods, .csv, .tsv): a document reference (u.12, s.3, p.7, or as attached, e.g. @"u.18/sales.xlsx"), or a sandbox file (tmp://data.csv, tmp://report.xlsx)`},
 				"sql":        map[string]any{"type": "string", "description": "One SQLite SELECT query over the tables. Omit it to see the tables and columns first."},
 				"more_docs":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Optional: more spreadsheets to load next to doc, so one query can join or compare them"},
 				"sheet":      map[string]any{"type": "string", "description": "Optional: load only this sheet (its name as in the workbook)"},
@@ -130,7 +129,7 @@ func (a *Agent) loadSheets(ctx context.Context, rc *runContext, refs []string, o
 				if err != nil {
 					return nil, fmt.Errorf("%s could not be converted to .xlsx for querying: %w", s.Label, err)
 				}
-				srcs[i].Data, srcs[i].Name = data, name
+				srcs[i].Data, srcs[i].Name, srcs[i].Format = data, name, "xlsx"
 			}
 		}
 		return sheetdb.Load(lctx, srcs, opt)
@@ -171,32 +170,20 @@ func (a *Agent) sheetSource(ctx context.Context, rc *runContext, ref string) (sh
 		}
 		src, mime = sheetdb.Source{Label: fmt.Sprintf("%s %q", docRef(doc), doc.Title), Name: name, Data: data}, m
 	}
-	low := strings.ToLower(src.Name)
-	switch {
-	case isLegacySheet(src): // .ods is a zip too: check first
-		return src, ""
-	case bytes.HasPrefix(src.Data, []byte("PK")):
-		if !strings.HasSuffix(low, ".xlsx") && !strings.HasSuffix(low, ".xlsm") && mime != xlsxMime {
-			src.Name += ".xlsx" // a zip without a telling name: let the reader decide
-		}
-		return src, ""
-	case strings.HasSuffix(low, ".csv") || strings.HasSuffix(low, ".tsv") || mime == "text/csv" || mime == "text/tab-separated-values":
-		if !strings.HasSuffix(low, ".csv") && !strings.HasSuffix(low, ".tsv") {
-			src.Name += ".csv"
-		}
-		return src, ""
+	switch src.Format = sheetdb.Detect(src.Name, mime, src.Data); src.Format {
+	case "":
+		return src, fmt.Sprintf("error: %s is not a spreadsheet (Excel .xlsx/.xls/.xlsb/.ods, CSV or TSV), so it has no tables to query. For text documents use read_doc, search_docs or check_text.", src.Label)
+	case "xls", "xlsb", "ods":
+		// LibreOffice picks the input filter by extension: make it match the content.
+		src.Name = strings.TrimSuffix(src.Name, path.Ext(src.Name)) + "." + src.Format
 	}
-	return src, fmt.Sprintf("error: %s is not a spreadsheet (Excel .xlsx/.xls/.ods or CSV), so it has no tables to query. For text documents use read_doc, search_docs or check_text.", src.Label)
+	return src, ""
 }
 
 // isLegacySheet: a spreadsheet LibreOffice must turn into .xlsx first. The
 // loader converts it, so a cache hit skips LibreOffice.
 func isLegacySheet(s sheetdb.Source) bool {
-	switch strings.ToLower(path.Ext(s.Name)) {
-	case ".xls", ".xlsb", ".ods":
-		return true
-	}
-	return false
+	return s.Format == "xls" || s.Format == "xlsb" || s.Format == "ods"
 }
 
 // sheetOverview is the schema plus ready-to-run example queries built from the
@@ -213,22 +200,32 @@ func sheetOverview(db *sheetdb.DB, labels []string) string {
 	if t == nil || t.Rows == 0 {
 		return sb.String()
 	}
-	var group, sum string
+	// Example columns by type only: a text (or date) column to group by, and
+	// a fractional amount before a whole-number one (whole numbers are often
+	// counts or ordinals rather than amounts).
+	var group, sum, whole string
 	for _, c := range t.Columns {
 		switch c.Type() {
-		case "text", "date":
+		case "text", "code", "date":
 			if group == "" {
 				group = c.Name
 			}
-		case "number", "integer":
-			if sum == "" && !strings.Contains(c.Name, "rbr") && c.Name != "id" {
+		case "number":
+			if sum == "" {
 				sum = c.Name
 			}
 		case "text-number":
 			if sum == "" {
 				sum = "num(" + c.Name + ")"
 			}
+		case "integer":
+			if whole == "" {
+				whole = c.Name
+			}
 		}
+	}
+	if sum == "" {
+		sum = whole
 	}
 	fmt.Fprintf(&sb, "\nExample queries:\n  SELECT * FROM %s LIMIT 5\n  SELECT * FROM %s ORDER BY _row DESC LIMIT 5   -- the last rows: totals often sit there\n", t.Name, t.Name)
 	if group != "" && sum != "" {
@@ -323,7 +320,7 @@ func (a *Agent) sheetJSGlobals(ctx context.Context, rc *runContext) map[string]a
 				defer cancel()
 				res, err := db.Query(qctx, call.Argument(1).String(), sheetSaveRows)
 				if err != nil {
-					panic(vm.NewGoError(err))
+					panic(vm.NewGoError(fmt.Errorf("%w. The tables and their columns are: %s", err, strings.Join(strings.Fields(columnList(db)), " "))))
 				}
 				if res.Total > len(res.Rows) {
 					panic(vm.NewGoError(fmt.Errorf("the query returns %d rows, more than %d; filter or aggregate in SQL", res.Total, sheetSaveRows)))

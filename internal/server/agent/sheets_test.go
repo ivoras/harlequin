@@ -51,7 +51,7 @@ func TestQuerySheetTool(t *testing.T) {
 		return out
 	}
 	out := run(map[string]any{"doc": "tmp://prodaja.xlsx"})
-	for _, want := range []string{"TABLE prodaja", "300 data rows", "konto  code", "Example queries:", "SELECT kupac, SUM(iznos) AS total"} {
+	for _, want := range []string{"TABLE prodaja", "300 data rows", "konto  code", "Example queries:", "SELECT konto, SUM(iznos) AS total"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("overview lacks %q:\n%s", want, out)
 		}
@@ -99,11 +99,12 @@ println(rows.length, rows[0].konto, rows[0].n, JSON.stringify(rows[2]));
 var t = sheets.tables("tmp://prodaja.xlsx");
 println(t[0].table, t[0].rows, t[0].columns[0].type);
 println(read_doc("tmp://po.txt"));
-try { sheets.query("tmp://prodaja.xlsx", "DELETE FROM prodaja"); } catch (e) { println("denied"); }`, rcx)
+try { sheets.query("tmp://prodaja.xlsx", "DELETE FROM prodaja"); } catch (e) { println("denied"); }
+try { sheets.query("tmp://prodaja.xlsx", "SELECT customer FROM prodaja"); } catch (e) { println(String(e).indexOf("prodaja(_row, konto, kupac, iznos)") >= 0); }`, rcx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "3 01270000 100 {\"konto\":\"01270002\",\"n\":100}\nprodaja 300 code\nhello\ndenied\n"
+	want := "3 01270000 100 {\"konto\":\"01270002\",\"n\":100}\nprodaja 300 code\nhello\ndenied\ntrue\n"
 	if res.Output != want {
 		t.Fatalf("output:\n%s\nwant:\n%s", res.Output, want)
 	}

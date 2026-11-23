@@ -14,6 +14,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/docalign"
 	"github.com/ivoras/harlequin/internal/server/docevents"
 	"github.com/ivoras/harlequin/internal/server/documents"
+	"github.com/ivoras/harlequin/internal/server/sheetdb"
 )
 
 // docSourceRE recognises a document reference where a sandbox path could also
@@ -52,8 +53,13 @@ func (a *Agent) docText(ctx context.Context, rc *runContext, doc *docalign.Doc) 
 	}
 	if stored, mime, _, err := a.Docs.StoredFile(ctx, db, doc.ID); err == nil && stored != "" && strings.HasPrefix(mime, "text/") {
 		if dir := a.docFilesDir(rc, doc.Scope); dir != "" {
-			if data, err := os.ReadFile(filepath.Join(dir, filepath.Base(stored))); err == nil && utf8.Valid(data) {
-				return string(data), ""
+			if data, err := os.ReadFile(filepath.Join(dir, filepath.Base(stored))); err == nil {
+				if mime == "text/csv" || mime == "text/tab-separated-values" {
+					data = sheetdb.DecodeText(data) // kept as uploaded, often Windows-1250
+				}
+				if utf8.Valid(data) {
+					return string(data), ""
+				}
 			}
 		}
 	}

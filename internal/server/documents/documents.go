@@ -357,6 +357,15 @@ func IsSpreadsheetMime(m string) bool {
 	return false
 }
 
+// IsSpreadsheetName tells a spreadsheet file by its extension.
+func IsSpreadsheetName(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".xlsx", ".xlsm", ".xls", ".xlsb", ".ods", ".csv", ".tsv":
+		return true
+	}
+	return false
+}
+
 // preparedChunk is one chunk ready to insert: text, page and serialized vector.
 type preparedChunk struct {
 	ord      int

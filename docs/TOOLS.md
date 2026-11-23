@@ -307,8 +307,8 @@ pointing to `query_sheet` and, unless `limit` is given, shows only the first
 4,000 characters.
 
 #### `query_sheet`
-**Why:** answer questions about a spreadsheet (Excel `.xlsx`/`.xls`/`.ods`, CSV)
-of any size with SQL, without the model reading its rows. The stored original
+**Why:** answer questions about a spreadsheet (Excel `.xlsx`/`.xls`/`.xlsb`,
+OpenDocument `.ods`, CSV, TSV) of any size with SQL, without the model reading its rows. The stored original
 is streamed into a private, read-only, in-memory SQLite database: one table per
 sheet, column names derived from the headers (`"Iznos (EUR)"` → `iznos_eur`), a
 `_row` column with the spreadsheet row number. Without `sql` it returns the
@@ -319,6 +319,24 @@ spreadsheets beside the first for joins and comparisons; `sheet` loads one sheet
 `header_row` overrides header detection (-1 = no header); `save_to`
 (`tmp://x.md` / `.csv` / `.json`) writes all result rows (≤ 200,000) to a
 sandbox file instead — `.md` feeds `create_excel`'s `source`.
+- **Formats:** the format is detected from the content (zip parts, the OLE
+  signature of `.xls`), the name only for CSV/TSV. `.xls`, `.xlsb` and `.ods`
+  are converted to `.xlsx` with LibreOffice once per load (the cache keys on
+  the original bytes); every format then reads the same: same types, values and
+  dates for the same data.
+- **How types are decided** — from the values, never from column names. In an
+  Excel/ODS file each cell says whether it holds a number or text, and its
+  number format whether a number is a date or a zero-padded code. A CSV has no
+  types, so its values are read the way a spreadsheet program shows them: plain
+  numbers are numbers, `2026-01-21` and `21.01.2026.` are dates, digits with a
+  leading zero (`01270000`) are codes, and a column consisting only of amounts
+  with separators (`1.234,56`) becomes numbers, its decimal separator decided
+  from all its values (`;`-delimited files default to a decimal comma). The
+  delimiter is sniffed from the header (`.tsv` is always tab); non-UTF-8 text
+  is read as Windows-1250. A column of plain numbers is `integer`/`number` even
+  when it holds account numbers: nothing in the values tells them apart, so the
+  model sees the header and samples, and comparisons with a `code` column still
+  match.
 - **Types:** `integer`, `number`, `date` (ISO text `YYYY-MM-DD`, from the cell's
   date format), `code` (pure-digit identifiers such as account numbers, kept as
   text with their leading zeros; numbers mixed into such a column become text;

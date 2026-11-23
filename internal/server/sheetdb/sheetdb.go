@@ -5,6 +5,8 @@
 package sheetdb
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -46,17 +48,22 @@ func register() {
 }
 
 // sqlNum is the num() SQL function: numbers pass through, text is parsed as a
-// written number (parseNum), anything else is NULL.
-func sqlNum(v any) any {
+// written number, anything else is NULL. An optional second argument names
+// the decimal separator (num(x, ',') reads "1.234" as 1234).
+func sqlNum(v any, dec ...string) any {
+	var d byte
+	if len(dec) > 0 && len(dec[0]) == 1 {
+		d = dec[0][0]
+	}
 	switch x := v.(type) {
 	case int64, float64:
 		return x
 	case string:
-		if f, ok := parseNum(x); ok {
+		if f, ok := parseNumDec(x, d); ok {
 			return number(f)
 		}
 	case []byte:
-		if f, ok := parseNum(string(x)); ok {
+		if f, ok := parseNumDec(string(x), d); ok {
 			return number(f)
 		}
 	}
@@ -64,11 +71,50 @@ func sqlNum(v any) any {
 }
 
 // Source is one spreadsheet to load: Label names it in the schema (e.g.
-// `u.12 "Sales.xlsx"`), Name's extension picks the format (.csv/.tsv/.txt are
-// CSV, anything else must be an xlsx package).
+// `u.12 "Sales.xlsx"`); Format is "xlsx", "csv" or "tsv" ("" = Detect).
 type Source struct {
-	Label, Name string
-	Data        []byte
+	Label, Name, Format string
+	Data                []byte
+}
+
+// Detect tells a spreadsheet's format from its content first and its name or
+// MIME type second: "xlsx"; "xls", "xlsb", "ods" (which need converting to
+// xlsx); "csv", "tsv"; or "" when it is not a spreadsheet.
+func Detect(name, mime string, data []byte) string {
+	ext := strings.ToLower(path.Ext(name))
+	if bytes.HasPrefix(data, []byte("PK\x03\x04")) {
+		zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+		if err != nil {
+			return ""
+		}
+		for _, f := range zr.File {
+			switch f.Name {
+			case "xl/workbook.xml":
+				return "xlsx"
+			case "xl/workbook.bin":
+				return "xlsb"
+			case "mimetype":
+				if b, err := readAll(f); err == nil && strings.TrimSpace(string(b)) == "application/vnd.oasis.opendocument.spreadsheet" {
+					return "ods"
+				}
+			}
+		}
+		return ""
+	}
+	// OLE2 compound file: a legacy .xls (a .doc shares the signature).
+	if bytes.HasPrefix(data, []byte("\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1")) {
+		if ext == ".xls" || ext == "" || mime == "application/vnd.ms-excel" {
+			return "xls"
+		}
+		return ""
+	}
+	switch {
+	case ext == ".tsv" || ext == ".tab" || mime == "text/tab-separated-values":
+		return "tsv"
+	case ext == ".csv" || mime == "text/csv":
+		return "csv"
+	}
+	return ""
 }
 
 // Options narrow a load.
@@ -86,6 +132,7 @@ type Column struct {
 	nonEmpty, nums, ints int
 	dates, numText       int
 	codes                int // pure-digit text: account numbers, ids
+	decComma, decDot     int // amounts written as text that show which decimal separator they use
 	samples              []string
 }
 
@@ -212,16 +259,30 @@ func (d *DB) load(ctx context.Context, srcs []Source, opt Options) error {
 			}
 			return cur.add(n, cells)
 		}
-		low := strings.ToLower(src.Name)
-		if strings.HasSuffix(low, ".csv") || strings.HasSuffix(low, ".tsv") || strings.HasSuffix(low, ".txt") {
+		format := src.Format
+		if format == "" {
+			format = Detect(src.Name, "", src.Data)
+		}
+		switch format {
+		case "csv", "tsv":
 			base := path.Base(src.Name)
-			name := strings.TrimSuffix(base, path.Ext(base))
-			if err := begin(name, false); err != nil {
+			if err := begin(strings.TrimSuffix(base, path.Ext(base)), false); err != nil {
 				return err
 			}
-			err = readCSV(src.Data, row)
-		} else {
+			if cur != nil {
+				cur.csv = true
+			}
+			var delim rune
+			delim, err = readCSV(src.Data, format == "tsv", row)
+			if cur != nil {
+				cur.delim = delim
+			}
+		case "xlsx":
 			err = readXLSX(src.Data, begin, row)
+		case "":
+			err = errors.New("not a spreadsheet (Excel or CSV)")
+		default:
+			err = fmt.Errorf("a .%s file must be converted to .xlsx first", format)
 		}
 		if err != nil {
 			return fmt.Errorf("%s: %w", src.Label, err)
@@ -257,6 +318,8 @@ type builder struct {
 	t     *Table
 	stage string // the untyped table rows load into; finish() types it
 	ins   *sql.Stmt
+	csv   bool // values came from a CSV/TSV: finish() turns written amounts into numbers
+	delim rune
 }
 
 func (b *builder) add(n int, cells []any) error {
@@ -289,6 +352,11 @@ func (b *builder) finish() error {
 		b.ins.Close()
 		b.ins = nil
 	}
+	if b.csv {
+		if err := b.csvAmounts(); err != nil {
+			return err
+		}
+	}
 	cols := []string{`"_row" INTEGER`}
 	for _, c := range b.t.Columns {
 		cols = append(cols, strings.TrimSpace(quote(c.Name)+" "+affinity[c.Type()]))
@@ -301,6 +369,46 @@ func (b *builder) finish() error {
 		if _, err := b.tx.ExecContext(b.ctx, q); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// csvAmounts converts CSV columns of written amounts ("1.234,56") to numbers,
+// as a spreadsheet program opening the file would: in a CSV every value is
+// text, so an amount column must not stay text just because it has
+// separators. The column's decimal separator is decided from all its values
+// (and, when none tells, from the delimiter: ';' files use a decimal comma).
+// A column with anything that is not an amount is left as it is.
+func (b *builder) csvAmounts() error {
+	for _, c := range b.t.Columns {
+		if c.numText == 0 || c.nonEmpty != c.nums+c.numText || c.dates > 0 || c.codes > 0 {
+			continue
+		}
+		dec := "."
+		if c.decComma > c.decDot || (c.decComma == c.decDot && b.delim == ';') {
+			dec = ","
+		}
+		col, tab := quote(c.Name), quote(b.stage)
+		if _, err := b.tx.ExecContext(b.ctx, fmt.Sprintf("UPDATE %s SET %s = num(%s, ?) WHERE typeof(%s) = 'text'", tab, col, col, col), dec); err != nil {
+			return err
+		}
+		var ints int
+		if err := b.tx.QueryRowContext(b.ctx, fmt.Sprintf("SELECT count(*) FROM %s WHERE typeof(%s) = 'integer'", tab, col)).Scan(&ints); err != nil {
+			return err
+		}
+		c.nums, c.ints, c.numText = c.nonEmpty, ints, 0
+		c.samples = nil
+		rows, err := b.tx.QueryContext(b.ctx, fmt.Sprintf("SELECT DISTINCT %s FROM %s WHERE %s IS NOT NULL LIMIT 3", col, tab, col))
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var v any
+			if rows.Scan(&v) == nil {
+				c.samples = append(c.samples, truncate(Cell(v), 40))
+			}
+		}
+		rows.Close()
 	}
 	return nil
 }
@@ -433,6 +541,12 @@ func (b *builder) insert(n int, cells []any) error {
 				c.codes++
 			} else if _, ok := parseNum(x); ok {
 				c.numText++
+				switch sepVote(x) {
+				case ',':
+					c.decComma++
+				case '.':
+					c.decDot++
+				}
 			}
 		}
 		if len(c.samples) < 3 {
