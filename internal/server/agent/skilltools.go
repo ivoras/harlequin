@@ -42,6 +42,11 @@ func (a *Agent) registerSkillWriteTools(reg map[string]toolEntry) {
 		if msg != "" {
 			return msg, nil
 		}
+		// load_skill/read_doc show .md/.txt files rendered, so a rewrite made from
+		// that view would silently drop the file's <?js ?> template code.
+		if old, _, err := a.Skills.GetFile(ctx, rc.userDB, rc.projectDB, name, rel); err == nil && strings.Contains(old, "<?js") && !strings.Contains(content, "<?js") {
+			return fmt.Sprintf("error: %s of skill %q contains <?js ?> template code that load_skill does not show you, and your version would delete it. Do not rewrite this file; tell the user to change it in the Skills editor instead.", rel, name), nil
+		}
 		db, _, err := a.Skills.ScopeDBFor(wireScope(label), rc.userDB, rc.projectDB)
 		if err != nil {
 			return "error: " + err.Error(), nil
@@ -54,7 +59,7 @@ func (a *Agent) registerSkillWriteTools(reg map[string]toolEntry) {
 	}
 
 	reg["write_skill"] = toolEntry{
-		def: fnTool("write_skill", `Create a skill or replace its main file (SKILL.md: frontmatter with name and description, then the instructions). Other files of an existing skill are kept. Only when the user asks to create or change a skill. A skill you write in a scope that doesn't hold it yet becomes a copy of the one you were using, so the original is untouched. Never overwrite a shared skill unless the user explicitly asked for that.`, map[string]any{
+		def: fnTool("write_skill", `Create a skill, or update an existing one by replacing its main file (SKILL.md: frontmatter with name and description, then the instructions). Other files of an existing skill are kept. To update, load_skill it first and send the complete revised SKILL.md: anything you leave out is lost. Only when the user asks to create or change a skill. A skill you write in a scope that doesn't hold it yet becomes a copy of the one you were using, so the original is untouched. Never overwrite a shared skill unless the user explicitly asked for that.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"name":    map[string]any{"type": "string"},
@@ -69,7 +74,7 @@ func (a *Agent) registerSkillWriteTools(reg map[string]toolEntry) {
 	}
 
 	reg["write_skill_file"] = toolEntry{
-		def: fnTool("write_skill_file", `Add or replace one supporting file of an existing skill (a script, template or reference), e.g. path "scripts/run.js" — it is then reachable as skill://<name>/scripts/run.js. The skill must already exist (create it with write_skill first). Only when the user asks.`, map[string]any{
+		def: fnTool("write_skill_file", `Add, or update by replacing, one supporting file of an existing skill (a script, template or reference), e.g. path "scripts/run.js" — it is then reachable as skill://<name>/scripts/run.js. To update, read_doc that skill:// path first and send the complete revised file. The skill must already exist (create it with write_skill first). Only when the user asks.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"name":    map[string]any{"type": "string"},

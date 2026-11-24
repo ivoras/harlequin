@@ -115,6 +115,32 @@ func TestRepeatedToolCallStopsTurn(t *testing.T) {
 	}
 }
 
+// A looped turn's tool calls are hidden from the next turn, replaced by a note;
+// other turns and other stored errors are untouched.
+func TestModelHistoryHidesLoopedTurn(t *testing.T) {
+	call := []types.ToolCall{{ID: "c1", Name: "run_js", Arguments: "{}"}}
+	h := []types.Message{
+		{Role: llm.RoleUser, Content: "first"},
+		{Role: llm.RoleAssistant, Content: "ok"},
+		{Role: llm.RoleError, Content: "provider down"},
+		{Role: llm.RoleUser, Content: "compare"},
+		{Role: llm.RoleAssistant, ToolCalls: call},
+		{Role: llm.RoleTool, Content: "0", ToolCallID: "c1", Name: "run_js"},
+		{Role: llm.RoleAssistant, ToolCalls: call},
+		{Role: llm.RoleTool, Content: "0", ToolCallID: "c1", Name: "run_js"},
+		{Role: llm.RoleError, Content: repeatStopPrefix + "repeating the same run_js call"},
+		{Role: llm.RoleUser, Content: "try again"},
+	}
+	var got []string
+	for _, m := range modelHistory(h) {
+		got = append(got, m.Role+":"+m.Content)
+	}
+	want := []string{"user:first", "assistant:ok", "user:compare", "assistant:" + repeatStoppedNote, "user:try again"}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("got\n%s", strings.Join(got, "\n"))
+	}
+}
+
 type countingProvider struct {
 	llm.Provider
 	n *int

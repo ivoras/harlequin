@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/ivoras/harlequin/internal/server/llm"
+	"github.com/ivoras/harlequin/internal/shared/types"
 )
 
 // maxIdenticalCalls stops a turn when one tool call has returned the same
@@ -44,7 +47,7 @@ func (g *repeatGuard) check(name, rawArgs, result string) (note, stop string) {
 	key := sha256.Sum256([]byte(name + "\x00" + string(canon) + "\x00" + result))
 	g.identical[key]++
 	if n := g.identical[key]; n >= maxIdenticalCalls {
-		return "", fmt.Sprintf("the assistant kept repeating the same %s call with the same result and was stopped; ask again, or ask it to try a different approach", name)
+		return "", fmt.Sprintf(repeatStopPrefix+"repeating the same %s call with the same result and was stopped; ask again, or ask it to try a different approach", name)
 	} else if n >= 2 {
 		return fmt.Sprintf("\n\n[Harlequin notice] You already made this exact %s call in this turn and it returned exactly this result (%d times now). Calling it again will not change anything. Use the result you have, change the call (different code or arguments), or answer the user. After %d identical calls the turn is stopped.", name, n, maxIdenticalCalls), ""
 	}
@@ -57,7 +60,7 @@ func (g *repeatGuard) check(name, rawArgs, result string) (note, stop string) {
 	}
 	g.stale++
 	if g.stale >= maxStaleCalls {
-		return "", fmt.Sprintf("the assistant kept making calls that returned only output it had already seen (last: %s) and was stopped; ask again, or ask it to try a different approach", name)
+		return "", fmt.Sprintf(repeatStopPrefix+"making calls that returned only output it had already seen (last: %s) and was stopped; ask again, or ask it to try a different approach", name)
 	}
 	if g.stale >= staleNoticeAt {
 		return fmt.Sprintf("\n\n[Harlequin notice] This %s output is almost entirely text you already saw earlier in this turn (%d such calls now). Re-reading it in other slices will not reveal anything new. Work with what you have, try a genuinely different approach, or tell the user what you cannot do. After %d such calls the turn is stopped.", name, g.stale, maxStaleCalls), ""
@@ -94,4 +97,37 @@ func (g *repeatGuard) seenMostly(result string) bool {
 		}
 	}
 	return total >= staleMinBytes && float64(seen) >= staleSeenRatio*float64(total)
+}
+
+// repeatStopPrefix starts every error that ends a turn for looping; modelHistory
+// recognises the stored error by it.
+const repeatStopPrefix = "the assistant kept "
+
+// repeatStoppedNote replaces a looped turn's tool calls in the model's view.
+const repeatStoppedNote = "(Harlequin: my previous attempt at this request was stopped because I kept repeating the same tool call without getting anything new. Its tool calls are hidden. I must not repeat that approach.)"
+
+// modelHistory turns stored messages into what the model sees. Stored errors are
+// display-only. A turn the repeat guard stopped loses its tool calls: a retry
+// ("try again") otherwise sees the same call N times and copies it again (seen
+// with small models, notices in the results notwithstanding); hidden, the model
+// starts over, e.g. by reloading the skill. The stored session is unchanged.
+func modelHistory(history []types.Message) []llm.Message {
+	var msgs []llm.Message
+	for _, m := range history {
+		if m.Role != llm.RoleError {
+			msgs = append(msgs, llm.Message{
+				Role: m.Role, Content: m.Content, ToolCalls: toLLMToolCalls(m.ToolCalls),
+				ToolCallID: m.ToolCallID, Name: m.Name,
+			})
+			continue
+		}
+		if !strings.HasPrefix(m.Content, repeatStopPrefix) {
+			continue
+		}
+		for len(msgs) > 0 && (msgs[len(msgs)-1].Role == llm.RoleAssistant || msgs[len(msgs)-1].Role == llm.RoleTool) {
+			msgs = msgs[:len(msgs)-1]
+		}
+		msgs = append(msgs, llm.Message{Role: llm.RoleAssistant, Content: repeatStoppedNote})
+	}
+	return msgs
 }

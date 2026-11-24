@@ -433,7 +433,7 @@ func columnList(db *sheetdb.DB) string {
 
 func formatSheetResult(res *sheetdb.Result) string {
 	if res.Total == 0 {
-		return "0 rows. If you expected matches: text comparison with = is exact (case, spaces, accents); try LIKE '%part%', check the spelling against the example values, or trim(column)."
+		return "0 rows. No rows can itself be the answer (e.g. the values are not in the data); if so, say so instead of re-running the query. If you expected matches: text comparison with = is exact (case, spaces, accents); try LIKE '%part%', check the spelling against the example values, or trim(column)."
 	}
 	head := fmt.Sprintf("%d row(s):\n\n", res.Total)
 	if res.Total > len(res.Rows) {

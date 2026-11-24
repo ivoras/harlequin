@@ -347,16 +347,7 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	systemPrompt := a.composeSystemPrompt(ctx, rc)
 	a.logEvent(ctx, rc, sessionlog.TypeSystemPrompt, map[string]any{"content": systemPrompt})
 
-	msgs := []llm.Message{{Role: llm.RoleSystem, Content: systemPrompt}}
-	for _, m := range history {
-		if m.Role == llm.RoleError {
-			continue // stored failure notice, for display only
-		}
-		msgs = append(msgs, llm.Message{
-			Role: m.Role, Content: m.Content, ToolCalls: toLLMToolCalls(m.ToolCalls),
-			ToolCallID: m.ToolCallID, Name: m.Name,
-		})
-	}
+	msgs := append([]llm.Message{{Role: llm.RoleSystem, Content: systemPrompt}}, modelHistory(history)...)
 
 	a.attachImages(ctx, rc, msgs)
 

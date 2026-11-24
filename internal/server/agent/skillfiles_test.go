@@ -71,3 +71,35 @@ func TestSkillFiles(t *testing.T) {
 		return nil
 	})
 }
+
+// load_skill shows .md files rendered, so a rewrite that drops the <?js ?>
+// code the model never saw is refused; one that keeps it goes through.
+func TestWriteSkillKeepsTemplateCode(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	mgr, err := storage.New(dir, filepath.Join(dir, "harlequin.db"), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mgr.Close()
+	sm := skills.NewManager(mgr.Shared, fstest.MapFS{}, jsrun.New(jsrun.Options{}), func(int64, string, string) jstmpl.Context { return jstmpl.Context{} })
+	a := &Agent{DataDir: dir, Storage: mgr, Skills: sm, Docs: documents.NewStore(mgr.Shared, nil)}
+	_ = mgr.WithUser(ctx, 1, func(udb *sql.DB) error {
+		rc := &runContext{userID: 1, userDB: udb}
+		tools := a.buildTools(ctx, rc)
+		write := func(content string) string {
+			out, _ := tools["write_skill"].handler(ctx, rc, map[string]any{"name": "tpl", "content": content})
+			return out
+		}
+		if out := write("---\nname: tpl\ndescription: d\n---\nHi <?js print(1+1) ?>"); strings.HasPrefix(out, "error") {
+			t.Fatalf("create: %s", out)
+		}
+		if out := write("---\nname: tpl\ndescription: d\n---\nHi 2, and more"); !strings.Contains(out, "template code") {
+			t.Fatalf("rendered rewrite not refused: %s", out)
+		}
+		if out := write("---\nname: tpl\ndescription: d\n---\nHello <?js print(1+1) ?>"); strings.HasPrefix(out, "error") {
+			t.Fatalf("rewrite keeping the template refused: %s", out)
+		}
+		return nil
+	})
+}

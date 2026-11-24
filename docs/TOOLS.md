@@ -109,15 +109,19 @@ other files in path order; scripts (`.js`) are only listed with their
 **Example:** `load_skill({"name": "web-monitor"})`
 
 ### `write_skill`
-**Why:** create a skill, or replace its main file (`SKILL.md`), when the user asks.
-Other files of an existing skill are kept. `scope` defaults to personal; `shared`
+**Why:** create a skill, or update one by replacing its main file (`SKILL.md`), when
+the user asks. Other files of an existing skill are kept. To update, the model loads
+the skill first and sends the complete revised file (there is no partial edit).
+A file with `<?js ?>` template code is refused when the new version drops it:
+`load_skill` shows templates rendered, so the model never sees that code. `scope` defaults to personal; `shared`
 is owner/admin only, `project` needs a project session. Writing into a scope that
 doesn't hold the skill yet copies the effective one first, so originals stay intact.
 **Example:** `write_skill({"name": "weekly-report", "content": "---\nname: weekly-report\ndescription: ...\n---\n..."})`
 
 ### `write_skill_file`
-**Why:** add or replace one supporting file (script, template) of an existing
-skill; it is then reachable as `skill://<name>/<path>`. Same scope rules.
+**Why:** add, or update by replacing, one supporting file (script, template) of an
+existing skill; it is then reachable as `skill://<name>/<path>`. Same scope and
+template rules.
 **Example:** `write_skill_file({"name": "weekly-report", "path": "scripts/run.js", "content": "..."})`
 
 ### `delete_skill`
