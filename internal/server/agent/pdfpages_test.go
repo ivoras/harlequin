@@ -115,6 +115,19 @@ func TestPDFPagesLookupAndAttach(t *testing.T) {
 		if !strings.Contains(out, "Created 3 PDF file(s)") || !strings.Contains(out, `"Ana Horvat.pdf" (2 page(s))`) || !strings.Contains(out, `"Spojeno.pdf" (4 page(s))`) {
 			t.Fatalf("pdf_pages: %q", out)
 		}
+		// Sandbox PDFs work as sources, from either area, mixed with documents.
+		_ = a.tmpRoot(1).Write("t.pdf", pagesPDF("T one", "T two"))
+		_ = a.storageRoot(1).Write("s.pdf", pagesPDF("S one"))
+		out = call("pdf_pages", map[string]any{"outputs": []any{
+			map[string]any{"title": "Iz sandboxa", "parts": []any{
+				map[string]any{"doc": "tmp://t.pdf", "pages": "2"},
+				map[string]any{"doc": "storage://s.pdf"},
+				map[string]any{"doc": annex, "pages": "1"},
+			}},
+		}})
+		if !strings.Contains(out, `"Iz sandboxa.pdf" (3 page(s))`) {
+			t.Fatalf("pdf_pages from sandbox files: %q", out)
+		}
 		files, _ := mgr.UserFilesDir(1)
 		pagesOf := func(title string) (int64, string) {
 			t.Helper()

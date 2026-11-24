@@ -96,7 +96,7 @@ func (a *Agent) pdfPagesEntry() toolEntry {
 	part := map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"doc":   map[string]any{"type": "string", "description": `PDF document to take pages from, e.g. "u.13"`},
+			"doc":   map[string]any{"type": "string", "description": `PDF to take pages from: a document id (e.g. "u.13") or a sandbox file (e.g. "tmp://a.pdf", "storage://a.pdf")`},
 			"pages": map[string]any{"type": "string", "description": `Pages to take, e.g. "1-2" (default: all)`},
 		},
 		"required": []string{"doc"},
@@ -105,7 +105,7 @@ func (a *Agent) pdfPagesEntry() toolEntry {
 		def: fnTool("pdf_pages", `Make new PDF files out of pages of existing PDF documents — extract pages, split a PDF into several files, merge PDFs, reorder or drop pages. Pages are copied exactly as they are (layout, fonts and images are kept); nothing is re-typed. Each entry of outputs becomes one new PDF document: give it a title and the pages to put in it, in order, as a list such as "3,7,10-12" (page numbers start at 1; "all" = every page). Set doc to the PDF the pages come from; one call can make up to 200 files, so to split a PDF into one file per person or per chapter pass ALL the outputs in ONE call, never one call each. To merge, or to mix pages of several PDFs, give an output parts instead of pages: a list of {doc, pages} taken in order. Find the page numbers first with check_text (its texts list looks up many names or phrases at once and returns their pages). The new PDFs are saved in the project in a project session, else in the user's personal files (scope "shared" is owner/admin only); the source documents are not changed. Only PDF documents have pages: to make a PDF from text use create_pdf.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"doc": map[string]any{"type": "string", "description": `The PDF document the pages come from, e.g. "u.12" (used by every output that gives pages)`},
+				"doc": map[string]any{"type": "string", "description": `The PDF the pages come from: a document id (e.g. "u.12") or a sandbox file ("tmp://a.pdf"); used by every output that gives pages`},
 				"outputs": map[string]any{"type": "array", "description": "The PDF files to create (1 to 200)", "items": map[string]any{
 					"type": "object",
 					"properties": map[string]any{
@@ -143,18 +143,24 @@ func (a *Agent) pdfPages(ctx context.Context, rc *runContext, args map[string]an
 	// in output 57 must not leave 56 files behind.
 	type want struct{ doc, pages string }
 	var sources [][]byte
-	var srcDocs []*docalign.Doc
+	var srcNames []string
 	index := map[string]int{}
 	source := func(ref string) (int, string) {
-		ref = attachedRef(ref)
+		if ref = strings.TrimSpace(ref); !isSandboxPath(ref) {
+			ref = attachedRef(ref)
+		}
 		if i, ok := index[ref]; ok {
 			return i, ""
 		}
-		doc, data, errMsg := a.pdfSource(ctx, rc, ref)
+		doc, data, _, errMsg := a.pdfInput(ctx, rc, ref) // a document or a sandbox PDF
 		if errMsg != "" {
-			return 0, errMsg
+			return 0, strings.Replace(errMsg, "edit_pdf works on PDF files only", "pdf_pages works on PDF files only (to make a PDF from text use create_pdf)", 1)
 		}
-		sources, srcDocs = append(sources, data), append(srcDocs, doc)
+		name := ref
+		if doc != nil {
+			name = docRef(doc)
+		}
+		sources, srcNames = append(sources, data), append(srcNames, name)
 		index[ref] = len(sources) - 1
 		return index[ref], ""
 	}
@@ -210,7 +216,7 @@ func (a *Agent) pdfPages(ctx context.Context, rc *runContext, args map[string]an
 			si, _ := source(w.doc)
 			pages, err := parsePageSpec(w.pages, counts[si])
 			if err != nil {
-				return fmt.Sprintf("error: output %d (%q), document %s: %v. Nothing was created.", i+1, titles[i], docRef(srcDocs[si]), err), nil
+				return fmt.Sprintf("error: output %d (%q), %s: %v. Nothing was created.", i+1, titles[i], srcNames[si], err), nil
 			}
 			plan[i] = append(plan[i], pdfextract.PagePart{Source: si, Pages: pages})
 		}

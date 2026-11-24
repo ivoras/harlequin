@@ -273,7 +273,7 @@ files (`tmp://…` scratch space, `storage://…` kept per user; a bare path suc
 | `copy_doc` (`source`; `target` is a sandbox file) | yes | yes |
 | `send_email` (`doc`, `attachments`) | yes | yes |
 | `search_docs`, `align_docs`, `list_documents` | yes | no — they work on the search index; `save_doc` a file first, or use `Grep` on it |
-| `pdf_pages` | yes (PDF documents) | no |
+| `pdf_pages` | yes (PDF documents, sandbox PDFs) | no |
 | `edit_pdf` (`doc`; `save_to` is a sandbox file) | yes (PDF documents) | yes (`.pdf` files) |
 | `query_sheet` (`doc`, `more_docs`; `save_to` is a sandbox file) | yes (spreadsheets; PDF/Word tables) | yes (`.xlsx`, `.csv`, `.md` …) |
 | `query_xml` | yes | yes (`.xml`) |
@@ -631,7 +631,7 @@ Converter: `internal/server/mdword`; the `create-word` skill teaches the model.
 **Example:** `create_word({"title": "Service agreement", "source": "tmp://contract.md"})`
 
 #### `pdf_pages`
-**Why:** make new PDFs out of pages of existing PDF documents — extract, split,
+**Why:** make new PDFs out of pages of existing PDFs (saved documents, or sandbox files such as `tmp://a.pdf` or `storage://a.pdf`) — extract, split,
 merge, reorder, drop pages — without re-typing anything: pages are copied as
 they are by PDFium (`pdfextract.Assemble`), so layout, fonts and images are
 kept. `outputs` is a list of files to create (up to 200 per call, so a PDF is
