@@ -103,14 +103,16 @@ func TestRunJSSheetHelpers(t *testing.T) {
 var rows = sheets.query("tmp://prodaja.xlsx", "SELECT konto, COUNT(*) AS n FROM prodaja GROUP BY konto ORDER BY konto");
 println(rows.length, rows[0].konto, rows[0].n, JSON.stringify(rows[2]));
 var t = sheets.tables("tmp://prodaja.xlsx");
-println(t[0].table, t[0].rows, t[0].columns[0].type);
+println(t[0].table, t[0].name, t[0].rows, t[0].columns[0].type);
+tmp.write("tmp://w.txt", "x"); println(tmp.read("w.txt"), tmp.exists("tmp://w.txt"));
+try { tmp.write("storage://w.txt", "x"); } catch (e) { println("wrong area"); }
 println(read_doc("tmp://po.txt"));
 try { sheets.query("tmp://prodaja.xlsx", "DELETE FROM prodaja"); } catch (e) { println("denied"); }
 try { sheets.query("tmp://prodaja.xlsx", "SELECT customer FROM prodaja"); } catch (e) { println(String(e).indexOf("prodaja(_row, konto, kupac, iznos)") >= 0); }`, rcx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "3 01270000 100 {\"konto\":\"01270002\",\"n\":100}\nprodaja 300 code\nhello\ndenied\ntrue\n"
+	want := "3 01270000 100 {\"konto\":\"01270002\",\"n\":100}\nprodaja prodaja 300 code\nx true\nwrong area\nhello\ndenied\ntrue\n"
 	if res.Output != want {
 		t.Fatalf("output:\n%s\nwant:\n%s", res.Output, want)
 	}

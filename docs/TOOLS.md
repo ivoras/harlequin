@@ -151,7 +151,7 @@ stores, and `load(uri)`/`include(uri)` for `skill://`/`storage://`/`tmp://` scri
 For documents: `read_doc(ref)` returns a document's (or sandbox file's) full text;
 `sheets.query(doc, sql[, {sheet, header_row, more_docs}])` runs a `query_sheet`
 SELECT and returns row objects (columns in SELECT order, at most 200,000 rows);
-`sheets.tables(doc)` lists the tables and columns; `xml.query(doc, path)` /
+`sheets.tables(doc)` lists the tables and columns (`[{table, name, sheet, rows, header_row, columns}]`); `xml.query(doc, path)` /
 `xml.outline(doc)` read XML like `query_xml`. Scripts should read data this
 way, never as literals typed into the code.
 **Examples:**

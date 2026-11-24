@@ -531,7 +531,7 @@ func (a *Agent) sheetJSGlobals(ctx context.Context, rc *runContext) map[string]a
 					for _, c := range t.Columns {
 						cols = append(cols, map[string]any{"name": c.Name, "type": c.Type(), "header": c.Header, "letter": c.Letter})
 					}
-					out = append(out, map[string]any{"table": t.Name, "sheet": t.Sheet, "rows": t.Rows, "header_row": t.HeaderRow, "columns": cols})
+					out = append(out, map[string]any{"table": t.Name, "name": t.Name, "sheet": t.Sheet, "rows": t.Rows, "header_row": t.HeaderRow, "columns": cols})
 				}
 				return out, nil
 			},

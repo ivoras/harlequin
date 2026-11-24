@@ -539,12 +539,20 @@ var dom = {
   json:  function(h, opts){ return __dom_json(h, opts || {}); }
 };
 function __mkfs(area){
+  // "tmp://a.md" means "a.md" (as in every other tool); unstripped, path.Clean made it a file in a "tmp:" dir.
+  var pre = area + "://";
+  function p(n){
+    n = String(n);
+    if (n.indexOf(pre) === 0) return n.slice(pre.length);
+    if (/^(tmp|storage):\/\//.test(n)) throw new Error("FSError: " + n + " is not in " + area + "; use the " + (area === "tmp" ? "storage" : "tmp") + " object");
+    return n;
+  }
   return {
-    read:   function(n){ return __fs_read(area, n); },
-    write:  function(n, d){ return __fs_write(area, n, d); },
-    list:   function(g){ return __fs_list(area, g || ""); },
-    remove: function(n){ return __fs_remove(area, n); },
-    exists: function(n){ return __fs_exists(area, n); }
+    read:   function(n){ return __fs_read(area, p(n)); },
+    write:  function(n, d){ return __fs_write(area, p(n), d); },
+    list:   function(g){ return __fs_list(area, p(g || "")); },
+    remove: function(n){ return __fs_remove(area, p(n)); },
+    exists: function(n){ return __fs_exists(area, p(n)); }
   };
 }
 var tmp = __mkfs("tmp");
