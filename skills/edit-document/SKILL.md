@@ -20,7 +20,7 @@ There are three possible places:
 2. **A new document** — `save_as: "<title>"`. The original stays exactly as it
    was and the user gets a second document in their files.
 3. **A temporary copy** — only for text/Markdown documents: `copy_doc` the
-   document to `tmp://name.md` (`target`), change that file with `edit_file`,
+   document to `tmp://name.md` (`target`), change that file with `edit_doc`,
    then write its path `tmp://name.md` in your reply: the user gets a download
    link. It is removed after a while and never touches their files. For Word,
    Excel and PDF documents there is no temporary copy; offer a new document.

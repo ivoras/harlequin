@@ -110,12 +110,9 @@ func (a *Agent) loadXML(ctx context.Context, rc *runContext, ref string) (*xmlq.
 	}
 	var data []byte
 	label := ref
-	if isSandboxPath(ref) {
-		root, _, rel, err := a.resolveNamespaceRoot(rc, ref)
-		if err != nil {
-			return nil, "", "error: " + err.Error()
-		}
-		if data, err = root.Read(rel); err != nil {
+	if isFilePath(ref) {
+		var err error
+		if data, err = a.readFile(ctx, rc, ref); err != nil {
 			return nil, "", fmt.Sprintf("error: cannot read %s: %v", ref, err)
 		}
 	} else {

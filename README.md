@@ -86,7 +86,7 @@ It's perfectly capable of playing nicely with specific requirements such as EU-b
   multiple projects with those highly specific skills.
 - **LLM Tools** — WebFetch/WebFetchDOM/WebFetchGrep (page analysis, structural
   extraction, raw-HTML grep), MarkdownFetch (full, unsummarised URL or document → Markdown via
-  Docling), file editing (`edit_file`, `edit_doc`), WebSearch (Brave Search API), sandboxed
+  Docling), file writing and editing (`write_file`, `edit_doc`), WebSearch (Brave Search API), sandboxed
   JavaScript (`run_js`), an exact-decimal calculator (for money), cron scheduling, `send_email` (Markdown or a
   saved document, mailed as plain text + rendered HTML; needs `email.smtp_host`),
   and any MCP server the user registers.

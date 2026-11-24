@@ -32,21 +32,23 @@ For the **base** pass `save_file`, e.g. `{"url": "<base url>", "save_file": "bas
 the full text is then also a working file, `tmp://base.md`. Amendments need no
 `save_file`. If a source is a file already in the corpus (`u.N` / `s.N` / `p.N`),
 read it with `search_docs`/`list_documents` instead and start the working file
-from it with `edit_file(append)`.
+from it with `edit_doc(append)`.
 
 ## Step 2 — Apply the amendments, in order
 
 Read each amendment's instructions in the order the amending text gives them.
-Typical forms and how to apply each to `tmp://base.md`:
+Typical forms and how to apply each to `tmp://base.md` (every `edit_doc` call
+below has `"doc": "tmp://base.md"` — the working file, never a document of the
+user's):
 
 | Instruction says | Do |
 |---|---|
-| replace/amend words, a sentence or a paragraph | `edit_file` with `old_string` (copied exactly from the base text in your context, with enough surrounding words to be unique) and `new_string` |
-| insert a new article/section/paragraph after X | `edit_file`: `old_string` = the end of X, `new_string` = that same text + the new text |
-| delete an article/section/words | `edit_file` with `new_string` empty (or a short "(repealed)" marker if the amendment says so) |
-| a whole article is replaced by new text | `edit_file`: `old_string` = the article's old text, `new_string` = the new article |
+| replace/amend words, a sentence or a paragraph | `edit_doc` with `old_string` (copied exactly from the base text in your context, with enough surrounding words to be unique) and `new_string` |
+| insert a new article/section/paragraph after X | `edit_doc`: `old_string` = the end of X, `new_string` = that same text + the new text |
+| delete an article/section/words | `edit_doc` with `new_string` empty (or a short "(repealed)" marker if the amendment says so) |
+| a whole article is replaced by new text | `edit_doc`: `old_string` = the article's old text, `new_string` = the new article |
 
-Work efficiently — a step budget applies: put **many `edit_file` calls in one
+Work efficiently — a step budget applies: put **many `edit_doc` calls in one
 response** (they run in order), and for runs of nearby changes one `diff` with
 several hunks is fine. If an `old_string` is not found or not unique, correct it
 from the text in your context and retry once; if it still fails, skip the
@@ -56,7 +58,7 @@ Do not renumber or reformat anything the amendment does not mention.
 
 ## Step 3 — Add the consolidation notes
 
-Append (`edit_file` with `append`) a short final section titled "Consolidation
+Append (`edit_doc` with `append`) a short final section titled "Consolidation
 notes" listing: the base document and each amendment (title and publication
 reference), how many instructions were applied, and every instruction that was
 **not** applied with the reason (e.g. "Article 5: target article not present in

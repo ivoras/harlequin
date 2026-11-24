@@ -30,6 +30,9 @@ func (a *Agent) ContextBreakdown(ctx context.Context, projectID, sessionID, user
 		tools := a.buildTools(ctx, rc)
 		toolDefs := make([]llm.Tool, 0, len(tools))
 		for _, t := range tools {
+			if t.hidden {
+				continue
+			}
 			toolDefs = append(toolDefs, t.def)
 		}
 		var toolsTokens int

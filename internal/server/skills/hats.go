@@ -533,6 +533,15 @@ func (m *Manager) ResolveEffective(ctx context.Context, userDB, projDB *sql.DB, 
 	return buildSkill(name, rendered, source)
 }
 
+// ResolveEffectiveRaw is ResolveEffective without rendering: the stored source
+// of every file (what an editor must start from) and the scope it came from.
+func (m *Manager) ResolveEffectiveRaw(ctx context.Context, userDB, projDB *sql.DB, name string, hat *types.Hat) (map[string]string, string, error) {
+	if hat == nil {
+		return m.resolveRaw(ctx, userDB, projDB, name)
+	}
+	return m.resolveRawForHat(ctx, userDB, projDB, hat, name)
+}
+
 // EffectiveSkillInfos returns the skills visible to a user given the worn hat:
 //   - no hat → the normal global set;
 //   - hat with a skills list → exactly those (its visibility list), with per-hat

@@ -88,28 +88,17 @@ func (a *Agent) jsRunContext(ctx context.Context, rc *runContext) jsrun.RunConte
 	}
 }
 
-// makeResolver resolves a sandbox URI to its source text. skill:// honours the
-// worn hat's overrides then the scope precedence (hat → project → shared → user)
-// via ResolveEffective, so a hat or a deeper scope can override any shipped
-// script; storage:// and tmp:// read the per-user scoped filesystems.
+// makeResolver resolves a sandbox URI to its source text. skill:// reads the
+// file's source as the session resolves the skill (hat overlay, then project →
+// shared → personal; see readFile), so a hat or a deeper scope can override any
+// shipped script; storage:// and tmp:// read the per-user scoped filesystems.
 func (a *Agent) makeResolver(ctx context.Context, rc *runContext, tmp, store *sandboxfs.Root) func(string) (string, error) {
 	return func(uri string) (string, error) {
 		uri = strings.TrimSpace(uri)
 		switch {
 		case strings.HasPrefix(uri, "skill://"):
-			name, rel, ok := strings.Cut(strings.TrimPrefix(uri, "skill://"), "/")
-			if !ok || name == "" || rel == "" {
-				return "", fmt.Errorf("skill:// URI must look like skill://<skill>/<path>")
-			}
-			sk, err := a.Skills.ResolveEffective(ctx, rc.userDB, rc.projectDB, name, rc.userID, rc.username, rc.hat)
-			if err != nil {
-				return "", fmt.Errorf("resolve skill %q: %w", name, err)
-			}
-			content, ok := sk.Files[rel]
-			if !ok {
-				return "", fmt.Errorf("skill %q has no file %q", name, rel)
-			}
-			return content, nil
+			b, err := a.readFile(ctx, rc, uri)
+			return string(b), err
 		case strings.HasPrefix(uri, "storage://"):
 			b, err := store.Read(strings.TrimPrefix(uri, "storage://"))
 			return string(b), err

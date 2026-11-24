@@ -70,7 +70,7 @@ Rules — follow them exactly:
 2. Small workbook: call
    `create_excel({"title": "Sales 2026", "content": "<the Markdown>"})`.
    Large workbook (more than ~100 rows, or several sheets): build it in the
-   sandbox with `edit_file` — `append` one sheet or a few hundred rows per call
+   sandbox with `edit_doc` — `append` one sheet or a few hundred rows per call
    to `tmp://sales.md` — then call
    `create_excel({"title": "Sales 2026", "source": "tmp://sales.md"})`.
 3. Tell the user the workbook was created (its id, e.g. `u.42`, and file name)

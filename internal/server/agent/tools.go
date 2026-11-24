@@ -37,6 +37,7 @@ type toolHandler func(ctx context.Context, rc *runContext, args map[string]any) 
 type toolEntry struct {
 	def     llm.Tool
 	handler toolHandler
+	hidden  bool // a retired name: still dispatched (old sessions, skill texts), not offered to the model
 }
 
 // sortToolDefs orders tool definitions by function name in place. The tools
@@ -369,8 +370,9 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 				fmt.Fprintf(&sb, "- %s: %s\n", i.Name, i.Description)
 			}
 			if sb.Len() == 0 {
-				return "(no skills)", nil
+				sb.WriteString("(no skills)\n")
 			}
+			sb.WriteString("(Create a skill with write_skill; change one with edit_doc on skill://<name>/SKILL.md.)\n")
 			return sb.String(), nil
 		},
 	}
@@ -399,7 +401,7 @@ Optionally pass slot_key to file the fact under an exact attribute key (e.g. "us
 	reg["run_js"] = toolEntry{
 		def: fnTool("run_js", `Execute JavaScript in a sandbox and return its output. The engine (goja) is ES5.1-compatible, and also supports much of ES6: let/const, arrow functions, template literals, classes, destructuring, default/rest/spread, for…of, generators, Map/Set, Symbol, Promise, typed arrays, the ** (exponentiation) operator, and BigInt. Emit output with println()/print() or console.log() (console.log/info/warn/error/debug all print a line; objects print as JSON).
 BigInt follows the JS spec strictly: raise to a power with the ** operator (e.g. 10n ** 3n) — there is NO BigInt.pow()/.pow() method; and NEVER mix BigInt with Number in one expression (2n + 3, or BigInt added to Math.pow(...), throws "Cannot mix BigInt and other types") — convert explicitly with BigInt(x) / Number(x) first. Also: break/continue only inside a loop or switch, not in a forEach/map callback; toFixed(n) needs 0<=n<=100.
-Available helpers: fetch(url) -> {status, body, finalUrl, contentType}; dom.parse(html) -> handle, then dom.query(handle, cssSelector), dom.grep(handle, text), dom.json(handle). dom.query/dom.grep return node objects with fields .tag/.class/.attrs/.text and methods .getAttribute(name) and .textContent (full text); query results are themselves queryable (dom.query(node, sel)). Per-user file stores tmp.* and storage.* (read/write/list/remove/exists); load(uri)/include(uri) for skill://<skill>/<path>, storage://<path>, tmp://<path> scripts.
+Available helpers: fetch(url) -> {status, body, finalUrl, contentType}; dom.parse(html) -> handle, then dom.query(handle, cssSelector), dom.grep(handle, text), dom.json(handle). dom.query/dom.grep return node objects with fields .tag/.class/.attrs/.text and methods .getAttribute(name) and .textContent (full text); query results are themselves queryable (dom.query(node, sel)). Per-user file stores tmp.* and storage.* (read/write/list/remove/exists) for scripts that compute what they write — to write text you already have into a file use write_file, not run_js; load(uri)/include(uri) for skill://<skill>/<path>, storage://<path>, tmp://<path> scripts.
 Documents and spreadsheets: read_doc(ref) returns a document's full text (ref like "u.12", or a sandbox path). sheets.query(doc, sql[, {sheet, header_row, more_docs}]) runs a SQLite SELECT over a spreadsheet (same tables and column names as the query_sheet tool) and returns an array of row objects, e.g. sheets.query("u.12", "SELECT kupac, SUM(iznos) AS s FROM prodaja GROUP BY kupac").forEach(function(r){ println(r.kupac + ": " + r.s); }); sheets.tables(doc) lists the tables and columns. Do filtering, grouping and summing in the SQL and use JS only for logic SQL can't express. Never copy rows from a spreadsheet into your code as literals: read them with sheets.query (or read_doc), so the script works on the real data. The first use of a big workbook can take several seconds; call query_sheet first to see its tables. XML (e-invoices, bank statements): xml.query(doc, path) returns [{path, value, attrs}] for a query_xml path (e.g. xml.query("u.7", "//cac:InvoiceLine/cbc:LineExtensionAmount")), xml.outline(doc) the structure as text — use them to check or sum values across many XML files in one script.
 Your code is the body of a function the runtime already wraps for you: write top-level statements (a bare top-level 'return' is allowed and its value is captured) — do NOT wrap your code in 'function(){...}' (an un-called function runs nothing, and 'function() {' parses as a nameless declaration -> "Unexpected token (").
 Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NOT both). To parse a saved HTML page (e.g. a WebFetchDOM tmp:// handle), that page is DATA, not a script: put JS in 'code' and read it with tmp.read('<handle>'), e.g. code: "var h = dom.parse(tmp.read('page-x.html')); println(dom.query(h, 'div.price').length);". An optional args object is exposed to the script as the global 'args'.`, map[string]any{
@@ -474,7 +476,11 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 	}
 
 	reg["Grep"] = a.grepEntry()
-	reg["edit_file"] = a.editFileEntry()
+	// Retired name, kept for old sessions and skill texts: edit_doc on a file.
+	reg["edit_file"] = toolEntry{hidden: true, def: fnTool("edit_file", "Retired: use edit_doc.", map[string]any{"type": "object"}),
+		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+			return a.editFile(ctx, rc, args)
+		}}
 
 	if a.WebSearch.Configured() {
 		reg["WebSearch"] = a.webSearchEntry()
@@ -492,13 +498,18 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 	if a.Docs != nil {
 		reg["align_docs"] = a.alignDocsEntry()
 		reg["list_documents"] = toolEntry{
-			def: fnTool("list_documents", `List every document in the corpus (personal, shared, and — in a project session — project documents): scoped id, title, catalogue description, size and date. Use this to resolve a document the user names loosely ("the new EEA regulation", "last year's contract") to its scoped id (u.N / s.N / p.N) before calling align_docs or search_docs with a docs filter. Pass all_projects: true to also list the documents of every project the user is a member of (ids there are p<project>.N, e.g. p3.17 — usable with align_docs, check_text and search_docs from any session). Prefer matching on the description, not just the title — titles are often raw filenames.`, map[string]any{
+			def: fnTool("list_documents", `List every document in the corpus (personal, shared, and — in a project session — project documents): scoped id, title, catalogue description, size and date. Use this to resolve a document the user names loosely ("the new EEA regulation", "last year's contract") to its scoped id (u.N / s.N / p.N) before calling align_docs or search_docs with a docs filter. Pass all_projects: true to also list the documents of every project the user is a member of (ids there are p<project>.N, e.g. p3.17 — usable with align_docs, check_text and search_docs from any session). Prefer matching on the description, not just the title — titles are often raw filenames. To list FILES instead of documents, pass path: "tmp://" or "storage://" (your sandbox, or a folder in it) or "skill://<skill>/" (the files of a skill).`, map[string]any{
 				"type": "object", "properties": map[string]any{
 					"all_projects": map[string]any{"type": "boolean",
 						"description": "Also list documents of every project the user is a member of, not only the session's own"},
+					"path": map[string]any{"type": "string",
+						"description": `List the files under this location instead of documents: "tmp://", "storage://", a folder in them, or "skill://<skill>/"`},
 				},
 			}),
 			handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+				if p := strings.TrimSpace(argString(args, "path")); p != "" {
+					return a.listFiles(ctx, rc, p), nil
+				}
 				scopes := a.Docs.ScopesFor(rc.userDB, rc.projectDB)
 				var legend string
 				if argBool(args, "all_projects", false) {
@@ -529,7 +540,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 			},
 		}
 		reg["read_doc"] = toolEntry{
-			def: fnTool("read_doc", `Read a document's text (its Markdown rendering) by reference. Use this for documents the user attached to their message — listed at its end as @"u.18/report.pdf" — pass the reference as written (or just the id, u.18). It also reads a text file in your sandbox: pass its path (tmp://combined.md, storage://notes.md; a bare path means tmp://), and a file of a skill by its skill:// path (skill://e-racun/reference/codes.md). Returns up to limit characters from offset; when truncated, the result says where to continue. To find something in a long document prefer search_docs with docs=[id] or check_text. For an Excel workbook you want to edit, pass cells true: it shows every sheet as a grid with its name, column letters and row numbers, so you can name the cell to change.`, map[string]any{
+			def: fnTool("read_doc", `Read a document's text (its Markdown rendering) by reference. Use this for documents the user attached to their message — listed at its end as @"u.18/report.pdf" — pass the reference as written (or just the id, u.18). It also reads a text file: one in your sandbox by its path (tmp://combined.md, storage://notes.md; a bare path means tmp://), or a file of a skill by its skill:// path (skill://e-racun/reference/codes.md) — as stored, which is what to start from when changing a skill. Returns up to limit characters from offset; when truncated, the result says where to continue. To find something in a long document prefer search_docs with docs=[id] or check_text. For an Excel workbook you want to edit, pass cells true: it shows every sheet as a grid with its name, column letters and row numbers, so you can name the cell to change.`, map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"doc":    map[string]any{"type": "string", "description": `Document reference: u.N / s.N / p.N, optionally as written in the prompt, e.g. @"u.18/report.pdf"; a sandbox file, e.g. tmp://combined.md; or a skill file, e.g. skill://e-racun/reference/codes.md`},
@@ -556,17 +567,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 					return out
 				}
 				wantGrid := argBool(args, "cells", false)
-				if p := strings.TrimSpace(argString(args, "doc")); strings.HasPrefix(p, "skill://") {
-					if wantGrid {
-						return gridOnlyExcel, nil
-					}
-					text, errMsg := a.skillFileText(ctx, rc, p)
-					if errMsg != "" {
-						return errMsg, nil
-					}
-					return window(p[strings.LastIndexByte(p, '/')+1:], "skill file "+p, "", text), nil
-				}
-				if p := strings.TrimSpace(argString(args, "doc")); isSandboxPath(p) {
+				if p := strings.TrimSpace(argString(args, "doc")); isFilePath(p) {
 					if wantGrid {
 						return gridOnlyExcel, nil
 					}
@@ -574,7 +575,14 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 					if errMsg != "" {
 						return errMsg, nil
 					}
-					return window(filepath.Base(p), "sandbox file "+p, "", text), nil
+					kind, note := "sandbox file ", ""
+					if isSkillPath(p) {
+						kind = "skill file "
+						if strings.Contains(text, "<?js") {
+							note = "[This is the file's source: the <?js ?> parts are template code that load_skill shows rendered. Keep them when you edit the file.]\n\n"
+						}
+					}
+					return window(filepath.Base(p), kind+p, note, text), nil
 				}
 				doc, errMsg := a.loadDocRef(ctx, rc, argString(args, "doc"))
 				if errMsg != "" {
@@ -647,7 +655,7 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 				if text == "" {
 					return "error: text (one phrase) or texts (a list of phrases) is required", nil
 				}
-				if p := strings.TrimSpace(argString(args, "doc")); isSandboxPath(p) {
+				if p := strings.TrimSpace(argString(args, "doc")); isFilePath(p) {
 					body, _, errMsg := a.sourceText(ctx, rc, p)
 					if errMsg != "" {
 						return errMsg, nil
@@ -723,12 +731,12 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 
 	if a.Docs != nil {
 		reg["save_doc"] = toolEntry{
-			def: fnTool("save_doc", `Save a text you produced (a report, analysis, or summary worth keeping) as a document in the corpus, so it can be found later with search_docs. Pass the text either inline as content, or — for anything long (a combined or converted document, a fetched page) — as source: a file you already built in your sandbox, e.g. "tmp://combined.md" (write it with run_js's tmp.write, or save a fetched page with WebFetchDOM's save_file); the file is read server-side so the text never has to pass through your output. Pass exactly one of content or source. Keep any [d.x.N] citations in the content — they remain linked to their source documents. Omit scope unless the user asks: the default is right (the project corpus in a project session, else the user's personal documents). Scope "shared" (org-wide, visible to all users) is available to owners/admins only. Set is_raw to true only when the content is original writing you authored (e.g. a story, a draft, freeform prose) rather than a report drawn from the corpus — this skips the quoted-citation check, so any quotation marks in the text are treated as ordinary prose, not as excerpts that must cite a source document.`, map[string]any{
+			def: fnTool("save_doc", `Save a text you produced (a report, analysis, or summary worth keeping) as a DOCUMENT: it gets an id (u.N, or p.N in a project), appears in the user's document list, and search_docs finds it later. (A working file that only you need — scratch text, data, a draft being built up — is a file, written with write_file or edit_doc, not a document.) Pass the text either inline as content, or — for anything long (a combined or converted document, a fetched page) — as source: a file you already built, e.g. "tmp://combined.md" (with write_file or edit_doc append, or a fetched page saved with WebFetchDOM's save_file); the file is read server-side so the text never has to pass through your output. Pass exactly one of content or source. Keep any [d.x.N] citations in the content — they remain linked to their source documents. Omit scope unless the user asks: the default is right (the project corpus in a project session, else the user's personal documents). Scope "shared" (org-wide, visible to all users) is available to owners/admins only. Set is_raw to true only when the content is original writing you authored (e.g. a story, a draft, freeform prose) rather than a report drawn from the corpus — this skips the quoted-citation check, so any quotation marks in the text are treated as ordinary prose, not as excerpts that must cite a source document.`, map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"title":   map[string]any{"type": "string", "description": "Document title, e.g. \"Comparison: Regulation 2025 vs 2026\""},
 					"content": map[string]any{"type": "string", "description": "The full text to save (Markdown). Omit when source is given."},
-					"source":  map[string]any{"type": "string", "description": "Sandbox file to save instead of inline content, e.g. tmp://combined.md or storage://report.md (UTF-8 text/Markdown). Omit when content is given."},
+					"source":  map[string]any{"type": "string", "description": "File to save instead of inline content, e.g. tmp://combined.md or storage://report.md (UTF-8 text/Markdown). Omit when content is given."},
 					"scope":   map[string]any{"type": "string", "enum": []string{"personal", "project", "shared"}},
 					"is_raw":  map[string]any{"type": "boolean", "description": "True if content is original writing you authored (not sourced from the corpus); skips the quoted-citation check. Default false."},
 				},
@@ -741,11 +749,10 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 					if content != "" {
 						return "error: pass either content or source, not both", nil
 					}
-					root, _, rel, err := a.resolveNamespaceRoot(rc, src)
-					if err != nil {
-						return "error: " + err.Error(), nil
+					if docSourceRE.MatchString(src) {
+						return fmt.Sprintf("error: source must be a file (tmp://…); to copy document %s use copy_doc", src), nil
 					}
-					data, err := root.Read(rel)
+					data, err := a.readFile(ctx, rc, src)
 					if err != nil {
 						return fmt.Sprintf("error: cannot read source %s: %v", src, err), nil
 					}
@@ -823,14 +830,18 @@ Pass code inline, OR set script=<uri> to run a saved JavaScript file instead (NO
 		a.registerProjectTools(reg, rc)
 
 		reg["delete_doc"] = toolEntry{
-			def: fnTool("delete_doc", `Permanently delete a document from the corpus, given its scoped id (u.N / s.N / p.N — resolve it with list_documents first). This removes the document and all its chunks; it cannot be undone, and search_docs/align_docs will no longer find it. Only delete when the user has clearly asked to; if you are unsure which document they mean, use list_documents and confirm with ask_user first. Personal (u.N) documents are always yours to delete; a project (p.N) document is deleted from the current project's corpus; a shared (s.N) document may be deleted by owners/admins only.`, map[string]any{
+			def: fnTool("delete_doc", `Permanently delete a document from the corpus, given its scoped id (u.N / s.N / p.N — resolve it with list_documents first). This removes the document and all its chunks; it cannot be undone, and search_docs/align_docs will no longer find it. Only delete when the user has clearly asked to; if you are unsure which document they mean, use list_documents and confirm with ask_user first. Personal (u.N) documents are always yours to delete; a project (p.N) document is deleted from the current project's corpus; a shared (s.N) document may be deleted by owners/admins only. doc may also be a file: tmp://… or storage://… in your sandbox, or one file of a skill (skill://<skill>/<path>, from the scope given, default personal; a whole skill is deleted with delete_skill).`, map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"doc": map[string]any{"type": "string", "description": "Scoped document id to delete, e.g. \"u.12\", \"s.3\" or \"p.7\""},
+					"doc":   map[string]any{"type": "string", "description": "Scoped document id to delete, e.g. \"u.12\", \"s.3\" or \"p.7\"; or a file, e.g. tmp://old.md"},
+					"scope": map[string]any{"type": "string", "enum": []string{"personal", "project", "shared"}, "description": "skill:// files only: which copy of the skill to delete the file from (default personal)"},
 				},
 				"required": []string{"doc"},
 			}),
 			handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+				if p := strings.TrimSpace(argString(args, "doc")); isFilePath(p) {
+					return a.deleteFile(ctx, rc, p, argString(args, "scope")), nil
+				}
 				doc, errMsg := a.loadDocRef(ctx, rc, argString(args, "doc"))
 				if errMsg != "" {
 					return errMsg, nil
@@ -1085,7 +1096,7 @@ Example (watch a saved web-monitor check every 30 min): cron_create(name="fzoeu"
 		}
 	}
 
-	a.registerSkillWriteTools(reg)
+	a.registerFileWriteTools(reg)
 
 	// External MCP server tools (shared + user), namespaced mcp__<server>__<tool>.
 	if a.MCP != nil {

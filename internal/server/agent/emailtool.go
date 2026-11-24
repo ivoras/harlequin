@@ -128,16 +128,12 @@ func (a *Agent) sendEmailEntry() toolEntry {
 // emailAttachment loads one attachment: a document's stored original (a PDF as
 // the PDF; its text as a .md file when it has no stored file) or a sandbox file.
 func (a *Agent) emailAttachment(ctx context.Context, rc *runContext, ref string) (email.Attachment, string) {
-	if isSandboxPath(ref) {
-		root, _, rel, err := a.resolveNamespaceRoot(rc, ref)
-		if err != nil {
-			return email.Attachment{}, "error: " + err.Error()
-		}
-		data, err := root.Read(rel)
+	if isFilePath(ref) {
+		data, err := a.readFile(ctx, rc, ref)
 		if err != nil {
 			return email.Attachment{}, fmt.Sprintf("error: cannot read attachment %s: %v", ref, err)
 		}
-		name := filepath.Base(rel)
+		name := filepath.Base(ref)
 		return email.Attachment{Name: name, Mime: mime.TypeByExtension(filepath.Ext(name)), Data: data}, ""
 	}
 	doc, errMsg := a.loadDocRef(ctx, rc, ref)

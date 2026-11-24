@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"context"
 	"fmt"
 	"path"
 	"sort"
@@ -47,31 +46,7 @@ func skillLoadText(sk *skills.Skill) string {
 	if len(scripts) > 0 {
 		fmt.Fprintf(&sb, "=== scripts (not shown) ===\n%s\nThey run through the skill's own tools, run_js (script: \"skill://…\", or include(\"skill://…\") in code) and cron jobs; you do not need their code. To read one anyway, read_doc it by its skill:// path.\n", strings.Join(scripts, "\n"))
 	}
+	// Point of use: the model looks here, not in the tool list, for how to change a skill.
+	fmt.Fprintf(&sb, "=== to change this skill (only when the user asks) ===\nread_doc \"skill://%s/SKILL.md\" (or another file) shows its source; change it with edit_doc on that path, or replace a whole file with write_file.\n", sk.Name)
 	return sb.String()
-}
-
-// skillFileText reads one file of a skill by its skill://<skill>/<path> URI,
-// resolved like load_skill (hat overlay, project/shared/personal scope).
-func (a *Agent) skillFileText(ctx context.Context, rc *runContext, uri string) (string, string) {
-	name, rel, ok := strings.Cut(strings.TrimPrefix(uri, "skill://"), "/")
-	if !ok || name == "" || rel == "" {
-		return "", `error: a skill file is named skill://<skill>/<path>, e.g. "skill://e-racun/reference/codes.md"`
-	}
-	if a.Skills == nil {
-		return "", "error: skills are not available here"
-	}
-	sk, err := a.Skills.ResolveEffective(ctx, rc.userDB, rc.projectDB, name, rc.userID, rc.username, rc.hat)
-	if err != nil {
-		return "", fmt.Sprintf("error: no skill %q: %v", name, err)
-	}
-	text, ok := sk.Files[rel]
-	if !ok {
-		var have []string
-		for r := range sk.Files {
-			have = append(have, r)
-		}
-		sort.Strings(have)
-		return "", fmt.Sprintf("error: skill %q has no file %q; its files are: %s", name, rel, strings.Join(have, ", "))
-	}
-	return text, ""
 }

@@ -17,9 +17,9 @@ import (
 // grepResultCap bounds the Grep output handed to the model.
 const grepResultCap = 15000
 
-const grepDescription = `Search the contents of files saved in your sandbox namespaces (tmp:// and storage://) for a regular-expression pattern. Use this to search a page saved by WebFetchDOM (save_file), a stored document, or any saved data — without reading the whole file.
+const grepDescription = `Search the contents of files (your sandbox, tmp:// and storage://, or a skill's files, skill://<skill>/) for a regular-expression pattern. Use this to search a page saved by WebFetchDOM (save_file), any saved data, or a skill's scripts — without reading the whole file. (Saved documents are searched with search_docs or check_text.)
 - pattern is a regular expression (RE2 syntax).
-- path is a namespace location: a file ("tmp://links.html"), a namespace root ("tmp://" — searches all files there), or a subdirectory. Defaults to "tmp://".
+- path is a location: a file ("tmp://links.html"), a namespace root ("tmp://" — searches all files there), a subdirectory, or a skill ("skill://weekly-report/"). Defaults to "tmp://".
 - output_mode: "files_with_matches" (default) lists matching file paths; "content" shows matching lines; "count" shows per-file match counts.
 - glob filters files by name (e.g. "*.html"); type filters by kind (e.g. "html", "json", "js").
 - -A/-B/-C add lines after/before/around each match (content mode); -i is case-insensitive; -n adds line numbers (content mode); multiline lets the pattern span lines (. matches newline); head_limit caps results.`
@@ -29,7 +29,7 @@ func grepToolDef() llm.Tool {
 		"type": "object",
 		"properties": map[string]any{
 			"pattern":     map[string]any{"type": "string", "description": "Regular expression to search for (RE2 syntax)"},
-			"path":        map[string]any{"type": "string", "description": "Namespace file, root, or directory to search (e.g. tmp://links.html, tmp://, storage://docs). Defaults to tmp://"},
+			"path":        map[string]any{"type": "string", "description": "File, root, or directory to search (e.g. tmp://links.html, tmp://, storage://docs, skill://weekly-report/). Defaults to tmp://"},
 			"output_mode": map[string]any{"type": "string", "enum": []string{"content", "files_with_matches", "count"}, "description": "content = matching lines; files_with_matches = file paths (default); count = match counts per file"},
 			"glob":        map[string]any{"type": "string", "description": "Filter files by glob pattern (e.g. \"*.html\")"},
 			"type":        map[string]any{"type": "string", "description": "Filter by file type (e.g. \"html\", \"json\", \"js\")"},
@@ -50,7 +50,7 @@ func (a *Agent) grepEntry() toolEntry {
 	return toolEntry{def: grepToolDef(), handler: a.grep}
 }
 
-func (a *Agent) grep(_ context.Context, rc *runContext, args map[string]any) (string, error) {
+func (a *Agent) grep(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 	pattern := argString(args, "pattern")
 	if strings.TrimSpace(pattern) == "" {
 		return "error: pattern is required", nil
@@ -88,7 +88,7 @@ func (a *Agent) grep(_ context.Context, rc *runContext, args map[string]any) (st
 		return fmt.Sprintf("error: invalid pattern %q: %v", pattern, err), nil
 	}
 
-	root, scheme, rel, err := a.resolveNamespaceRoot(rc, rawPath)
+	root, scheme, rel, err := a.fileRoot(ctx, rc, rawPath)
 	if err != nil {
 		return "error: " + err.Error(), nil
 	}
@@ -165,7 +165,7 @@ func (a *Agent) resolveNamespaceRoot(rc *runContext, p string) (*sandboxfs.Root,
 // grepCandidateFiles returns the files under root to search: a single file if rel
 // names one, otherwise every file under rel (or the whole root) passing the glob
 // and type filters.
-func grepCandidateFiles(root *sandboxfs.Root, rel, glob, ftype string) ([]string, error) {
+func grepCandidateFiles(root fileStore, rel, glob, ftype string) ([]string, error) {
 	rel = strings.Trim(strings.TrimSpace(rel), "/")
 	all, err := root.List("")
 	if err != nil {

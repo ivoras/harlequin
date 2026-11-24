@@ -74,24 +74,24 @@ func (a *Agent) docText(ctx context.Context, rc *runContext, doc *docalign.Doc) 
 	return text, ""
 }
 
-// isSandboxPath tells a sandbox file from a document reference wherever a tool
-// takes either: tmp://… and storage://… always, and a bare name that looks like
-// a file (it has an extension or a directory) and not like a document id — a
-// bare path means tmp://, as everywhere in the sandbox tools.
-func isSandboxPath(s string) bool {
+// isFilePath tells a file (see refs.go) from a document reference wherever a
+// tool takes either: tmp://…, storage://… and skill://… always, and a bare name
+// that looks like a file (it has an extension or a directory) and not like a
+// document id — a bare path means tmp://, as everywhere in the sandbox tools.
+func isFilePath(s string) bool {
 	s = strings.TrimSpace(s)
-	if strings.HasPrefix(s, "tmp://") || strings.HasPrefix(s, "storage://") {
+	if strings.HasPrefix(s, "tmp://") || strings.HasPrefix(s, "storage://") || strings.HasPrefix(s, "skill://") {
 		return true
 	}
 	return s != "" && !strings.Contains(s, "://") && !docSourceRE.MatchString(s) &&
 		strings.ContainsAny(s, "./") && !strings.HasPrefix(s, "@")
 }
 
-// sourceText reads the text src names: a sandbox file (tmp://, storage://, or a
-// bare path) or a saved document (u.12). label describes it for the tool result.
+// sourceText reads the text src names: a file (tmp://, storage://, a bare path,
+// skill://) or a saved document (u.12). label describes it for the tool result.
 func (a *Agent) sourceText(ctx context.Context, rc *runContext, src string) (text, label, errMsg string) {
 	src = strings.TrimSpace(src)
-	if !isSandboxPath(src) {
+	if !isFilePath(src) {
 		doc, errMsg := a.loadDocRef(ctx, rc, src)
 		if errMsg != "" {
 			return "", "", errMsg
@@ -99,11 +99,7 @@ func (a *Agent) sourceText(ctx context.Context, rc *runContext, src string) (tex
 		text, errMsg = a.docText(ctx, rc, doc)
 		return text, fmt.Sprintf("document %s (%q)", docRef(doc), doc.Title), errMsg
 	}
-	root, _, rel, err := a.resolveNamespaceRoot(rc, src)
-	if err != nil {
-		return "", "", "error: " + err.Error()
-	}
-	data, err := root.Read(rel)
+	data, err := a.readFile(ctx, rc, src)
 	if err != nil {
 		return "", "", fmt.Sprintf("error: cannot read source %s: %v", src, err)
 	}
@@ -196,14 +192,14 @@ func (a *Agent) docOriginal(ctx context.Context, rc *runContext, ref string) (da
 
 func (a *Agent) copyDocEntry() toolEntry {
 	return toolEntry{
-		def: fnTool("copy_doc", `Copy a document or a sandbox file, on the server (the content does not pass through you). source is a saved document (u.12, s.3, p.7) or a sandbox file (tmp://a.md, storage://a.md; a bare path such as a.md means tmp://). Where the copy goes: (1) give target, a sandbox file path (tmp://work.md), to get a working file you can then change with edit_file or Grep — a document is copied as its text (for a PDF, Word or Excel document: its Markdown text), unless target has the original file's extension (tmp://a.pdf for a PDF, .docx for a Word document, .xlsx …): then the original file is copied byte for byte; (2) omit target to make a new saved document — a document is duplicated exactly, original file included (a PDF stays a PDF), and a sandbox text file becomes a new text document like save_doc. title names the new document (default: "Copy of …" or the file name); it lands in the project in a project session, else in the user's personal files, or where scope says (shared: owner/admin only). The source is never changed. To add one document to the end of another use edit_doc (or edit_file) with append_source.`, map[string]any{
+		def: fnTool("copy_doc", `Copy a document or a file, on the server (the content does not pass through you). source is a saved document (u.12, s.3, p.7) or a file (tmp://a.md, storage://a.md, a bare path such as a.md meaning tmp://, or skill://<skill>/<path>). Where the copy goes: (1) give target, a file path (tmp://work.md; or skill://<skill>/<path> to put a text into a skill, only when the user asks to change the skill — scope then says whose copy), to get a working file you can then change with edit_doc or Grep — a document is copied as its text (for a PDF, Word or Excel document: its Markdown text), unless target has the original file's extension (tmp://a.pdf for a PDF, .docx for a Word document, .xlsx …): then the original file is copied byte for byte; (2) omit target to make a new saved document — a document is duplicated exactly, original file included (a PDF stays a PDF), and a sandbox text file becomes a new text document like save_doc. title names the new document (default: "Copy of …" or the file name); it lands in the project in a project session, else in the user's personal files, or where scope says (shared: owner/admin only). The source is never changed. To add one document to the end of another use edit_doc with append_source.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"source":    map[string]any{"type": "string", "description": `What to copy: a document id ("u.12") or a sandbox file ("tmp://a.md")`},
-				"target":    map[string]any{"type": "string", "description": `Sandbox file to copy to, e.g. "tmp://work.md". Omit to create a new saved document instead.`},
+				"source":    map[string]any{"type": "string", "description": `What to copy: a document id ("u.12") or a file ("tmp://a.md", "skill://weekly-report/SKILL.md")`},
+				"target":    map[string]any{"type": "string", "description": `File to copy to, e.g. "tmp://work.md". Omit to create a new saved document instead.`},
 				"overwrite": map[string]any{"type": "boolean", "description": "Replace target if it already exists. Default false: an existing file is an error."},
 				"title":     map[string]any{"type": "string", "description": "Title of the new document (only without target)"},
-				"scope":     map[string]any{"type": "string", "enum": []string{"personal", "project", "shared"}, "description": "Where the new document goes (only without target)"},
+				"scope":     map[string]any{"type": "string", "enum": []string{"personal", "project", "shared"}, "description": "Where the new document goes (without target); for a skill:// target, whose copy of the skill is written (default personal)"},
 			},
 			"required": []string{"source"},
 		}),
@@ -215,22 +211,25 @@ func (a *Agent) copyDoc(ctx context.Context, rc *runContext, args map[string]any
 	src := strings.TrimSpace(argString(args, "source"))
 	target := strings.TrimSpace(argString(args, "target"))
 	if src == "" {
-		return `error: source is required: a document id ("u.12") or a sandbox file ("tmp://a.md")`, nil
+		return `error: source is required: a document id ("u.12") or a file ("tmp://a.md")`, nil
 	}
-	srcIsDoc := !isSandboxPath(src)
+	srcIsDoc := !isFilePath(src)
 
 	if target != "" {
-		if !isSandboxPath(target) {
-			return "error: target must be a sandbox file (tmp://… or storage://…). To add a document to the end of an existing one use edit_doc with append_source; to make a new document omit target.", nil
+		if !isFilePath(target) {
+			return "error: target must be a file (tmp://…, storage://… or skill://…). To add a document to the end of an existing one use edit_doc with append_source; to make a new document omit target.", nil
 		}
-		root, _, rel, err := a.resolveNamespaceRoot(rc, target)
-		if err != nil {
+		_, _, rel, err := a.fileRoot(ctx, rc, target)
+		if err != nil && !isSkillPath(target) { // a new skill's files fail to resolve; writeFile says why
 			return "error: " + err.Error(), nil
+		}
+		if isSkillPath(target) {
+			_, rel, _ = splitSkillPath(target)
 		}
 		if rel == "" {
 			return "error: target must name a file, e.g. tmp://work.md", nil
 		}
-		if exists, _ := root.Exists(rel); exists {
+		if a.fileExists(ctx, rc, target) {
 			if over, _ := args["overwrite"].(bool); !over {
 				return fmt.Sprintf("error: %s already exists; choose another name, or pass overwrite: true to replace it", target), nil
 			}
@@ -260,19 +259,21 @@ func (a *Agent) copyDoc(ctx context.Context, rc *runContext, args map[string]any
 				data, label = []byte(text), l+" as text"
 			}
 		} else { // file to file: any content, byte for byte
-			sroot, _, srel, err := a.resolveNamespaceRoot(rc, src)
-			if err != nil {
-				return "error: " + err.Error(), nil
-			}
-			if data, err = sroot.Read(srel); err != nil {
+			var err error
+			if data, err = a.readFile(ctx, rc, src); err != nil {
 				return fmt.Sprintf("error: cannot read source %s: %v", src, err), nil
 			}
 			label = src
 		}
-		if err := root.Write(rel, data); err != nil {
-			return fmt.Sprintf("error: cannot write %s: %v", target, err), nil
+		saved, errMsg := a.writeFile(ctx, rc, target, data, true, argString(args, "scope"))
+		if errMsg != "" {
+			return errMsg, nil
 		}
-		return fmt.Sprintf("Copied %s to %s (%d bytes).", label, target, len(data)), nil
+		out := fmt.Sprintf("Copied %s to %s (%d bytes).", label, target, len(data))
+		if isSkillPath(target) {
+			out += " " + saved
+		}
+		return out, nil
 	}
 
 	title := strings.TrimSpace(argString(args, "title"))

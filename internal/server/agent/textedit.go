@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// Pure text-editing primitives shared by the edit_file (sandbox files) and
+// Pure text-editing primitives shared by edit_doc on files (sandbox, skill) and
 // edit_doc (corpus documents) tools. Each returns the new text or an error that
 // is written for the model: it says what went wrong and how to fix the call.
 

@@ -67,7 +67,7 @@ func (a *Agent) pdfInput(ctx context.Context, rc *runContext, ref string) (doc *
 	if ref == "" {
 		return nil, nil, "", `error: doc is required: a PDF document ("u.12") or a sandbox PDF ("tmp://a.pdf")`
 	}
-	if isSandboxPath(ref) {
+	if isFilePath(ref) {
 		root, _, rel, err := a.resolveNamespaceRoot(rc, ref)
 		if err != nil {
 			return nil, nil, "", "error: " + err.Error()
@@ -194,7 +194,7 @@ func (a *Agent) editPDF(ctx context.Context, rc *runContext, args map[string]any
 	if saveTo != "" && saveAs != "" {
 		return "error: give either save_as (a new document) or save_to (a new sandbox file), not both; give neither to edit the PDF in place", nil
 	}
-	if saveTo != "" && !isSandboxPath(saveTo) {
+	if saveTo != "" && !isFilePath(saveTo) {
 		return `error: save_to must be a sandbox file (tmp://marked.pdf or storage://marked.pdf). For a new document the user can download, use save_as with a title; to edit in place give neither.`, nil
 	}
 	var scope string
@@ -214,7 +214,7 @@ func (a *Agent) editPDF(ctx context.Context, rc *runContext, args map[string]any
 		data     []byte
 		name     string
 		errMsg   string
-		sandbox  = isSandboxPath(ref)
+		sandbox  = isFilePath(ref)
 		sandRoot *sandboxfs.Root
 		sandRel  string
 		gen      *genSource // a create_pdf document's source, edited in place

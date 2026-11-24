@@ -427,6 +427,26 @@ func (m *Manager) PutFile(ctx context.Context, db, userDB, projDB *sql.DB, name,
 	return m.Save(ctx, db, name, userID, files)
 }
 
+// DeleteFile removes one supporting file from a skill in the given scope
+// database. SKILL.md cannot be removed this way (delete the skill instead).
+func (m *Manager) DeleteFile(ctx context.Context, db *sql.DB, name, relpath string, userID int64) error {
+	if relpath == "SKILL.md" {
+		return fmt.Errorf("SKILL.md is the skill itself; delete the whole skill instead")
+	}
+	files, err := readSkillFiles(ctx, db, name)
+	if err != nil {
+		return err
+	}
+	if files == nil {
+		return ErrSkillNotFound
+	}
+	if _, ok := files[relpath]; !ok {
+		return fmt.Errorf("skill %q has no file %q", name, relpath)
+	}
+	delete(files, relpath)
+	return m.Save(ctx, db, name, userID, files)
+}
+
 // Delete removes a skill from a specific scope database.
 func (m *Manager) Delete(ctx context.Context, db *sql.DB, name string) error {
 	_, err := db.ExecContext(ctx, `DELETE FROM skills WHERE name = ?`, name)

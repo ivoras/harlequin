@@ -89,7 +89,7 @@ func (a *Agent) createFile(ctx context.Context, rc *runContext, args map[string]
 	}
 	landscape := sp.landscape && argBool(args, "landscape", false)
 	saveTo := strings.TrimSpace(argString(args, "save_to"))
-	if saveTo != "" && !isSandboxPath(saveTo) {
+	if saveTo != "" && !isFilePath(saveTo) {
 		return `error: save_to must be a sandbox file (tmp://` + sp.example + ` or storage://` + sp.example + `). To save a document the user can keep, omit save_to.`, nil
 	}
 	scope, db, errMsg := a.saveScope(rc, args)

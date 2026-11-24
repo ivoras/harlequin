@@ -259,14 +259,14 @@ func (a *Agent) sheetSource(ctx context.Context, rc *runContext, ref string, cac
 	ref = strings.TrimSpace(ref)
 	var src sheetSrc
 	mime := ""
-	if isSandboxPath(ref) {
-		root, _, rel, err := a.resolveNamespaceRoot(rc, ref)
-		if err != nil {
-			return src, "error: " + err.Error()
-		}
-		data, err := root.Read(rel)
+	if isFilePath(ref) {
+		data, err := a.readFile(ctx, rc, ref)
 		if err != nil {
 			return src, fmt.Sprintf("error: cannot read %s: %v", ref, err)
+		}
+		rel := ref
+		if i := strings.Index(rel, "://"); i >= 0 {
+			rel = rel[i+3:]
 		}
 		base := path.Base(rel)
 		src.Source = sheetdb.Source{Label: ref, Name: rel, Short: strings.TrimSuffix(base, path.Ext(base)), Data: data}
@@ -447,7 +447,7 @@ func formatSheetResult(res *sheetdb.Result) string {
 }
 
 func (a *Agent) saveSheetResult(rc *runContext, saveTo string, res *sheetdb.Result) string {
-	if !isSandboxPath(saveTo) {
+	if !isFilePath(saveTo) {
 		return fmt.Sprintf("error: save_to must be a sandbox file such as tmp://result.md, not %q", saveTo)
 	}
 	if res.Total > len(res.Rows) {

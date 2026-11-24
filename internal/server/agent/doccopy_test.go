@@ -203,7 +203,7 @@ func testAppendAndCopy(t *testing.T, ctx context.Context, dir string, mgr *stora
 		t.Fatalf("saved copy: %q", got)
 	}
 	for args, want := range map[*map[string]any]string{
-		{"source": second, "target": first}:                 "target must be a sandbox file",
+		{"source": second, "target": first}:                 "target must be a file",
 		{"source": "u.9999"}:                                "not found",
 		{"source": second, "scope": "project"}:              "project session",
 		{"source": "tmp://nema.md", "target": "tmp://y.md"}: "cannot read source",

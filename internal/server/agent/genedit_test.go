@@ -333,7 +333,7 @@ func TestUndoRules(t *testing.T) {
 	if out := h.call("edit_doc", map[string]any{"doc": ref(id), "undo": true}); !strings.HasPrefix(out, "error:") || !strings.Contains(out, "no previous version") {
 		t.Fatalf("never edited: %s", out)
 	}
-	if out := h.call("edit_doc", map[string]any{"doc": "tmp://x.md", "undo": true}); !strings.Contains(out, "not available for sandbox files") {
+	if out := h.call("edit_doc", map[string]any{"doc": "tmp://x.md", "undo": true}); !strings.Contains(out, "not available for files") {
 		t.Fatalf("sandbox: %s", out)
 	}
 	if out := h.call("edit_doc", map[string]any{"doc": ref(id), "undo": true, "append": "x"}); !strings.Contains(out, "cannot be combined") {

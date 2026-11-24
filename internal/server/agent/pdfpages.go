@@ -146,7 +146,7 @@ func (a *Agent) pdfPages(ctx context.Context, rc *runContext, args map[string]an
 	var srcNames []string
 	index := map[string]int{}
 	source := func(ref string) (int, string) {
-		if ref = strings.TrimSpace(ref); !isSandboxPath(ref) {
+		if ref = strings.TrimSpace(ref); !isFilePath(ref) {
 			ref = attachedRef(ref)
 		}
 		if i, ok := index[ref]; ok {
@@ -259,7 +259,7 @@ func (a *Agent) lookupTexts(ctx context.Context, rc *runContext, ref string, tex
 	var units []string // folded text per unit
 	var nums []int     // the number reported for each unit
 	unit, name, note := "page", "", ""
-	if isSandboxPath(ref) {
+	if isFilePath(ref) {
 		body, label, errMsg := a.sourceText(ctx, rc, ref)
 		if errMsg != "" {
 			return errMsg, nil

@@ -20,7 +20,7 @@ parameters: `title`, `content` (or `source`: a sandbox file such as
 ## Steps
 
 1. Write the Markdown. Start with `# Heading`: it is the page's visible title. A
-   long page: build it in a sandbox file with `edit_file` `append`, then pass
+   long page: build it in a sandbox file with `edit_doc` `append`, then pass
    `source`.
 2. Only when the user needs a layout Markdown cannot express (colours, columns,
    spacing), write HTML with your own CSS in a `<style>` element and set

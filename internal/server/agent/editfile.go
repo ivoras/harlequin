@@ -18,7 +18,7 @@ import (
 	"github.com/ivoras/harlequin/internal/server/pdfextract"
 )
 
-// editArgsSchema is the operation part shared by edit_file and edit_doc.
+// editArgsSchema is the operation part of edit_doc's arguments.
 func editArgsSchema(target map[string]any) map[string]any {
 	props := map[string]any{
 		"old_string":    map[string]any{"type": "string", "description": "Replace: the exact text to replace (must occur once unless replace_all). Use with new_string."},
@@ -37,66 +37,66 @@ func editArgsSchema(target map[string]any) map[string]any {
 
 const editOpsHelp = `Give exactly ONE of these five operations per call. (1) REPLACE: old_string + new_string. The old_string must occur once in the text (or set replace_all). Copy it exactly and include enough surrounding text. An empty new_string deletes it. (2) PATCH: diff, a unified diff. Best for several changes at once. (3) APPEND: append, text you write, added at the end. (4) APPEND FROM: append_source, a list of documents and/or sandbox files whose whole text is added at the end. The text does not pass through you, so any length works; a PDF, Word or Excel source is read as its Markdown text; sources are not changed. (5) INSERT: insert + one of after or before. The after/before text is a passage you quote exactly from the document; it must occur once. Example: insert "New paragraph." after "Payment is due in 30 days." The new text becomes its own paragraph next to the one that holds the passage. A single table row ("| a | b |") or list item ("- text") quoted next to a row or item of the same kind is added on the next line, so adding rows and items works. For an uploaded Excel file edit_doc also has (6) CELLS: cells sets cells by address. The edit is all-or-nothing: on any error nothing is changed and the message says what to fix.`
 
-// editFileEntry registers edit_file: apply an edit to a sandbox file.
-func (a *Agent) editFileEntry() toolEntry {
-	schema := editArgsSchema(map[string]any{
-		"path": map[string]any{"type": "string", "description": "Sandbox file, e.g. tmp://combined.md or storage://notes.md (a bare path means tmp://)"},
-	})
-	schema["required"] = []string{"path"}
-	return toolEntry{
-		def: fnTool("edit_file", `Edit a text file in your sandbox (tmp:// or storage://; a bare path means tmp://) in place — without re-sending the whole file. `+editOpsHelp+` append and append_source create the file if it does not exist yet. Use it to build up a long document in pieces (append section by section), combine several documents into one file (append_source), fix a passage, or apply a diff; then save it with save_doc(source="tmp://..."). Given a document id (u.12) as path it edits that saved document, like edit_doc.`, schema),
-		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
-			path := strings.TrimSpace(argString(args, "path"))
-			if path == "" {
-				return "error: path is required (e.g. tmp://combined.md)", nil
-			}
-			if docSourceRE.MatchString(path) && a.Docs != nil { // a document id: edit_doc's job
-				return a.editDocEntry().handler(ctx, rc, withArg(args, "doc", path))
-			}
-			root, _, rel, err := a.resolveNamespaceRoot(rc, path)
-			if err != nil {
-				return "error: " + err.Error(), nil
-			}
-			if rel == "" {
-				return "error: path must name a file, not a namespace root", nil
-			}
-			exists, _ := root.Exists(rel)
-			from := ""
-			if add, what, ok, errMsg := a.appendSourceArg(ctx, rc, args); errMsg != "" {
-				return errMsg, nil
-			} else if ok {
-				if exists {
-					add = "\n" + add // an empty line between the old text and the new
-				}
-				args, from = withArg(args, "append", add), " from "+what
-			}
-			op, err := parseTextEditOp(args)
-			if err != nil {
-				return "error: " + err.Error(), nil
-			}
-			var text string
-			if exists {
-				data, err := root.Read(rel)
-				if err != nil {
-					return fmt.Sprintf("error: cannot read %s: %v", path, err), nil
-				}
-				if !utf8.Valid(data) {
-					return fmt.Sprintf("error: %s is not UTF-8 text and cannot be edited", path), nil
-				}
-				text = string(data)
-			} else if !op.hasAppend {
-				return fmt.Sprintf("error: %s does not exist (only append creates a file)", path), nil
-			}
-			out, what, err := op.apply(text)
-			if err != nil {
-				return "error: " + err.Error(), nil
-			}
-			if err := root.Write(rel, []byte(out)); err != nil {
-				return fmt.Sprintf("error: cannot write %s: %v", path, err), nil
-			}
-			return fmt.Sprintf("%s: %s%s; file is now %d characters.", path, what, from, utf8.RuneCountInString(out)), nil
-		},
+// editFile is edit_doc on a file (tmp://, storage://, a bare path, skill://).
+// append and append_source create a missing sandbox file, or a new file of an
+// existing skill. A skill file is written to scope (default personal), copying
+// the skill there first when that scope does not hold it yet.
+func (a *Agent) editFile(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
+	path := strings.TrimSpace(argString(args, "doc"))
+	if path == "" {
+		path = strings.TrimSpace(argString(args, "path")) // the retired edit_file's name for it
 	}
+	if path == "" {
+		return "error: doc is required (a document id such as u.12, or a file such as tmp://combined.md)", nil
+	}
+	if !isFilePath(path) && !strings.Contains(path, "://") && a.Docs != nil { // a document id
+		return a.editDocEntry().handler(ctx, rc, withArg(args, "doc", path))
+	}
+	if st, _, rel, err := a.fileRoot(ctx, rc, path); err != nil {
+		return "error: " + err.Error(), nil
+	} else if rel == "" || st == nil {
+		return "error: doc must name a file, not a folder", nil
+	}
+	exists := a.fileExists(ctx, rc, path)
+	from := ""
+	if add, what, ok, errMsg := a.appendSourceArg(ctx, rc, args); errMsg != "" {
+		return errMsg, nil
+	} else if ok {
+		if exists {
+			add = "\n" + add // an empty line between the old text and the new
+		}
+		args, from = withArg(args, "append", add), " from "+what
+	}
+	op, err := parseTextEditOp(args)
+	if err != nil {
+		return "error: " + err.Error(), nil
+	}
+	var text string
+	if exists {
+		data, err := a.readFile(ctx, rc, path)
+		if err != nil {
+			return fmt.Sprintf("error: cannot read %s: %v", path, err), nil
+		}
+		if !utf8.Valid(data) {
+			return fmt.Sprintf("error: %s is not UTF-8 text and cannot be edited", path), nil
+		}
+		text = string(data)
+	} else if !op.hasAppend {
+		return fmt.Sprintf("error: %s does not exist (only append creates a file; write_file writes a whole new file)", path), nil
+	}
+	out, what, err := op.apply(text)
+	if err != nil {
+		return "error: " + err.Error(), nil
+	}
+	saved, errMsg := a.writeFile(ctx, rc, path, []byte(out), true, argString(args, "scope"))
+	if errMsg != "" {
+		return errMsg, nil
+	}
+	res := fmt.Sprintf("%s: %s%s; file is now %d characters.", path, what, from, utf8.RuneCountInString(out))
+	if isSkillPath(path) {
+		res += " " + saved
+	}
+	return res, nil
 }
 
 // docEdit is what the edit_doc handlers need about the target document.
@@ -118,26 +118,26 @@ var editOpArgs = []string{"old_string", "new_string", "diff", "append", "append_
 // editDocEntry registers edit_doc: apply an edit to a saved corpus document.
 func (a *Agent) editDocEntry() toolEntry {
 	schema := editArgsSchema(map[string]any{
-		"doc":     map[string]any{"type": "string", "description": "Scoped document id, e.g. \"u.12\", \"s.3\" or \"p.7\" (resolve with list_documents); or a sandbox file such as tmp://notes.md"},
+		"doc":     map[string]any{"type": "string", "description": "Scoped document id, e.g. \"u.12\", \"s.3\" or \"p.7\" (resolve with list_documents); or a file: tmp://notes.md, storage://notes.md, skill://<skill>/SKILL.md"},
 		"cells":   map[string]any{"type": "object", "description": `Uploaded Excel only: set cells. An object from cell address to value, e.g. {"October!B2": 1700, "C2": "=B2*0.73", "D2": "paid"}. A number sets a number, text starting with = a formula, other text text; null clears the cell.`},
 		"sheet":   map[string]any{"type": "string", "description": "Uploaded Excel only: the sheet for cells addresses without a sheet name, and for append, insert and replace. Not needed when the workbook has one sheet."},
 		"undo":    map[string]any{"type": "boolean", "description": "Set true (with doc only, no other argument) to restore the version before the last edit. Only one step back is kept."},
 		"save_as": map[string]any{"type": "string", "description": "Leave the document unchanged and save the edited result as a NEW document with this title. Omit to edit in place."},
-		"scope":   map[string]any{"type": "string", "enum": []string{"personal", "project", "shared"}, "description": "With save_as: where the new document goes. Default: the project in a project session, else personal."},
+		"scope":   map[string]any{"type": "string", "enum": []string{"personal", "project", "shared"}, "description": "With save_as: where the new document goes (default: the project in a project session, else personal). For a skill:// file: whose copy of the skill is changed (default personal)."},
 	})
 	schema["required"] = []string{"doc"}
 	return toolEntry{
-		def: fnTool("edit_doc", `Edit a saved document in place, keeping its id, title and scope. Use it when the user asks to change a document: fix a passage, add a paragraph, add text at the end, or append other documents. Works on: text/Markdown documents (save_doc, or uploaded .md/.txt); documents made with create_pdf, create_word or create_excel (their file is rebuilt from the edited Markdown); and uploaded Word (.docx) files, which are edited inside the original file so fonts, styles, headers and layout stay (replace, insert, append and append_source work; diff does not). For a Word file quote passages as read_doc shows them. A passage must lie in one paragraph. insert next to a table cell adds a paragraph in that cell; insert "| a | b |" next to a table row adds a row. Uploaded Excel (.xlsx) files are edited in place too, keeping formatting and formulas: FIRST call read_doc with cells true to see sheet names and cell addresses, then use cells (set cells, e.g. {"October!B2": 1700}), append (table rows "| a | b |" after the last row), insert (table rows after or before "row 5" or a quoted row) or replace (text and formulas only); diff does not work. Use the sheet argument when the workbook has several sheets. Uploaded PDF files cannot be edited as text (their pages are fixed); to mark one up use edit_pdf. `+editOpsHelp+` To go back one step: edit_doc with doc and undo true (this also undoes an edit_pdf). To keep the original and get the edited result as a NEW document, give save_as (a title); the original is then not changed. Given a sandbox file (tmp://notes.md) as doc it edits that file, like edit_file. The document is re-indexed afterwards, so search_docs sees the new text. Unchanged passages keep their chunk ids, so citations to them stay valid. Edit only when the user asked you to change that document.`, schema),
+		def: fnTool("edit_doc", `Edit a saved document in place, keeping its id, title and scope. Use it when the user asks to change a document: fix a passage, add a paragraph, add text at the end, or append other documents. Works on: text/Markdown documents (save_doc, or uploaded .md/.txt); documents made with create_pdf, create_word or create_excel (their file is rebuilt from the edited Markdown); and uploaded Word (.docx) files, which are edited inside the original file so fonts, styles, headers and layout stay (replace, insert, append and append_source work; diff does not). For a Word file quote passages as read_doc shows them. A passage must lie in one paragraph. insert next to a table cell adds a paragraph in that cell; insert "| a | b |" next to a table row adds a row. Uploaded Excel (.xlsx) files are edited in place too, keeping formatting and formulas: FIRST call read_doc with cells true to see sheet names and cell addresses, then use cells (set cells, e.g. {"October!B2": 1700}), append (table rows "| a | b |" after the last row), insert (table rows after or before "row 5" or a quoted row) or replace (text and formulas only); diff does not work. Use the sheet argument when the workbook has several sheets. Uploaded PDF files cannot be edited as text (their pages are fixed); to mark one up use edit_pdf. `+editOpsHelp+` To go back one step: edit_doc with doc and undo true (this also undoes an edit_pdf). To keep the original and get the edited result as a NEW document, give save_as (a title); the original is then not changed. FILES: doc may also be a file — tmp://notes.md or storage://notes.md in your sandbox (a bare path means tmp://; append and append_source create the file), or skill://<skill>/<path>, a file of a skill (read_doc it first; scope says whose copy is written, default personal, which makes a personal copy of a shared skill — only when the user asks to change the skill). Building a long text in a file (append section by section, or append_source to combine documents) and then save_doc(source="tmp://…") is how to make a long document. A saved document is re-indexed afterwards, so search_docs sees the new text. Unchanged passages keep their chunk ids, so citations to them stay valid. Edit only when the user asked you to change that document.`, schema),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 			undo := argBool(args, "undo", false)
-			if p := argString(args, "doc"); isSandboxPath(p) { // a sandbox file: edit_file's job
+			if p := argString(args, "doc"); isFilePath(p) {
 				if undo {
-					return "error: undo is not available for sandbox files (it restores saved documents)", nil
+					return "error: undo is not available for files (it restores saved documents)", nil
 				}
 				if argString(args, "save_as") != "" {
-					return "error: save_as works on saved documents. To edit a copy of a sandbox file, copy_doc it to a new sandbox file first and edit that.", nil
+					return "error: save_as works on saved documents. To edit a copy of a file, copy_doc it to a new file first and edit that.", nil
 				}
-				return a.editFileEntry().handler(ctx, rc, withArg(args, "path", strings.TrimSpace(p)))
+				return a.editFile(ctx, rc, args)
 			}
 			e := &docEdit{rc: rc}
 			if undo {

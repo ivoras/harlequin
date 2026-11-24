@@ -63,7 +63,7 @@ Give it in exactly one way:
 | You have | Call |
 |---|---|
 | a short text (up to about two pages) | `"content": "<the Markdown>"` |
-| a long text | build `tmp://report.md` with `edit_file` (`append`), then `"source": "tmp://report.md"` |
+| a long text | build `tmp://report.md` with `edit_doc` (`append`), then `"source": "tmp://report.md"` |
 | a saved text document the user wants as Word | `"source": "u.12"` |
 
 ## HTML format (only for special layouts)

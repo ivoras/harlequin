@@ -32,7 +32,7 @@ const (
 - Input: a valid URL (auto-upgrades HTTP→HTTPS). Redirects are followed.
 - The result is the content itself and is now in your context: work from it directly. Do NOT fetch the same URL again (not with MarkdownFetch, WebFetch, WebFetchDOM or fetch() in run_js) — a repeat fetch wastes time and money and returns the same text. Re-fetch only if the page has since changed or the result was truncated.
 - Very long results are truncated and say so.
-- Optional save_file (e.g. "base.md"): ALSO writes the full converted Markdown to your sandbox as tmp://base.md, so you can change it with edit_file and publish it with save_doc(source=...) — use it when you will edit or republish the document, not for pages you only read.
+- Optional save_file (e.g. "base.md"): ALSO writes the full converted Markdown to your sandbox as tmp://base.md, so you can change it with edit_doc and publish it with save_doc(source=...) — use it when you will edit or republish the document, not for pages you only read.
 `
 	// markdownFetchMaxRunes caps what is returned to the model.
 	markdownFetchMaxRunes = 1000000
@@ -48,7 +48,7 @@ func (a *Agent) markdownFetchEntry() toolEntry {
 			"type": "object",
 			"properties": map[string]any{
 				"url":       map[string]any{"type": "string", "format": "uri", "description": "The URL of the page or document to fetch and convert to Markdown"},
-				"save_file": map[string]any{"type": "string", "description": "Optional sandbox file name (e.g. base.md or tmp://base.md) to also write the full Markdown to, for later edit_file / save_doc(source=...)"},
+				"save_file": map[string]any{"type": "string", "description": "Optional sandbox file name (e.g. base.md or tmp://base.md) to also write the full Markdown to, for later edit_doc / save_doc(source=...)"},
 			},
 			"required":             []string{"url"},
 			"additionalProperties": false,
@@ -123,7 +123,7 @@ func (a *Agent) markdownFetch(ctx context.Context, rc *runContext, args map[stri
 		if err := a.tmpRoot(rc.userID).Write(name, []byte(md)); err != nil {
 			savedNote = fmt.Sprintf("\n\n[could not save to tmp://%s: %v]", name, err)
 		} else {
-			savedNote = fmt.Sprintf("\n\n[full text also saved to tmp://%s — change it with edit_file, publish it with save_doc(source=\"tmp://%s\"); do not fetch the URL again]", name, name)
+			savedNote = fmt.Sprintf("\n\n[full text also saved to tmp://%s — change it with edit_doc, publish it with save_doc(source=\"tmp://%s\"); do not fetch the URL again]", name, name)
 		}
 	}
 	if utf8.RuneCountInString(md) > markdownFetchMaxRunes {

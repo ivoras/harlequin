@@ -7,6 +7,29 @@ Some tools are only present when the corresponding feature is enabled in
 (`internal/server/agent/tools.go`; larger tools live in sibling files there).
 The Documents section is grouped by what the user is trying to do.
 
+**Documents and files.** A *document* (`u.N`, `s.N`, `p.N`) is in the user's
+document list and the search index (`save_doc`, uploads, `create_*`). A *file*
+is a working file: `tmp://…` (scratch, swept after `data_retention_days`),
+`storage://…` (kept per user; a bare path such as `notes.md` means `tmp://`) or
+`skill://<skill>/<path>` (a file of a skill). All file references resolve
+through one place (`agent/refs.go`: `fileRoot`, `readFile`, `writeFile`,
+`deleteFile`, `listFiles`), so every tool that takes a file takes all three kinds.
+Per verb there is one tool for both:
+
+| Verb | Tool |
+|---|---|
+| list | `list_documents` (`path` lists files) |
+| read | `read_doc` (skill files as stored; only `load_skill` renders `<?js ?>`) |
+| search | `search_docs` / `check_text` (documents), `Grep` (files) |
+| write a whole file | `write_file`; a document: `save_doc` |
+| change part | `edit_doc` |
+| copy | `copy_doc` |
+| delete | `delete_doc` (a whole skill: `delete_skill`) |
+
+Retired names still dispatch for old sessions and skill texts but are not offered
+to the model (`toolEntry.hidden`): `edit_file` → `edit_doc`, `write_skill_file` →
+`write_file` on `skill://`.
+
 Beyond these built-ins, two families of tools appear dynamically:
 - **Skill tools** — namespaced `<skill>.<tool>`, declared by a skill's frontmatter
   and backed by sandboxed JS. Visible per the active hat/skill set. Their `run` JavaScript has the same helpers as `run_js` (`read_doc`, `sheets.*`, `xml.*`, `tmp`/`storage`, `load`/`include`), with the call's arguments as `args`.
@@ -106,23 +129,24 @@ demand, so they don't bloat every prompt. `SKILL.md` comes first, then the
 other files in path order; scripts (`.js`) are only listed with their
 `skill://` path and size — they run through the skill's tools, `run_js`
 (`script:` / `include()`) and cron jobs — and `read_doc` reads one if needed.
+`.md`/`.txt` files are rendered (`<?js ?>`); `read_doc` on a `skill://` path shows
+the stored source. The output ends with how to change the skill.
 **Example:** `load_skill({"name": "web-monitor"})`
 
 ### `write_skill`
-**Why:** create a skill, or update one by replacing its main file (`SKILL.md`), when
-the user asks. Other files of an existing skill are kept. To update, the model loads
-the skill first and sends the complete revised file (there is no partial edit).
-A file with `<?js ?>` template code is refused when the new version drops it:
-`load_skill` shows templates rendered, so the model never sees that code. `scope` defaults to personal; `shared`
-is owner/admin only, `project` needs a project session. Writing into a scope that
-doesn't hold the skill yet copies the effective one first, so originals stay intact.
+**Why:** a shortcut for creating a **new** skill from its `SKILL.md`, when the user
+asks. Refused when the skill already exists: changing a skill is done on its files
+(`read_doc` `skill://<name>/SKILL.md`, then `edit_doc`, or `write_file` with
+`overwrite`); `load_skill` output ends with that hint. Scripts and references are
+added with `write_file` at `skill://<name>/<path>`. `scope` defaults to personal;
+`shared` is owner/admin only, `project` needs a project session.
 **Example:** `write_skill({"name": "weekly-report", "content": "---\nname: weekly-report\ndescription: ...\n---\n..."})`
 
-### `write_skill_file`
-**Why:** add, or update by replacing, one supporting file (script, template) of an
-existing skill; it is then reachable as `skill://<name>/<path>`. Same scope and
-template rules.
-**Example:** `write_skill_file({"name": "weekly-report", "path": "scripts/run.js", "content": "..."})`
+**Skill files with the file tools.** `skill://<name>/<path>` works in `read_doc`,
+`write_file`, `edit_doc`, `copy_doc`, `delete_doc`, `Grep` and `list_documents`
+(`path`). Writes go to `scope` (default personal); a scope that doesn't hold the
+skill yet gets a copy of the effective one first, so originals stay intact, and the
+result says so. A write that would drop a file's `<?js ?>` template code is refused.
 
 ### `delete_skill`
 **Why:** delete a skill from one scope, only on explicit request. Defaults to the
@@ -164,37 +188,25 @@ way, never as literals typed into the code.
 
 ---
 
-## Sandbox files
+## Files
 
-### `edit_file`
-**Why:** edit a sandbox file (`tmp://`, `storage://`; a bare path means `tmp://`)
-in place without re-sending it. One operation per call, all-or-nothing (errors say
-what to fix):
-
-| Operation | Arguments | Use |
-|---|---|---|
-| Replace | `old_string` + `new_string` (`replace_all`) | fix or delete a passage |
-| Patch | `diff` (unified diff; hunks located by content) | several changes at once |
-| Append | `append` | add text the model writes; creates the file |
-| Append from | `append_source` (list of documents and/or sandbox files) | concatenate whole texts server-side, any length; creates the file |
-| Insert | `insert` + one of `after` / `before` (a passage quoted exactly, must occur once) | add a paragraph, table row or list item next to a passage |
-
-Insert puts the text in its own paragraph beside the block (run of non-empty
-lines) holding the passage, with one empty line between; a single table row or
-list item quoted next to a row or item of the same kind goes on the adjacent
-line. The rest of the text is untouched.
-
-Publish the result with `save_doc(source=...)`. Given a document id as `path` it
-behaves as `edit_doc`.
+### `write_file`
+**Why:** write a whole file — create it, or replace it with `overwrite: true` (an
+existing file is otherwise an error, so nothing is clobbered blindly): a sandbox
+file (`tmp://`, `storage://`) or a skill file (`skill://<skill>/<path>`, with
+`scope`). The tool description contrasts it with `save_doc`: files are not in the
+user's document list or the search index. Before it existed the model wrote files
+with `run_js` `tmp.write` or created them with an `edit_file` append. A document id
+as `path` is refused with a pointer to `edit_doc`. Partial changes go through
+`edit_doc`, which takes the same file paths.
 **Examples:**
-- `edit_file({"path": "tmp://combined.md", "append": "## Part 2\n…"})`
-- `edit_file({"path": "tmp://combined.md", "append_source": ["u.18", "u.19", "tmp://annex.md"]})`
-- `edit_file({"path": "tmp://combined.md", "old_string": "Članak 5.", "new_string": "Članak 5.a"})`
+- `write_file({"path": "tmp://notes.md", "content": "…"})`
+- `write_file({"path": "skill://weekly-report/scripts/run.js", "content": "…"})`
 
 ### `Grep`
-**Why:** ripgrep-style content search over files saved in your sandbox namespaces
-(`tmp://`, `storage://`) — e.g. a page saved by `WebFetchDOM`'s `save_file` or a
-stored document — without reading the whole file. `output_mode` is
+**Why:** ripgrep-style content search over files — the sandbox (`tmp://`,
+`storage://`), e.g. a page saved by `WebFetchDOM`'s `save_file`, or a skill's files
+(`skill://<skill>/`) — without reading the whole file. `output_mode` is
 `files_with_matches` (default), `content`, or `count`; supports `glob`, `type`,
 `-A`/`-B`/`-C`, `-i`, `-n`, `multiline`, `head_limit`.
 **Examples:**
@@ -263,25 +275,32 @@ Searches and listings cover personal + shared documents, plus the project's in a
 project session; ids are `u.N` / `s.N` / `p.N`, and `p<project>.N` (e.g. `p3.17`)
 for another project's document. See [SCOPES.md](SCOPES.md).
 
-**Documents and sandbox files.** Besides saved documents the agent has sandbox
-files (`tmp://…` scratch space, `storage://…` kept per user; a bare path such as
-`notes.md` means `tmp://notes.md`). Wherever it makes sense a tool takes either:
+**Documents and files.** Besides saved documents the agent has files (see the
+top of this page): sandbox files (`tmp://…` scratch space, `storage://…` kept per
+user; a bare path such as `notes.md` means `tmp://notes.md`) and skill files
+(`skill://<skill>/<path>`). Wherever it makes sense a tool takes either:
 
-| Tool | Document id | Sandbox file |
+| Tool | Document id | File |
 |---|---|---|
 | `read_doc`, `check_text` | yes | yes (`doc`) |
-| `edit_doc` / `edit_file` | yes | yes (each accepts the other's target) |
-| `append_source` of the edit tools | yes | yes |
+| `edit_doc` | yes | yes |
+| `write_file` | no — `save_doc` makes a document | yes |
+| `append_source` of `edit_doc` | yes | yes |
 | `create_excel`, `create_pdf`, `create_word` (`source`) | yes | yes |
 | `save_doc` (`source`) | no — use `copy_doc` to duplicate a document | yes |
-| `copy_doc` (`source`; `target` is a sandbox file) | yes | yes |
+| `copy_doc` (`source`; `target` is a file) | yes | yes |
 | `send_email` (`doc`, `attachments`) | yes | yes |
-| `search_docs`, `align_docs`, `list_documents` | yes | no — they work on the search index; `save_doc` a file first, or use `Grep` on it |
+| `delete_doc` | yes | yes |
+| `list_documents` | yes | yes, with `path` |
+| `search_docs`, `align_docs` | yes | no — they work on the search index; `save_doc` a file first, or use `Grep` on it |
 | `pdf_pages` | yes (PDF documents, sandbox PDFs) | no |
-| `edit_pdf` (`doc`; `save_to` is a sandbox file) | yes (PDF documents) | yes (`.pdf` files) |
+| `edit_pdf` (`doc`; `save_to` is a sandbox file) | yes (PDF documents) | yes (sandbox `.pdf` files) |
 | `query_sheet` (`doc`, `more_docs`; `save_to` is a sandbox file) | yes (spreadsheets; PDF/Word tables) | yes (`.xlsx`, `.csv`, `.md` …) |
 | `query_xml` | yes | yes (`.xml`) |
-| `move_doc`, `delete_doc` | yes | no |
+| `move_doc` | yes | no |
+
+`save_to` and other outputs of the format tools are sandbox files only (no
+`skill://`).
 
 ### Find and read
 
@@ -292,7 +311,9 @@ Locate a document or a passage, and read it.
 description, size, date) so the model can resolve a loosely-named document
 ("the new EEA regulation") to its id for `align_docs` or a `search_docs`
 docs filter. `all_projects: true` also lists every project the user belongs to.
-**Example:** `list_documents({})`
+`path` lists files instead: `tmp://`, `storage://`, a folder in them, or
+`skill://<skill>/`.
+**Examples:** `list_documents({})`, `list_documents({"path": "tmp://"})`
 
 #### `search_docs`
 **Why:** retrieve passages from the organisation's RAG document corpus (uploaded
@@ -306,7 +327,9 @@ every project the user belongs to.
 **Why:** read a document's text (its Markdown rendering) by reference — mainly
 for files the user attached to their message, listed at its end as
 `@"u.18/report.pdf"` — or a text file in the sandbox (`tmp://combined.md`), or a
-file of a skill by its `skill://<skill>/<path>` (resolved like `load_skill`). Returns up to `limit` characters (default 30,000) from
+file of a skill by its `skill://<skill>/<path>` (resolved like `load_skill`, but
+shown as stored: `<?js ?>` template code is not rendered, and the result says so,
+since this is what an edit starts from). Returns up to `limit` characters (default 30,000) from
 `offset`, and says where to continue when truncated. For an image document it
 notes whether the model can see the picture (vision) or only its OCR text. To find
 something in a long document, `search_docs` with `docs` or `check_text` is better.
@@ -472,9 +495,10 @@ to pass through the model's output.
 
 #### `edit_doc`
 **Why:** change a saved document in place — keeps its id, title and scope,
-re-indexes it for `search_docs`, and updates the stored original. The same five
-operations as `edit_file` (replace, patch, append, append from, insert after/before
-a passage) plus `cells` for Excel, one per call, all-or-nothing. How it edits depends on where the
+re-indexes it for `search_docs`, and updates the stored original — or change a
+file (see **Files** below). Five operations (replace, patch, append, append from,
+insert after/before a passage) plus `cells` for Excel, one per call,
+all-or-nothing. How it edits depends on where the
 document came from:
 - **text/Markdown** (saved with `save_doc`, or uploaded `.md`/`.txt`): the stored
   text is edited.
@@ -533,12 +557,23 @@ Unchanged passages keep their chunk ids across an edit, so citations to them sta
 valid. **Undo:** before replacing the stored file the previous version is kept
 (`<stored file>.prev`, and `.src.json.prev` for a generated file); `edit_doc({"doc":
 "u.12", "undo": true})` restores it, once — one level, overwritten by each edit,
-not available for sandbox files, not combinable with an operation. Deleting the
+not available for files, not combinable with an operation. Deleting the
 document removes the file, the sidecar and the `.prev` copies; `copy_doc` copies
-the sidecar so a copy stays editable. Shared documents: owner/admin only. **Out of place:** `save_as` (a title, optional `scope`) leaves the document unchanged and saves the edited result as a new document — the document is copied (file and source sidecar) and the edit runs on the copy, which is removed again if the edit fails, so a failed call creates nothing; `undo` cannot be combined with it. `undo` also restores a PDF marked in place by `edit_pdf`. Given a
-sandbox file as `doc` it behaves as `edit_file`.
+the sidecar so a copy stays editable. Shared documents: owner/admin only. **Out of place:** `save_as` (a title, optional `scope`) leaves the document unchanged and saves the edited result as a new document — the document is copied (file and source sidecar) and the edit runs on the copy, which is removed again if the edit fails, so a failed call creates nothing; `undo` cannot be combined with it. `undo` also restores a PDF marked in place by `edit_pdf`.
+
+**Files.** Given a file as `doc` (`tmp://`, `storage://`, a bare path, or
+`skill://<skill>/<path>`), `edit_doc` edits that file in place without re-sending
+it. Insert puts the text in its own paragraph beside the block (run of non-empty
+lines) holding the passage, with one empty line between; a single table row or
+list item quoted next to a row or item of the same kind goes on the adjacent line.
+`append` and `append_source` create a missing sandbox file (or a new file of an
+existing skill), which is how long texts are built up piece by piece before
+`save_doc(source=…)` or a `create_*` `source`. A skill file is written to `scope`
+(default personal; see `write_skill`). The retired `edit_file` (`path`) is an alias.
 **Examples:**
 - `edit_doc({"doc": "p.7", "append": "## Addendum\nNew section…"})`
+- `edit_doc({"doc": "tmp://combined.md", "append_source": ["u.18", "u.19", "tmp://annex.md"]})`
+- `edit_doc({"doc": "skill://weekly-report/SKILL.md", "old_string": "every Monday", "new_string": "every Friday"})`
 - `edit_doc({"doc": "u.12", "append_source": ["u.18", "tmp://annex.md"]})`
 - `edit_doc({"doc": "u.12", "insert": "Late payment accrues interest.", "after": "Payment is due in 30 days."})`
 - `edit_doc({"doc": "u.12", "undo": true})`
@@ -701,9 +736,10 @@ without spaces link best.
 Organise documents across files, scopes and projects.
 
 #### `copy_doc`
-**Why:** copy a document or a sandbox file server-side, so the content never
-passes through the model. `source` is a document id or a sandbox file. With
-`target` (a sandbox path) the copy is a working file: a document is copied as its
+**Why:** copy a document or a file server-side, so the content never
+passes through the model. `source` is a document id or a file (including
+`skill://`). With `target` (a file path; `skill://` takes text only and `scope`)
+the copy is a working file: a document is copied as its
 text (for a PDF/DOCX/XLSX, its Markdown text) unless the target has the
 original's extension (`tmp://a.pdf` for a PDF), which copies the original file
 byte for byte; a binary extension that does not match (text into `.pdf`) is
@@ -742,8 +778,11 @@ users do not get the tool (they create projects in the web/TUI UI).
 **Why:** permanently delete a document and all its chunks when the user has
 clearly asked to; the model is told to resolve the id with `list_documents` and
 confirm with `ask_user` when unsure. Personal documents: always; project
-documents: from the current project; shared documents: owner/admin only.
-**Example:** `delete_doc({"doc": "u.12"})`
+documents: from the current project; shared documents: owner/admin only. A file
+as `doc` deletes that file: a sandbox file, or one file of a skill from `scope`
+(default personal; refused when that scope has no copy of the skill, and for
+`SKILL.md`, which is the skill itself — `delete_skill`).
+**Examples:** `delete_doc({"doc": "u.12"})`, `delete_doc({"doc": "tmp://old.md"})`
 
 ---
 

@@ -72,9 +72,10 @@ func TestSkillFiles(t *testing.T) {
 	})
 }
 
-// load_skill shows .md files rendered, so a rewrite that drops the <?js ?>
-// code the model never saw is refused; one that keeps it goes through.
-func TestWriteSkillKeepsTemplateCode(t *testing.T) {
+// The file tools work on skill files like on sandbox files: write_skill only
+// creates, read_doc shows the stored source, edit_doc/write_file change it (a
+// rewrite that drops <?js ?> code is refused), and delete_doc removes one file.
+func TestFileToolsOnSkills(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	mgr, err := storage.New(dir, filepath.Join(dir, "harlequin.db"), 4)
@@ -87,18 +88,49 @@ func TestWriteSkillKeepsTemplateCode(t *testing.T) {
 	_ = mgr.WithUser(ctx, 1, func(udb *sql.DB) error {
 		rc := &runContext{userID: 1, userDB: udb}
 		tools := a.buildTools(ctx, rc)
-		write := func(content string) string {
-			out, _ := tools["write_skill"].handler(ctx, rc, map[string]any{"name": "tpl", "content": content})
+		call := func(tool string, args map[string]any) string {
+			out, err := tools[tool].handler(ctx, rc, args)
+			if err != nil {
+				t.Fatalf("%s: %v", tool, err)
+			}
 			return out
 		}
-		if out := write("---\nname: tpl\ndescription: d\n---\nHi <?js print(1+1) ?>"); strings.HasPrefix(out, "error") {
-			t.Fatalf("create: %s", out)
+		want := func(out, sub string) {
+			t.Helper()
+			if !strings.Contains(out, sub) {
+				t.Fatalf("want %q in: %s", sub, out)
+			}
 		}
-		if out := write("---\nname: tpl\ndescription: d\n---\nHi 2, and more"); !strings.Contains(out, "template code") {
-			t.Fatalf("rendered rewrite not refused: %s", out)
-		}
-		if out := write("---\nname: tpl\ndescription: d\n---\nHello <?js print(1+1) ?>"); strings.HasPrefix(out, "error") {
-			t.Fatalf("rewrite keeping the template refused: %s", out)
+		md := "---\nname: tpl\ndescription: d\n---\nHi <?js print(1+1) ?>\n"
+		want(call("write_skill", map[string]any{"name": "tpl", "content": md}), "Saved skill://tpl/SKILL.md")
+		want(call("write_skill", map[string]any{"name": "tpl", "content": md}), "already exists")
+		want(call("read_doc", map[string]any{"doc": "skill://tpl/SKILL.md"}), "<?js print(1+1) ?>")
+		want(call("load_skill", map[string]any{"name": "tpl"}), "Hi 2")
+		want(call("write_file", map[string]any{"path": "skill://tpl/SKILL.md", "content": "---\nname: tpl\ndescription: d\n---\nHi 2"}), "already exists")
+		want(call("write_file", map[string]any{"path": "skill://tpl/SKILL.md", "content": "---\nname: tpl\ndescription: d\n---\nHi 2", "overwrite": true}), "template code")
+		want(call("edit_doc", map[string]any{"doc": "skill://tpl/SKILL.md", "old_string": "Hi ", "new_string": "Hello "}), "Saved skill://tpl/SKILL.md")
+		want(call("read_doc", map[string]any{"doc": "skill://tpl/SKILL.md"}), "Hello <?js")
+		want(call("write_file", map[string]any{"path": "skill://tpl/lib/x.js", "content": "println('needle')"}), "Saved skill://tpl/lib/x.js")
+		want(call("write_file", map[string]any{"path": "skill://nope/lib/x.js", "content": "x"}), "create it first")
+		want(call("list_documents", map[string]any{"path": "skill://tpl/"}), "skill://tpl/lib/x.js")
+		want(call("Grep", map[string]any{"pattern": "needle", "path": "skill://tpl/"}), "skill://tpl/lib/x.js")
+		want(call("copy_doc", map[string]any{"source": "skill://tpl/lib/x.js", "target": "tmp://x.js"}), "Copied")
+		want(call("delete_doc", map[string]any{"doc": "skill://tpl/SKILL.md"}), "delete_skill")
+		want(call("delete_doc", map[string]any{"doc": "skill://tpl/lib/x.js"}), "Deleted lib/x.js")
+		want(call("read_doc", map[string]any{"doc": "skill://tpl/lib/x.js"}), "has no file")
+		// sandbox files: write, refuse a blind overwrite, delete
+		want(call("write_file", map[string]any{"path": "tmp://n.md", "content": "a"}), "Wrote tmp://n.md")
+		want(call("write_file", map[string]any{"path": "tmp://n.md", "content": "b"}), "already exists")
+		want(call("write_file", map[string]any{"path": "u.3", "content": "b"}), "saved document")
+		want(call("delete_doc", map[string]any{"doc": "tmp://n.md"}), "Deleted tmp://n.md")
+		want(call("delete_doc", map[string]any{"doc": "tmp://n.md"}), "does not exist")
+		// retired names still work but are not offered
+		want(call("write_skill_file", map[string]any{"name": "tpl", "path": "r.md", "content": "ref"}), "Saved skill://tpl/r.md")
+		want(call("edit_file", map[string]any{"path": "tmp://m.md", "append": "x"}), "file is now")
+		for _, n := range []string{"edit_file", "write_skill_file"} {
+			if !tools[n].hidden {
+				t.Errorf("%s should be hidden", n)
+			}
 		}
 		return nil
 	})

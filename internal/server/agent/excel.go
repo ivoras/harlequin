@@ -10,7 +10,7 @@ import (
 
 const xlsxMime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
-const createExcelPrompt = `Create an Excel workbook (.xlsx) from Markdown tables and save it as a document the user can download — the reverse of how an uploaded spreadsheet is read. load_skill "create-excel" first for the exact Markdown format. In short: "# Sheet name" headings start sheets; each pipe table's first row is a bold header; tables on one sheet are stacked with an empty row between; plain numbers (1500, 0.95 — no thousands separators or currency signs) become numeric cells and "=SUM(B2:B9)" becomes a formula; anything else is text. Pass the Markdown inline as content, or — for anything long — as source: a sandbox file such as "tmp://report.md" (build it with edit_file append).`
+const createExcelPrompt = `Create an Excel workbook (.xlsx) from Markdown tables and save it as a document the user can download — the reverse of how an uploaded spreadsheet is read. load_skill "create-excel" first for the exact Markdown format. In short: "# Sheet name" headings start sheets; each pipe table's first row is a bold header; tables on one sheet are stacked with an empty row between; plain numbers (1500, 0.95 — no thousands separators or currency signs) become numeric cells and "=SUM(B2:B9)" becomes a formula; anything else is text. Pass the Markdown inline as content, or — for anything long — as source: a sandbox file such as "tmp://report.md" (build it with edit_doc append).`
 
 func (a *Agent) createExcelEntry() toolEntry {
 	return toolEntry{

@@ -302,6 +302,9 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	toolNames := make([]string, 0, len(tools))
 	toolCatalog := make([]map[string]any, 0, len(tools))
 	for name, t := range tools {
+		if t.hidden {
+			continue
+		}
 		toolDefs = append(toolDefs, t.def)
 		toolNames = append(toolNames, name)
 		toolCatalog = append(toolCatalog, map[string]any{

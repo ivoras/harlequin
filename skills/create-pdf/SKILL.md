@@ -66,9 +66,9 @@ Give the text in exactly one of these ways:
 | You have | Call |
 |---|---|
 | a short text (up to about two pages) | `"content": "<the Markdown>"` |
-| a long text | build `tmp://report.md` with `edit_file` (`append`), then `"source": "tmp://report.md"` |
+| a long text | build `tmp://report.md` with `edit_doc` (`append`), then `"source": "tmp://report.md"` |
 | a saved text document the user wants as a PDF | `"source": "u.12"` (its id) |
-| several documents in one PDF | `edit_file({"path": "tmp://all.md", "append_source": ["u.12", "u.13"]})`, then `"source": "tmp://all.md"` |
+| several documents in one PDF | `edit_doc({"doc": "tmp://all.md", "append_source": ["u.12", "u.13"]})`, then `"source": "tmp://all.md"` |
 
 ## HTML format (only for special layouts)
 
@@ -103,7 +103,7 @@ columns, a letter layout, exact spacing). Then write HTML and pass
    for every amount). The PDF is only as correct as the Markdown.
 2. Short document (up to about two pages): call
    `create_pdf({"title": "Payroll report October 2026", "content": "<the Markdown>"})`.
-   Longer document: build it in the sandbox with `edit_file` — `append` one
+   Longer document: build it in the sandbox with `edit_doc` — `append` one
    section per call to `tmp://report.md` — then call
    `create_pdf({"title": "Payroll report October 2026", "source": "tmp://report.md"})`.
 3. Tell the user the PDF was created (its id, e.g. `u.42`, the file name and the
