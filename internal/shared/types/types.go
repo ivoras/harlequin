@@ -470,6 +470,9 @@ type Message struct {
 	ToolCallID string    `json:"tool_call_id,omitempty"`
 	Name       string    `json:"name,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
+	// Reasoning is the model's reasoning behind an assistant message: sent
+	// back to the model with the history, never to clients.
+	Reasoning string `json:"-"`
 }
 
 // ToolCall is an OpenAI-style tool call emitted by the model.

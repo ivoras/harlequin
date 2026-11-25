@@ -150,3 +150,11 @@ func (p countingProvider) Chat(ctx context.Context, req llm.ChatRequest) (<-chan
 	*p.n++
 	return p.Provider.Chat(ctx, req)
 }
+
+// Stored reasoning goes back to the model with the history.
+func TestModelHistoryKeepsReasoning(t *testing.T) {
+	got := modelHistory([]types.Message{{Role: "user", Content: "q"}, {Role: "assistant", Content: "a", Reasoning: "because"}})
+	if len(got) != 2 || got[1].ReasoningContent != "because" {
+		t.Fatalf("history = %+v", got)
+	}
+}

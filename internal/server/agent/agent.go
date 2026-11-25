@@ -618,15 +618,17 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 			finalText = assistantText
 			// An empty reply to the last-step nudge still counts as no answer.
 			answered = step < a.MaxSteps || strings.TrimSpace(assistantText) != ""
-			if _, err := a.Sessions.AddMessage(ctx, rc.sessDB, sessionID, llm.RoleAssistant, assistantText, nil); err != nil {
+			if _, err := a.Sessions.AddAssistantMessage(ctx, rc.sessDB, sessionID, assistantText, thinkingText, nil); err != nil {
 				return "", err
 			}
 			break
 		}
 
-		// Record the assistant message that requested tools.
-		msgs = append(msgs, llm.Message{Role: llm.RoleAssistant, Content: assistantText, ToolCalls: toolCalls})
-		_, _ = a.Sessions.AddMessage(ctx, rc.sessDB, sessionID, llm.RoleAssistant, assistantText, fromLLMToolCalls(toolCalls))
+		// Record the assistant message that requested tools, with its reasoning:
+		// the model gets it back (unless its pass_reasoning is off), and storing
+		// it keeps the next turn's prompt prefix identical for the prompt cache.
+		msgs = append(msgs, llm.Message{Role: llm.RoleAssistant, Content: assistantText, ReasoningContent: thinkingText, ToolCalls: toolCalls})
+		_, _ = a.Sessions.AddAssistantMessage(ctx, rc.sessDB, sessionID, assistantText, thinkingText, fromLLMToolCalls(toolCalls))
 
 		// Dispatch each tool call.
 		askedUser := false

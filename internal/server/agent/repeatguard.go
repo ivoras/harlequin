@@ -116,7 +116,7 @@ func modelHistory(history []types.Message) []llm.Message {
 	for _, m := range history {
 		if m.Role != llm.RoleError {
 			msgs = append(msgs, llm.Message{
-				Role: m.Role, Content: m.Content, ToolCalls: toLLMToolCalls(m.ToolCalls),
+				Role: m.Role, Content: m.Content, ReasoningContent: m.Reasoning, ToolCalls: toLLMToolCalls(m.ToolCalls),
 				ToolCallID: m.ToolCallID, Name: m.Name,
 			})
 			continue

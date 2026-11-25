@@ -173,6 +173,12 @@ Both binaries read a YAML config file plus a `.env` file. YAML holds non-secret 
 waits for live turns) and, for chat, a `fallback_model`. The server logs the active
 suite, providers and fallback model at startup (`models:` lines).
 
+Reasoning models: `reasoning_effort` (e.g. `"high"`) is passed to the model when set.
+The model's earlier reasoning is sent back with the conversation (some models, such as
+DeepSeek V4, need it when they use tools); set `pass_reasoning: false` for a model whose
+API rejects it. `fallback_reasoning_effort` / `fallback_pass_reasoning` do the same for
+the fallback model. Some hosts silently ignore reasoning sent back; that is harmless.
+
 Transient LLM failures (network errors, HTTP 429/5xx, a stream cut off mid-answer) are
 retried automatically with backoff. If the chat model stays unreachable, the server
 switches to its `fallback_model` (a model on the same endpoint; give it a

@@ -253,6 +253,16 @@ func (s *Store) AddMessage(ctx context.Context, db *sql.DB, sessionID int64, rol
 // (empty for non-tool messages), so the session replays as a valid
 // OpenAI-compatible sequence.
 func (s *Store) AddMessageFull(ctx context.Context, db *sql.DB, sessionID int64, role, content string, toolCalls []types.ToolCall, toolCallID, name string) (*types.Message, error) {
+	return s.add(ctx, db, types.Message{SessionID: sessionID, Role: role, Content: content, ToolCalls: toolCalls, ToolCallID: toolCallID, Name: name})
+}
+
+// AddAssistantMessage persists an assistant message with the reasoning behind it.
+func (s *Store) AddAssistantMessage(ctx context.Context, db *sql.DB, sessionID int64, content, reasoning string, toolCalls []types.ToolCall) (*types.Message, error) {
+	return s.add(ctx, db, types.Message{SessionID: sessionID, Role: "assistant", Content: content, Reasoning: reasoning, ToolCalls: toolCalls})
+}
+
+func (s *Store) add(ctx context.Context, db *sql.DB, m types.Message) (*types.Message, error) {
+	sessionID, role, content, toolCalls, toolCallID, name := m.SessionID, m.Role, m.Content, m.ToolCalls, m.ToolCallID, m.Name
 	var tcJSON any
 	if len(toolCalls) > 0 {
 		b, err := json.Marshal(toolCalls)
@@ -262,8 +272,8 @@ func (s *Store) AddMessageFull(ctx context.Context, db *sql.DB, sessionID int64,
 		tcJSON = string(b)
 	}
 	res, err := db.ExecContext(ctx,
-		`INSERT INTO messages(session_id, role, content, tool_calls, tool_call_id, name) VALUES (?, ?, ?, ?, ?, ?)`,
-		sessionID, role, content, tcJSON, nullIfEmpty(toolCallID), nullIfEmpty(name))
+		`INSERT INTO messages(session_id, role, content, tool_calls, tool_call_id, name, reasoning) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		sessionID, role, content, tcJSON, nullIfEmpty(toolCallID), nullIfEmpty(name), m.Reasoning)
 	if err != nil {
 		return nil, err
 	}
@@ -271,7 +281,7 @@ func (s *Store) AddMessageFull(ctx context.Context, db *sql.DB, sessionID int64,
 	id, _ := res.LastInsertId()
 	return &types.Message{
 		ID: id, SessionID: sessionID, Role: role, Content: content,
-		ToolCalls: toolCalls, ToolCallID: toolCallID, Name: name, CreatedAt: time.Now(),
+		ToolCalls: toolCalls, ToolCallID: toolCallID, Name: name, Reasoning: m.Reasoning, CreatedAt: time.Now(),
 	}, nil
 }
 
@@ -285,7 +295,7 @@ func nullIfEmpty(s string) any {
 // Messages returns the messages of a session in order.
 func (s *Store) Messages(ctx context.Context, db *sql.DB, sessionID int64) ([]types.Message, error) {
 	rows, err := db.QueryContext(ctx,
-		`SELECT id, session_id, role, content, tool_calls, tool_call_id, name, created_at
+		`SELECT id, session_id, role, content, tool_calls, tool_call_id, name, created_at, reasoning
 		 FROM messages WHERE session_id = ? ORDER BY id ASC`, sessionID)
 	if err != nil {
 		return nil, err
@@ -295,7 +305,7 @@ func (s *Store) Messages(ctx context.Context, db *sql.DB, sessionID int64) ([]ty
 	for rows.Next() {
 		var m types.Message
 		var tc, tcID, name sql.NullString
-		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content, &tc, &tcID, &name, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content, &tc, &tcID, &name, &m.CreatedAt, &m.Reasoning); err != nil {
 			return nil, err
 		}
 		if tc.Valid && tc.String != "" {

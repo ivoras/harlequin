@@ -54,7 +54,9 @@ func runRederiveDocMemories(args []string) {
 	embedder.SetUsageFunc(embedderUsage(rec))
 	providers := map[string]*llm.OpenAICompatible{}
 	for _, p := range cfg.Providers {
-		providers[p.Name] = llm.NewOpenAICompatible(p.Name, p.BaseURL, p.APIKey, p.Model)
+		prov := llm.NewOpenAICompatible(p.Name, p.BaseURL, p.APIKey, p.Model)
+		prov.SetModelOptions(llmModelOptions(cfg))
+		providers[p.Name] = prov
 	}
 	router := llm.NewRoutingProvider(providers, cfg.Routing.DefaultProvider, cfg.Routing.FallbackOrder, cfg.Routing.ModelRules, nil, rec)
 	router.SetFallbackModel(cfg.Routing.FallbackModel)

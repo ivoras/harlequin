@@ -33,6 +33,10 @@ type Message struct {
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string     `json:"tool_call_id,omitempty"`
 	Name       string     `json:"name,omitempty"`
+	// ReasoningContent is an assistant message's reasoning, sent back so the
+	// model sees its earlier thinking (DeepSeek V4 requires it in tool-calling
+	// conversations). Dropped for models with pass_reasoning: false.
+	ReasoningContent string `json:"reasoning_content,omitempty"`
 	// Images are sent with the message as vision input (user messages only).
 	// Never persisted or logged: the agent re-derives them each turn from the
 	// message's attachment references.
@@ -203,7 +207,20 @@ type OpenAICompatible struct {
 	client         *http.Client
 	ppAvg          *ppTracker // rolling prompt-processing rate, drives the dynamic timeout
 	returnProgress bool       // request llama.cpp prompt-processing progress events
+	modelOpts      map[string]ModelOptions
 }
+
+// ModelOptions are per-model request settings from the model suite.
+type ModelOptions struct {
+	// ReasoningEffort is sent as reasoning_effort when set ("low", "high", …).
+	ReasoningEffort string
+	// DropReasoning leaves earlier reasoning out of the messages sent (the
+	// default is to send it back).
+	DropReasoning bool
+}
+
+// SetModelOptions sets the per-model options, keyed by model id.
+func (p *OpenAICompatible) SetModelOptions(m map[string]ModelOptions) { p.modelOpts = m }
 
 // NewOpenAICompatible constructs a provider. defaultModel is used when a request
 // does not specify one.
@@ -247,6 +264,7 @@ type streamRequest struct {
 	Temperature        *float64       `json:"temperature,omitempty"`
 	ReturnProgress     bool           `json:"return_progress,omitempty"`
 	ChatTemplateKwargs map[string]any `json:"chat_template_kwargs,omitempty"`
+	ReasoningEffort    string         `json:"reasoning_effort,omitempty"`
 }
 
 type streamOpt struct {
@@ -260,18 +278,26 @@ func (p *OpenAICompatible) Chat(ctx context.Context, req ChatRequest) (<-chan Ch
 		model = p.model
 	}
 	var templateKwargs map[string]any
+	opts := p.modelOpts[model]
+	effort := opts.ReasoningEffort
 	if req.DisableThinking {
 		templateKwargs = map[string]any{"enable_thinking": false}
+		effort = ""
+	}
+	msgs := req.Messages
+	if opts.DropReasoning {
+		msgs = withoutReasoning(msgs)
 	}
 	body, err := json.Marshal(streamRequest{
 		Model:              model,
-		Messages:           req.Messages,
+		Messages:           msgs,
 		Tools:              req.Tools,
 		Stream:             true,
 		StreamOpts:         streamOpt{IncludeUsage: true},
 		Temperature:        req.Temperature,
 		ReturnProgress:     p.returnProgress,
 		ChatTemplateKwargs: templateKwargs,
+		ReasoningEffort:    effort,
 	})
 	if err != nil {
 		return nil, err
@@ -519,4 +545,23 @@ func formatCallStats(provider, model string, u *Usage, total, ttft time.Duration
 	}
 	return fmt.Sprintf("llm[%s]: done model=%s prompt=%d cached=%d completion=%d ttft_ms=%d total_ms=%d cost_usd=%.8g ok=%t",
 		provider, model, prompt, cached, completion, ttftMS, total.Milliseconds(), cost, streamErr == nil)
+}
+
+// withoutReasoning returns msgs with every ReasoningContent cleared (a copy
+// only when there is something to clear).
+func withoutReasoning(msgs []Message) []Message {
+	var out []Message
+	for i, m := range msgs {
+		if m.ReasoningContent == "" {
+			continue
+		}
+		if out == nil {
+			out = append([]Message(nil), msgs...)
+		}
+		out[i].ReasoningContent = ""
+	}
+	if out == nil {
+		return msgs
+	}
+	return out
 }

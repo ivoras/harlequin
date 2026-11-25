@@ -53,3 +53,23 @@ func TestReuseAndCleanupEmpty(t *testing.T) {
 		t.Errorf("wrong survivors: %v", ids)
 	}
 }
+
+// An assistant message's reasoning is stored and read back with the history.
+func TestAssistantReasoningRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	d, err := db.Open(filepath.Join(t.TempDir(), "user.db"), db.User, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	s := NewStore()
+	c, _ := s.Create(ctx, d, 1, "", "", "", "")
+	s.AddMessage(ctx, d, c.ID, "user", "hi", nil)
+	if _, err := s.AddAssistantMessage(ctx, d, c.ID, "hello", "the user greets me", nil); err != nil {
+		t.Fatal(err)
+	}
+	ms, err := s.Messages(ctx, d, c.ID)
+	if err != nil || len(ms) != 2 || ms[0].Reasoning != "" || ms[1].Reasoning != "the user greets me" || ms[1].Content != "hello" {
+		t.Fatalf("messages = %+v, %v", ms, err)
+	}
+}

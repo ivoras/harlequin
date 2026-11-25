@@ -91,6 +91,7 @@ func main() {
 		prov := llm.NewOpenAICompatible(p.Name, p.BaseURL, p.APIKey, p.Model)
 		prov.SetReturnProgress(p.ReturnProgress)
 		prov.SetLocal(p.Local)
+		prov.SetModelOptions(llmModelOptions(cfg))
 		providers[p.Name] = prov
 	}
 	// Usage is recorded in the agent loop where the user/session are known,
@@ -516,4 +517,13 @@ func recordUsage(store *storage.Manager, us *usage.Store) llm.UsageRecorder {
 			log.Printf("usage: record for user %d: %v", at.UserID, err)
 		}
 	}
+}
+
+// llmModelOptions converts the model suite's per-model settings for the providers.
+func llmModelOptions(cfg *config.Config) map[string]llm.ModelOptions {
+	out := make(map[string]llm.ModelOptions, len(cfg.ModelOptions))
+	for model, o := range cfg.ModelOptions {
+		out[model] = llm.ModelOptions{ReasoningEffort: o.ReasoningEffort, DropReasoning: !o.PassReasoning}
+	}
+	return out
 }

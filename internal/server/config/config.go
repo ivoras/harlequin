@@ -57,22 +57,23 @@ type Config struct {
 	// VisionModelForOCR: when a PDF has no text in docling's fast mode, OCR it
 	// with the suite's `vision` model instead of docling's own OCR (which stays
 	// the fallback if the vision model fails). Default false.
-	VisionModelForOCR bool                  `yaml:"vision_model_for_ocr"`
-	ModelSuites       map[string]ModelSuite `yaml:"model_suites"`
-	Providers         []ProviderConfig      `yaml:"-"` // built from the active model suite
-	Routing           RoutingConfig         `yaml:"-"` // built from the active model suite
-	Prices            map[string]Price      `yaml:"prices"`
-	ContextWindows    map[string]int        `yaml:"context_windows"` // model id -> max input tokens
-	Embeddings        EmbeddingsConfig      `yaml:"-"`               // built from the active model suite
-	Documents         DocumentsConfig       `yaml:"documents"`
-	Agent             AgentConfig           `yaml:"agent"`
-	Memory            MemoryConfig          `yaml:"memory"`
-	Sessions          SessionsConfig        `yaml:"sessions"`
-	MCP               MCPConfig             `yaml:"mcp"`
-	Auth              AuthConfig            `yaml:"auth"`
-	Email             email.Config          `yaml:"email"`
-	Telegram          TelegramConfig        `yaml:"telegram"`
-	WebSearch         WebSearchConfig       `yaml:"web_search"`
+	VisionModelForOCR bool                    `yaml:"vision_model_for_ocr"`
+	ModelSuites       map[string]ModelSuite   `yaml:"model_suites"`
+	Providers         []ProviderConfig        `yaml:"-"` // built from the active model suite
+	Routing           RoutingConfig           `yaml:"-"` // built from the active model suite
+	Prices            map[string]Price        `yaml:"prices"`
+	ContextWindows    map[string]int          `yaml:"context_windows"` // model id -> max input tokens
+	ModelOptions      map[string]ModelOptions `yaml:"-"`               // model id -> request options, from the active model suite
+	Embeddings        EmbeddingsConfig        `yaml:"-"`               // built from the active model suite
+	Documents         DocumentsConfig         `yaml:"documents"`
+	Agent             AgentConfig             `yaml:"agent"`
+	Memory            MemoryConfig            `yaml:"memory"`
+	Sessions          SessionsConfig          `yaml:"sessions"`
+	MCP               MCPConfig               `yaml:"mcp"`
+	Auth              AuthConfig              `yaml:"auth"`
+	Email             email.Config            `yaml:"email"`
+	Telegram          TelegramConfig          `yaml:"telegram"`
+	WebSearch         WebSearchConfig         `yaml:"web_search"`
 
 	// Secrets, populated from the environment (not YAML).
 	JWTSecret string `yaml:"-"`
@@ -209,6 +210,18 @@ type ModelSpec struct {
 	FallbackModel         string `yaml:"fallback_model"`
 	FallbackContextWindow int    `yaml:"fallback_context_window"`
 	FallbackPrice         *Price `yaml:"fallback_price"`
+	// ReasoningEffort is sent to the model as reasoning_effort ("low", "high",
+	// "max", …; what a model accepts varies). Empty = not sent (the model's
+	// default).
+	ReasoningEffort string `yaml:"reasoning_effort"`
+	// PassReasoning sends the model's earlier reasoning back with the history
+	// (reasoning_content on assistant messages). Default true; DeepSeek V4
+	// needs it in tool-calling conversations. Set false for a model whose API
+	// rejects the field.
+	PassReasoning *bool `yaml:"pass_reasoning"`
+	// The same two for the fallback model (chat role).
+	FallbackReasoningEffort string `yaml:"fallback_reasoning_effort"`
+	FallbackPassReasoning   *bool  `yaml:"fallback_pass_reasoning"`
 	// Tools (aux role only) offers the WebFetch analysis model tools to follow
 	// links / compute. Default enabled; set false for a small aux that answers
 	// purely from the fetched content (extraction-only). See WebFetchConfig.Tools.
@@ -247,6 +260,13 @@ type RoutingConfig struct {
 	// unreachable after retries — e.g. a different model on the same gateway.
 	// Add its context_windows and prices entries. Empty = no model fallback.
 	FallbackModel string `yaml:"fallback_model"`
+}
+
+// ModelOptions are a model's request settings (see ModelSpec.ReasoningEffort
+// and PassReasoning).
+type ModelOptions struct {
+	ReasoningEffort string
+	PassReasoning   bool
 }
 
 // Price is the per-1K-token cost for a model.
@@ -739,6 +759,20 @@ func (c *Config) resolveModelSuite() error {
 		}
 		if _, ok := c.ContextWindows[m.model]; !ok && m.ctx > 0 {
 			c.ContextWindows[m.model] = m.ctx
+		}
+	}
+	c.ModelOptions = map[string]ModelOptions{}
+	for _, m := range []struct {
+		model, effort string
+		pass          *bool
+	}{
+		{chat.Model, chat.ReasoningEffort, chat.PassReasoning},
+		{aux.Model, aux.ReasoningEffort, aux.PassReasoning},
+		{vis.Model, vis.ReasoningEffort, vis.PassReasoning},
+		{chat.FallbackModel, chat.FallbackReasoningEffort, chat.FallbackPassReasoning},
+	} {
+		if _, ok := c.ModelOptions[m.model]; m.model != "" && !ok {
+			c.ModelOptions[m.model] = ModelOptions{ReasoningEffort: m.effort, PassReasoning: m.pass == nil || *m.pass}
 		}
 	}
 

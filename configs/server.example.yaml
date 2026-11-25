@@ -39,6 +39,12 @@ data_retention_days: 7     # delete session logs + per-user tmp dumps older than
 #     + fallback_context_window / fallback_price
 #                            unreachable after retries (outage, 429/5xx, dropped streams);
 #                            a conversation longer than the fallback's window errors instead
+#   reasoning_effort         sent as `reasoning_effort` ("low", "high", "max", …; what a
+#                            model accepts varies); omit for the model's default
+#   pass_reasoning           send the model's earlier reasoning back with the history
+#                            (`reasoning_content`); default true, which DeepSeek V4 needs
+#                            with tools. false for an API that rejects the field.
+#     fallback_reasoning_effort / fallback_pass_reasoning: the same for fallback_model
 # Switching the embed model usually changes `dim`, which requires recreating the
 # vec0 tables — run `harlequin-server reindex-vectors`.
 model_suite: "local"   # "local" / "openrouter" / "deepseek" below, or your own

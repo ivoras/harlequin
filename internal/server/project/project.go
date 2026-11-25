@@ -324,22 +324,22 @@ func (s *Store) MoveSessionToProject(ctx context.Context, userDB, projDB *sql.DB
 
 	// Copy messages in order.
 	rows, err := userDB.QueryContext(ctx,
-		`SELECT role, content, tool_calls, tool_call_id, name, created_at
+		`SELECT role, content, tool_calls, tool_call_id, name, created_at, reasoning
 		 FROM messages WHERE session_id = ? ORDER BY id ASC`, userSessionID)
 	if err != nil {
 		return 0, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var role, content string
+		var role, content, reasoning string
 		var toolCalls, toolCallID, name, createdAt sql.NullString
-		if err := rows.Scan(&role, &content, &toolCalls, &toolCallID, &name, &createdAt); err != nil {
+		if err := rows.Scan(&role, &content, &toolCalls, &toolCallID, &name, &createdAt, &reasoning); err != nil {
 			return 0, err
 		}
 		if _, err := projDB.ExecContext(ctx,
-			`INSERT INTO messages(session_id, role, content, tool_calls, tool_call_id, name, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))`,
-			newID, role, content, toolCalls, toolCallID, name, createdAt); err != nil {
+			`INSERT INTO messages(session_id, role, content, tool_calls, tool_call_id, name, created_at, reasoning)
+			 VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), ?)`,
+			newID, role, content, toolCalls, toolCallID, name, createdAt, reasoning); err != nil {
 			return 0, err
 		}
 	}

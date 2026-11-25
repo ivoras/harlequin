@@ -197,3 +197,28 @@ func TestResolveModelSuiteVisionOCR(t *testing.T) {
 		t.Fatalf("off: err=%v providers=%+v", err, off.Providers)
 	}
 }
+
+// reasoning_effort and pass_reasoning resolve per model; pass_reasoning
+// defaults to true.
+func TestResolveModelSuiteReasoningOptions(t *testing.T) {
+	no := false
+	c := &Config{
+		ModelSuite: "s",
+		ModelSuites: map[string]ModelSuite{"s": {
+			Chat: ModelSpec{
+				BaseURL: "http://x/v1", Model: "chat-m", ReasoningEffort: "high",
+				FallbackModel: "fb-m", FallbackPassReasoning: &no,
+			},
+			Embed: ModelSpec{BaseURL: "http://x/v1", Model: "embed-m"},
+		}},
+	}
+	if err := c.resolveModelSuite(); err != nil {
+		t.Fatal(err)
+	}
+	if got := c.ModelOptions["chat-m"]; got != (ModelOptions{ReasoningEffort: "high", PassReasoning: true}) {
+		t.Fatalf("chat-m = %+v", got)
+	}
+	if got := c.ModelOptions["fb-m"]; got != (ModelOptions{PassReasoning: false}) {
+		t.Fatalf("fb-m = %+v", got)
+	}
+}
