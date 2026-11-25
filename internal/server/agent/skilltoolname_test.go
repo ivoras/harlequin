@@ -48,3 +48,25 @@ func keys(m map[string]toolEntry) []string {
 	}
 	return out
 }
+
+// MCP tool names go through the same rules; the server is still called with
+// the tool's own name.
+func TestAPIToolName(t *testing.T) {
+	for _, c := range []struct {
+		parts []string
+		want  string
+	}{
+		{[]string{"mcp", "github", "create_issue"}, "mcp__github__create_issue"},
+		{[]string{"mcp", "my server", "files.read"}, "mcp__my_server__files_read"},
+		{[]string{"usporedba-računa", "provjeri"}, "usporedba-ra_una__provjeri"},
+	} {
+		if got := apiToolName(c.parts...); got != c.want {
+			t.Errorf("apiToolName(%q) = %q, want %q", c.parts, got, c.want)
+		}
+	}
+	long := strings.Repeat("x", 70)
+	a, b := apiToolName("mcp", "s", long+"a"), apiToolName("mcp", "s", long+"b")
+	if len(a) != maxToolNameLen || a == b {
+		t.Fatalf("long names: %q (%d), %q", a, len(a), b)
+	}
+}

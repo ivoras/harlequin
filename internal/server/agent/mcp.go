@@ -13,16 +13,13 @@ import (
 	"github.com/ivoras/harlequin/internal/server/sessionlog"
 )
 
-// mcpToolPrefix namespaces external MCP tools as mcp__<server>__<tool>, matching
-// the convention models are familiar with from hosted connectors.
-const mcpToolPrefix = "mcp__"
-
 // mcpToolListTimeout bounds per-server tool discovery during a turn, so an
 // unreachable MCP server can't stall the agent.
 const mcpToolListTimeout = 6 * time.Second
 
 // registerMCPTools adds the tools advertised by every enabled, visible (shared +
-// user) MCP server whose auth is satisfied. OAuth servers the user hasn't
+// user) MCP server whose auth is satisfied, named mcp__<server>__<tool> (the
+// convention models know from hosted connectors; see apiToolName). OAuth servers the user hasn't
 // signed in to are skipped and recorded in rc.mcpNeedAuth for a prompt note.
 // Failures never break the turn.
 func (a *Agent) registerMCPTools(ctx context.Context, rc *runContext, reg map[string]toolEntry) {
@@ -51,7 +48,7 @@ func (a *Agent) registerMCPTools(ctx context.Context, rc *runContext, reg map[st
 		}
 		srv := srv // capture per server
 		for _, t := range tools {
-			full := mcpToolPrefix + sanitizeToolName(srv.Name) + "__" + t.Name
+			full := apiToolName("mcp", srv.Name, t.Name)
 			if _, exists := reg[full]; exists {
 				continue // name clash (e.g. shared+user same name): first wins
 			}
@@ -108,22 +105,6 @@ func marshalArgs(args map[string]any) string {
 	b, err := json.Marshal(args)
 	if err != nil {
 		return "{}"
-	}
-	return string(b)
-}
-
-// sanitizeToolName keeps tool names within the [A-Za-z0-9_-] character class that
-// providers accept, replacing anything else with an underscore.
-func sanitizeToolName(s string) string {
-	b := make([]byte, 0, len(s))
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '_', c == '-':
-			b = append(b, c)
-		default:
-			b = append(b, '_')
-		}
 	}
 	return string(b)
 }

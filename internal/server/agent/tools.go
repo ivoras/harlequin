@@ -1166,23 +1166,33 @@ func (a *Agent) storeGenerated(ctx context.Context, db *sql.DB, scope string, rc
 	}
 }
 
-// toolNameUnsafe matches what providers refuse in a tool name (OpenAI and
-// Claude allow ^[a-zA-Z0-9_-]{1,64/128}$; some gateways pass dots, others 400).
+// toolNameUnsafe matches what providers refuse in a tool name: OpenAI allows
+// ^[a-zA-Z0-9_-]{1,64}$, Claude the same up to 128; the MCP spec (SEP-986) also
+// allows dots, which those two reject with a 400.
 var toolNameUnsafe = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
 
-// skillToolName is the name a skill tool is offered under: <skill>__<tool>,
-// like MCP tools, made safe for every provider and at most 64 characters.
-func skillToolName(skill, tool string) string {
-	n := toolNameUnsafe.ReplaceAllString(skill, "_") + "__" + toolNameUnsafe.ReplaceAllString(tool, "_")
-	if len(n) > 64 {
-		sum := sha256.Sum256([]byte(skill + "." + tool))
-		n = n[:55] + "_" + hex.EncodeToString(sum[:4])
+// maxToolNameLen is OpenAI's limit, the strictest of the providers.
+const maxToolNameLen = 64
+
+// apiToolName joins parts with "__" into a name every provider accepts
+// (skill tools <skill>__<tool>, MCP tools mcp__<server>__<tool>): runs of
+// other characters become "_", and a name over maxToolNameLen is cut and ends
+// in a hash of the original, so it stays unique.
+func apiToolName(parts ...string) string {
+	safe := make([]string, len(parts))
+	for i, p := range parts {
+		safe[i] = toolNameUnsafe.ReplaceAllString(p, "_")
+	}
+	n := strings.Join(safe, "__")
+	if len(n) > maxToolNameLen {
+		sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+		n = n[:maxToolNameLen-9] + "_" + hex.EncodeToString(sum[:4])
 	}
 	return n
 }
 
 func (a *Agent) registerSkillTool(reg map[string]toolEntry, skillName string, td skills.ToolDefinition) {
-	full := skillToolName(skillName, td.Name)
+	full := apiToolName(skillName, td.Name)
 	params := td.Parameters
 	if params == nil {
 		params = map[string]any{"type": "object", "properties": map[string]any{}}

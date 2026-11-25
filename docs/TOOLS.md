@@ -36,8 +36,10 @@ Beyond these built-ins, two families of tools appear dynamically:
   frontmatter and backed by sandboxed JS. The older `<skill>.<tool>` form is still
   accepted when the model calls it (skill texts may name tools that way), but is not
   offered. Visible per the active hat/skill set. Their `run` JavaScript has the same helpers as `run_js` (`read_doc`, `sheets.*`, `xml.*`, `tmp`/`storage`, `load`/`include`), with the call's arguments as `args`.
-- **MCP tools** — namespaced `mcp__<server>__<tool>`, proxied from external MCP
-  servers (only when `mcp.enabled`). Enabled servers whose OAuth sign-in is
+- **MCP tools** — namespaced `mcp__<server>__<tool>` (made safe the same way: the
+  MCP spec allows dots in tool names, which OpenAI-style APIs and Claude reject;
+  names over 64 characters are shortened with a hash; the server is still called
+  with the tool's own name), proxied from external MCP servers (only when `mcp.enabled`). Enabled servers whose OAuth sign-in is
   missing are skipped, and the system prompt tells the model which ones so it can
   ask the user to sign in.
 
