@@ -366,7 +366,10 @@ sandbox file instead — `.md` feeds `create_excel`'s `source`.
   zeros per digit group: `'1/11/01'` = `'1-11-1'`, `'01270000'` = `1270000`);
   the tool description carries recipes for rows only in A or B, amount
   differences and lookups (VLOOKUP-style joins). The schema shows each
-  column's Excel letter, so "column V" can be resolved.
+  column's Excel letter, so "column V" can be resolved, and a cell address
+  too: D150 is that column with `_row = 150`, D150:D200 `_row BETWEEN 150 AND
+  200`; a cell above the table (title rows) needs `header_row: -1`, which
+  loads the sheet as it is with columns named after their letters (`d`).
 - **Cell colours:** a column whose cells have background fills gets a companion
   `<column>_color` column (type `color`) holding the colour in words and hex
   (`light blue #BDD7EE`; RGB, theme colours with tint and the indexed palette

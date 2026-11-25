@@ -42,7 +42,7 @@ How to use it, in two steps:
 
 Several files or sheets with the same columns (monthly exports of one report) are also combined into a VIEW named ..._all with extra columns _file and _sheet: query that view instead of writing UNION ALL yourself, e.g. SELECT _file, SUM(iznos) FROM f2_podaci_all GROUP BY _file.
 
-When the user names a column by its Excel letter ("column V"), find the column whose letter is V in step 1's list.
+When the user names a column by its Excel letter ("column V"), find the column whose letter is V in step 1's list. A cell address is that column plus _row: cell D150 -> SELECT <column with letter D> FROM t WHERE _row = 150; a range D150:D200 -> WHERE _row BETWEEN 150 AND 200 (e.g. SUM(...) for "add up D150:D200"). A cell above the table (title rows, shown as "row above the header") is not in it: call again with header_row -1 (and sheet) to load the sheet as it is, where every column is named after its letter (d) and _row is still the spreadsheet row: SELECT d FROM t WHERE _row = 2.
 
 SQL recipes (SQLite):
 - Totals per group: SELECT kupac, SUM(iznos) AS ukupno, COUNT(*) AS n FROM prodaja GROUP BY kupac ORDER BY ukupno DESC LIMIT 20
