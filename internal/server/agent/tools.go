@@ -3,7 +3,9 @@ package agent
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1084,7 +1086,7 @@ Example (watch a saved web-monitor check every 30 min): cron_create(name="fzoeu"
 		}
 	}
 
-	// Skill-defined tools, namespaced <skill>.<tool>, for the visible (hat-aware)
+	// Skill-defined tools, namespaced <skill>__<tool>, for the visible (hat-aware)
 	// skills (rc.skillInfos: resolved once per turn, before buildTools).
 	for _, info := range rc.skillInfos {
 		sk, err := a.Skills.ResolveEffective(ctx, rc.userDB, rc.projectDB, info.Name, rc.userID, rc.username, rc.hat)
@@ -1164,8 +1166,23 @@ func (a *Agent) storeGenerated(ctx context.Context, db *sql.DB, scope string, rc
 	}
 }
 
+// toolNameUnsafe matches what providers refuse in a tool name (OpenAI and
+// Claude allow ^[a-zA-Z0-9_-]{1,64/128}$; some gateways pass dots, others 400).
+var toolNameUnsafe = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
+
+// skillToolName is the name a skill tool is offered under: <skill>__<tool>,
+// like MCP tools, made safe for every provider and at most 64 characters.
+func skillToolName(skill, tool string) string {
+	n := toolNameUnsafe.ReplaceAllString(skill, "_") + "__" + toolNameUnsafe.ReplaceAllString(tool, "_")
+	if len(n) > 64 {
+		sum := sha256.Sum256([]byte(skill + "." + tool))
+		n = n[:55] + "_" + hex.EncodeToString(sum[:4])
+	}
+	return n
+}
+
 func (a *Agent) registerSkillTool(reg map[string]toolEntry, skillName string, td skills.ToolDefinition) {
-	full := skillName + "." + td.Name
+	full := skillToolName(skillName, td.Name)
 	params := td.Parameters
 	if params == nil {
 		params = map[string]any{"type": "object", "properties": map[string]any{}}
@@ -1190,6 +1207,10 @@ func (a *Agent) registerSkillTool(reg map[string]toolEntry, skillName string, td
 			return out, nil
 		},
 	}
+	// The old <skill>.<tool> name stays callable (hidden): skill texts name tools that way.
+	alias := reg[full]
+	alias.hidden = true
+	reg[skillName+"."+td.Name] = alias
 }
 
 // toStringSlice coerces a decoded JSON value (typically []any of strings) into

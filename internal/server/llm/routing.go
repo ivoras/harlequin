@@ -122,10 +122,9 @@ func (r *RoutingProvider) order(req ChatRequest) []string {
 		}
 	}
 	add(first)
+	// Only the configured fallback order: other providers serve other roles
+	// (aux, vision) and must not receive this request.
 	for _, n := range r.fallbackOrder {
-		add(n)
-	}
-	for n := range r.providers {
 		add(n)
 	}
 	return out

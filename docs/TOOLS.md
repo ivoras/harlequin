@@ -31,8 +31,11 @@ to the model (`toolEntry.hidden`): `edit_file` → `edit_doc`, `write_skill_file
 `write_file` on `skill://`.
 
 Beyond these built-ins, two families of tools appear dynamically:
-- **Skill tools** — namespaced `<skill>.<tool>`, declared by a skill's frontmatter
-  and backed by sandboxed JS. Visible per the active hat/skill set. Their `run` JavaScript has the same helpers as `run_js` (`read_doc`, `sheets.*`, `xml.*`, `tmp`/`storage`, `load`/`include`), with the call's arguments as `args`.
+- **Skill tools** — namespaced `<skill>__<tool>` (characters other than letters,
+  digits, `_` and `-` become `_`, as providers require), declared by a skill's
+  frontmatter and backed by sandboxed JS. The older `<skill>.<tool>` form is still
+  accepted when the model calls it (skill texts may name tools that way), but is not
+  offered. Visible per the active hat/skill set. Their `run` JavaScript has the same helpers as `run_js` (`read_doc`, `sheets.*`, `xml.*`, `tmp`/`storage`, `load`/`include`), with the call's arguments as `args`.
 - **MCP tools** — namespaced `mcp__<server>__<tool>`, proxied from external MCP
   servers (only when `mcp.enabled`). Enabled servers whose OAuth sign-in is
   missing are skipped, and the system prompt tells the model which ones so it can

@@ -138,3 +138,20 @@ func TestRouterUseFallbackSkipsPrimary(t *testing.T) {
 		t.Errorf("model=%q calls=%d, want fb and 1", model, calls.Load())
 	}
 }
+
+// A failed request falls back only along the configured order: providers for
+// other roles (aux, vision) never get it.
+func TestRouterFallsBackOnlyInOrder(t *testing.T) {
+	bad, badCalls := fakeGateway(t, 400, "primary")
+	other, otherCalls := fakeGateway(t, 400)
+	r := NewRoutingProvider(map[string]*OpenAICompatible{
+		"chat":   NewOpenAICompatible("chat", bad.URL, "", "primary"),
+		"vision": NewOpenAICompatible("vision", other.URL, "", "vision-m"),
+	}, "chat", []string{"chat"}, nil, nil, nil)
+	if _, err := r.Chat(context.Background(), ChatRequest{Messages: []Message{{Role: RoleUser, Content: "hi"}}}); err == nil {
+		t.Fatal("want the chat provider's error")
+	}
+	if badCalls.Load() != 1 || otherCalls.Load() != 0 {
+		t.Fatalf("chat calls = %d, vision calls = %d; want 1 and 0", badCalls.Load(), otherCalls.Load())
+	}
+}
