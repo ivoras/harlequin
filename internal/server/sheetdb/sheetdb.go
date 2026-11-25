@@ -319,7 +319,6 @@ func (d *DB) load(ctx context.Context, srcs []Source, opt Options) error {
 	}
 	want := strings.ToLower(strings.TrimSpace(opt.Sheet))
 	sheetsSeen := []string{}
-	multi := len(srcs) > 1
 	for _, src := range srcs {
 		if src.Format == "" {
 			src.Format = Detect(src.Name, "", src.Data)
@@ -339,7 +338,7 @@ func (d *DB) load(ctx context.Context, srcs []Source, opt Options) error {
 			skip = want != "" && strings.ToLower(name) != want
 			if !skip {
 				cur = &builder{ctx: ctx, tx: tx, used: used, opt: opt, sheet: name, source: src.Label, file: short, hidden: hidden, cells: &d.Cells,
-					tname: tableName(multi, short, name, total)}
+					tname: tableName(short, name, total)}
 			}
 			return nil
 		}
@@ -398,15 +397,11 @@ func (d *DB) load(ctx context.Context, srcs []Source, opt Options) error {
 	return tx.Commit()
 }
 
-// tableName: one file's tables are named after their sheets; when several
-// files load together they are named after the file (plus the sheet when the
-// file has more than one), so "sheet1, sheet1_2, …" never hides which file a
-// table is.
-func tableName(multi bool, file, sheet string, sheets int) string {
-	switch {
-	case !multi:
-		return ident(sheet, "sheet")
-	case sheets == 1:
+// tableName names a table after its file (plus the sheet when the file has
+// more than one), whether the file is loaded alone or with others: a name the
+// model saw in one call must work in the next (query_sheet, run_js).
+func tableName(file, sheet string, sheets int) string {
+	if sheets == 1 {
 		return ident(file, "t")
 	}
 	return ident(file+" "+sheet, "t")

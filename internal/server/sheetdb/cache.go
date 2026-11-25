@@ -15,7 +15,7 @@ import (
 
 // CacheVersion is part of every cache file's name: bump it whenever loading
 // changes what a file reads as (types, names), so old caches are not used.
-const CacheVersion = 1
+const CacheVersion = 2
 
 // metaTable holds a cache file's tables, views and column statistics as JSON.
 const metaTable = "_sheetdb_meta"
@@ -195,7 +195,7 @@ func Assemble(ctx context.Context, parts []Part) (*DB, error) {
 			}
 			for _, t := range m.Tables {
 				old := t.Name
-				t.Name = uniqueName(tableName(len(parts) > 1, p.Short, t.Sheet, len(m.Tables)), used)
+				t.Name = uniqueName(tableName(p.Short, t.Sheet, len(m.Tables)), used)
 				t.Source, t.File = p.Label, p.Short
 				if _, err := tx.ExecContext(ctx, createTyped(t.Name, t.Columns)); err != nil {
 					tx.Rollback()

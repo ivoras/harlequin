@@ -103,26 +103,26 @@ func TestLoadXLSX(t *testing.T) {
 	d := load(t, []Source{{Label: `u.1 "Prodaja.xlsx"`, Name: "Prodaja.xlsx", Data: testBook(t)}}, Options{})
 	s := d.Schema()
 	for _, want := range []string{
-		`TABLE prodaja_2026 — sheet "Prodaja 2026"`, "3 data rows", "header is spreadsheet row 3",
+		`TABLE prodaja_prodaja_2026 — sheet "Prodaja 2026"`, "3 data rows", "header is spreadsheet row 3",
 		"row above the header: Acme d.o.o. — prodaja",
 		`sifra_konta  code`, `"01270000"`, `kupac`, `datum        date`, `"2026-01-21"`,
 		`iznos_eur    number`, `order_       integer`, `iznos_tekst  text`, `h            text`, `g            text-number`,
-		`TABLE konta`, "hidden sheet",
+		`TABLE prodaja_konta`, "hidden sheet",
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("schema lacks %q:\n%s", want, s)
 		}
 	}
-	r := q(t, d, `SELECT kupac, SUM(iznos_eur) AS total, MIN(datum) AS first FROM prodaja_2026 GROUP BY kupac ORDER BY total DESC`)
+	r := q(t, d, `SELECT kupac, SUM(iznos_eur) AS total, MIN(datum) AS first FROM prodaja_prodaja_2026 GROUP BY kupac ORDER BY total DESC`)
 	if got := Markdown(r.Columns, r.Rows, 0); !strings.Contains(got, "| Ana Horvat | 17370.99 | 2026-01-21 |") || !strings.Contains(got, "| Ivan Kovač | 2150.25 | 2026-01-30 |") {
 		t.Fatalf("group by:\n%s", got)
 	}
-	r = q(t, d, `SELECT _row, sifra_konta, num(iznos_tekst) FROM prodaja_2026 ORDER BY _row`)
+	r = q(t, d, `SELECT _row, sifra_konta, num(iznos_tekst) FROM prodaja_prodaja_2026 ORDER BY _row`)
 	if Cell(r.Rows[0][0]) != "4" || Cell(r.Rows[0][1]) != "01270000" || Cell(r.Rows[0][2]) != "1234.5" || Cell(r.Rows[1][2]) != "12.5" || r.Rows[2][2] != nil {
 		t.Fatalf("rows: %v", r.Rows)
 	}
 	// Join across sheets.
-	r = q(t, d, `SELECT k.naziv FROM prodaja_2026 p JOIN konta k ON k.konto = p.sifra_konta ORDER BY k._row`)
+	r = q(t, d, `SELECT k.naziv FROM prodaja_prodaja_2026 p JOIN prodaja_konta k ON k.konto = p.sifra_konta ORDER BY k._row`)
 	if r.Total != 2 || r.Rows[0][0] != "Licence" || r.Rows[1][0] != "Najam" {
 		t.Fatalf("join: %v", r.Rows)
 	}
@@ -132,7 +132,7 @@ func TestLoadXLSX(t *testing.T) {
 // and text (which SQLite would never find equal).
 func TestAccountCodes(t *testing.T) {
 	d := load(t, []Source{{Label: "u.1", Name: "a.xlsx", Data: testBook(t)}}, Options{})
-	r := q(t, d, `SELECT konto, typeof(konto) FROM konta ORDER BY _row`)
+	r := q(t, d, `SELECT konto, typeof(konto) FROM a_konta ORDER BY _row`)
 	want := [][2]string{{"01270000", "text"}, {"01710000", "text"}, {"1890000", "text"}}
 	for i, w := range want {
 		if Cell(r.Rows[i][0]) != w[0] || r.Rows[i][1] != w[1] {
@@ -143,15 +143,15 @@ func TestAccountCodes(t *testing.T) {
 		t.Fatalf("schema:\n%s", s)
 	}
 	// Text code = text literal, and the bare number is found as text too.
-	if r := q(t, d, `SELECT naziv FROM konta WHERE konto = '01710000' OR konto = '1890000'`); r.Total != 2 {
+	if r := q(t, d, `SELECT naziv FROM a_konta WHERE konto = '01710000' OR konto = '1890000'`); r.Total != 2 {
 		t.Fatalf("text match: %v", r.Rows)
 	}
 	// An integer account column joins a code column numerically.
-	if r := q(t, d, `SELECT k.naziv, b.saldo FROM bilanca b JOIN konta k ON k.konto = b.konto`); r.Total != 1 || r.Rows[0][0] != "Licence" {
+	if r := q(t, d, `SELECT k.naziv, b.saldo FROM a_bilanca b JOIN a_konta k ON k.konto = b.konto`); r.Total != 1 || r.Rows[0][0] != "Licence" {
 		t.Fatalf("integer-to-code join: %v", r.Rows)
 	}
 	// The documented way to match a code that lost its zero.
-	if r := q(t, d, `SELECT count(*) FROM konta WHERE ltrim(konto, '0') = '1890000'`); Cell(r.Rows[0][0]) != "1" {
+	if r := q(t, d, `SELECT count(*) FROM a_konta WHERE ltrim(konto, '0') = '1890000'`); Cell(r.Rows[0][0]) != "1" {
 		t.Fatal("ltrim match")
 	}
 }
@@ -161,8 +161,8 @@ func ptr[T any](v T) *T { return &v }
 func TestReadOnly(t *testing.T) {
 	d := load(t, []Source{{Label: "u.1", Name: "a.xlsx", Data: testBook(t)}}, Options{})
 	for _, bad := range []string{
-		`DROP TABLE konta`, `INSERT INTO konta VALUES (1, 'a', 'b')`, `UPDATE konta SET naziv = 'x'`,
-		`ATTACH DATABASE '/tmp/x.db' AS x`, `PRAGMA table_info(konta)`, `SELECT load_extension('x')`,
+		`DROP TABLE a_konta`, `INSERT INTO a_konta VALUES (1, 'a', 'b')`, `UPDATE a_konta SET naziv = 'x'`,
+		`ATTACH DATABASE '/tmp/x.db' AS x`, `PRAGMA table_info(a_konta)`, `SELECT load_extension('x')`,
 		`CREATE TABLE z(a)`, `VACUUM INTO '/tmp/out.db'`,
 	} {
 		if _, err := d.Query(context.Background(), bad, 10); err == nil {
@@ -269,7 +269,7 @@ func TestBigLoad(t *testing.T) {
 	d := load(t, []Source{{Label: "u.1", Name: "big.xlsx", Data: b.Bytes()}}, Options{})
 	t.Logf("xlsx %d KB, load %v", b.Len()>>10, time.Since(st))
 	st = time.Now()
-	r := q(t, d, `SELECT kupac, sum(iznos) FROM sheet1 GROUP BY kupac ORDER BY 2 DESC LIMIT 3`)
+	r := q(t, d, `SELECT kupac, sum(iznos) FROM big GROUP BY kupac ORDER BY 2 DESC LIMIT 3`)
 	t.Logf("query %v: %v", time.Since(st), r.Rows)
 }
 

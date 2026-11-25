@@ -180,7 +180,7 @@ func TestBigSheetUpload(t *testing.T) {
 	if out := h.call("read_doc", map[string]any{"doc": ref(id), "limit": float64(100)}); !strings.Contains(out, "characters 0–100 of") {
 		t.Fatalf("explicit limit not kept: %.300s", out)
 	}
-	out = h.call("query_sheet", map[string]any{"doc": ref(id), "sql": "SELECT COUNT(*), SUM(iznos), MIN(konto) FROM sheet1"})
+	out = h.call("query_sheet", map[string]any{"doc": ref(id), "sql": "SELECT COUNT(*), SUM(iznos), MIN(konto) FROM bilanca"})
 	if !strings.Contains(out, "| 2000 | 1999000 | 01000000 |") {
 		t.Fatalf("query_sheet by reference:\n%s", out)
 	}

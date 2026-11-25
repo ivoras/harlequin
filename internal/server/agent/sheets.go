@@ -37,10 +37,10 @@ const bigSheetChars = 30000
 const querySheetPrompt = `Answer questions about spreadsheets (Excel .xlsx/.xls/.xlsb, OpenDocument .ods, CSV, TSV) — and about the tables inside PDF and Word documents — with SQL, without reading the rows yourself. The server loads every sheet into a read-only SQLite table and runs your query on all rows, so it works the same for 50 rows or 5 million. Use it for ANY question about the data: totals, counts, finding rows, comparing or reconciling files, looking values up in another file, checking a rule against every row. Never read a big spreadsheet with read_doc, and never type its numbers into run_js yourself.
 
 How to use it, in two steps:
-1. Call query_sheet with only doc (e.g. doc "u.12"), plus more_docs listing EVERY other file the question involves (all attached spreadsheets, in one call). You get the tables and their columns: one table per sheet, each column's name, type, original header, Excel column letter and example values. Column names are the headers made SQL-safe ("Iznos (EUR)" -> iznos_eur), so they never need quotes. Every table has _row, the row number in the spreadsheet.
+1. Call query_sheet with only doc (e.g. doc "u.12"), plus more_docs listing EVERY other file the question involves (all attached spreadsheets, in one call). You get the tables and their columns: one table per sheet, named after the file (plus the sheet when the file has several: "Prodaja.xlsx" sheet "Konta" -> prodaja_konta), the same names whether a file is loaded alone or with others and in run_js; each column's name, type, original header, Excel column letter and example values. Column names are the headers made SQL-safe ("Iznos (EUR)" -> iznos_eur), so they never need quotes. Every table has _row, the row number in the spreadsheet.
 2. Call query_sheet again with the same doc and more_docs and sql: one SELECT query. Use ONLY the table and column names from step 1.
 
-Several files: with more than one file, each table is named after its file ("F2 Podaci 03-2026.xlsx" -> f2_podaci_03_2026). Files or sheets with the same columns (monthly exports of one report) are also combined into a VIEW named ..._all with extra columns _file and _sheet: query that view instead of writing UNION ALL yourself, e.g. SELECT _file, SUM(iznos) FROM f2_podaci_all GROUP BY _file.
+Several files or sheets with the same columns (monthly exports of one report) are also combined into a VIEW named ..._all with extra columns _file and _sheet: query that view instead of writing UNION ALL yourself, e.g. SELECT _file, SUM(iznos) FROM f2_podaci_all GROUP BY _file.
 
 When the user names a column by its Excel letter ("column V"), find the column whose letter is V in step 1's list.
 
@@ -60,7 +60,7 @@ SQL recipes (SQLite):
 - Sheets often contain subtotal or total rows ("Ukupno", "Total") among the data: look for them before summing and exclude them, or you will count amounts twice.
 - Only one statement; only SELECT/WITH. Results show at most 200 rows: aggregate or filter instead of paging through data.
 
-A PDF or Word document can be a doc too: its tables (as extracted from the file) become tables named after the heading above them. Extraction can split or garble a table: check the row count and a few rows against what the user expects.
+A PDF or Word document can be a doc too: its tables (as extracted from the file) become tables named after the file and the heading above them. Extraction can split or garble a table: check the row count and a few rows against what the user expects.
 
 To give the user a big result as a file, set save_to (e.g. "tmp://result.md") — all result rows (up to 200000) are written there and only a short confirmation comes back; then call create_excel with source "tmp://result.md". save_to ending in .csv writes CSV, .json writes a JSON array of objects.
 

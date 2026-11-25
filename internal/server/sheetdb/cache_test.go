@@ -52,10 +52,10 @@ func TestCacheBuildOpenAssemble(t *testing.T) {
 	}
 	defer d.Close()
 	s := d.Schema()
-	if !strings.Contains(s, "TABLE sheet1") || !strings.Contains(s, "status_color  color") || !strings.Contains(s, "light blue #BDD7EE") {
+	if !strings.Contains(s, "TABLE f2_podaci_01_2026") || !strings.Contains(s, "status_color  color") || !strings.Contains(s, "light blue #BDD7EE") {
 		t.Fatalf("schema from disk:\n%s", s)
 	}
-	r := q(t, d, `SELECT _row, status, status_color FROM sheet1 WHERE status_color LIKE '%blue%'`)
+	r := q(t, d, `SELECT _row, status, status_color FROM f2_podaci_01_2026 WHERE status_color LIKE '%blue%'`)
 	if r.Total != 1 || Cell(r.Rows[0][0]) != "3" {
 		t.Fatalf("colour query: %v", r.Rows)
 	}
@@ -92,10 +92,10 @@ func TestMDTables(t *testing.T) {
 	md := "# Račun 901\n\nTekst.\n\n| Stavka | Količina | Iznos |\n|---|---|---|\n| **Usluga A** | 2 | 1.234,50 |\n| Usluga B | 1 | 99,00 |\n\nStranica 2\n\n| Stavka | Količina | Iznos |\n|---|---|---|\n| Usluga C | 3 | 10,00 |\n\n## Rekapitulacija\n\n| Osnovica | PDV |\n|---|---|\n| 1.343,50 | 335,88 |\n"
 	d := load(t, []Source{{Label: "u.5", Name: "r.pdf", Format: "md", Text: md}}, Options{})
 	s := d.Schema()
-	if !strings.Contains(s, "TABLE racun_901") || !strings.Contains(s, "3 data rows") || !strings.Contains(s, "iznos     number") || !strings.Contains(s, "TABLE rekapitulacija") {
+	if !strings.Contains(s, "TABLE r_racun_901") || !strings.Contains(s, "3 data rows") || !strings.Contains(s, "iznos     number") || !strings.Contains(s, "TABLE r_rekapitulacija") {
 		t.Fatalf("schema:\n%s", s)
 	}
-	r := q(t, d, `SELECT sum(iznos), group_concat(stavka) FROM racun_901`)
+	r := q(t, d, `SELECT sum(iznos), group_concat(stavka) FROM r_racun_901`)
 	if Cell(r.Rows[0][0]) != "1343.5" || r.Rows[0][1] != "Usluga A,Usluga B,Usluga C" {
 		t.Fatalf("md rows: %v", r.Rows)
 	}

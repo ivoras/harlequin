@@ -345,7 +345,9 @@ pointing to `query_sheet` and, unless `limit` is given, shows only the first
 OpenDocument `.ods`, CSV, TSV) of any size — or about the tables in a PDF or
 Word document — with SQL, without the model reading its rows. The stored original
 is streamed into a private, read-only, in-memory SQLite database: one table per
-sheet, column names derived from the headers (`"Iznos (EUR)"` → `iznos_eur`), a
+sheet, named after the file (`"F2 Podaci 03-2026.xlsx"` → `f2_podaci_03_2026`,
+plus the sheet when the file has several) — the same names whether the file is
+loaded alone, with `more_docs` or from `run_js` — column names derived from the headers (`"Iznos (EUR)"` → `iznos_eur`), a
 `_row` column with the spreadsheet row number. Without `sql` it returns the
 schema (column types, original headers, example values, rows above the header)
 plus example queries built from the real names; with `sql` it runs one SELECT
@@ -354,9 +356,7 @@ spreadsheets beside the first for joins and comparisons; `sheet` loads one sheet
 `header_row` overrides header detection (-1 = no header); `save_to`
 (`tmp://x.md` / `.csv` / `.json`) writes all result rows (≤ 200,000) to a
 sandbox file instead — `.md` feeds `create_excel`'s `source`.
-- **Several files:** `more_docs` lists every other file of the question. Each
-  table is then named after its file (`"F2 Podaci 03-2026.xlsx"` →
-  `f2_podaci_03_2026`, plus the sheet when the file has several), and tables
+- **Several files:** `more_docs` lists every other file of the question. Tables
   with the same columns — across files or sheets — are combined in a view
   `<common prefix>_all` with `_file` and `_sheet` columns; a column that is
   numeric in one table and text in another is text in the view. The schema
@@ -373,7 +373,7 @@ sandbox file instead — `.md` feeds `create_excel`'s `source`.
   are resolved, white counts as none), for sheets that mark rows by colour.
 - **PDF / Word / Markdown tables:** a document that is not a spreadsheet is read
   from its converted text: each pipe table becomes a table named after the
-  heading above it, tables split across pages (same header) are joined, values
+  file and the heading above it, tables split across pages (same header) are joined, values
   are typed like CSV values. A sandbox `.md` file with tables works the same.
 - **Formats:** the format is detected from the content (zip parts, the OLE
   signature of `.xls`), the name only for CSV/TSV. `.xls`, `.xlsb` and `.ods`

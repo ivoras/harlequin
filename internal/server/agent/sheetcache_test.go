@@ -44,7 +44,7 @@ func TestSheetDiskCache(t *testing.T) {
 	}
 	defer closeAll(h.a)
 
-	if out := h.call("query_sheet", map[string]any{"doc": ref(jan), "sql": "SELECT sum(iznos) FROM sheet1"}); !strings.Contains(out, "| 60 |") {
+	if out := h.call("query_sheet", map[string]any{"doc": ref(jan), "sql": "SELECT sum(iznos) FROM f2_podaci_01_2026"}); !strings.Contains(out, "| 60 |") {
 		t.Fatalf("first query: %s", out)
 	}
 	caches := sheetCaches(t, h.files)
@@ -55,7 +55,7 @@ func TestSheetDiskCache(t *testing.T) {
 	fresh := &Agent{DataDir: h.a.DataDir, Docs: h.a.Docs, Storage: h.a.Storage}
 	h.a = fresh
 	defer closeAll(fresh)
-	if out := h.call("query_sheet", map[string]any{"doc": ref(jan), "sql": "SELECT count(*) FROM sheet1"}); !strings.Contains(out, "| 3 |") {
+	if out := h.call("query_sheet", map[string]any{"doc": ref(jan), "sql": "SELECT count(*) FROM f2_podaci_01_2026"}); !strings.Contains(out, "| 3 |") {
 		t.Fatalf("from cache: %s", out)
 	}
 	// Older than a week: rebuilt (the file is new again).
