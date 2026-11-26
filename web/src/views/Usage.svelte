@@ -48,6 +48,7 @@
     e.preventDefault();
     downloadCsv("usage-by-user.csv", ["user", "calls", "today_usd", "last_30_days_usd"], perUser.map((u) => [u.email, u.calls, u.today, u.total]));
   }
+  const mtok = (n: number) => `${(n / 1e6).toFixed(2)}M`;
   const money = (n: number) => `$${n.toFixed(2)}`;
   const today = localToday();
   // First day of the 30-day window (today inclusive); days are YYYY-MM-DD.
@@ -122,8 +123,8 @@
     {/if}
     <div class="card">
       <div class="row"><b class="muted">LLM calls</b><span class="spacer"></span>{calls.toLocaleString()}</div>
-      <div class="row"><b class="muted">Prompt tokens</b><span class="spacer"></span>{prompt.toLocaleString()}{prompt ? ` (${Math.round((cached * 100) / prompt)}% cached)` : ""}</div>
-      <div class="row"><b class="muted">Generated tokens</b><span class="spacer"></span>{completion.toLocaleString()}</div>
+      <div class="row"><b class="muted">Prompt tokens</b><span class="spacer"></span>{mtok(prompt)}{prompt ? ` (${Math.round((cached * 100) / prompt)}% cached)` : ""}</div>
+      <div class="row"><b class="muted">Generated tokens</b><span class="spacer"></span>{mtok(completion)}</div>
       <div class="row"><b class="muted">Cost (all time{allMode ? ", all users" : ""})</b><span class="spacer"></span>${cost.toFixed(cost < 1 ? 4 : 2)}</div>
     </div>
     {#if loading}
