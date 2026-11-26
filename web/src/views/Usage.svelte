@@ -4,6 +4,7 @@
   import { toast, user } from "../lib/stores";
   import { isElevated, type UsageDay, type UsageUser } from "../lib/types";
   import { daily, weekly, monthly, localToday } from "../lib/usagebuckets";
+  import { downloadCsv } from "../lib/csv";
   import UsageBars from "./UsageBars.svelte";
 
   // Owners/admins see the whole server's usage (what the provider bills); the
@@ -43,6 +44,10 @@
       .filter((u) => u.calls > 0)
       .sort((a, b) => b.total - a.total),
   );
+  function exportUsersCsv(e: Event) {
+    e.preventDefault();
+    downloadCsv("usage-by-user.csv", ["user", "calls", "today_usd", "last_30_days_usd"], perUser.map((u) => [u.email, u.calls, u.today, u.total]));
+  }
   const money = (n: number) => `$${n.toFixed(2)}`;
   const today = localToday();
   // First day of the 30-day window (today inclusive); days are YYYY-MM-DD.
@@ -126,10 +131,13 @@
     {:else if days.length === 0}
       <div class="muted small">No usage recorded yet.</div>
     {:else}
-      <UsageBars title="Daily cost — last 30 days" buckets={byDay} barWidth={12} />
+      <UsageBars title="Daily cost — last 30 days" buckets={byDay} barWidth={12} csvName="usage-daily" />
       {#if allMode && perUser.length}
         <div class="card">
-          <b class="muted">By user — last 30 days</b>
+          <div class="row">
+            <b class="muted">By user — last 30 days</b><span class="spacer"></span>
+            <a href="#csv" class="small" onclick={exportUsersCsv}>download csv</a>
+          </div>
           {#each perUser as u (u.email)}
             <div class="row small">
               <span>{u.email}</span><span class="spacer"></span>
@@ -140,8 +148,8 @@
           {/each}
         </div>
       {/if}
-      <UsageBars title="Weekly cost — last 52 weeks" buckets={byWeek} barWidth={16} />
-      <UsageBars title="Monthly cost — all time" buckets={byMonth} barWidth={36} />
+      <UsageBars title="Weekly cost — last 52 weeks" buckets={byWeek} barWidth={16} csvName="usage-weekly" />
+      <UsageBars title="Monthly cost — all time" buckets={byMonth} barWidth={36} csvName="usage-monthly" />
       <div class="muted small">Days follow your local time.</div>
     {/if}
   </div>

@@ -3,8 +3,15 @@
   // right and scrolled into view on load. Hovering or focusing a bar shows its
   // figures in the readout line; the newest bucket is shown otherwise.
   import type { Bucket } from "../lib/usagebuckets";
+  import { downloadCsv } from "../lib/csv";
 
-  let { title, buckets, barWidth = 12 }: { title: string; buckets: Bucket[]; barWidth?: number } = $props();
+  let { title, buckets, barWidth = 12, csvName }: { title: string; buckets: Bucket[]; barWidth?: number; csvName: string } = $props();
+
+  const exportCsv = (e: Event) => {
+    e.preventDefault();
+    downloadCsv(`${csvName}.csv`, ["period_start", "cost_usd", "calls", "prompt_tokens", "cached_tokens", "completion_tokens"],
+      buckets.map((b) => [b.key, b.cost, b.calls, b.prompt, b.cached, b.completion]));
+  };
 
   let scroller = $state<HTMLDivElement | null>(null);
   let active = $state<Bucket | null>(null);
@@ -28,7 +35,7 @@
 <section class="ub">
   <div class="ub-head">
     <h4>{title}</h4>
-    <span class="ub-total">{usd(total)} total</span>
+    <span class="ub-total">{usd(total)} total · <a href="#csv" onclick={exportCsv}>download csv</a></span>
   </div>
   <div class="ub-readout" aria-live="polite">{shown ? describe(shown) : "No data"}</div>
   <div class="ub-plot">

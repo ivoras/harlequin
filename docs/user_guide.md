@@ -210,7 +210,8 @@ its left edge to resize it) has up to three tabs:
   bar for its cost, calls and tokens. Above the charts is the number of
   sessions with a client connected right now. Owners/admins see the whole
   server's usage with a per-user breakdown of the last 30 days, and can switch
-  to just their own.
+  to just their own. Each chart and the per-user breakdown has a **download
+  csv** link that saves exactly the figures shown (full precision).
 - **Audit** (owners only) — search the audit log (logins, user changes, new
   and cleared sessions, uploads, and memory, skill, hat and project changes),
   filtered by period, action and user, with counts per action, user and day.
