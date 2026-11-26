@@ -43,7 +43,7 @@
       .filter((u) => u.calls > 0)
       .sort((a, b) => b.total - a.total),
   );
-  const money = (n: number) => `$${n.toFixed(n < 1 ? 4 : 2)}`;
+  const money = (n: number) => `$${n.toFixed(2)}`;
   const today = localToday();
   // First day of the 30-day window (today inclusive); days are YYYY-MM-DD.
   const since = (() => {
