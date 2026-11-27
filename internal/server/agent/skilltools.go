@@ -107,7 +107,7 @@ func (a *Agent) registerFileWriteTools(reg map[string]toolEntry) {
 	}
 
 	reg["write_skill"] = toolEntry{
-		def: fnTool("write_skill", `Create a NEW skill from its main file (SKILL.md: frontmatter with name and description, then the instructions). Only when the user asks to create a skill. Refused if the skill already exists: to change an existing skill, read_doc "skill://<name>/SKILL.md" and edit it with edit_doc (or replace it with write_file). Add scripts and references with write_file at skill://<name>/<path>.`, map[string]any{
+		def: fnTool("write_skill", `Create a NEW skill from its main file (SKILL.md: frontmatter with name and description, then the instructions). Only when the user asks to create a skill; load_skill "skill-creator" first for how to write one. Refused if the skill already exists: to change an existing skill, read_doc "skill://<name>/SKILL.md" and edit it with edit_doc (or replace it with write_file). Add scripts and references with write_file at skill://<name>/<path>.`, map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"name":    map[string]any{"type": "string"},
