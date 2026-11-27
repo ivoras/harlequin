@@ -297,6 +297,7 @@ func main() {
 		WebFetchTemperature: cfg.Agent.WebFetch.TemperatureValue(),
 		WebFetchTools:       cfg.Agent.WebFetch.ToolsEnabledValue(),
 		ReportTiming:        cfg.Agent.ReportTiming,
+		SkillToolsUpfront:   cfg.Agent.SkillToolsUpfront,
 		MaxSteps:            cfg.Agent.MaxSteps,
 		CompactThreshold:    cfg.Agent.Compaction.Threshold(),
 		CompactKeep:         cfg.Agent.Compaction.Keep(),

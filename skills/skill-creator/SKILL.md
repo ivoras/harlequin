@@ -124,7 +124,11 @@ tools:
 - Put longer code in `skill://<name>/lib/<file>.js` and start `run` with
   `include("skill://<name>/lib/<file>.js");`.
 - Test the code with `run_js` (same `args` object) **before** saving it.
-- The tool list is built at the start of each turn: a new or changed tool is
+- The agent is offered a skill's tools only after it has loaded the skill
+  (from the next step on, and for the rest of the session). So the skill's
+  **description** must cover what its tools do, or the agent never loads the
+  skill and never sees them; and SKILL.md should say when to call each tool.
+- Tools are read at the start of each turn: a new or changed tool is
   callable from the user's next message, not in this turn.
 
 ## 5. Test it

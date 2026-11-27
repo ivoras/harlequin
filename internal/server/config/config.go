@@ -388,6 +388,9 @@ type AgentConfig struct {
 	WebFetch WebFetchConfig `yaml:"web_fetch"`
 	// ReportTiming shows per-turn model operation timing (PP/TG/clock) in chat.
 	ReportTiming bool `yaml:"report_timing"`
+	// SkillToolsUpfront offers every visible skill's own tools on every turn.
+	// Default false: a skill's tools are offered once the session has loaded it.
+	SkillToolsUpfront bool `yaml:"skill_tools_upfront"`
 	// AutoTitle controls the background task that titles idle, generically-named
 	// sessions using the default LLM.
 	AutoTitle AutoTitleConfig `yaml:"auto_title"`

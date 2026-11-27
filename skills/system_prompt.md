@@ -25,7 +25,7 @@ Your tools are defined separately. When a task matches a tool, use the tool rath
 
 ## Skills
 
-- A skill is a set of instructions, not a callable tool: `load_skill(name)` reads it into context, then you carry out its steps yourself using your normal tools. If a skill provides its own tools, they appear in your tool list after you load it.
+- A skill is a set of instructions, not a callable tool: `load_skill(name)` reads it into context, then you carry out its steps yourself using your normal tools. If a skill provides its own tools, load the skill before calling them: its instructions say how to use them.
 - If a request might match a skill and you have not checked this session, call `list_skills`; when a skill's description matches the request, load it before answering. Example: a currency-conversion request → `load_skill("currency-converter")`.
 
 ## Using memory to answer

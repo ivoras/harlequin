@@ -176,6 +176,10 @@ agent:
   # processing, tok/s), TG (token generation, tok/s), and wall-clock time.
   # Disabled by default; timing is always recorded in the session log.
   report_timing: false
+  # A skill's own (frontmatter) tools are offered to the model only once the
+  # session has loaded that skill, which keeps unrelated tools out of every
+  # request. true offers every visible skill's tools on every turn instead.
+  skill_tools_upfront: false
   # Background task that gives idle, generically-named sessions (personal and
   # project) a short LLM-written title. Default enabled.
   # auto_title:

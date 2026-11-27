@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -134,6 +133,9 @@ type Agent struct {
 	// CompactThreshold (tokens; 0 = off) and CompactKeep configure tier-1 context
 	// compaction in the step loop (see compactHistory).
 	CompactThreshold, CompactKeep int
+	// SkillToolsUpfront offers skill tools before their skill is loaded
+	// (agent.skill_tools_upfront); by default they are deferred.
+	SkillToolsUpfront bool
 }
 
 // compactThreshold is the effective compaction trigger: the configured size,
@@ -297,32 +299,19 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	a.loadHat(ctx, rc)
 	rc.skillInfos, _ = a.Skills.EffectiveSkillInfos(ctx, rc.userDB, rc.projectDB, rc.hat)
 
-	tools := a.buildTools(ctx, rc)
-	toolDefs := make([]llm.Tool, 0, len(tools))
-	toolNames := make([]string, 0, len(tools))
-	toolCatalog := make([]map[string]any, 0, len(tools))
-	for name, t := range tools {
-		if t.hidden {
-			continue
-		}
-		toolDefs = append(toolDefs, t.def)
-		toolNames = append(toolNames, name)
-		toolCatalog = append(toolCatalog, map[string]any{
-			"name":        name,
-			"description": t.def.Function.Description,
-		})
+	history, err := a.Sessions.Messages(ctx, rc.sessDB, sessionID)
+	if err != nil {
+		return "", err
 	}
-	sort.Strings(toolNames)
-	sort.Slice(toolCatalog, func(i, j int) bool {
-		return toolCatalog[i]["name"].(string) < toolCatalog[j]["name"].(string)
-	})
-	// Sort the tool definitions sent to the model too: they are built by iterating
-	// a map above, so their order is otherwise random per request. The chat
-	// template renders tools into the prompt prefix, so a shuffled order changes
-	// the prefix every turn and defeats llama.cpp's prompt-prefix cache (the whole
-	// context gets reprocessed instead of reused). Deterministic order keeps the
-	// prefix byte-stable across turns.
-	sortToolDefs(toolDefs)
+	priorMsgs := modelHistory(history)
+
+	tools := a.buildTools(ctx, rc)
+	// Sorted (offeredTools): the chat template renders tools into the prompt
+	// prefix, so a map-ordered list would change the prefix every turn and defeat
+	// llama.cpp's prompt-prefix cache. Deferred skill tools join the list once
+	// their skill has been loaded in this session (see the refresh after dispatch).
+	loaded := loadedSkills(priorMsgs)
+	toolDefs, toolNames, toolCatalog := offeredTools(tools, loaded)
 	a.logEvent(ctx, rc, sessionlog.TypeToolsAvailable, map[string]any{
 		"count": len(toolCatalog), "tools": toolCatalog,
 	})
@@ -343,14 +332,10 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 	}
 
 	// Compose messages: system + history.
-	history, err := a.Sessions.Messages(ctx, rc.sessDB, sessionID)
-	if err != nil {
-		return "", err
-	}
 	systemPrompt := a.composeSystemPrompt(ctx, rc)
 	a.logEvent(ctx, rc, sessionlog.TypeSystemPrompt, map[string]any{"content": systemPrompt})
 
-	msgs := append([]llm.Message{{Role: llm.RoleSystem, Content: systemPrompt}}, modelHistory(history)...)
+	msgs := append([]llm.Message{{Role: llm.RoleSystem, Content: systemPrompt}}, priorMsgs...)
 
 	a.attachImages(ctx, rc, msgs)
 
@@ -652,6 +637,15 @@ func (a *Agent) turn(ctx context.Context, rc *runContext, userContent string) (s
 			}
 		}
 
+		// A skill loaded this step brings its deferred tools into the next step's list.
+		if l := loadedSkills(msgs); len(l) != len(loaded) {
+			loaded = l
+			toolDefs, toolNames, toolCatalog = offeredTools(tools, loaded)
+			a.logEvent(ctx, rc, sessionlog.TypeToolsAvailable, map[string]any{
+				"count": len(toolCatalog), "tools": toolCatalog, "reason": "skill_loaded",
+			})
+		}
+
 		if repeatStop != "" {
 			err := errors.New(repeatStop)
 			emit(types.StreamEvent{Type: types.SSEError, Error: err.Error()})
@@ -844,16 +838,29 @@ func logToolCalls(calls []llm.ToolCall) []map[string]any {
 	return out
 }
 
+// skillCatalogue is the system prompt's list of visible skills ("" when none).
+// contextusage counts the same text.
+func (a *Agent) skillCatalogue(rc *runContext) string {
+	if len(rc.skillInfos) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	if a.SkillToolsUpfront {
+		sb.WriteString("\n\nAvailable skills (use load_skill to read full instructions):\n")
+	} else {
+		sb.WriteString("\n\nAvailable skills (use load_skill to read full instructions; a skill's own tools join your tool list once you have loaded it):\n")
+	}
+	for _, i := range rc.skillInfos {
+		fmt.Fprintf(&sb, "- %s: %s\n", i.Name, i.Description)
+	}
+	return sb.String()
+}
+
 // composeSystemPrompt builds the system prompt including the skill catalogue.
 func (a *Agent) composeSystemPrompt(ctx context.Context, rc *runContext) string {
 	var prompt strings.Builder
 	prompt.WriteString(a.hatPrompt(ctx, rc))
-	if len(rc.skillInfos) > 0 {
-		prompt.WriteString("\n\nAvailable skills (use load_skill to read full instructions):\n")
-		for _, i := range rc.skillInfos {
-			prompt.WriteString(fmt.Sprintf("- %s: %s\n", i.Name, i.Description))
-		}
-	}
+	prompt.WriteString(a.skillCatalogue(rc))
 	if len(rc.mcpNeedAuth) > 0 {
 		prompt.WriteString("\n\n" + mcpNeedAuthNote(rc.mcpNeedAuth))
 	}

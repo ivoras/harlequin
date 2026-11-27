@@ -3,8 +3,6 @@ package agent
 import (
 	"context"
 	"database/sql"
-	"fmt"
-	"strings"
 
 	"github.com/ivoras/harlequin/internal/server/llm"
 	"github.com/ivoras/harlequin/internal/shared/types"
@@ -27,38 +25,26 @@ func (a *Agent) ContextBreakdown(ctx context.Context, projectID, sessionID, user
 		a.loadHat(ctx, rc)
 		rc.skillInfos, _ = a.Skills.EffectiveSkillInfos(ctx, rc.userDB, rc.projectDB, rc.hat)
 
-		tools := a.buildTools(ctx, rc)
-		toolDefs := make([]llm.Tool, 0, len(tools))
-		for _, t := range tools {
-			if t.hidden {
-				continue
-			}
-			toolDefs = append(toolDefs, t.def)
+		history, err := a.Sessions.Messages(ctx, rc.sessDB, sessionID)
+		if err != nil {
+			return err
 		}
+		prior := modelHistory(history)
+		var messagesTokens int
+		for _, m := range prior {
+			messagesTokens += llm.EstimateMessageTokens(m)
+		}
+
+		toolDefs, _, _ := offeredTools(a.buildTools(ctx, rc), loadedSkills(prior))
 		var toolsTokens int
 		for _, t := range toolDefs {
 			toolsTokens += llm.EstimateToolTokens(t)
 		}
 
 		systemPromptTokens := llm.EstimateTextTokens(a.hatPrompt(ctx, rc))
-
 		var skillsTokens int
-		if len(rc.skillInfos) > 0 {
-			var skillsText strings.Builder
-			skillsText.WriteString("\n\nAvailable skills (use load_skill to read full instructions):\n")
-			for _, i := range rc.skillInfos {
-				skillsText.WriteString(fmt.Sprintf("- %s: %s\n", i.Name, i.Description))
-			}
-			skillsTokens = llm.EstimateTextTokens(skillsText.String())
-		}
-
-		history, err := a.Sessions.Messages(ctx, rc.sessDB, sessionID)
-		if err != nil {
-			return err
-		}
-		var messagesTokens int
-		for _, m := range modelHistory(history) {
-			messagesTokens += llm.EstimateMessageTokens(m)
+		if cat := a.skillCatalogue(rc); cat != "" {
+			skillsTokens = llm.EstimateTextTokens(cat)
 		}
 
 		total := systemPromptTokens + skillsTokens + toolsTokens + messagesTokens

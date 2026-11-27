@@ -40,6 +40,54 @@ type toolEntry struct {
 	def     llm.Tool
 	handler toolHandler
 	hidden  bool // a retired name: still dispatched (old sessions, skill texts), not offered to the model
+	// skill, when set, defers the tool: it is dispatched always but offered only
+	// once the session has loaded this skill (its catalogue name).
+	skill string
+}
+
+// offeredTools is the tool list the model is shown, sorted: everything but
+// hidden names and deferred tools whose skill is not in loaded.
+func offeredTools(tools map[string]toolEntry, loaded map[string]bool) (defs []llm.Tool, names []string, catalog []map[string]any) {
+	for name, t := range tools {
+		if t.hidden || (t.skill != "" && !loaded[t.skill]) {
+			continue
+		}
+		defs = append(defs, t.def)
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	sortToolDefs(defs)
+	for _, d := range defs {
+		catalog = append(catalog, map[string]any{"name": d.Function.Name, "description": d.Function.Description})
+	}
+	return defs, names, catalog
+}
+
+// loadedSkills is the set of skills (as named in the load_skill call, i.e. the
+// catalogue name) that a load_skill call in msgs loaded without an error.
+func loadedSkills(msgs []llm.Message) map[string]bool {
+	results := map[string]string{}
+	for _, m := range msgs {
+		if m.Role == llm.RoleTool {
+			results[m.ToolCallID] = m.Content
+		}
+	}
+	loaded := map[string]bool{}
+	for _, m := range msgs {
+		for _, tc := range m.ToolCalls {
+			res, ok := results[tc.ID]
+			if tc.Function.Name != "load_skill" || !ok || strings.HasPrefix(res, "error") {
+				continue
+			}
+			var args struct {
+				Name string `json:"name"`
+			}
+			if json.Unmarshal([]byte(tc.Function.Arguments), &args) == nil && args.Name != "" {
+				loaded[args.Name] = true
+			}
+		}
+	}
+	return loaded
 }
 
 // sortToolDefs orders tool definitions by function name in place. The tools
@@ -1093,8 +1141,12 @@ Example (watch a saved web-monitor check every 30 min): cron_create(name="fzoeu"
 		if err != nil {
 			continue
 		}
+		deferTo := info.Name
+		if a.SkillToolsUpfront {
+			deferTo = ""
+		}
 		for _, td := range sk.Tools {
-			a.registerSkillTool(reg, sk.Name, td)
+			a.registerSkillTool(reg, sk.Name, td, deferTo)
 		}
 	}
 
@@ -1191,7 +1243,7 @@ func apiToolName(parts ...string) string {
 	return n
 }
 
-func (a *Agent) registerSkillTool(reg map[string]toolEntry, skillName string, td skills.ToolDefinition) {
+func (a *Agent) registerSkillTool(reg map[string]toolEntry, skillName string, td skills.ToolDefinition, deferTo string) {
 	full := apiToolName(skillName, td.Name)
 	params := td.Parameters
 	if params == nil {
@@ -1199,7 +1251,8 @@ func (a *Agent) registerSkillTool(reg map[string]toolEntry, skillName string, td
 	}
 	run := td.Run
 	reg[full] = toolEntry{
-		def: fnTool(full, td.Description, params),
+		skill: deferTo,
+		def:   fnTool(full, td.Description, params),
 		handler: func(ctx context.Context, rc *runContext, args map[string]any) (string, error) {
 			rcx := a.jsRunContext(ctx, rc)
 			rcx.Globals = a.docJSGlobals(ctx, rc) // the same helpers as run_js

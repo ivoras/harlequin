@@ -35,7 +35,7 @@ Beyond these built-ins, two families of tools appear dynamically:
   digits, `_` and `-` become `_`, as providers require), declared by a skill's
   frontmatter and backed by sandboxed JS. The older `<skill>.<tool>` form is still
   accepted when the model calls it (skill texts may name tools that way), but is not
-  offered. Visible per the active hat/skill set. Their `run` JavaScript has the same helpers as `run_js` (`read_doc`, `sheets.*`, `xml.*`, `tmp`/`storage`, `load`/`include`), with the call's arguments as `args`.
+  offered. Visible per the active hat/skill set, and **deferred**: a skill's tools are offered only once the session has loaded the skill with `load_skill` (from the next step of that turn on, and in every later turn, as long as that call is in the history the model sees; a failed load does not count). They can be called before that (the dispatcher knows them), they are just not listed. `agent.skill_tools_upfront: true` offers them all on every turn instead. Their `run` JavaScript has the same helpers as `run_js` (`read_doc`, `sheets.*`, `xml.*`, `tmp`/`storage`, `load`/`include`), with the call's arguments as `args`.
 - **MCP tools** — namespaced `mcp__<server>__<tool>` (made safe the same way: the
   MCP spec allows dots in tool names, which OpenAI-style APIs and Claude reject;
   names over 64 characters are shortened with a hash; the server is still called

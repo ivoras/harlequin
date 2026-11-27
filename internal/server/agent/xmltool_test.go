@@ -47,7 +47,7 @@ func TestQueryXML(t *testing.T) {
 	}
 	// Skill-defined tools get the same helpers.
 	reg := map[string]toolEntry{}
-	a.registerSkillTool(reg, "e-test", skills.ToolDefinition{Name: "lines", Run: `return xml.query(args.doc, "//cac:InvoiceLine").length + "/" + xml.query(args.doc, "//cac:InvoiceLine")[0].children;`})
+	a.registerSkillTool(reg, "e-test", skills.ToolDefinition{Name: "lines", Run: `return xml.query(args.doc, "//cac:InvoiceLine").length + "/" + xml.query(args.doc, "//cac:InvoiceLine")[0].children;`}, "")
 	out, err = reg["e-test.lines"].handler(context.Background(), rc, map[string]any{"doc": "tmp://racun.xml"})
 	if err != nil || out != `"2/2"` {
 		t.Fatalf("skill tool: %v %q", err, out)
