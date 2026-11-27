@@ -146,7 +146,8 @@ You cannot run a fresh agent yourself, so:
 ## 6. Improve it
 
 - Read the current text first: `read_doc("skill://<name>/SKILL.md")` shows the
-  source (`load_skill` shows templates rendered). Change it with `edit_doc` on
+  raw source (`load_skill` shows the skill with templates rendered). 
+  Change the source with `edit_doc` on
   that path, keeping any `<?js ?>` blocks; `write_skill` refuses an existing
   name.
 - Turn each complaint into the general rule behind it, not a patch for that
