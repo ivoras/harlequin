@@ -31,6 +31,11 @@ Ask the questions together in one `ask_user` (it ends your turn), not one at a
 time. Do not ask what you can find out yourself: `list_skills` for similar or
 clashing skills, `search_docs`/`memory_search` for the user's material.
 
+Convey knowledge about how the task is done in the skill, including referencing
+specific field names and describing operations. But ask the user first before
+hardcoding project names or document names, or anything that's obviously specific
+to just this session.
+
 ## 2. How skills work here
 
 - **Files.** A skill is `SKILL.md` plus optional files at
