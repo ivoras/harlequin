@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/ivoras/harlequin/internal/server/jsrun"
+	"github.com/ivoras/harlequin/internal/server/skills/jstmpl"
 )
 
 // Every baked skill must parse, and must come out with a non-empty description.
@@ -89,6 +92,27 @@ func TestBakedHatsParse(t *testing.T) {
 					t.Errorf("hat %s mentions missing skill %q", hat, n)
 				}
 			}
+		}
+	}
+}
+
+// The default system prompt tells the model what agent.skill_tools_upfront
+// actually does on this server.
+func TestSystemPromptFollowsSkillToolsConfig(t *testing.T) {
+	for _, c := range []struct {
+		upfront bool
+		want    string
+	}{
+		{false, "they appear in your tool list after you load it."},
+		{true, "they are always in your tool list, but load the skill before calling them"},
+	} {
+		makeCtx := func(int64, string, string) jstmpl.Context {
+			return jstmpl.Context{Config: func(k string) any { return map[string]any{"agent.skill_tools_upfront": c.upfront}[k] }}
+		}
+		m := NewManager(nil, os.DirFS("../../.."), jsrun.New(jsrun.Options{}), makeCtx)
+		out, err := m.RenderFile("system_prompt.md", 1, "u")
+		if err != nil || !strings.Contains(out, "If a skill provides its own tools, "+c.want) {
+			t.Fatalf("upfront=%v: err=%v; skills section:\n%s", c.upfront, err, out[strings.Index(out, "## Skills"):][:400])
 		}
 	}
 }

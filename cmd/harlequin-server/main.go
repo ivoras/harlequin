@@ -178,7 +178,8 @@ func main() {
 
 	// The single JS-template context provider, used for every .md the server
 	// renders (skills, the system prompt, and hat prompts).
-	makeCtx := mdtmpl.New(memStore, docStore, store)
+	cfgView := cfg.View()
+	makeCtx := mdtmpl.New(memStore, docStore, store, func(k string) any { return config.Lookup(cfgView, k) })
 	skillMgr := skills.NewManager(store.Shared, harlequin.BakedFS(), skillRunner, makeCtx)
 	// One-time import of legacy on-disk hats (<data_dir>/hats/) into the shared
 	// database, then seed baked-in skills + hats (hash-guarded; preserves edits).

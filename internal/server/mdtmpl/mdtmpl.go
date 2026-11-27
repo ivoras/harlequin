@@ -21,14 +21,16 @@ import (
 // matches the function the skills Manager renders with.
 type ContextFunc func(userID int64, username, skill string) jstmpl.Context
 
-// New returns the context provider, wiring in the date, username, and the
-// memory/document search helpers (the per-user database is opened on demand).
-func New(mem *memory.Store, docs *documents.Store, store *storage.Manager) ContextFunc {
+// New returns the context provider, wiring in the date, username, the
+// memory/document search helpers (the per-user database is opened on demand)
+// and conf, the server config reader behind ctx.config.
+func New(mem *memory.Store, docs *documents.Store, store *storage.Manager, conf func(key string) any) ContextFunc {
 	return func(userID int64, username, skill string) jstmpl.Context {
 		return jstmpl.Context{
-			User:  username,
-			Skill: skill,
-			Now:   time.Now,
+			User:   username,
+			Skill:  skill,
+			Now:    time.Now,
+			Config: conf,
 			MemorySearch: func(q string) []string {
 				var res []types.SearchResult
 				_ = store.WithUser(context.Background(), userID, func(udb *sql.DB) error {

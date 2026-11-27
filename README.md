@@ -156,7 +156,10 @@ builds are cached.
 ## Configuration
 
 Both binaries read a YAML config file plus a `.env` file. YAML holds non-secret structure;
-`.env` holds secrets, and environment variables override YAML.
+`.env` holds secrets, and environment variables override YAML. The server refuses to start
+when `server.yaml` holds a secret itself (a password, key or token value, credentials in a
+URL): name the `.env` variable in the matching `*_env` key instead (e.g. `smtp_password_env`).
+Skill and prompt templates can read the non-secret settings with `ctx.config("section.key")`.
 
 - Server: copy `configs/server.example.yaml` and `.env.example`.
 - Client: copy `configs/client.example.yaml`. Client config lives at

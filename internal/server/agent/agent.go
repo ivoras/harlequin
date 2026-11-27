@@ -845,11 +845,7 @@ func (a *Agent) skillCatalogue(rc *runContext) string {
 		return ""
 	}
 	var sb strings.Builder
-	if a.SkillToolsUpfront {
-		sb.WriteString("\n\nAvailable skills (use load_skill to read full instructions):\n")
-	} else {
-		sb.WriteString("\n\nAvailable skills (use load_skill to read full instructions; a skill's own tools join your tool list once you have loaded it):\n")
-	}
+	sb.WriteString("\n\nAvailable skills (use load_skill to read full instructions):\n")
 	for _, i := range rc.skillInfos {
 		fmt.Fprintf(&sb, "- %s: %s\n", i.Name, i.Description)
 	}

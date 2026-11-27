@@ -29,6 +29,8 @@ type Context struct {
 	// MemoryGlob returns memories whose slot key matches a GLOB pattern
 	// (e.g. "user.*"); each item has id, key, value, content.
 	MemoryGlob func(glob string) []map[string]string
+	// Config returns the server config value at a dotted key, or nil.
+	Config func(key string) any
 }
 
 // Render evaluates all <?js ?> blocks in src and returns the rendered string.
@@ -95,6 +97,12 @@ func renderBlock(runner *jsrun.Runner, code string, c Context, nowFn func() time
 			}
 			return c.MemoryGlob(g)
 		},
+		"__ctx_config": func(k string) any {
+			if c.Config == nil {
+				return nil
+			}
+			return c.Config(k)
+		},
 	}
 
 	// Build a ctx object in JS that wires the helpers together.
@@ -105,7 +113,8 @@ func renderBlock(runner *jsrun.Runner, code string, c Context, nowFn func() time
 		now: function(){ return __ctx_now(); },
 		memorySearch: function(q){ return __ctx_memory_search(q); },
 		searchDocs: function(q){ return __ctx_search_docs(q); },
-		memoryGlob: function(g){ return __ctx_memory_glob(g); }
+		memoryGlob: function(g){ return __ctx_memory_glob(g); },
+		config: function(k){ return __ctx_config(k); }
 	};
 ` + code
 

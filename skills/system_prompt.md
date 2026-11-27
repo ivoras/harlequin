@@ -25,7 +25,7 @@ Your tools are defined separately. When a task matches a tool, use the tool rath
 
 ## Skills
 
-- A skill is a set of instructions, not a callable tool: `load_skill(name)` reads it into context, then you carry out its steps yourself using your normal tools. If a skill provides its own tools, load the skill before calling them: its instructions say how to use them.
+- A skill is a set of instructions, not a callable tool: `load_skill(name)` reads it into context, then you carry out its steps yourself using your normal tools. If a skill provides its own tools, <?js if (ctx.config("agent.skill_tools_upfront")) { print("they are always in your tool list, but load the skill before calling them: its instructions say how to use them."); } else { print("they appear in your tool list after you load it."); } ?>
 - If a request might match a skill and you have not checked this session, call `list_skills`; when a skill's description matches the request, load it before answering. Example: a currency-conversion request → `load_skill("currency-converter")`.
 
 ## Using memory to answer

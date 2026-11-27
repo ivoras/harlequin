@@ -61,8 +61,19 @@ func TestRenderMemoryGlob(t *testing.T) {
 
 func TestRenderMemoryGlobNilSafe(t *testing.T) {
 	r := jsrun.New(jsrun.Options{Timeout: 2 * time.Second, OutputCap: 4096})
-	out, err := Render(r, "<?js var s = ctx.memoryGlob(\"user.*\"); print(s.length); ?>", Context{})
-	if err != nil || out != "0" {
+	out, err := Render(r, "<?js var s = ctx.memoryGlob(\"user.*\"); print(s.length); print(ctx.config(\"a.b\") === null); ?>", Context{})
+	if err != nil || out != "0true" {
+		t.Fatalf("out=%q err=%v", out, err)
+	}
+}
+
+// ctx.config hands the template the configured value, typed.
+func TestRenderConfig(t *testing.T) {
+	r := jsrun.New(jsrun.Options{Timeout: 2 * time.Second, OutputCap: 4096})
+	conf := map[string]any{"agent.skill_tools_upfront": true, "sessions.idle_timeout": "30m0s"}
+	src := `<?js print(ctx.config("agent.skill_tools_upfront") ? "upfront" : "deferred"); print(" " + ctx.config("sessions.idle_timeout")); ?>`
+	out, err := Render(r, src, Context{Config: func(k string) any { return conf[k] }})
+	if err != nil || out != "upfront 30m0s" {
 		t.Fatalf("out=%q err=%v", out, err)
 	}
 }

@@ -34,6 +34,7 @@ Rendering **fails closed**: a JavaScript error or timeout aborts the whole rende
 | `ctx.memorySearch(q)` | string[] | Top matches from the user's + shared memory for query `q`.   |
 | `ctx.searchDocs(q)`   | string[] | Top matches from the organisation document corpus.           |
 | `ctx.memoryGlob(g)`   | object[] | Memories whose slot key matches GLOB `g` (e.g. `"user.*"`); each item has `id`, `key`, `value`, `content`. |
+| `ctx.config(k)`       | any      | The server config value at dotted key `k` (e.g. `"agent.skill_tools_upfront"`), as `server.yaml` spells it with defaults filled in (durations as `"30m0s"`); `null` when there is none. Holds no secrets: secret fields are not part of the YAML view, and the server refuses a `server.yaml` that writes a secret inline. It is visible to every template, personal skills included, so it does show infrastructure settings such as model base URLs and the SMTP host. |
 
 The context is defined in one place; to add a variable, extend
 `internal/server/mdtmpl` and the `jstmpl` shim — every templated `.md` then sees it.

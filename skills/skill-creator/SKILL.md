@@ -65,9 +65,13 @@ to just this session.
 - **Templates.** `<?js … ?>` blocks in `.md`/`.txt` files run when the skill is
   loaded and are replaced by what they `print()`. Available: `ctx.user`,
   `ctx.skill`, `ctx.date` (YYYY-MM-DD), `ctx.now()`, `ctx.memorySearch(q)`,
-  `ctx.searchDocs(q)`, `ctx.memoryGlob("pattern.*")`. Use them only for what
-  must be fresh at load time (today's date, the user's standing preferences);
-  a template error makes the skill fail to load.
+  `ctx.searchDocs(q)`, `ctx.memoryGlob("pattern.*")`, and
+  `ctx.config("section.key")`: a server setting as written in server.yaml
+  (defaults filled in; `null` when there is no such key), e.g.
+  `ctx.config("server.org_language")`, for a skill whose steps depend on how
+  this server is set up. Use them only for what must be fresh at load time
+  (today's date, the user's standing preferences); a template error makes
+  the skill fail to load.
 
 ## 3. Write SKILL.md
 

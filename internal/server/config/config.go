@@ -37,6 +37,10 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
+// MarshalYAML writes the duration as server.yaml spells it ("30m"), so View
+// shows that rather than nanoseconds.
+func (d Duration) MarshalYAML() (any, error) { return time.Duration(d).String(), nil }
+
 // D returns the value as a time.Duration.
 func (d Duration) D() time.Duration { return time.Duration(d) }
 
@@ -665,6 +669,9 @@ func Load(path string) (*Config, error) {
 					return nil, fmt.Errorf("config: top-level %q is no longer supported; define the chat/aux/embed models in model_suites and select one with model_suite", k)
 				}
 			}
+		}
+		if err := rejectInlineSecrets(raw); err != nil {
+			return nil, err
 		}
 	}
 
